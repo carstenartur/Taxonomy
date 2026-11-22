@@ -229,7 +229,7 @@ public class ArchitectureWorkbenchService {
         return pdfRenderer.render(projection, diagramLocale(projection, override));
     }
 
-    private static Locale diagramLocale(Projection projection, Locale override) {
+    static Locale diagramLocale(Projection projection, Locale override) {
         var source = projection.exportProvenance();
         return DocumentLanguage.resolve(override, source == null ? null : source.analysisLanguage(), LocaleContextHolder.getLocale());
     }

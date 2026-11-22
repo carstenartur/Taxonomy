@@ -161,6 +161,17 @@ public sealed interface ArchitectureCommand {
             this(relation, status, Map.of());
         }
     }
+    record CreateArchitectureRelations(List<CreateArchitectureRelation> relations) implements ArchitectureCommand {
+        public CreateArchitectureRelations {
+            if (relations == null || relations.size() < 2 || relations.size() > 32 || relations.stream().anyMatch(Objects::isNull)) {
+                throw new IllegalArgumentException("Select 2 to 32 relationships");
+            }
+            relations = List.copyOf(relations);
+            if (relations.stream().map(CreateArchitectureRelation::relation).distinct().count() != relations.size()) {
+                throw new IllegalArgumentException("Select each relationship only once");
+            }
+        }
+    }
     record UpdateArchitectureRelation(RelationKey relation, String status) implements ArchitectureCommand {}
     record DeleteArchitectureRelation(RelationKey relation) implements ArchitectureCommand {}
 

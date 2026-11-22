@@ -16,6 +16,7 @@ public final class DiagramEdgeRouting {
     private static final double CARD_CLEARANCE = 4;
     private static final double ENDPOINT_INSET = .25;
     private static final double CANVAS_CLEARANCE = 4;
+    private static final double TRACK_SPACING = 8;
 
     public record Point(double x, double y) { }
     public record Detour(List<Point> points) {
@@ -31,6 +32,12 @@ public final class DiagramEdgeRouting {
             path.moveTo(points.getFirst().x(), points.getFirst().y());
             for (int i = 1; i < points.size(); i++) path.lineTo(points.get(i).x(), points.get(i).y());
             return path;
+        }
+    }
+
+    private record Track(double from, double to) {
+        boolean overlaps(Track other) {
+            return Math.min(to, other.to) - Math.max(from, other.from) > TRACK_SPACING;
         }
     }
 
@@ -52,6 +59,8 @@ public final class DiagramEdgeRouting {
     private final Map<String, Double> lanes = new HashMap<>();
     private final List<Card> cards;
     private final List<Double> tracks;
+    private final NavigableMap<Double, List<Track>> occupiedTracks = new TreeMap<>();
+    private final Map<DiagramSceneEdge, Optional<Detour>> lineRoutes = new HashMap<>();
 
     public DiagramEdgeRouting(DiagramScene scene) {
         this.scene = scene;
@@ -72,9 +81,10 @@ public final class DiagramEdgeRouting {
 
     /** Try the middle first, then look along a clear straight segment for space beside the edge. */
     static List<Point> captionAnchors(DiagramSceneEdge edge, Detour detour) {
-        if (detour != null) return List.of(detour.labelAnchor());
-        double dx = edge.targetX() - edge.sourceX(), dy = edge.targetY() - edge.sourceY();
-        double centerX = edge.sourceX() + dx / 2, centerY = edge.sourceY() + dy / 2;
+        Point start = detour == null ? new Point(edge.sourceX(), edge.sourceY()) : detour.points().get(2);
+        Point end = detour == null ? new Point(edge.targetX(), edge.targetY()) : detour.points().get(3);
+        double dx = end.x() - start.x(), dy = end.y() - start.y();
+        double centerX = start.x() + dx / 2, centerY = start.y() + dy / 2;
         var anchors = new ArrayList<Point>();
         anchors.add(new Point(centerX, centerY));
         int intervals = Math.min(32, (int) Math.ceil(Math.hypot(dx, dy) / 48));
@@ -87,14 +97,29 @@ public final class DiagramEdgeRouting {
     }
 
     public Detour detourForLine(DiagramSceneEdge edge) {
-        return detour(edge, new Line2D.Double(edge.sourceX(), edge.sourceY(), edge.targetX(), edge.targetY()));
+        return lineRoutes.computeIfAbsent(edge, this::allocateLineRoute).orElse(null);
+    }
+
+    private Optional<Detour> allocateLineRoute(DiagramSceneEdge edge) {
+        var original = new Line2D.Double(edge.sourceX(), edge.sourceY(), edge.targetX(), edge.targetY());
+        var route = detour(edge, original);
+        var points = route == null ? flatten(original) : route.points();
+        for (int i = 1; i < points.size(); i++) {
+            var start = points.get(i - 1);
+            var end = points.get(i);
+            if (start.y() == end.y() && Math.abs(start.x() - end.x()) > TRACK_SPACING)
+                occupiedTracks.computeIfAbsent(start.y(), ignored -> new ArrayList<>()).add(track(start, end));
+        }
+        return Optional.ofNullable(route);
     }
 
     /** Returns null when the original path is clear or no supported gutter reaches the saved ports. */
     public Detour detour(DiagramSceneEdge edge, Shape original) {
         var source = byId.get(edge.sourceId());
         var target = byId.get(edge.targetId());
-        if (source == null || target == null || clear(edge, flatten(original))) return null;
+        if (source == null || target == null) return null;
+        var originalPoints = flatten(original);
+        if (clear(edge, originalPoints) && separated(originalPoints)) return null;
         Point start = new Point(edge.sourceX(), edge.sourceY()), end = new Point(edge.targetX(), edge.targetY());
         double lane = lanes.getOrDefault(edge.id(), 0d);
         double stagger = lane / (Math.abs(lane) + 2);
@@ -108,12 +133,32 @@ public final class DiagramEdgeRouting {
                 .sorted(Comparator.<Double>comparingDouble(y -> Math.abs(y - start.y()) + Math.abs(y - end.y())
                         + Math.abs(y - center)).thenComparing(Comparator.reverseOrder())).toList();
         // The authored grid has a 24-unit horizontal gutter and a 34-unit row gutter.
-        for (double y : candidates) {
-            var points = List.of(start, new Point(from, start.y()), new Point(from, y),
-                    new Point(to, y), new Point(to, end.y()), end);
-            if (clear(edge, points)) return new Detour(points);
+        Detour fallback = null;
+        for (double offset : new double[]{0, TRACK_SPACING, -TRACK_SPACING}) {
+            for (double candidate : candidates) {
+                double y = candidate + offset;
+                if (y < CANVAS_CLEARANCE || y > scene.height() - CANVAS_CLEARANCE) continue;
+                var points = List.of(start, new Point(from, start.y()), new Point(from, y),
+                        new Point(to, y), new Point(to, end.y()), end);
+                if (!clear(edge, points)) continue;
+                if (separated(points.subList(2, 4))) return new Detour(points);
+                if (fallback == null) fallback = new Detour(points);
+            }
         }
-        return null;
+        return fallback;
+    }
+
+    private boolean separated(List<Point> points) {
+        for (int i = 1; i < points.size(); i++) {
+            Point a = points.get(i - 1), b = points.get(i);
+            if (a.y() == b.y() && occupiedTracks.subMap(a.y() - TRACK_SPACING, false, a.y() + TRACK_SPACING, false)
+                    .values().stream().flatMap(List::stream).anyMatch(track(a, b)::overlaps)) return false;
+        }
+        return true;
+    }
+
+    private static Track track(Point a, Point b) {
+        return new Track(Math.min(a.x(), b.x()), Math.max(a.x(), b.x()));
     }
 
     private boolean clear(DiagramSceneEdge edge, List<Point> points) {

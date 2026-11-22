@@ -8,6 +8,9 @@ import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.contentstream.operator.Operator;
 import org.apache.pdfbox.cos.COSNumber;
 import org.apache.pdfbox.pdfparser.PDFStreamParser;
+import org.apache.pdfbox.pdmodel.interactive.action.PDActionGoTo;
+import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotationLink;
+import org.apache.pdfbox.pdmodel.interactive.documentnavigation.destination.PDPageDestination;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.apache.pdfbox.text.TextPosition;
 import org.junit.jupiter.api.Test;
@@ -166,6 +169,50 @@ class DiagramEdgeRoutingTest {
         assertThat(boxes).isNotEmpty();
         assertThat(svgPaths(svg)).hasSize(3);
         assertThat(svg).contains("e1 | CI-1151", "e2 | CI-1151", "e3 | CI-1151");
+    }
+
+    @Test void oppositeDirectedRelationshipsBetweenDifferentEndpointsUseDistinctTracksAndCaptions() throws Exception {
+        var nodes = List.of(card("left", 52, 168), card("left-inner", 382, 168),
+                card("intermediate", 712, 168), card("right-inner", 1042, 168), card("right", 1372, 168));
+        var edges = List.of(
+                new DiagramSceneEdge("outer", "left", "right", "SUPPORTS", .7, "impact", 290, 209, 1372, 209),
+                new DiagramSceneEdge("inner", "right-inner", "left-inner", "FULFILLS", .7, "impact", 1042, 209, 620, 209));
+        var scene = new DiagramScene("Distinct relationships", 1662, 420, "LR", nodes, edges);
+        String svg = new SvgDiagramRenderer().render(scene);
+        var paths = svgPaths(svg);
+        assertDirectedClear(paths.get(0), scene, edges.get(0));
+        assertDirectedClear(paths.get(1), scene, edges.get(1));
+        assertThat(Math.abs(paths.get(0).get(2).y - paths.get(1).get(2).y)).isGreaterThanOrEqualTo(8);
+        assertThat(svg).contains(">SUPPORTS · ", ">FULFILLS · ");
+    }
+
+    @Test void crossPagePdfShowsDirectionAndLinksToBothEndpointPanelsAndInventory() throws Exception {
+        var source = new DiagramSceneNode("SOURCE", "Named source service", "Service", .7, false, 2, 0,
+                false, null, false, 80, 100, 238, 82);
+        var target = new DiagramSceneNode("TARGET", "Named target capability", "Capability", .7, false, 2, 0,
+                false, null, false, 1320, 100, 238, 82);
+        var edge = new DiagramSceneEdge("cross", "SOURCE", "TARGET", "FULFILLS", .7, "impact", 318, 141, 1320, 141);
+        var scene = new DiagramScene("Cross-page architecture", 1610, 420, "LR", List.of(source, target), List.of(edge));
+        var evidence = new DiagramCanonicalEvidence(null, List.of(),
+                Map.of(edge.id(), new DiagramCanonicalEvidence.Relationship("accepted", null, null)));
+        try (var pdf = Loader.loadPDF(new ArchitecturePdfRenderer().renderCanonical(scene, "", evidence, Locale.GERMAN))) {
+            for (int panel = 0; panel < 2; panel++) {
+                var stripper = new PDFTextStripper();
+                stripper.setStartPage(panel + 1);
+                stripper.setEndPage(panel + 1);
+                assertThat(stripper.getText(pdf)).contains("Named source service", "Named target capability", "D1 · SOURCE", "D2 · TARGET",
+                        "FULFILLS", "Beziehungsinventar öffnen");
+                var links = pdf.getPage(panel).getAnnotations();
+                assertThat(links).hasSize(2);
+                var destinations = new ArrayList<Integer>();
+                for (var annotation : links) {
+                    var link = (PDAnnotationLink) annotation;
+                    var action = (PDActionGoTo) link.getAction();
+                    destinations.add(((PDPageDestination) action.getDestination()).retrievePageNumber());
+                }
+                assertThat(destinations).containsExactlyInAnyOrder(1 - panel, 2);
+            }
+        }
     }
 
     @Test void fullRelevanceDetourArrowFitsItsApproachInTheTwentyFourUnitGutter() throws Exception {

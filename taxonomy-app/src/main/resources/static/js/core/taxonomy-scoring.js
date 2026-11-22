@@ -294,6 +294,8 @@
             if (archPanel) { archPanel.style.display = 'none'; }
             const sugPanel = document.getElementById('suggestedRelationsPanel');
             if (sugPanel) { sugPanel.style.display = 'none'; }
+            const reviewEmpty = document.getElementById('relationshipReviewAnalysisEmpty');
+            if (reviewEmpty) reviewEmpty.hidden = false;
         }
     }
 
@@ -1287,16 +1289,7 @@
             ? ((S.currentRawScores || {})[code] ?? pct) : rawScore;
         var scoreDetail = detail || (S.currentScoreDetails || {})[code];
         // Highlight comparable relevance only; pending suitability is not global relevance.
-        if (pct > 0) {
-            const alpha = Math.min(pct / 100, 1).toFixed(2);
-            header.style.backgroundColor = 'rgba(0,128,0,' + alpha + ')';
-            // Contrast-safe text color (WCAG 1.4.3)
-            if (pct >= 75) { header.style.color = '#fff'; }
-            else { header.style.color = '#1a1a1a'; }
-        } else {
-            header.style.backgroundColor = '';
-            header.style.color = '';
-        }
+        window.TaxonomyMatchScale.apply(header, pct);
 
         if (Number.isFinite(pct) || isProductScore(scoreDetail)) {
             let badge = header.querySelector('.tax-pct');
@@ -1852,6 +1845,9 @@
         }
         html += '</div>';
 
+        // Keep the diagram next to its lens, even when rules, notes or hotspot names span many rows.
+        const viewSummary = html;
+        html = '';
         // ── Part 2: Interactive Impact Network Graph + Swimlane Toggle ──
         if (elements.length > 0) {
             // Collect relationship types between layers for swimlane edge labels
@@ -1868,8 +1864,8 @@
 
             // Toggle buttons
             html += '<div class="impact-graph-toggle">';
-            html += '<button class="btn btn-sm btn-primary impact-view-btn" data-mode="graph">🔗 ' + escapeHtml(t('scoring.ui.network')) + '</button>';
-            html += '<button class="btn btn-sm btn-outline-secondary impact-view-btn" data-mode="swimlane">🏗️ ' + escapeHtml(t('scoring.ui.layers')) + '</button>';
+            html += '<button type="button" class="btn btn-sm btn-primary impact-view-btn" aria-pressed="true" aria-controls="impactGraphView" data-mode="graph">🔗 ' + escapeHtml(t('scoring.ui.network')) + '</button>';
+            html += '<button type="button" class="btn btn-sm btn-outline-secondary impact-view-btn" aria-pressed="false" aria-controls="impactSwimView" data-mode="swimlane">🏗️ ' + escapeHtml(t('scoring.ui.layers')) + '</button>';
             html += '</div>';
 
             // Graph container (shown by default)
@@ -1959,6 +1955,8 @@
             html += '</div>'; // end impactSwimView
         }
 
+        html += viewSummary;
+
         // ── Part 3: Detail Tables (collapsible) ──
         const hasElements = elements.length > 0;
         const hasRelationships = relationships.length > 0;
@@ -2019,7 +2017,7 @@
 
                 if (traceRels.length > 0) {
                     html += '<h6 class="mb-1">' + t('archview.trace.relations.title') + ' <span class="badge bg-secondary">' + traceRels.length + '</span></h6>';
-                    html += '<div class="table-responsive"><table class="table table-sm table-bordered small mb-0">';
+                    html += '<div class="table-responsive"><table class="table table-sm table-hover proposal-table mb-0">';
                     html += '<thead><tr><th>' + t('archview.trace.col.source') + '</th><th>\u2192</th><th>' + t('archview.trace.col.target') + '</th><th>' + t('archview.trace.col.type') + '</th><th>' + t('archview.trace.col.relevance') + '</th><th>' + t('archview.trace.col.hops') + '</th><th>' + t('archview.col.origin') + '</th><th>' + t('archview.trace.col.reason') + '</th></tr></thead><tbody>';
                     traceRels.forEach(r => {
                         const traceOriginKey = r.origin ? 'relation.origin.' + r.origin.replace(/_/g, '.').toLowerCase() : '';
@@ -2040,7 +2038,7 @@
 
                 if (seedRels.length > 0) {
                     html += '<details class="mt-2"><summary class="small text-muted">' + t('archview.seed.relations.title') + ' <span class="badge bg-warning text-dark">' + seedRels.length + '</span></summary>';
-                    html += '<div class="table-responsive"><table class="table table-sm table-bordered small mb-0">';
+                    html += '<div class="table-responsive"><table class="table table-sm table-hover proposal-table mb-0">';
                     html += '<thead><tr><th>' + t('archview.trace.col.source') + '</th><th>\u2192</th><th>' + t('archview.trace.col.target') + '</th><th>' + t('archview.trace.col.type') + '</th><th>' + t('archview.trace.col.relevance') + '</th><th>' + t('archview.col.origin') + '</th><th>' + t('archview.trace.col.reason') + '</th></tr></thead><tbody>';
                     seedRels.forEach(r => {
                         const seedOriginKey = r.origin ? 'relation.origin.' + r.origin.replace(/_/g, '.').toLowerCase() : '';
@@ -2105,39 +2103,34 @@
                 hotspotCodes: hotspotCodes,
                 hotspotReasons: hotspotReasons,
                 layerConfig: LAYER_CONFIG,
+                fullscreenSurface: panel,
                 policyTitle: view.viewTitle ? t(view.viewTitle) : ''
             }));
         }
+        const modeButtons = content.querySelectorAll('.impact-view-btn');
+        const swimView = document.getElementById('impactSwimView');
+        function showMode(mode) {
+            graphContainer.style.display = mode === 'graph' ? '' : 'none';
+            swimView.style.display = mode === 'swimlane' ? '' : 'none';
+            modeButtons.forEach(function (button) {
+                const active = button.dataset.mode === mode;
+                button.setAttribute('aria-pressed', String(active));
+                button.classList.toggle('btn-primary', active);
+                button.classList.toggle('btn-outline-secondary', !active);
+            });
+        }
         if (graphContainer && elements.length > 0 && !graphReady) {
-            // Keep the legacy list available when the shared diagram cannot be loaded.
-            graphContainer.style.display = 'none';
-            var swimView = document.getElementById('impactSwimView');
-            if (swimView) swimView.style.display = '';
+            // Keep the layer view available when the shared diagram cannot be loaded.
+            showMode('swimlane');
             var notice = document.createElement('p');
             notice.className = 'small text-muted';
             notice.setAttribute('role', 'status');
             notice.textContent = t('scoring.ui.network.unavailable');
             graphContainer.before(notice);
-            content.querySelectorAll('.impact-view-btn').forEach(function (btn) {
-                btn.classList.toggle('btn-primary', btn.dataset.mode === 'swimlane');
-                btn.classList.toggle('btn-outline-secondary', btn.dataset.mode !== 'swimlane');
-                if (btn.dataset.mode === 'graph') btn.disabled = true;
-            });
         }
-
-        // ── Toggle button handlers ──
-        content.querySelectorAll('.impact-view-btn').forEach(function (btn) {
-            btn.addEventListener('click', function () {
-                var mode = btn.dataset.mode;
-                var gView = document.getElementById('impactGraphView');
-                var sView = document.getElementById('impactSwimView');
-                if (gView) gView.style.display = mode === 'graph' ? '' : 'none';
-                if (sView) sView.style.display = mode === 'swimlane' ? '' : 'none';
-                content.querySelectorAll('.impact-view-btn').forEach(function (b) {
-                    b.classList.toggle('btn-primary', b.dataset.mode === mode);
-                    b.classList.toggle('btn-outline-secondary', b.dataset.mode !== mode);
-                });
-            });
+        modeButtons.forEach(function (button) {
+            button.disabled = button.dataset.mode === 'graph' && !graphReady;
+            button.addEventListener('click', function () { showMode(button.dataset.mode); });
         });
     }
 
@@ -2169,6 +2162,8 @@
         var content = document.getElementById('suggestedRelationsContent');
         var badge = document.getElementById('suggestedRelationsBadge');
         if (!panel || !content) return;
+        var empty = document.getElementById('relationshipReviewAnalysisEmpty');
+        if (empty) empty.hidden = provisionalRelations.length > 0;
 
         if (!provisionalRelations || provisionalRelations.length === 0) {
             panel.style.display = 'none';
@@ -2185,7 +2180,7 @@
         html += '<span id="suggestedRelationsBulkActions">'
             + suggestedRelationsBulkActionsHtml(provisionalRelations) + '</span>';
         html += '</div>';
-        html += '<div class="table-responsive"><table class="table table-sm table-bordered small mb-0">';
+        html += '<div class="table-responsive"><table class="table table-sm table-hover proposal-table mb-0">';
         html += '<thead><tr><th>' + escapeHtml(t('scoring.ui.source')) + '</th><th>→</th><th>' + escapeHtml(t('scoring.ui.target')) + '</th><th>' + escapeHtml(t('scoring.ui.type')) + '</th><th>' + escapeHtml(t('scoring.ui.confidence')) + '</th><th>' + escapeHtml(t('scoring.ui.reasoning')) + '</th><th>' + escapeHtml(t('scoring.ui.actions')) + '</th></tr></thead><tbody>';
 
         provisionalRelations.forEach(function (h, idx) {
@@ -2368,7 +2363,9 @@
 
         // Group elements by taxonomy sheet
         var groups = {};
+        var sheetByCode = new Map();
         displayElements.forEach(function (el) {
+            sheetByCode.set(el.nodeCode, el.taxonomySheet);
             var sheet = el.taxonomySheet || 'Unknown';
             if (!groups[sheet]) groups[sheet] = [];
             groups[sheet].push(el);
@@ -2385,11 +2382,7 @@
         var layerRelations = {};
         if (displayRelationships.length) {
             displayRelationships.forEach(function (r) {
-                var srcSheet = null, tgtSheet = null;
-                displayElements.forEach(function (el) {
-                    if (el.nodeCode === r.sourceCode) srcSheet = el.taxonomySheet;
-                    if (el.nodeCode === r.targetCode) tgtSheet = el.taxonomySheet;
-                });
+                var srcSheet = sheetByCode.get(r.sourceCode), tgtSheet = sheetByCode.get(r.targetCode);
                 if (srcSheet && tgtSheet && srcSheet !== tgtSheet) {
                     var key = srcSheet + '→' + tgtSheet;
                     if (!layerRelations[key]) layerRelations[key] = new Set();

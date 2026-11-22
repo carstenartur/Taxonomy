@@ -19,11 +19,11 @@ class ScenarioSnapshotObservationTest {
         var snapshot = json.createObjectNode();
         snapshot.putObject("summary").put("id", "original");
         var analysis = snapshot.putObject("analysis");
-        analysis.putObject("relationSearchReport").putObject("progress")
+        analysis.putObject("relationSearchReport").put("maxCalls", 24).put("totalCalls", 0).putObject("progress")
                 .put("assessedSources", 75).put("completedSearches", 399);
         analysis.putObject("recovery").put("state", "STOPPED");
         analysis.putArray("completeEvidence").addObject().put("source", "Quoted 水位 🌊 evidence");
-        var observation = ScenarioSnapshotObservation.observe("original", snapshot);
+        var observation = observe(snapshot);
         assertThat(observation.id()).isEqualTo("original");
         assertThat(observation.sha256()).isEqualTo(ScenarioJsonFingerprint.sha256(snapshot));
         assertThat(observation.assessedSources()).isEqualTo(75);
@@ -65,6 +65,11 @@ class ScenarioSnapshotObservationTest {
         }
     }
 
+    private static ScenarioSnapshotObservation observe(tools.jackson.databind.JsonNode snapshot) {
+        return ScenarioSnapshotObservation.fromVerifiedCycle(
+                com.taxonomy.acceptance.ScenarioPromptEvidenceQuality.verifyCycle(snapshot), snapshot);
+    }
+
     public static class Probe {
         public static void main(String[] args) {
             var json = new ObjectMapper();
@@ -72,7 +77,9 @@ class ScenarioSnapshotObservationTest {
             for (int cycle = 0; cycle < 8; cycle++) {
                 var snapshot = json.createObjectNode().put("cycle", cycle).put("completeEvidence", "水".repeat(12_000_000));
                 String id = "snapshot-" + cycle;
-                var observation = ScenarioSnapshotObservation.observe(id, snapshot);
+                snapshot.putObject("summary").put("id", id);
+                snapshot.putObject("analysis").putObject("relationSearchReport").put("totalCalls", 0).put("maxCalls", 24);
+                var observation = observe(snapshot);
                 if (!observation.sha256().equals(ScenarioJsonFingerprint.sha256(snapshot)))
                     throw new AssertionError("Every complete snapshot field must contribute to the observation");
                 latest[cycle % 2] = observation;

@@ -1,5 +1,6 @@
 package com.taxonomy.backup.runtime;
 
+import org.junit.jupiter.api.Tag;
 import com.taxonomy.backup.*;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -25,6 +26,7 @@ import static com.taxonomy.portfolio.model.PortfolioTypes.*;
 import static org.assertj.core.api.Assertions.*;
 
 /** Actual persisted relationships, including historical and foreign records with the same business keys. */
+@Tag("ci-app-shard-runtime")
 class PortfolioRecordsExportIT {
     @Test void portableJobPreservesItsOriginalAdmittedModelEvidence() throws Exception {
         try (var fixture = new Fixture()) {

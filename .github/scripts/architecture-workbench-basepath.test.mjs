@@ -125,12 +125,12 @@ for (const workspace of ['private-A','__shared__']) test(`workbench exact snapsh
     }
 });
 
-test('document language follows both diagram and Word downloads while exchange files keep their source scope', async () => {
+test('localized diagram and Word downloads carry the document language and exact source scope', async () => {
     const app = await boot('/teams/blue/taxonomy', true, 'de-CH');
     const scope = {repositoryId: 'repo / A', workspaceScopeKey: 'workspace-1', branch: 'analysis/a'};
     for (const [method, expected] of [
         ['svgUrl', 'de-CH'], ['pdfUrl', 'de-CH'], ['architectureWordUrl', 'de-CH'],
-        ['decisionWordUrl', 'de-CH'], ['archiMateBundleUrl', null], ['visioBundleUrl', null]
+        ['decisionWordUrl', 'de-CH'], ['archiMateBundleUrl', null], ['visioBundleUrl', 'de-CH']
     ]) {
         const url = new URL(app.api[method](5, 'frozen-A0', scope), 'https://example.test');
         assert.ok(url.pathname.startsWith('/teams/blue/taxonomy/api/projects/5/'), method);

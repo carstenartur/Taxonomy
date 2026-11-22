@@ -1,5 +1,6 @@
 package com.taxonomy.backup.restore;
 
+import org.junit.jupiter.api.Tag;
 import com.taxonomy.backup.*;
 import com.taxonomy.backup.archive.*;
 import com.taxonomy.backup.runtime.*;
@@ -17,6 +18,7 @@ import java.util.*;
 import static org.assertj.core.api.Assertions.*;
 
 /** Identity import retains private evidence; neither source names nor archived grants confer authority. */
+@Tag("ci-app-shard-runtime")
 class RestoreIdentityImportTest {
     @TempDir Path root;
     private final PrincipalId first=new PrincipalId(UUID.fromString("00000000-0000-0000-0000-0000000000ab")),second=PrincipalId.create();

@@ -189,8 +189,6 @@
         "tag": "ci-app-shard-recovery",
         "requiresEmbeddingModel": true,
         "tests": [
-          "com.taxonomy.interop.publication.IntegrationPublicationBoundaryRestartTest",
-          "com.taxonomy.composition.analysis.artemis.WorkerRuntimeFootprintTest",
           "com.taxonomy.portfolio.reformulation.ReformulationLocalRecoveryTest",
           "com.taxonomy.portfolio.reformulation.ReformulationProgressTest",
           "com.taxonomy.interop.IntegrationRestartTest",
@@ -220,14 +218,11 @@
         "tests": [
           "com.taxonomy.PortfolioUiAcceptanceIT",
           "com.taxonomy.acceptance.ReformulationScenarioBrowserTest",
-          "com.taxonomy.acceptance.ReformulationScenarioAcceptanceTest",
           "com.taxonomy.portfolio.reformulation.ReformulationBrowserTest",
           "com.taxonomy.portfolio.reformulation.InventoryComparisonUiIT",
           "com.taxonomy.relations.controller.ProposalInboxStartupUiIT",
-          "com.taxonomy.acceptance.ReformulationAuthoredScenarioTest",
           "com.taxonomy.DerivedMetadataAndSummaryTests",
           "com.taxonomy.CoreUiAcceptanceIT",
-          "com.taxonomy.ui.DatabaseSetupBrowserTest",
           "com.taxonomy.PortfolioClientRoutingIT",
           "com.taxonomy.OnnxBrowserBootstrapIT",
           "com.taxonomy.CompleteCopilotSessionIT",
@@ -265,7 +260,23 @@
           "com.taxonomy.DiagnosticsPostgresContainerIT",
           "com.taxonomy.TaxonomyLargeResultBudgetIT",
           "com.taxonomy.PortfolioAnalysisUiDiagnosticIT",
-          "com.taxonomy.DiagnosticsWithApiKeyContainerIT"
+          "com.taxonomy.DiagnosticsWithApiKeyContainerIT",
+          "com.taxonomy.backup.runtime.AnalysisRecordsExportIT",
+          "com.taxonomy.backup.runtime.PortfolioRecordsExportIT",
+          "com.taxonomy.backup.runtime.ProductionCurrentBackupIT",
+          "com.taxonomy.backup.runtime.ProductionHistoryBackupIT",
+          "com.taxonomy.backup.runtime.WorkspaceRecordsExportIT",
+          "com.taxonomy.composition.persistence.RelationHypothesisTenantMigrationPostgresIT",
+          "com.taxonomy.composition.persistence.RequirementTenantPostgresMigrationIT",
+          "com.taxonomy.composition.persistence.TaxonomySchemaPostgresMigrationIT",
+          "com.taxonomy.backup.restore.RestoreIdentityImportTest",
+          "com.taxonomy.backup.restore.WorkspaceEditorRestoreRuntimeTest",
+          "com.taxonomy.backup.restore.WorkspaceRestoreImporterTest",
+          "com.taxonomy.backup.runtime.BackupArchiveValidationTest",
+          "com.taxonomy.composition.analysis.artemis.WorkerRuntimeFootprintTest",
+          "com.taxonomy.ui.DatabaseSetupBrowserTest",
+          "com.taxonomy.BackupExportBrowserIT",
+          "com.taxonomy.LlmMockScoringTests"
         ]
       },
       "domain-integration": {
@@ -320,7 +331,15 @@
           "com.taxonomy.composition.analysis.artemis.ArtemisProviderPermitQuarantineTest",
           "com.taxonomy.portfolio.inventory.InventoryReviewConcurrencyTest",
           "com.taxonomy.portfolio.PortfolioGitServiceTest",
-          "com.taxonomy.portfolio.reformulation.ReformulationListContractTest"
+          "com.taxonomy.portfolio.reformulation.ReformulationListContractTest",
+          "com.taxonomy.PortfolioRequirementReviewIT",
+          "com.taxonomy.RequirementVersionReviewIT",
+          "com.taxonomy.templates.DocumentTemplateApiHttpIT",
+          "com.taxonomy.templates.DocumentTemplateGitHttpIT",
+          "com.taxonomy.templates.DocumentTemplateHttpIT",
+          "com.taxonomy.interop.publication.IntegrationPublicationBoundaryRestartTest",
+          "com.taxonomy.acceptance.ReformulationAuthoredScenarioTest",
+          "com.taxonomy.acceptance.ReformulationScenarioAcceptanceTest"
         ]
       }
     },

@@ -29,11 +29,12 @@ window.AnalysisSnapshotAdoption = function (options) {
         el('adoptionCancel').disabled = busy;
         el('adoptionAccept').hidden = !pending;
         el('adoptionCancel').hidden = !pending;
-        el('adoptionSource').textContent = source ? [source.repositoryId, source.workspaceScopeKey, source.branch,
-            source.projectId + '/' + source.requirementId + '/v' + source.requirementVersionId, source.snapshotId].join(' · ') : '';
+        el('adoptionSource').textContent = source ? [t('adoption.requirementVersion', source.requirementId,
+            source.requirementVersionId), source.branch].join(' · ') : '';
         var context = view?.document.context;
-        el('adoptionTarget').textContent = context ? [context.repositoryId,context.workspaceScopeKey,context.branch,
-            t('editor.revision',context.revision)].join(' · ') : '';
+        el('adoptionTarget').textContent = context ? [context.branch,t('editor.revision',context.revision)].join(' · ') : '';
+        el('adoptionIdentity').textContent = [source && [source.repositoryId, source.workspaceScopeKey, source.snapshotId].join(' / '),
+            context && [context.repositoryId, context.workspaceScopeKey].join(' / ')].filter(Boolean).join('\n');
         el('adoptionHelp').textContent = t(view?.mayEdit ? 'adoption.help' : 'adoption.createCopy');
     }
     function sourceFromView(item) {
@@ -48,19 +49,30 @@ window.AnalysisSnapshotAdoption = function (options) {
         var text = [t('adoption.summary',summary.addedElements.length,summary.reusedElements.length,
             summary.addedRelations.length,summary.reusedRelations.length,summary.conflicts.length)];
         if (result.existing) text.push(t('adoption.existing'));
-        summary.differences.forEach(function (item) {
-            text.push(item.id + ' · ' + (item.field === 'responsibility' ? t('responsibility.unit') : item.field)
+        var differences = summary.differences.map(function (item) {
+            return item.id + ' · ' + (item.field === 'responsibility' ? t('responsibility.unit') : item.field)
                 + '\n' + t('adoption.preserve') + ': ' + (item.existingValue || '')
                 + '\n' + t('adoption.recorded') + ': ' + (item.sourceValue || (item.field === 'responsibility'
-                    ? t('editor.organizationUnassigned') : '')));
+                    ? t('editor.organizationUnassigned') : ''));
         });
         summary.conflicts.forEach(function (conflict) { text.push(conflict); });
         el('adoptionSummary').textContent = text.join('\n\n');
         el('adoptionSummary').hidden = false;
+        el('adoptionDifferenceDetails').hidden = !differences.length;
+        el('adoptionDifferences').textContent = differences.join('\n\n');
+        el('adoptionPreview').hidden = Boolean(pending);
     }
-    async function preview() {
+    function clearSummary() {
+        el('adoptionSummary').hidden = true;
+        el('adoptionSummary').textContent = '';
+        el('adoptionDifferenceDetails').hidden = true;
+        el('adoptionDifferenceDetails').open = false;
+        el('adoptionDifferences').textContent = '';
+        el('adoptionPreview').hidden = false;
+    }
+    async function preview(focusSummary) {
         if (busy || locked || !view?.mayEdit || !source) return;
-        pending = null; setBusy(true); var ticket = generation;
+        pending = null; clearSummary(); setBusy(true); var ticket = generation;
         try {
             var request = {context:view.document.context,metadata:options.metadata(),source:Object.assign({},source)};
             var result = await options.api.previewAdoption(request);
@@ -68,7 +80,11 @@ window.AnalysisSnapshotAdoption = function (options) {
             pending = result.summary.conflicts.length ? null : Object.freeze(Object.assign({},request,{previewFingerprint:result.fingerprint}));
             showSummary(result);
         } catch (error) { options.report(error); }
-        finally { setBusy(false); el(pending ? 'adoptionAccept' : 'adoptionPreview').focus(); }
+        finally {
+            setBusy(false);
+            if (ticket === generation) el(focusSummary === true && !el('adoptionSummary').hidden
+                ? 'adoptionSummary' : pending ? 'adoptionAccept' : 'adoptionPreview').focus();
+        }
     }
     async function accept() {
         if (busy || locked || !pending) return;
@@ -76,17 +92,19 @@ window.AnalysisSnapshotAdoption = function (options) {
         try {
             var request = pending;
             var result = await options.api.adoptSnapshot(request);
-            pending = null;
+            pending = null; clearSummary();
             if (options.onAccepted) await options.onAccepted(result, request.context);
         } catch (error) {
             options.report(error);
             // Timeouts and transport/server failures may follow durable acceptance: retain this exact intent.
-            if (error.status >= 400 && error.status < 500 && error.status !== 408 && error.status !== 429) pending = null;
+            if (error.status >= 400 && error.status < 500 && error.status !== 408 && error.status !== 429) {
+                pending = null; clearSummary();
+            }
         } finally { setBusy(false); el(pending ? 'adoptionAccept' : 'adoptionPreview').focus(); }
     }
     el('adoptionPreview').addEventListener('click',preview);
     el('adoptionAccept').addEventListener('click',accept);
-    el('adoptionCancel').addEventListener('click',function () { if (!busy) { pending = null; render(); el('adoptionPreview').focus(); } });
+    el('adoptionCancel').addEventListener('click',function () { if (!busy) { pending = null; clearSummary(); render(); el('adoptionPreview').focus(); } });
     el('adoptionView').addEventListener('change',function () { if (!busy && options.onSelectView) options.onSelectView(el('adoptionView').value || null); });
     return {
         getSource:function () { return source ? Object.assign({},source) : null; },
@@ -95,7 +113,7 @@ window.AnalysisSnapshotAdoption = function (options) {
             var selected = next.model.views.find(function (item) { return item.id === selectedId; });
             var nextSource = sourceFromView(selected) || window.TaxonomyArchitectureWorkflow?.adoptionSource();
             if ((view && JSON.stringify(view.document.context) !== JSON.stringify(next.document.context)) || sourceKey(source) !== sourceKey(nextSource)) {
-                pending = null; generation++; el('adoptionSummary').hidden = true; el('adoptionSummary').textContent = '';
+                pending = null; generation++; clearSummary();
             }
             view = next;
             source = nextSource ? Object.assign({},nextSource) : null;
@@ -117,6 +135,11 @@ window.AnalysisSnapshotAdoption = function (options) {
             }
             render();
         },
-        setLocked:function (value) { locked = value; render(); }
+        setLocked:function (value) { locked = value; render(); },
+        showPreview:function () {
+            if (!source) return;
+            if (view?.mayEdit) return preview(true);
+            el('adoptionHeading').focus();
+        }
     };
 };

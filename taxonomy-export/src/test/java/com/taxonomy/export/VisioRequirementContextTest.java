@@ -1,17 +1,20 @@
 package com.taxonomy.export;
 
 import com.taxonomy.diagram.DiagramLayout;
+import com.taxonomy.diagram.DiagramEdge;
 import com.taxonomy.diagram.DiagramModel;
 import com.taxonomy.diagram.DiagramNode;
 import com.taxonomy.visio.VisioDocument;
 import com.taxonomy.visio.VisioExportMetadata;
 import com.taxonomy.visio.VisioPage;
+import com.taxonomy.visio.VisioPageLayout;
 import com.taxonomy.visio.VisioProperty;
 import com.taxonomy.visio.VisioShape;
 import org.junit.jupiter.api.Test;
 
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -20,6 +23,40 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class VisioRequirementContextTest {
+
+    @Test
+    void germanAppendicesFitTheDrawingCanvasAndRetainNativeEvidenceLinks() throws Exception {
+        var nodes = IntStream.range(0, 20).mapToObj(i -> new DiagramNode("A-" + i, "Komponente " + i,
+                "UserApplication", .6, false, 0)).toList();
+        var graph = new DiagramModel("Architektur", nodes,
+                List.of(new DiagramEdge("rel-1", "A-0", "A-1", "SUPPORTS", .7)), new DiagramLayout("LR", false));
+        var input = new VisioExportMetadata(metadata("Gespeicherter Anforderungstext"), Map.of(),
+                Map.of("rel-1", Map.of("taxonomy.reason", VisioProperty.text("Vollständige Begründung"),
+                        "taxonomy.evidence1quote", VisioProperty.text("Die Einführung ist geplant."))), List.of());
+        var document = new VisioDiagramService().convert(graph, input.withLanguage(Locale.GERMAN));
+        var layout = VisioPageLayout.documentLayouts(document);
+        var overview = document.getPages().getFirst();
+        var detail = document.getPages().stream().filter(VisioPage::isRelationshipDetail).findFirst().orElseThrow();
+        var evidence = document.getPages().stream().filter(p -> p.getName().equals("Nachweise 1")).findFirst().orElseThrow();
+        var requirement = document.getPages().stream().filter(VisioRequirementContextTest::requirementPage).findFirst().orElseThrow();
+        assertThat(overview.getShapes().stream().filter(s -> s.getProperties().containsKey("taxonomy.id"))
+                .map(VisioShape::getX).distinct().count()).isEqualTo(2);
+        assertThat(detail.getName()).isEqualTo("Beziehungen R1");
+        assertThat(detail.getConnects().getFirst().getTextBox().text()).contains("N1 → N2", "unterstützt");
+        var excerpt = detail.getShapes().stream().filter(s -> s.getText().startsWith("Beziehungsbeleg")).findFirst().orElseThrow();
+        assertThat(excerpt.getText()).contains("Die Einführung ist geplant.");
+        assertThat(excerpt.getProperties().get("taxonomy.evidencePage").value()).isEqualTo(evidence.getName());
+        assertThat(requirement.getName()).isEqualTo("Anforderung 1");
+        assertThat(requirement.getLegend().text()).contains("Ursprüngliche Anforderung");
+        assertThat(List.of(detail, evidence, requirement)).allSatisfy(page -> {
+            var sheet = layout.get(page.getId());
+            assertThat(sheet.width()).isEqualTo(layout.get(overview.getId()).width());
+            assertThat(sheet.height()).isEqualTo(layout.get(overview.getId()).height());
+            assertThat(sheet.scale()).isGreaterThan(1);
+        });
+        String pageXml = VisioPackageBuilderTest.readEntry(new VisioPackageBuilder().build(document), "visio/pages/page1.xml");
+        assertThat(pageXml).contains("N=\"SubAddress\" V=\"Nachweise 1\"", "N=\"SubAddress\" V=\"Anforderung 1\"");
+    }
 
     @Test
     void overviewContainsEditableSourceAndCreationContext() throws Exception {

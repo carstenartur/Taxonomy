@@ -61,8 +61,8 @@ public final class ArchitectureFigureRenderer {
         for (var edge : figureEdges) bounds.add(edge.path().getBounds2D());
         bounds = new Rectangle2D.Double(bounds.getX() - 24, bounds.getY() - 24,
                 bounds.getWidth() + 48, bounds.getHeight() + 48);
-        // A full-width map of a large graph leaves fine print to the detail figures and inventory.
-        boolean topologyOnly = panel.overview() && (bounds.getWidth() > ArchitectureFigurePlanner.MAX_DETAIL_WIDTH
+        // Keep the same node identifiers in the whole-graph map and in the readable detail panels.
+        boolean compactOverview = panel.overview() && (bounds.getWidth() > ArchitectureFigurePlanner.MAX_DETAIL_WIDTH
                 || bounds.getHeight() > ArchitectureFigurePlanner.MAX_DETAIL_HEIGHT);
         double scale =
                 Math.min(
@@ -106,7 +106,15 @@ public final class ArchitectureFigureRenderer {
                                 ? new BasicStroke(2, 0, 0, 10, new float[] {7, 4}, 0)
                                 : new BasicStroke(node.anchor() ? 3 : 2));
                 g.draw(box);
-                if (topologyOnly) continue;
+                if (compactOverview) {
+                    g.setColor(new Color(0x1E293B));
+                    g.setFont(new Font("SansSerif", Font.BOLD, 26));
+                    var metrics = g.getFontMetrics();
+                    float centerY = (float) (node.y() + (node.height() + metrics.getAscent() - metrics.getDescent()) / 2);
+                    float left = (float) (node.x() + Math.max(10, (node.width() - metrics.stringWidth(node.id())) / 2));
+                    drawBounded(g, node.id(), left, centerY, (int) node.width() - 20);
+                    continue;
+                }
                 g.setFont(new Font("SansSerif", Font.BOLD, 20));
                 String score = node.relevanceRecorded()
                         ? com.taxonomy.dto.AnalysisPercentages.display(node.relevance() * 100) : "";

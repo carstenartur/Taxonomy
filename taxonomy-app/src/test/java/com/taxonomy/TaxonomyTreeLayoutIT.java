@@ -50,12 +50,13 @@ class TaxonomyTreeLayoutIT {
                         <!doctype html><html lang="de"><meta charset="utf-8">
                         <style>body{margin:16px}#tree{width:900px;overflow:auto}</style>
                         <div id="tree"></div><script>window.TaxonomyI18n={t:key=>key};</script>
-                        <script src="/d3.js"></script><script src="/views.js"></script></html>
+                        <script src="/d3.js"></script><script src="/match-scale.js"></script><script src="/views.js"></script></html>
                         """.getBytes(StandardCharsets.UTF_8);
                 exchange.getResponseHeaders().set("Content-Type", "text/html; charset=utf-8");
             } else {
                 String resource = switch (path) {
                     case "/d3.js" -> "/META-INF/resources/webjars/d3/7.9.0/dist/d3.min.js";
+                    case "/match-scale.js" -> "/static/js/shared/match-scale.js";
                     case "/views.js" -> "/static/js/core/taxonomy-views.js";
                     case "/taxonomy.css" -> "/static/css/taxonomy.css";
                     case "/taxonomy-ergonomics.css" -> "/static/css/taxonomy-ergonomics.css";

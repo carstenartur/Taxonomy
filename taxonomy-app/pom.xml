@@ -121,6 +121,15 @@
             <artifactId>spring-boot-starter-data-jpa</artifactId>
         </dependency>
         <dependency>
+            <groupId>org.eclipse.angus</groupId>
+            <artifactId>angus-mail</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.jsoup</groupId>
+            <artifactId>jsoup</artifactId>
+            <version>1.23.2</version>
+        </dependency>
+        <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-flyway</artifactId>
         </dependency>
@@ -308,6 +317,17 @@
             <artifactId>artemis-jakarta-client</artifactId>
         </dependency>
 
+        <dependency>
+            <groupId>com.icegreen</groupId>
+            <artifactId>greenmail</artifactId>
+            <version>2.1.15</version>
+            <scope>test</scope>
+            <exclusions>
+                <!-- Exercise the exact mail provider shipped by the application. -->
+                <exclusion><groupId>org.eclipse.angus</groupId><artifactId>jakarta.mail</artifactId></exclusion>
+                <exclusion><groupId>junit</groupId><artifactId>junit</artifactId></exclusion>
+            </exclusions>
+        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
@@ -689,6 +709,9 @@
             <id>product-demo-isolation</id>
             <activation><property><name>!test</name></property></activation>
             <properties>
+                <taxonomy.app.coreBatchPhase>none</taxonomy.app.coreBatchPhase>
+                <taxonomy.app.coreBatchTests></taxonomy.app.coreBatchTests>
+                <taxonomy.app.coreFeatureTests></taxonomy.app.coreFeatureTests>
                 <!-- Keep application class-graph imports out of the shared test JVM. -->
                 <taxonomy.app.architectureScannerTests>
                     **/ArchitectureApplicationSchemaCompositionTest.java,
@@ -719,7 +742,31 @@
                                 <exclude>**/*$*</exclude>
                                 <exclude>${taxonomy.productDemo.defaultTestExclude}</exclude>
                                 <exclude>${taxonomy.app.architectureScannerTests}</exclude>
+                                <exclude>${taxonomy.app.coreBatchTests}</exclude>
+                                <exclude>${taxonomy.app.coreFeatureTests}</exclude>
                             </excludes>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>core-unit-test-batch</id>
+                        <phase>${taxonomy.app.coreBatchPhase}</phase>
+                        <goals><goal>test</goal></goals>
+                        <configuration>
+                            <includes><include>${taxonomy.app.coreBatchTests}</include></includes>
+                            <forkCount>1</forkCount>
+                            <reuseForks>true</reuseForks>
+                            <failIfNoTests>true</failIfNoTests>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>core-feature-unit-tests</id>
+                        <phase>${taxonomy.app.coreBatchPhase}</phase>
+                        <goals><goal>test</goal></goals>
+                        <configuration>
+                            <includes><include>${taxonomy.app.coreFeatureTests}</include></includes>
+                            <forkCount>1</forkCount>
+                            <reuseForks>true</reuseForks>
+                            <failIfNoTests>true</failIfNoTests>
                         </configuration>
                     </execution>
                     <execution>
@@ -826,6 +873,26 @@
         <profile>
             <id>ci-app-test-shards-core</id>
             <properties>
+                <!-- Core runs these unit tests in a shared JVM after the isolated classes finish. -->
+                <taxonomy.app.coreBatchPhase>test</taxonomy.app.coreBatchPhase>
+                <taxonomy.app.coreBatchTests>
+                    com/taxonomy/security/access/*Test.java,
+                    com/taxonomy/security/service/*Test.java,
+                    com/taxonomy/security/webdav/*Test.java,
+                    com/taxonomy/ui/*Test.java
+                </taxonomy.app.coreBatchTests>
+                <!-- Other acceptance suites can launch child JVMs or browser processes and retain fresh forks. -->
+                <taxonomy.app.coreFeatureTests>
+                    com/taxonomy/acceptance/Onnx*Test.java,
+                    com/taxonomy/acceptance/ScenarioArchitectureQuality*Test.java,
+                    com/taxonomy/acceptance/Scenario*QaTest.java,
+                    com/taxonomy/architecture/decision/*Test.java,
+                    com/taxonomy/build/*Test.java,
+                    com/taxonomy/composition/dsl/controller/*Test.java,
+                    com/taxonomy/export/controller/*Test.java,
+                    com/taxonomy/mail/*Test.java,
+                    com/taxonomy/observability/*Test.java
+                </taxonomy.app.coreFeatureTests>
                 <maven.build.cache.enabled>false</maven.build.cache.enabled>
             </properties>
             <build><plugins><plugin>

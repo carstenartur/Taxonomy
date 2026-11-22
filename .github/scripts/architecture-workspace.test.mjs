@@ -233,7 +233,7 @@ test('the architecture toolbar waits for the currently selected snapshot before 
     const workspace = f.context.TaxonomyArchitectureWorkspace;
     const activation = workspace.open('snapshot', {source:snapshot});
     await f.settle();
-    const opening = f.node('architectureLensAction').click();
+    const opening = f.node('snapshotArchitectureLensAction').click();
     await f.settle();
     assert.deepEqual(lens,[]);
     activateSnapshot();
@@ -555,32 +555,41 @@ test('retrying failed initial metadata preserves a subsequently opened working e
     assert.equal(f.headers.length, publications, 'Metadata retry cannot relabel the visible editor');
 });
 
-test('the same proposal inbox follows the working source and returns to Relations with its filter', async () => {
-    const template = await readFile(new URL('../../taxonomy-app/src/main/resources/templates/index.html',import.meta.url),'utf8');
+test('the shared review follows the source and preserves its saved proposal controls', async () => {
+    const reviewScript = await readFile(new URL('../../taxonomy-app/src/main/resources/static/js/shared/relationship-review.js', import.meta.url), 'utf8');
+    const homes = {analysis: 'analysisProposalOverview', snapshot: 'snapshotProposalInbox', working: 'workingProposalInbox'};
     const mounted = await mountedWorkspace('analysis', false, {beforeMount(context) {
         const get = id => context.document.getElementById(id);
-        for (const id of ['analysisProposalInbox','workingProposalInbox']) {
+        for (const id of [...Object.values(homes), 'analysisProposalInbox']) {
             get(id).appendChild = function (node) { node.parentNode = this; };
         }
-        get('analysisProposalInbox').appendChild(get('proposalsPanel'));
+        const queues = ['analysis', 'saved', 'focus'].map(name => ({
+            dataset: {reviewQueue: name}, setAttribute(key, value) { this[key] = value; }, addEventListener() {}
+        }));
+        const sections = queues.map(({dataset}) => ({dataset:{reviewSection:dataset.reviewQueue}}));
+        get('proposalsPanel').querySelectorAll = selector => selector === '[data-review-queue]' ? queues : sections;
         get('proposalsPanel').filterButton = get('filterAccepted');
         get('filterAccepted').pressed = true;
         context.TaxonomyArchitectureSnapshot = {mount:() => ({activate() {}, suspend() {}, getSource:() => ({}),
             getData:() => null, getDiagram:() => null})};
+        vm.runInContext(reviewScript, context);
     }});
     await mounted.ready();
-    const workspace = mounted.context.TaxonomyArchitectureWorkspace;
-    const get = id => mounted.context.document.getElementById(id);
+    const {TaxonomyArchitectureWorkspace: workspace, TaxonomyRelationshipReview: review, document} = mounted.context;
+    const get = id => document.getElementById(id);
     const panel = get('proposalsPanel');
+    const queues = panel.querySelectorAll('[data-review-queue]');
     for (const kind of ['working','snapshot','analysis','working','analysis']) {
         assert.ok(await workspace.open(kind));
-        assert.equal(panel.parentNode,get(kind === 'working' ? 'workingProposalInbox' : 'analysisProposalInbox'),kind);
-        assert.equal(panel.hidden,kind === 'snapshot',kind);
-        assert.equal(get('architectureWorkingSource').hidden,kind !== 'working');
-        assert.equal(panel.filterButton,get('filterAccepted'));
-        assert.ok(panel.filterButton.pressed,'The selected filter survives moving the same subtree');
+        assert.equal(panel.parentNode, get(homes[kind]), kind);
+        assert.equal(panel.hidden, false, kind);
+        assert.equal(get('architectureWorkingSource').hidden, kind !== 'working');
+        assert.equal(get('relationshipReviewWorkingFocus').hidden, kind !== 'working');
+        assert.equal(queues.find(queue => queue.dataset.reviewQueue === 'saved').hidden, kind === 'snapshot');
+        assert.equal(panel.filterButton, get('filterAccepted'));
+        assert.ok(panel.filterButton.pressed, 'The selected filter survives moving the same subtree');
     }
-    assert.equal(template.match(/id="proposalsPanel"/g)?.length,1);
-    assert.match(template,/id="subtab-arch-relations"[\s\S]*?id="analysisProposalInbox"[^>]*>\s*<div id="proposalsPanel"/);
-    assert.match(template,/id="architectureWorkingSource"[^>]*>[\s\S]*?id="workingProposalInbox"[^>]*><\/div>[\s\S]*?architecture-editor :: surface/);
+    review.place('arch-relations');
+    assert.equal(panel.parentNode, get('analysisProposalInbox'));
+    assert.equal(queues.find(queue => queue.dataset.reviewQueue === 'saved')['aria-pressed'], 'true');
 });

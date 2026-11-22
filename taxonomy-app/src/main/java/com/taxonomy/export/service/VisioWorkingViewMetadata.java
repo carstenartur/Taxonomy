@@ -1,5 +1,6 @@
 package com.taxonomy.export.service;
 
+import com.taxonomy.export.AnalysisDiagramSource;
 import com.taxonomy.visio.VisioProperty;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -35,6 +36,11 @@ public final class VisioWorkingViewMetadata {
     }
 
     static Map<String, VisioProperty> document(String originalText, VisioWorkingViewMetadata context) {
+        return document(originalText, context, null);
+    }
+
+    static Map<String, VisioProperty> document(String originalText, VisioWorkingViewMetadata context,
+            AnalysisDiagramSource analysis) {
         var properties = new LinkedHashMap<String, VisioProperty>();
         if (context != null) {
             properties.put("taxonomy.generatorName", VisioProperty.text("Taxonomy Architecture Analyzer"));
@@ -52,7 +58,14 @@ public final class VisioWorkingViewMetadata {
         properties.put("taxonomy.requirementUrlStatus", VisioProperty.text(
                 "Unavailable: this working view has no saved requirement editing target."));
         properties.put("taxonomy.requirementTextProvenance", VisioProperty.text(
-                "Client-provided working source; no saved requirement version authority."));
+                analysis == null ? "Client-provided working source; no saved requirement version authority."
+                        : "Server-side requirement analysis."));
+        if (analysis != null) {
+            if (analysis.provider() != null) properties.put("taxonomy.provider", VisioProperty.text(analysis.provider()));
+            if (analysis.status() != null) properties.put("taxonomy.analysisStatus", VisioProperty.text(analysis.status()));
+            if (analysis.branch() != null) properties.put("taxonomy.branch", VisioProperty.text(analysis.branch()));
+            if (analysis.commit() != null) properties.put("taxonomy.commit", VisioProperty.text(analysis.commit()));
+        }
         if (originalText != null) properties.put("taxonomy.requirementText", VisioProperty.text(originalText));
         return properties;
     }

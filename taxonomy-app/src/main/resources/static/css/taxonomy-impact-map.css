@@ -285,7 +285,6 @@
 .impact-map-node {
     cursor: pointer;
     outline: none;
-    transition: opacity 120ms ease;
 }
 
 .impact-map-node-card {
@@ -316,8 +315,8 @@
     filter: drop-shadow(0 0 6px rgba(var(--bs-primary-rgb, 13, 110, 253), 0.58));
 }
 
-.impact-map-node.is-muted {
-    opacity: 0.22;
+.impact-map-node.is-muted:not(:hover, :focus-visible) .impact-map-node-card {
+    filter: none;
 }
 
 .impact-map-node.is-search-match .impact-map-node-card {
@@ -484,6 +483,14 @@
     white-space: nowrap;
 }
 
+#architectureViewPanel:fullscreen {
+    overflow: auto;
+    background: var(--bs-body-bg, #fff);
+}
+/* Fullscreen inspects the network. Its own toolbar and the lens stay accessible together. */
+#architectureViewPanel:fullscreen #architectureViewContent > :not(#impactGraphView) {
+    display: none;
+}
 .impact-map-workbench:fullscreen {
     width: 100vw;
     height: 100vh;
@@ -492,6 +499,7 @@
     background: var(--bs-body-bg, #fff);
 }
 
+#architectureViewPanel:fullscreen .impact-map-canvas,
 .impact-map-workbench:fullscreen .impact-map-canvas {
     --impact-map-canvas-height: calc(100vh - 18rem);
 }

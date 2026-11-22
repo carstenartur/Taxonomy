@@ -1,5 +1,6 @@
 package com.taxonomy.templates;
 
+import org.junit.jupiter.api.Tag;
 import com.taxonomy.security.model.AppUser;
 import com.taxonomy.security.repository.RoleRepository;
 import com.taxonomy.security.repository.UserRepository;
@@ -54,6 +55,7 @@ import static org.junit.jupiter.api.Assertions.*;
 })
 @ActiveProfiles("hsqldb")
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
+@Tag("ci-app-shard-domain-integration")
 class DocumentTemplateApiHttpIT {
     private static final String PASSWORD = UUID.randomUUID().toString();
     private static final String API = "/api/admin/document-templates/";

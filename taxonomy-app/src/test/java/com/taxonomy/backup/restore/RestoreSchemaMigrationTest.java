@@ -2,8 +2,10 @@ package com.taxonomy.backup.restore;
 
 import com.taxonomy.security.persistence.PrincipalSchemaMigration;
 import com.taxonomy.interop.persistence.IntegrationFileEntity;
+import com.taxonomy.testsupport.HsqldbFixture;
 import org.flywaydb.core.Flyway;
 import org.hsqldb.jdbc.JDBCDataSource;
+import org.junit.jupiter.api.AutoClose;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -14,6 +16,9 @@ import java.util.*;
 import static org.assertj.core.api.Assertions.*;
 
 class RestoreSchemaMigrationTest {
+    @AutoClose
+    private final HsqldbFixture databases = new HsqldbFixture();
+
     @Test void preservesBothProjectionOwnersDuringRestoreSchemaUpgrade() {
         var target = database();
         migrateBusinessSchema(target, "1");
@@ -478,7 +483,7 @@ class RestoreSchemaMigrationTest {
             return classes;
         }
     }
-    private static JDBCDataSource database() {
-        var database = new JDBCDataSource(); database.setURL("jdbc:hsqldb:mem:restore-schema-" + UUID.randomUUID()); database.setUser("sa"); return database;
+    private JDBCDataSource database() {
+        return databases.create("restore-schema-", "");
     }
 }

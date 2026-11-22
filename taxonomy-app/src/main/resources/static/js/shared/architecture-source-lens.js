@@ -15,7 +15,7 @@ window.TaxonomyArchitectureSourceLens = (function () {
     function create(options) {
         var root = options.root, workspace = options.workspace, prefix = options.idPrefix || 'architectureSourceLens';
         var current = null, pinned = null, generation = 0, selected = null, active = false, pending = null, attachedDiagram = null;
-        var evidence = null, adopting = false, deferredActivation = null;
+        var evidence = null, deferredActivation = null;
         var t = options.t || function () { return window.TaxonomyI18n.t.apply(null, arguments); };
         function el(suffix) { return root.querySelector('#' + prefix + suffix); }
         function problemMessage(error) {
@@ -71,7 +71,27 @@ window.TaxonomyArchitectureSourceLens = (function () {
             return true;
         }
         function observe(ids) { if (readyForInteraction()) panel.observe(ids); }
-        function review(id) { if (readyForInteraction()) panel.review(id); }
+        function revealReview(selectSuggestion) {
+            function show() {
+                if (selectSuggestion && !selectSuggestion()) return;
+                if (window.TaxonomyRelationshipReview?.open('focus')) return;
+                root.hidden = false;
+                el('Title').scrollIntoView({ block: 'nearest' });
+                el('Title').focus({ preventScroll: true });
+            }
+            var fullscreen = document.fullscreenElement;
+            if (!fullscreen || fullscreen.contains(root)) return show();
+            var ticket = generation;
+            return document.exitFullscreen().then(function () {
+                if (active && ticket === generation) show();
+            }).catch(function (error) {
+                if (active && ticket === generation) report(error);
+            });
+        }
+        function review(id) {
+            if (!readyForInteraction()) return;
+            return revealReview(function () { return readyForInteraction() && panel.review(id); });
+        }
         function present(state) {
             if (pinned && !isCurrent(pinned)) { invalidate(); return; }
             var target = active && pinned ? diagram() : attachedDiagram;
@@ -132,27 +152,11 @@ window.TaxonomyArchitectureSourceLens = (function () {
                 return result;
             });
         }
-        async function adopt(item) {
-            if (adopting || !canReview(item)) return;
-            var ticket = generation, reviewed = item.source;
-            adopting = true; panel.setLocked(true);
-            try {
-                requireCurrent(reviewed, ticket);
-                if (reviewed.kind === 'ANALYSIS_DRAFT') {
-                    await draftVersion(reviewed, ticket); requireCurrent(reviewed, ticket);
-                    window.TaxonomyAnalysisSession.addAsRequirement({ preserveDraft: true }); return;
-                }
-                // The reviewed snapshot owns this handoff, including when the editor retains another adopted view.
-                var values = { adoption: 'preview', viewId: null, element: selected };
-                Object.keys(reviewed).filter(function (key) { return key !== 'kind'; }).forEach(function (key) {
-                    values['source' + key.charAt(0).toUpperCase() + key.slice(1)] = reviewed[key];
-                });
-                await workspace.open('working', values);
-            } catch (error) { if (ticket === generation) report(error); }
-            finally { adopting = false; if (ticket === generation) panel.setLocked(false); }
-        }
         var panel = window.ArchitectureFocusPanel({ root: root, idPrefix: prefix, t: t,
-            capabilities: { readOnly: true, adopt: true }, request: request, present: present, adopt: adopt, canReview: canReview, errorMessage: problemMessage,
+            capabilities: { readOnly: true }, request: request, present: present, canReview: canReview, errorMessage: problemMessage,
+            elementNames: function () {
+                return new Map((diagram()?.getModel?.()?.nodes || []).map(function (node) { return [node.id, node.label || node.title]; }));
+            },
             language: function () { return window.TaxonomyI18n.getLocale() === 'de' ? 'de' : 'en'; },
             locate: function (id, item) { if (canReview(item)) workspace.select(id); } });
         function activate(source, force) {
@@ -209,7 +213,7 @@ window.TaxonomyArchitectureSourceLens = (function () {
         });
         return {
             activate: activate, suspend: suspend, refresh: refresh,
-            open: function () { if (!active) return; root.hidden = false; el('Title').scrollIntoView({ block: 'nearest' }); el('Title').focus({ preventScroll: true }); },
+            open: function () { if (active) return revealReview(); },
             select: function (id) { selected = id || null; panel.select(selected); },
             dialoguePin: function () { return pinned && isCurrent(pinned) ? pinned : null; },
             observe: observe, review: review

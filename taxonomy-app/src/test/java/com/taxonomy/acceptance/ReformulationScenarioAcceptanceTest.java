@@ -9,7 +9,7 @@ import java.util.concurrent.TimeUnit;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** Real application process; only the outbound provider exchange is replaced. */
-@Tag("ci-app-shard-browser")
+@Tag("ci-app-shard-domain-integration")
 class ReformulationScenarioAcceptanceTest {
     @Test void authenticatedAnalysisDecisionsAdoptionExportsAndRestartPreserveEvidence() throws Exception {
         Path output = Path.of("target/reformulation-scenario-acceptance", "run-" + UUID.randomUUID());

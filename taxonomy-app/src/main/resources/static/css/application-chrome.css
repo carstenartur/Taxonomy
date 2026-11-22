@@ -117,9 +117,13 @@
     .taxonomy-app-context-field dt { flex: 0 1 35%; }
 }
 @media (max-width: 420px) {
+    .taxonomy-app-toolbar { gap: .125rem; padding-inline: .25rem; }
     .taxonomy-app-menu > summary { gap: 0; }
     .taxonomy-app-menu-icon { display: inline; font-size: 1.25rem; }
     .taxonomy-app-menu-label, .taxonomy-app-menu > summary::after { display: none; }
+    .taxonomy-app-workspaces a { padding-inline: .125rem; font-size: .8125rem; }
+    #applicationAccount > summary { padding-inline: .2rem; font-size: .875rem; }
+    #applicationAccount > summary::after { display: none; }
 }
 :root[data-bs-theme="light"] { color-scheme: light; }
 :root[data-bs-theme="dark"] { color-scheme: dark; --taxonomy-surface-background: #101b2b; --taxonomy-surface-foreground: #e7edf6; --taxonomy-panel-background: #17243a; --taxonomy-canvas-background: #152236; --taxonomy-canvas-foreground: #e7edf6; --bs-body-bg: #101b2b; --bs-body-color: #e7edf6; --bs-tertiary-bg: #17243a; --bs-secondary-color: #b6c4d8; --bs-border-color: #526174; --bs-primary-bg-subtle: #123b64; }

@@ -160,8 +160,9 @@ async function runSnapshotAdoptionAcceptance(page, base, initial, navigationEvid
   const frozenNode = page.locator('#architectureCanvas [data-node-id]').first();
   await frozenNode.focus(); await page.keyboard.press('Enter');
   const frozenSelection = await frozenNode.getAttribute('data-node-id');
-  await page.locator('#architectureSourceLensUseAi').uncheck();
-  await page.locator('#architectureSourceLensEnabled').check();
+  await page.locator('#snapshotArchitectureLensAction').click();
+  assert.equal(await page.locator('#architectureSourceLensUseAi').isChecked(),false);
+  assert.equal(await page.locator('#snapshotArchitectureLensEnabled').isChecked(),false);
   const frozenInvestigationResponse = page.waitForResponse(response =>
     new URL(response.url()).pathname.endsWith('/api/architecture/focus/suggestions')
       && response.request().method() === 'POST');
@@ -182,8 +183,7 @@ async function runSnapshotAdoptionAcceptance(page, base, initial, navigationEvid
   assert.equal(frozenInvestigation.source.requirementId,requirement.id);
   assert.match(frozenInvestigation.sourceHash,/^[0-9a-f]{64}$/i);
   assert.equal(await page.evaluate(() => JSON.stringify(window.TaxonomyArchitectureWorkspace.getData())),frozenEvidence);
-  assert.equal(await page.locator('#architectureSourceLensReview [data-focus-action="accept"], #architectureSourceLensReview [data-focus-action="undo"]').count(),0);
-  await page.locator('#architectureSourceLensEnabled').uncheck();
+  assert.equal(await page.locator('#architectureSourceLensReview :is([data-focus-action="accept"], [data-focus-action="undo"], [data-focus-action="adopt"])').count(),0);
   const sourceUrl = await page.locator('#workflow-adopt').getAttribute('href');
   assert.equal(new URL(sourceUrl,base).searchParams.get('sourceRepositoryId'),repository);
   assert.equal(new URL(sourceUrl,base).searchParams.get('sourceWorkspaceScopeKey'),sourceWorkspace);
@@ -231,7 +231,7 @@ async function runSnapshotAdoptionAcceptance(page, base, initial, navigationEvid
   assert.ok(adoptedViewTitle, 'The adopted view has a readable title');
   assert.doesNotMatch(adoptedViewTitle,/^archview\.policy\.title\./, 'Message keys must not be shown as view names');
   assert.equal(await page.locator('#editorHistory li').count(),1);
-  await page.locator('#snapshotAdoption details > summary').click();
+  await page.locator('#adoptionProvenanceTitle').click();
   assert.match(await page.locator('#adoptionProvenance').innerText(),new RegExp(snapshot));
   const provenance=page.locator('#adoptionProvenance');
   assert.equal(await provenance.getAttribute('tabindex'),'0','Scrollable source evidence must be keyboard reachable in every browser');
@@ -489,7 +489,7 @@ export async function runArchitectureEditorAcceptance({ page, role, baseUrl, evi
 
     await select(system);
 
-    // Real focus endpoint + semantic journal: explicit optimization, local discovery, one-step acceptance and exact UUID undo.
+    // Real focus endpoint + semantic journal: explicit discovery, reviewed commands and exact UUID undo.
     const arrangeResponse = page.waitForResponse(r => new URL(r.url()).pathname.endsWith('/api/architecture/editor')
       && new URL(r.url()).searchParams.get('layout') === 'reduce-crossings');
     await page.locator('#editorLayout').selectOption('reduce-crossings');
@@ -519,8 +519,10 @@ export async function runArchitectureEditorAcceptance({ page, role, baseUrl, evi
     await page.keyboard.press('Escape');
     assert.equal(await page.locator('#editorUnfocus').isDisabled(), true, 'Escape updates the visible control');
     await page.locator('#editorFocus').click();
+    await page.locator('#editorArchitectureLensAction').click();
+    await page.locator('#editorLensSettings > summary').click();
     await page.locator('#editorLensUseAi').uncheck();
-    await page.locator('#editorLensEnabled').check();
+    assert.equal(await page.locator('#editorLensEnabled').isChecked(), false, 'Hover investigations require opt-in');
     const investigationResponse = page.waitForResponse(r => new URL(r.url()).pathname.endsWith('/api/architecture/editor/focus/suggestions'));
     await page.locator('#editorLensInspect').focus(); await page.keyboard.press('Enter');
     const investigated = await investigationResponse;
@@ -532,8 +534,10 @@ export async function runArchitectureEditorAcceptance({ page, role, baseUrl, evi
     assert.match(proposal.rationale, /dispatch/);
     assert.ok(proposal.evidence.every(witness => witness.quote.includes('dispatch requests')),
       'Both endpoint excerpts retain the authored wording that supports investigation');
-    const proposalButton = page.locator('#editorLensSuggestions button').filter({ hasText: `${proposal.sourceId} → ${proposal.targetId} · ${proposal.relationType}` });
-    await proposalButton.focus(); await page.keyboard.press('Enter');
+    const proposalButton = page.locator(`#editorLensSuggestions button[data-proposal-id$=${JSON.stringify(proposal.id)}]`);
+    await proposalButton.focus();
+    assert.equal(await proposalButton.count(), 1, 'The returned proposal identifies exactly one candidate button');
+    await page.keyboard.press('Enter');
     assert.equal(await proposalButton.evaluate(button => document.activeElement === button), true, 'Selecting a proposal retains keyboard focus');
     assert.ok((await page.locator('#editorLensReview').innerText()).includes(proposal.rationale));
     assert.equal(await page.locator('#editorPreviewDialog').isVisible(), false);
@@ -554,10 +558,13 @@ export async function runArchitectureEditorAcceptance({ page, role, baseUrl, evi
           return result;
         };
       });
-      await page.locator('#editorLensReview button[data-focus-action="accept"]').focus(); await page.keyboard.press('Enter');
-      await page.getByRole('button', { name: 'Retry the same acceptance', exact: true }).waitFor();
+      const focusAction = page.locator('#editorLensReview button[data-focus-action="accept"]');
+      await preview(async () => { await focusAction.focus(); await page.keyboard.press('Enter'); });
+      assert.equal(await page.evaluate(() => window.__focusRetry.attempts.length), 0, 'Reviewing a proposal has not executed it');
+      await page.locator('#editorAccept').click();
+      await page.locator('#editorPreviewError').filter({hasText:'Lost accepted response fixture'}).waitFor();
       const focusCommitResponse = page.waitForResponse(r => new URL(r.url()).pathname.endsWith('/api/architecture/editor/commands'));
-      await page.getByRole('button', { name: 'Retry the same acceptance', exact: true }).click();
+      await page.locator('#editorAccept').click();
       focusCommit = await (await focusCommitResponse).json();
       assert.equal(focusCommit.replayed, true);
       await page.waitForFunction(revision => new URL(location.href).searchParams.get('revision') === String(revision)
@@ -576,14 +583,10 @@ export async function runArchitectureEditorAcceptance({ page, role, baseUrl, evi
     assert.deepEqual(await page.locator('#editorGraph .editor-node[aria-pressed="true"]').evaluate(node => ({
       node: node.getAttribute('transform'), camera: node.parentElement.getAttribute('transform')
     })), frameBeforeFocusAccept, 'Acceptance must preserve optimized node positions and the camera');
-    assert.equal(await page.locator('#editorPreviewDialog').isVisible(), false, 'Focus review is the single confirmation');
-    const focusUndoResponse = page.waitForResponse(r => new URL(r.url()).pathname.endsWith('/api/architecture/editor/commands'));
-    await page.locator('#editorLensReview button[data-focus-action="undo"]').click();
-    const focusUndo = await (await focusUndoResponse).json();
-    await page.waitForFunction(revision => new URL(location.href).searchParams.get('revision') === String(revision)
-      && !document.getElementById('editorLensEnabled').disabled, focusUndo.context.revision);
+    assert.equal(await page.locator('#editorPreviewDialog').isVisible(), false, 'Confirmed proposal closes the shared command preview');
+    await preview(() => page.locator('#editorLensReview button[data-focus-action="undo"]').click());
+    const focusUndo = await commit();
     assert.equal(focusUndo.change.dsl.includes(`relation ${proposal.sourceId} ${proposal.relationType} ${proposal.targetId}`), false);
-    await page.locator('#editorLensEnabled').uncheck();
     measurements.focus = { localOnly: true, outsideFocusElement: component, acceptance: focusCommit.operationId,
       undo: focusUndo.operationId, retryReplayed: true, stableCameraAndLayout: true, keyboardReview: true };
     const deepLink = page.url();

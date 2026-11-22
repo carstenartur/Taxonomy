@@ -38,6 +38,7 @@ async function fixture(locale = 'de', width = 1100) {
         await page.addStyleTag({content:await readFile(path.join(resources, 'static/css', css), 'utf8')});
     // Load real transport and named API boundaries for migrated browse consumers.
     await installBrowserApiFixture(page, resources);
+    await page.addScriptTag({path:path.join(resources,'static/js/shared/match-scale.js')});
     await page.addScriptTag({path:path.join(resources,'static/js/core/taxonomy-state.js')});
     return page;
 }
@@ -211,6 +212,48 @@ async function renderNode(page) {
         TaxonomyBrowse.renderView(nodes, TaxonomyState.currentScores);
     });
 }
+
+test('match colours stay distinct, match the samples and retain text contrast after a score update', async () => {
+    const page = await fixture();
+    try {
+        for (const css of ['git-status.css','taxonomy-ergonomics.css']) {
+            await page.addStyleTag({path:path.join(resources,'static/css',css)});
+        }
+        await renderNode(page);
+        const samples = await page.evaluate(() => {
+            const header = document.querySelector('[data-code="BP-1000"] > .tax-node-header');
+            const swatch = document.createElement('span');
+            swatch.className = 'legend-box';
+            document.body.appendChild(swatch);
+            // Disable the short row transition so measurements reflect the final colour.
+            header.style.transition = 'none';
+            return ['light', 'dark'].map(theme => {
+                document.documentElement.dataset.bsTheme = theme;
+                return [25, 50, 75, 100, 0].map(score => {
+                    TaxonomyScoring.applyScoreToNode('BP-1000', score);
+                    TaxonomyMatchScale.apply(swatch, score);
+                    const row = getComputedStyle(header);
+                    return { fill: row.backgroundColor, sample: getComputedStyle(swatch).backgroundColor,
+                        label: getComputedStyle(header.querySelector('.tax-code')).color, text: row.color };
+                });
+            });
+        });
+        for (const theme of samples) {
+            const positive = theme.slice(0, 4);
+            assert.equal(new Set(positive.map(s => s.fill)).size, 4);
+            for (const sample of positive) {
+                assert.equal(sample.fill, sample.sample);
+                assert.equal(sample.label, sample.text);
+                const luminance = color => color.match(/\d+/g).map(Number).map(channel => channel / 255)
+                    .map(channel => channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4)
+                    .reduce((sum, channel, i) => sum + channel * [0.2126, 0.7152, 0.0722][i], 0);
+                const fg = luminance(sample.text), bg = luminance(sample.fill);
+                assert.ok((Math.max(fg, bg) + 0.05) / (Math.min(fg, bg) + 0.05) >= 4.5);
+            }
+            assert.ok(!positive.some(s => s.fill === theme[4].fill));
+        }
+    } finally { await finish(page); }
+});
 
 test('German catalogue tree displays the translated definition and exposes the original title', async () => {
     const page = await fixture('de');

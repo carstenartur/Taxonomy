@@ -1,30 +1,41 @@
 <!DOCTYPE html>
 <html xmlns:th="http://www.thymeleaf.org">
 <body>
-<section th:fragment="panel(idPrefix)" class="architecture-editor-surface editor-lens-panel architecture-source-lens text-break" th:id="${idPrefix}"
-         th:attr="aria-labelledby=${idPrefix + 'Title'}" hidden>
-    <h2 th:id="${idPrefix + 'Title'}" tabindex="-1" th:text="#{editor.lens.title}">Architecture focus lens</h2>
-    <p th:text="#{sourceLens.readOnly}">Investigate the displayed saved evidence. Suggestions do not change this source.</p>
-    <p th:id="${idPrefix + 'Source'}" role="status"></p>
-    <label class="editor-check"><input th:id="${idPrefix + 'Enabled'}" type="checkbox" disabled/>
-        <span th:text="#{editor.lens.enable}">Enable focus lens</span></label>
-    <p th:text="#{editor.lens.help}">Select an element to investigate its connections. Results remain hypotheses until reviewed.</p>
-    <div class="editor-toolbar">
-        <button th:id="${idPrefix + 'Inspect'}" type="button" disabled th:text="#{editor.lens.inspect}">Investigate selection</button>
-        <button th:id="${idPrefix + 'Pause'}" type="button" disabled th:text="#{editor.lens.pause}">Pause new investigations</button>
-        <label th:for="${idPrefix + 'Budget'}" th:text="#{editor.lens.budget}">Investigation limit</label>
-        <input th:id="${idPrefix + 'Budget'}" type="number" min="1" max="128" value="16"/>
-        <button th:id="${idPrefix + 'Refresh'}" type="button" th:text="#{sourceLens.refresh}">Refresh source</button>
+<section th:fragment="panel(idPrefix,readOnly)" class="editor-lens-panel" th:id="${idPrefix}"
+         th:attr="aria-labelledby=${idPrefix + 'Title'}" th:hidden="${readOnly}">
+    <div class="relationship-review-toolbar">
+        <h3 th:id="${idPrefix + 'Title'}" tabindex="-1" th:text="#{relationshipReview.focus}">Focus investigation</h3>
+        <button th:id="${idPrefix + 'Inspect'}" type="button" class="relationship-review-primary" disabled th:text="#{editor.lens.inspect}">Investigate selection</button>
     </div>
-    <label class="editor-check"><input th:id="${idPrefix + 'UseAi'}" type="checkbox"/>
-        <span th:text="#{editor.lens.useAi}">Ask the configured AI provider when available</span></label>
-    <p th:text="#{editor.lens.cost}">Each investigation may send one request to the configured provider. Local candidates remain unassessed.</p>
-    <p th:id="${idPrefix + 'Summary'}" role="status" aria-live="polite"></p>
-    <ul th:id="${idPrefix + 'States'}" class="editor-lens-states"></ul>
-    <h3 th:id="${idPrefix + 'Count'}"></h3>
-    <ul th:id="${idPrefix + 'Suggestions'}" class="editor-lens-suggestions"></ul>
-    <section th:id="${idPrefix + 'Review'}" th:aria-label="#{editor.lens.review}"></section>
-    <p th:id="${idPrefix + 'Error'}" role="alert" hidden></p>
+    <p th:if="${readOnly}" class="relationship-review-status" th:text="#{sourceLens.readOnly}">Read-only source.</p>
+    <p th:id="${idPrefix + 'Summary'}" class="relationship-review-status" role="status" aria-live="polite"></p>
+    <p th:id="${idPrefix + 'Error'}" class="relationship-review-error" role="alert" hidden></p>
+    <div class="relationship-review-results">
+        <div>
+            <p th:id="${idPrefix + 'Count'}" class="relationship-review-count"></p>
+            <ul th:id="${idPrefix + 'Suggestions'}" class="editor-lens-suggestions"></ul>
+            <button th:unless="${readOnly}" th:id="${idPrefix + 'Batch'}" type="button"
+                    class="relationship-review-primary relationship-review-batch" hidden></button>
+        </div>
+        <section th:id="${idPrefix + 'Review'}" class="relationship-review-detail" th:aria-label="#{editor.lens.review}"></section>
+    </div>
+    <details th:id="${idPrefix + 'Settings'}" class="relationship-review-settings">
+        <summary th:text="#{relationshipReview.settings}">Investigation settings and activity</summary>
+        <p th:if="${readOnly}" th:id="${idPrefix + 'Source'}" class="relationship-review-status" role="status"></p>
+        <p th:text="#{editor.lens.cost}">Each investigation may send one request to the configured provider.</p>
+        <div class="relationship-review-toolbar">
+            <label class="relationship-review-check"><input th:id="${idPrefix + 'UseAi'}" type="checkbox"/>
+                <span th:text="#{editor.lens.useAi}">Use the configured AI provider</span></label>
+            <label class="editor-lens-budget">
+                <span th:text="#{editor.lens.budget}">Investigation limit</span>
+                <input th:id="${idPrefix + 'Budget'}" type="number" min="1" max="128" value="16"/>
+            </label>
+            <button th:id="${idPrefix + 'Pause'}" type="button" disabled th:text="#{editor.lens.pause}">Pause new investigations</button>
+            <button th:if="${readOnly}" th:id="${idPrefix + 'Refresh'}" type="button" th:text="#{sourceLens.refresh}">Refresh source</button>
+        </div>
+        <p th:id="${idPrefix + 'Activity'}" class="relationship-review-status"></p>
+        <ul th:id="${idPrefix + 'States'}" class="editor-lens-states"></ul>
+    </details>
 </section>
 </body>
 </html>

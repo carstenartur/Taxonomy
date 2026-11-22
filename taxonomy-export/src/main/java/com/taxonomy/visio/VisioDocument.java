@@ -13,9 +13,12 @@ public class VisioDocument {
     private final List<VisioLoss> losses = new ArrayList<>();
 
     private VisioDrawingOptions drawingOptions;
+    private boolean german;
 
     public VisioDrawingOptions getDrawingOptions() { return drawingOptions; }
     public void setDrawingOptions(VisioDrawingOptions drawingOptions) { this.drawingOptions = drawingOptions; }
+    public boolean isGerman() { return drawingOptions == null ? german : drawingOptions.german(); }
+    public void setGerman(boolean german) { this.german = german; }
 
     public List<VisioPage> getPages() { return pages; }
     public Map<String, VisioProperty> getProperties() { return properties; }

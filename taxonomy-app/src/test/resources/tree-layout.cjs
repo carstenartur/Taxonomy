@@ -2,11 +2,15 @@
 // JUnit owns this deterministic driver; use the application's real WebJar/D3 implementation.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const path = require('node:path');
 const vm = require('node:vm');
 const context = {window: {}, document: {readyState:'loading',addEventListener(){}}, TaxonomyI18n: {t: (key,...args) => key+(args.length?': '+args.join(' / '):'')}};
 vm.runInNewContext(fs.readFileSync(process.argv[3], 'utf8'), context);
-const utils = process.argv[5] || require('node:path').resolve(require('node:path').dirname(process.argv[2]), '../shared/taxonomy-utils.js');
+const shared = path.resolve(path.dirname(process.argv[2]), '../shared');
+const utils = process.argv[5] || path.join(shared, 'taxonomy-utils.js');
+const matchScale = process.argv[6] || path.join(shared, 'match-scale.js');
 vm.runInNewContext(fs.readFileSync(utils, 'utf8'), context);
+vm.runInNewContext(fs.readFileSync(matchScale, 'utf8'), context);
 vm.runInNewContext(fs.readFileSync(process.argv[2], 'utf8').replace('window.TaxonomyViews = {',
     'window.treeContract = {collapse: typeof collapseInitialTree === "function" ? collapseInitialTree : null,'
     + 'expand: typeof expandDiagramTree === "function" ? expandDiagramTree : null,'

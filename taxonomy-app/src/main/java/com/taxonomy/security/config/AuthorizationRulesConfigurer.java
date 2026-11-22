@@ -30,6 +30,8 @@ import java.util.function.Supplier;
 public class AuthorizationRulesConfigurer {
     @Value("${taxonomy.security.swagger-public:true}")
     private boolean swaggerPublic;
+    @Value("${taxonomy.mail.enabled:false}")
+    private boolean mailJobStatusEnabled;
     @Autowired(required = false)
     private KeycloakPrincipalMode principalMode = KeycloakPrincipalMode.LEGACY;
 
@@ -47,6 +49,9 @@ public class AuthorizationRulesConfigurer {
                         "/login/oauth2/**", "/oauth2/**")
                 .permitAll();
         auth.requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/info").permitAll();
+        if (mailJobStatusEnabled) {
+            auth.requestMatchers(HttpMethod.GET, "/mail-analysis/jobs/*", "/mail-analysis/jobs/*/status").permitAll();
+        }
         if (swaggerPublic) {
             auth.requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll();
         } else {

@@ -14,7 +14,7 @@ import java.util.function.LongSupplier;
 
 /** A bounded, non-generating check of the configured compatible server. */
 @Component
-public class CustomOpenAiConnectivity {
+public class CustomOpenAiConnectivity implements AutoCloseable {
     public enum Result { REACHABLE, UNREACHABLE, AUTHENTICATION_FAILED, UNKNOWN }
 
     @FunctionalInterface
@@ -26,28 +26,37 @@ public class CustomOpenAiConnectivity {
     private static final long CACHE_NANOS = Duration.ofSeconds(15).toNanos();
     private final Transport transport;
     private final LongSupplier clock;
+    private HttpClient client;
     private String cachedUrl;
     private String cachedKey;
     private long checkedAt;
     private Result cached;
 
     public CustomOpenAiConnectivity() {
-        HttpClient client = HttpClient.newBuilder()
-                .connectTimeout(TIMEOUT)
-                .followRedirects(HttpClient.Redirect.NEVER)
-                .build();
-        this.transport = request -> {
-            HttpResponse<InputStream> response = client.send(request, HttpResponse.BodyHandlers.ofInputStream());
-            try (InputStream body = response.body()) {
-                return response.statusCode();
-            }
-        };
+        this.transport = this::send;
         this.clock = System::nanoTime;
     }
 
     CustomOpenAiConnectivity(Transport transport, LongSupplier clock) {
         this.transport = Objects.requireNonNull(transport);
         this.clock = Objects.requireNonNull(clock);
+    }
+
+    private int send(HttpRequest request) throws IOException, InterruptedException {
+        // check() holds the instance lock and serializes the first probe with close().
+        if (client == null) {
+            client = HttpClient.newBuilder().connectTimeout(TIMEOUT)
+                    .followRedirects(HttpClient.Redirect.NEVER).build();
+        }
+        HttpResponse<InputStream> response = client.send(request, HttpResponse.BodyHandlers.ofInputStream());
+        try (InputStream body = response.body()) {
+            return response.statusCode();
+        }
+    }
+
+    @Override
+    public synchronized void close() {
+        if (client != null) client.close();
     }
 
     /** Returns UNKNOWN when a server does not provide the optional models endpoint. */

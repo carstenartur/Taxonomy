@@ -69,6 +69,14 @@ final class PackagedPluginSupport {
         }
         var command = new ArrayList<>(List.of(System.getProperty("taxonomy.maven.executable"), "-B", "-ntp",
                 "-Dmaven.repo.local=" + localRepository, "-Dtaxonomy.sdk.version=" + version, "verify"));
+        String reactorCache = System.getProperty("taxonomy.maven.local-repository");
+        if (reactorCache != null && !reactorCache.isBlank()) {
+            Path tail = temporary.resolve("third-party-cache");
+            if (linkThirdPartyCache(Path.of(reactorCache), tail)) {
+                command.add("-Dmaven.repo.local.tail=" + tail);
+                command.add("-Dmaven.repo.local.tail.ignoreAvailability=false");
+            }
+        }
         String settings = System.getProperty("taxonomy.maven.user-settings");
         if (settings != null && Files.isRegularFile(Path.of(settings))) command.addAll(List.of("-s", settings));
         var builder = new ProcessBuilder(command).directory(project.toFile()).redirectErrorStream(true)
@@ -95,6 +103,33 @@ final class PackagedPluginSupport {
         Files.writeString(root.resolve("taxonomy-build/target/" + evidenceFile), "independent.tests=" + tests + "\nfailures=0\nerrors=0\nskipped=0\n");
         return artifact(project.resolve("target"), artifactId + "-");
     }
+    /** A read-only Resolver tail. Only the temporary primary repository may supply host SDK artifacts. */
+    static boolean linkThirdPartyCache(Path cache, Path tail) throws IOException {
+        if (!Files.isDirectory(cache) || tail.toString().contains(",")) return false;
+        Files.createDirectory(tail);
+        try {
+            linkGroups(cache.toAbsolutePath(), tail, "com");
+            if (Files.isDirectory(cache.resolve("com"))) {
+                linkGroups(cache.resolve("com").toAbsolutePath(), Files.createDirectory(tail.resolve("com")), "taxonomy");
+            }
+            return true;
+        } catch (UnsupportedOperationException | FileSystemException unavailable) {
+            // A filesystem without directory symlinks can still resolve dependencies via its configured remotes.
+            return false;
+        }
+    }
+
+    private static void linkGroups(Path source, Path destination, String excludedGroup) throws IOException {
+        try (var groups = Files.newDirectoryStream(source)) {
+            for (Path group : groups) {
+                String name = group.getFileName().toString();
+                if (!name.startsWith(".") && !name.equalsIgnoreCase(excludedGroup) && Files.isDirectory(group)) {
+                    Files.createSymbolicLink(destination.resolve(name), group);
+                }
+            }
+        }
+    }
+
     static Application start(Path host, Path plugins, Path state) throws Exception {
         return start(host, plugins, host.getParent().resolve("features"), state);
     }

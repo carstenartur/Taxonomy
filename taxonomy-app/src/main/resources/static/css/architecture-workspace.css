@@ -7,7 +7,6 @@
 .architecture-source-toolbar label { font-weight: 600; }
 .architecture-source-selection { display: flex; align-items: center; flex-wrap: wrap; gap: .4rem; min-width: 0; }
 .architecture-source-selection select { width: auto; max-width: 100%; min-height: 44px; }
-.architecture-source-selection button { min-height: 44px; }
 .architecture-source-actions { display: flex; flex-wrap: wrap; gap: .6rem; padding: .7rem; color: #17243a; background: #eaf0f7; border: 1px solid #c8d1dd; border-radius: .4rem; }
 .architecture-source-actions .btn-outline-light:not(.workbench-export-content .btn-outline-light) { color: #17243a; border-color: #8795a8; }
 .architecture-source-actions .btn-outline-light:not(.workbench-export-content .btn-outline-light):hover { color: #fff; background: #31425c; }
@@ -51,9 +50,11 @@
         grid-row: 2;
         min-height: 0;
     }
-    #architectureWorkspace:has(> #architectureSnapshotSource:not([hidden])) > #architectureSourceLens,
+    #architectureSnapshotSource > #snapshotProposalInbox,
+    #architectureWorkspace:has(> #architectureSnapshotSource:not([hidden])) > #architectureDialogue,
     #architectureWorkspace:has(> #architectureSnapshotSource:not([hidden])) > #architectureWorkspaceError {
         grid-column: 1 / -1;
+        min-width: 0;
     }
     #architectureSnapshotSource .workbench-detail-panel > #architectureSourceDescription { margin: 1rem 0 .5rem; }
     #architectureSnapshotSource .workbench-detail-panel > #architectureWorkflow { padding: .75rem; }

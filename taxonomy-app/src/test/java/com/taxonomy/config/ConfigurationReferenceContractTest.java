@@ -22,7 +22,8 @@ class ConfigurationReferenceContractTest {
 
     private static final java.util.List<String> RUNTIME_MODULES = java.util.List.of(
             "taxonomy-app", "taxonomy-workspace", "taxonomy-templates", "taxonomy-interop",
-            "taxonomy-knowledge", "taxonomy-architecture", "taxonomy-analysis", "taxonomy-portfolio");
+            "taxonomy-knowledge", "taxonomy-architecture", "taxonomy-analysis", "taxonomy-portfolio",
+            "taxonomy-reporting");
 
     private static final Pattern ENV_PLACEHOLDER = Pattern.compile(
             "\\$\\{([A-Z][A-Z0-9_]+)(?::|})");
@@ -125,28 +126,33 @@ class ConfigurationReferenceContractTest {
     @org.junit.jupiter.params.ParameterizedTest
     @org.junit.jupiter.params.provider.ValueSource(strings = {
             "taxonomy-app", "taxonomy-workspace", "taxonomy-templates", "taxonomy-interop",
-            "taxonomy-knowledge", "taxonomy-architecture", "taxonomy-analysis", "taxonomy-portfolio"})
+            "taxonomy-knowledge", "taxonomy-architecture", "taxonomy-analysis", "taxonomy-portfolio",
+            "taxonomy-reporting"})
     void discoversSettingsAndAliasesInEveryRuntimeModule(String owner,
             @org.junit.jupiter.api.io.TempDir Path root) throws Exception {
         for (String module : RUNTIME_MODULES) {
             Files.createDirectories(root.resolve(module + "/src/main/java"));
-            Files.createDirectories(root.resolve(module + "/src/main/resources"));
         }
-        Files.writeString(root.resolve(owner + "/src/main/resources/ai-automation-defaults.properties"),
+        Path resources = Files.createDirectories(root.resolve(owner + "/src/main/resources"));
+        Path javaSources = Files.createDirectories(root.resolve(owner + "/src/main/java"));
+        Files.writeString(resources.resolve("ai-automation-defaults.properties"),
                 "taxonomy.fixture.value=${CUSTOM_FIXTURE_VALUE:7}\n");
-        Files.writeString(root.resolve(owner + "/src/main/java/Fixture.java"),
+        Files.writeString(javaSources.resolve("Fixture.java"),
                 "@Value(\"${taxonomy.fixture.value:7}\") int value;\n"
                         + "@Value(\"${taxonomy.fixture.direct:1}\") int direct;\n"
                         + "@Value(\"${DIRECT_FIXTURE_ENV:1}\") int explicitEnvironment;\n"
                         + "@Value(\"${embedding.query.prefix:${NESTED_FIXTURE_ENV:#{null}}}\") String nestedAlias;\n"
                         + "@Value(\"${embedding.fallback:${NESTED_SECONDARY_FIXTURE_ENV:${DEEP_FIXTURE_ENV:}}}\") String fallback;\n"
+                        + "@ConditionalOnProperty(name = \"taxonomy.fixture.renderer.enabled\", havingValue = \"true\")\n"
+                        + "class Renderer {}\n"
                         + "String template = \"${OUTSIDE_FIXTURE_ENV:ignored}\";\n"
                         + "String example = \"@Value(\\\"${LITERAL_FIXTURE_ENV:ignored}\\\")\";\n");
 
         assertThat(discoverRuntimeVariables(root))
                 .containsExactlyInAnyOrder("SPRING_PROFILES_ACTIVE", "SPRING_DATASOURCE_URL",
                         "CUSTOM_FIXTURE_VALUE", "TAXONOMY_FIXTURE_DIRECT", "DIRECT_FIXTURE_ENV",
-                        "NESTED_FIXTURE_ENV", "NESTED_SECONDARY_FIXTURE_ENV", "DEEP_FIXTURE_ENV")
+                        "NESTED_FIXTURE_ENV", "NESTED_SECONDARY_FIXTURE_ENV", "DEEP_FIXTURE_ENV",
+                        "TAXONOMY_FIXTURE_RENDERER_ENABLED")
                 .doesNotContain("TAXONOMY_FIXTURE_VALUE");
     }
 

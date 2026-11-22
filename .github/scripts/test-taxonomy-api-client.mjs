@@ -1531,6 +1531,14 @@ function assertSurfaces(app, prefix = '', expected = surfaces) {
   }
 }
 
+test('a public page can use the canonical transport without loading account controls', async () => {
+  const app = await surfaceHarness({ prefix: '/taxonomy' });
+  app.document.currentScript.dataset = { authenticatedSurfaces: 'false' };
+  app.run();
+  assert.equal(typeof app.window.TaxonomyApiClient.requestJson, 'function');
+  assertSurfaces(app, '/taxonomy', []);
+});
+
 for (const prefix of ['', '/taxonomy', '/teams/blue/taxonomy']) {
   test(`authenticated surfaces prefer the real i18n resolver at ${prefix || '/'}`, async () => {
     const app = await surfaceHarness({ prefix, bootstrap: true,

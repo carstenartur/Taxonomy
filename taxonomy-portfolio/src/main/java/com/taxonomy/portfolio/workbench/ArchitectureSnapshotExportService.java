@@ -81,17 +81,24 @@ public class ArchitectureSnapshotExportService {
             String snapshotId,
             String username,
             WorkspaceContext context) {
-        return export(
-                projectId,
-                snapshotId,
-                username,
-                context,
-                Format.VISIO_VSDX);
+        return export(projectId, snapshotId, username, context, Format.VISIO_VSDX);
+    }
+
+    @Transactional(readOnly = true)
+    public Artifact exportVisio(Long projectId, String snapshotId, String username, WorkspaceContext context,
+                                java.util.Locale language) {
+        return export(projectId, snapshotId, username, context, Format.VISIO_VSDX, language);
     }
 
     @Transactional(readOnly = true)
     public Artifact exportVisioBundle(Long projectId, String snapshotId, String username, WorkspaceContext context) {
         return export(projectId, snapshotId, username, context, Format.VISIO_BUNDLE);
+    }
+
+    @Transactional(readOnly = true)
+    public Artifact exportVisioBundle(Long projectId, String snapshotId, String username, WorkspaceContext context,
+                                      java.util.Locale language) {
+        return export(projectId, snapshotId, username, context, Format.VISIO_BUNDLE, language);
     }
 
     private Artifact export(
@@ -100,6 +107,11 @@ public class ArchitectureSnapshotExportService {
             String username,
             WorkspaceContext context,
             Format format) {
+        return export(projectId, snapshotId, username, context, format, null);
+    }
+
+    private Artifact export(Long projectId, String snapshotId, String username, WorkspaceContext context,
+                            Format format, java.util.Locale language) {
         if (projectId == null) {
             throw PortfolioException.validation("projectId is required");
         }
@@ -113,7 +125,7 @@ public class ArchitectureSnapshotExportService {
 
         DiagramModel canonicalDiagram = freeze(projection.diagram());
         String graphFingerprint = fingerprint(canonicalDiagram);
-        byte[] content = serialize(canonicalDiagram, format, projection, graphFingerprint, username);
+        byte[] content = serialize(canonicalDiagram, format, projection, graphFingerprint, username, language);
         if (content == null || content.length == 0) {
             throw PortfolioException.conflict(
                     "The canonical diagram exporter returned no content");
@@ -137,7 +149,8 @@ public class ArchitectureSnapshotExportService {
                 content);
     }
 
-    private byte[] serialize(DiagramModel canonicalDiagram, Format format, Projection projection, String graphFingerprint, String username) {
+    private byte[] serialize(DiagramModel canonicalDiagram, Format format, Projection projection, String graphFingerprint,
+                             String username, java.util.Locale language) {
         try {
             return switch (format) {
                 case ARCHIMATE_XML ->
@@ -145,10 +158,12 @@ public class ArchitectureSnapshotExportService {
                 case ARCHIMATE_BUNDLE -> bundle(diagramExportService.prepareArchiMate(canonicalDiagram, ArchiMateSnapshotMetadata.from(projection, canonicalDiagram, graphFingerprint)));
                 case VISIO_VSDX ->
                         diagramExportService.exportAsVisio(canonicalDiagram, VisioSnapshotMetadata.from(projection, canonicalDiagram, graphFingerprint,
-                                visioExportContextService.create(projection.projectId(), projection.requirementId(), username)));
+                                visioExportContextService.create(projection.projectId(), projection.requirementId(), username))
+                                .withLanguage(ArchitectureWorkbenchService.diagramLocale(projection, language)));
                 case VISIO_BUNDLE ->
                         diagramExportService.exportAsVisioBundle(canonicalDiagram, VisioSnapshotMetadata.from(projection, canonicalDiagram, graphFingerprint,
-                                visioExportContextService.create(projection.projectId(), projection.requirementId(), username)));
+                                visioExportContextService.create(projection.projectId(), projection.requirementId(), username))
+                                .withLanguage(ArchitectureWorkbenchService.diagramLocale(projection, language)));
             };
         } catch (IllegalArgumentException exception) {
             throw new PortfolioException(

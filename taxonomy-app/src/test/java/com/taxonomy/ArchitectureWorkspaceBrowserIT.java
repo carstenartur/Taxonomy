@@ -200,6 +200,9 @@ class ArchitectureWorkspaceBrowserIT {
                     "projects", List.of(), "dependencies", List.of(), "requirements", List.of()));
         });
         page.route("GET", "/taxonomy/api/architecture/editor", request -> json(200, editorView(query(request.query()))));
+        page.route("POST", "/taxonomy/api/architecture/editor/snapshot-adoptions/preview", request -> json(200, Map.of(
+                "fingerprint", "reviewed", "summary", Map.of("addedElements", List.of(), "reusedElements", List.of(),
+                        "addedRelations", List.of(), "reusedRelations", List.of(), "differences", List.of(), "conflicts", List.of()))));
         page.route("GET", "/taxonomy/api/projects/42/architecture-workbench/snapshot-B", request -> json(200, snapshot(query(request.query()))));
         page.route("POST", "/taxonomy/api/architecture/focus/suggestions", request -> {
             var body = read(request.body());
@@ -283,7 +286,7 @@ class ArchitectureWorkspaceBrowserIT {
         assertThat(requests.get(1).get("history").toString()).contains("Was ist CP-1000?", "Das Modell beschreibt");
         source("snapshot", snapshotSource("private-B"));
         assertThat(page.driver().findElements(By.cssSelector("#architectureDialogueTurns > li"))).isEmpty();
-        wait.until(driver -> page.driver().findElement(By.id("architectureSourceLensSource")).getText().contains("snapshot-B"));
+        wait.until(driver -> page.driver().findElement(By.id("architectureSourceLensSource")).getDomProperty("textContent").contains("snapshot-B"));
         input.sendKeys("Was steht im Snapshot?"); send.click();
         wait.until(ExpectedConditions.numberOfElementsToBe(By.cssSelector("#architectureDialogueTurns > li"), 1));
         assertThat(requests.get(2)).containsEntry("history", List.of()).containsEntry("sourceHash", null);
@@ -554,7 +557,8 @@ class ArchitectureWorkspaceBrowserIT {
             adopt.click();
             wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("snapshotAdoption")));
             assertThat(page.driver().getCurrentUrl()).contains("architectureSource=working", "sourceSnapshotId=snapshot-B");
-            assertThat(page.driver().findElement(By.id("adoptionPreview")).isDisplayed()).isTrue();
+            wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("adoptionSummary")));
+            assertThat(page.driver().findElement(By.id("adoptionAccept")).isDisplayed()).isTrue();
             assertThat(page.driver().executeScript("return __snapshotContextHomes.every(home=>home.node.parentNode===home.parent && home.node.nextSibling===home.next);")).isEqualTo(true);
         }
         noScriptErrors();
@@ -668,6 +672,69 @@ class ArchitectureWorkspaceBrowserIT {
     }
 
     @ParameterizedTest @CsvSource({"en,1440", "de,390"})
+    void legendsFollowTheRenderedViewAndCurrentAnalysisLensStaysWithItsDiagram(String locale, int width) throws IOException {
+        open(locale, width);
+        var scoreLegend = page.driver().findElement(By.id("analysisScoreLegend"));
+        var decisionLegend = page.driver().findElement(By.className("decision-legend"));
+        var summaryLegend = page.driver().findElement(By.className("summary-legend"));
+        assertThat(scoreLegend.isDisplayed()).isTrue();
+        assertThat(scoreLegend.findElements(By.cssSelector(".legend-box:not([data-score='0'])")))
+                .extracting(box -> box.getCssValue("background-color")).hasSize(4).doesNotHaveDuplicates();
+        page.driver().findElement(By.id("viewDecision")).sendKeys(Keys.ENTER);
+        wait.until(ExpectedConditions.visibilityOf(decisionLegend));
+        assertThat(scoreLegend.isDisplayed()).isFalse();
+        assertThat(decisionLegend.getAccessibleName()).isEqualTo(locale.equals("de") ? "Legende zum Entscheidungsbaum" : "Decision map legend");
+        assertThat(decisionLegend.findElements(By.className("legend-box"))).hasSize(5);
+        Path directory = Path.of("target", "unified-architecture-acceptance", locale + "-" + width);
+        Files.createDirectories(directory);
+        Files.write(directory.resolve("decision-legend.png"), decisionLegend.getScreenshotAs(OutputType.BYTES));
+        page.driver().findElement(By.id("viewSummary")).sendKeys(Keys.ENTER);
+        wait.until(ExpectedConditions.visibilityOf(summaryLegend));
+        assertThat(scoreLegend.isDisplayed()).isFalse();
+        assertThat(decisionLegend.isDisplayed()).isFalse();
+        page.driver().findElement(By.id("viewList")).sendKeys(Keys.ENTER);
+        wait.until(ExpectedConditions.visibilityOf(scoreLegend));
+        assertThat(summaryLegend.isDisplayed()).isFalse();
+
+        source("analysis", scope("repository-A", "analysis-A", "draft/A"));
+        page.driver().executeScript("""
+                TaxonomyScoring.renderArchitectureView({...TaxonomyState.currentArchView,
+                    notes: Array.from({length: 35}, (_, index) => 'Assessment ' + (index + 1))});
+                """);
+        var graph = wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("impactGraphView")));
+        var lens = page.driver().findElement(By.id("architectureLensAction"));
+        var hover = page.driver().findElement(By.id("architectureSourceLensEnabled"));
+        wait.until(ExpectedConditions.elementToBeClickable(hover));
+        assertThat(page.driver().executeScript("""
+                const lens = arguments[0].getBoundingClientRect(), graph = arguments[1].getBoundingClientRect();
+                return graph.top >= lens.bottom && graph.top - lens.bottom < 180;
+                """, lens, graph)).as("The selected analysis diagram starts directly beneath its lens controls").isEqualTo(true);
+        page.driver().executeScript("arguments[0].scrollIntoView({block:'center',behavior:'instant'});", lens);
+        Files.write(directory.resolve("analysis-lens-controls.png"), page.driver().getScreenshotAs(OutputType.BYTES));
+        var layers = page.driver().findElement(By.cssSelector(".impact-view-btn[data-mode='swimlane']"));
+        var network = page.driver().findElement(By.cssSelector(".impact-view-btn[data-mode='graph']"));
+        layers.sendKeys(Keys.ENTER);
+        assertThat(layers.getDomAttribute("aria-pressed")).isEqualTo("true");
+        assertThat(network.getDomAttribute("aria-pressed")).isEqualTo("false");
+        network.sendKeys(Keys.ENTER);
+        assertThat(network.getDomAttribute("aria-pressed")).isEqualTo("true");
+        hover.sendKeys(Keys.SPACE);
+        assertThat(hover.isSelected()).isTrue();
+        hover.sendKeys(Keys.SPACE);
+        var fullscreen = By.cssSelector("#impactGraphView button[aria-label='" + (locale.equals("de") ? "Vollbild" : "Fullscreen") + "']");
+        page.driver().findElement(fullscreen).click();
+        wait.until(driver -> Boolean.TRUE.equals(page.driver().executeScript("return document.fullscreenElement?.contains(arguments[0]);", lens)));
+        lens.sendKeys(Keys.ENTER);
+        wait.until(driver -> page.driver().executeScript("return document.fullscreenElement;") == null);
+        wait.until(driver -> "architectureSourceLensTitle".equals(page.driver().switchTo().activeElement().getDomAttribute("id")));
+        graph.findElement(By.cssSelector("[data-node-id='CP-1000']")).sendKeys(Keys.ENTER);
+        wait.until(ExpectedConditions.elementToBeClickable(By.id("architectureSourceLensInspect"))).click();
+        activateFullscreenProposal(fullscreen, "#impactGraphView");
+        assertThat(page.driver().findElement(By.id("architectureSourceLensReview")).getText()).contains("Deterministic retained evidence");
+        noScriptErrors();
+    }
+
+    @ParameterizedTest @CsvSource({"en,1440", "de,390"})
     void renderedApplicationHasOneNavigationAndLensOpensAnalysisInPlace(String locale, int width) throws IOException {
         open(locale, width);
         assertThat(page.driver().findElements(By.cssSelector("#applicationWorkspaces [data-app-route]")))
@@ -693,7 +760,7 @@ class ArchitectureWorkspaceBrowserIT {
         var lens = page.driver().findElement(By.id("analysisLensAction"));
         lens.sendKeys(Keys.ENTER);
         wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("architectureSourceLens")));
-        wait.until(ExpectedConditions.elementToBeClickable(By.id("architectureSourceLensEnabled")));
+        wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("architectureSourceLensInspect")));
         assertAgreement("analysis", scope("repository-A", "analysis-A", "draft/A"));
         assertThat(page.driver().findElement(By.id("businessText")).getDomProperty("value")).isEqualTo(TEXT);
         assertThat(page.driver().executeScript("return __sameDocument;")).isEqualTo(document);
@@ -798,22 +865,39 @@ class ArchitectureWorkspaceBrowserIT {
         noScriptErrors();
     }
 
+    private void activateFullscreenProposal(By fullscreen, String diagram) {
+        String selector = diagram + " [data-suggestion-id]";
+        var proposal = By.cssSelector(selector);
+        wait.until(ExpectedConditions.visibilityOfElementLocated(proposal));
+        wait.until(ExpectedConditions.elementToBeClickable(fullscreen)).click();
+        wait.until(driver -> Boolean.TRUE.equals(page.driver().executeScript(
+                "return !!document.fullscreenElement?.querySelector(arguments[0]);", selector)));
+        page.driver().findElement(proposal).sendKeys(Keys.ENTER);
+        wait.until(driver -> page.driver().executeScript("return document.fullscreenElement;") == null);
+        wait.until(driver -> "architectureSourceLensTitle".equals(page.driver().switchTo().activeElement().getDomAttribute("id")));
+    }
+
     @Test void snapshotLensIsReadOnlyPrintRetainsEvidenceAndAdoptionRemainsAnExplicitPreview() {
         open("de", 390);
         var snapshot = snapshotSource("__shared__");
         source("snapshot", snapshot);
         String evidence = (String) page.driver().executeScript("return JSON.stringify(TaxonomyArchitectureWorkspace.getData());");
         wait.until(ExpectedConditions.elementToBeClickable(By.cssSelector("#architectureCanvas [data-node-id='CP-1000']"))).sendKeys(Keys.ENTER);
-        wait.until(ExpectedConditions.elementToBeClickable(By.id("architectureSourceLensEnabled")));
-        var useAi = page.driver().findElement(By.id("architectureSourceLensUseAi"));
-        if (useAi.isSelected()) useAi.click();
-        page.driver().findElement(By.id("architectureSourceLensEnabled")).click();
+        var diagramToolbar = page.driver().findElement(By.cssSelector("#architectureWorkbench .architecture-controls"));
+        diagramToolbar.findElement(By.id("snapshotArchitectureLensAction")).click();
+        assertThat(page.driver().findElement(By.id("architectureSourceLensUseAi")).isSelected()).isFalse();
+        assertThat(diagramToolbar.findElement(By.id("snapshotArchitectureLensEnabled")).isSelected()).isFalse();
         wait.until(ExpectedConditions.elementToBeClickable(By.id("architectureSourceLensInspect"))).click();
         wait.until(ExpectedConditions.elementToBeClickable(By.cssSelector("#architectureSourceLensSuggestions button"))).click();
-        assertThat(page.driver().findElement(By.id("architectureSourceLensReview")).getText())
-                .contains("Deterministic retained evidence", "snapshot-B", "b".repeat(64));
-        assertThat(page.driver().findElements(By.cssSelector("#architectureSourceLensReview [data-focus-action='accept'], #architectureSourceLensReview [data-focus-action='undo']")))
-                .as("Frozen evidence has no writable editor acceptance controls").isEmpty();
+        activateFullscreenProposal(By.id("fullscreenArchitecture"), "#architectureCanvas");
+        var review = page.driver().findElement(By.id("architectureSourceLensReview"));
+        assertThat(review.getText()).contains("Deterministic retained evidence").doesNotContain("b".repeat(64));
+        review.findElement(By.cssSelector("details > summary")).click();
+        assertThat(review.getText()).contains("snapshot-B", "b".repeat(64));
+        assertThat(page.driver().findElements(By.cssSelector("#architectureSourceLensReview [data-focus-action]")))
+                .extracting(button -> button.getDomAttribute("data-focus-action"))
+                .as("Frozen candidate review offers only dismissal and navigation").containsExactly("dismiss", "locate");
+        assertThat(page.driver().executeScript("return document.documentElement.scrollWidth <= innerWidth;")).isEqualTo(true);
         var investigation = page.requests().stream().filter(request -> request.path().endsWith("/architecture/focus/suggestions")).toList();
         assertThat(investigation).hasSize(1).allSatisfy(request -> {
             var body = read(request.body());
@@ -845,16 +929,15 @@ class ArchitectureWorkspaceBrowserIT {
         assertThat(page.driver().findElements(By.cssSelector("#architecturePrintDiagram svg"))).isEmpty();
         assertThat(page.driver().executeScript("return TaxonomyArchitectureWorkspace.getDiagram().captureViewport();")).isEqualTo(viewport);
 
-        page.driver().findElement(By.cssSelector("#architectureSourceLensReview [data-focus-action='adopt']")).click();
+        page.driver().findElement(By.id("workflow-adopt")).click();
         wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("snapshotAdoption")));
-        // The adoption panel can become visible before the working editor finishes loading.
-        wait.until(ExpectedConditions.elementToBeClickable(By.id("adoptionPreview")));
-        assertThat(page.driver().findElement(By.id("adoptionAccept")).isDisplayed()).isFalse();
+        wait.until(ExpectedConditions.elementToBeClickable(By.id("adoptionAccept")));
         assertThat(page.driver().getCurrentUrl()).contains("architectureSource=working", "sourceSnapshotId=snapshot-B",
                 "sourceWorkspaceScopeKey=__shared__", "sourceRepositoryId=repository-B", "sourceRequirementVersionId=11");
         assertThat(page.driver().executeScript("return new URL(location.href).searchParams.get('sourceWorkspaceId');")).isEqualTo("");
         assertThat(page.requests().stream().filter(request -> request.path().endsWith("/editor/commands")
-                || request.path().contains("/snapshot-adoptions")).toList()).isEmpty();
+                || request.path().endsWith("/snapshot-adoptions")).toList()).isEmpty();
+        assertThat(page.requests().stream().filter(request -> request.path().endsWith("/snapshot-adoptions/preview")).toList()).hasSize(1);
         for (String id : List.of("editorRefresh", "editorCheckpoint", "editorNew", "editorPreviewElement", "editorSavePackage"))
             assertThat(page.driver().findElement(By.id(id)).isEnabled()).as("%s remains available in the working source", id).isTrue();
         for (String id : List.of("editorPlanningForm", "editorRelationForm", "editorHistory", "editorVersions", "editorResumeCheckpoint", "editorRecoverVersion"))

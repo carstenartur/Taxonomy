@@ -15,6 +15,7 @@ import com.taxonomy.catalog.snapshot.RootCatalogueSnapshot;
 import com.taxonomy.dto.AnalysisResult;
 import com.taxonomy.dto.ViewContext;
 import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.WorkspaceContext;
 import com.taxonomy.workspace.service.WorkspaceViewContextReadPort;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import tools.jackson.databind.ObjectMapper;
@@ -23,6 +24,7 @@ import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.Semaphore;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
@@ -66,9 +68,7 @@ public final class DurableClusterAnalysisExecution implements ClusterAnalysisExe
     @Override
     public AnalysisResult execute(AnalysisOperationContext context, AnalyzeRequirementCommand command, ViewContext view,
                                   Consumer<ClusterAnalysisStore.Snapshot> progress) {
-        if (TransactionSynchronizationManager.isActualTransactionActive()) {
-            throw new IllegalStateException("Cluster analysis must execute outside a database transaction");
-        }
+        requireOutsideTransaction();
         Objects.requireNonNull(progress, "progress");
         requireInput(context, command, view);
         String provider = frozenProvider(command.provider());
@@ -127,14 +127,33 @@ public final class DurableClusterAnalysisExecution implements ClusterAnalysisExe
             if (command.analysisScope().selects(root.code())) scoring.put(root, frozen);
             if (allTargets) targets.put(root, frozen);
         }
-        var wake = new Semaphore(0);
-        // Register before admitting: even immediate completion cannot fall into a listener gap.
-        try (var subscription = signals.listen(context, ignored -> wake.release())) {
-            subscription.onReconnect(wake::release);
+        return awaitResult(context, () -> {
             requireCurrentSource(context, command);
             if (definition.spec().equals(com.taxonomy.dsl.model.CatalogueDefinition.standard().spec()))
                 store.admit(context, admitted, view, scoring, targets);
             else store.admit(context, admitted, view, scoring, targets, definition);
+        }, progress);
+    }
+
+    @Override
+    public Optional<AnalysisResult> resumeUnpublished(String operationId, ResumeScope scope, String requirementText) {
+        requireOutsideTransaction();
+        var requirement = RequirementReference.adHoc(requirementText);
+        var workspace = new WorkspaceContext(scope.owner(), scope.workspaceId(), scope.branch(), scope.repositoryId());
+        return store.findAuthorized(operationId, scope.owner(), workspace).map(context -> {
+            if (!requirement.equals(context.requirement()))
+                throw new SecurityException("Analysis operation is unavailable in this scope");
+            return awaitResult(context, () -> { }, ignored -> { });
+        });
+    }
+
+    private AnalysisResult awaitResult(AnalysisOperationContext context, Runnable admission,
+                                          Consumer<ClusterAnalysisStore.Snapshot> progress) {
+        var wake = new Semaphore(0);
+        // Register before admission or the first read so that completion cannot fall into a listener gap.
+        try (var subscription = signals.listen(context, ignored -> wake.release())) {
+            subscription.onReconnect(wake::release);
+            admission.run();
             while (true) {
                 // Draining before the read coalesces events without losing a post-read notification.
                 wake.drainPermits();
@@ -150,6 +169,12 @@ public final class DurableClusterAnalysisExecution implements ClusterAnalysisExe
                     throw new ClusterAnalysisObservationDetachedException();
                 }
             }
+        }
+    }
+
+    private static void requireOutsideTransaction() {
+        if (TransactionSynchronizationManager.isActualTransactionActive()) {
+            throw new IllegalStateException("Cluster analysis must execute outside a database transaction");
         }
     }
 

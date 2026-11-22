@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<body>
+<th:block th:fragment="forTaxonomyBrowser(id)">
+<div th:id="${id}" class="score-legend match-legend" role="group"
+     th:attr="aria-labelledby=${id + 'Label'}" th:title="#{legend.title}">
+    <small th:id="${id + 'Label'}" class="text-muted" th:text="#{legend.label}">Match strength</small>
+    <span th:each="score : ${#numbers.sequence(0, 100, 25)}" class="legend-box"
+          th:attr="data-score=${score}" th:title="#{${'legend.' + score}}" th:text="${score} + '%'">0%</span>
+</div>
+<div class="score-legend decision-legend" role="group" th:aria-label="#{legend.decision}">
+    <small class="text-muted" th:text="#{legend.decision.rank}">Rank</small>
+    <span class="legend-box rank-first">1</span><span class="legend-box rank-second">2</span><span class="legend-box rank-third">3</span>
+    <span class="legend-box decision-match" th:text="#{legend.decision.match}">Other match</span>
+    <span class="legend-box decision-context" th:text="#{legend.decision.context}">Context</span>
+    <small class="text-muted" th:text="#{legend.decision.lines}">Thicker lines lead to higher scores. The top three use the thickest line.</small>
+</div>
+<div class="score-legend summary-legend small text-muted" role="group" th:aria-label="#{legend.summary}">
+    <span th:text="#{legend.summary.layer}">Colour groups elements by taxonomy.</span>
+    <span th:text="#{legend.summary.anchor}">★ Direct match</span>
+    <span th:text="#{legend.summary.relevance}">% Relevance</span>
+</div>
+</th:block>
+</body>
+</html>

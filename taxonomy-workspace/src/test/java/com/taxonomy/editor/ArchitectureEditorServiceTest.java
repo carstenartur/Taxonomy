@@ -26,6 +26,12 @@ class ArchitectureEditorServiceTest {
     }
     @AfterEach void close() { fixture.close(); }
 
+    @Test void sourceReadinessChecksTheExactGitBranch() throws Exception {
+        assertThat(service.hasSourceAtHead(alice)).isTrue();
+        assertThat(service.hasSourceAtHead(RepositoryContext.workspace("repo-a", "workspace-a1", "unpublished", "alice")))
+                .isFalse();
+    }
+
     @Test void editorReadReturnsServerSelectedPersonalUndoAndRedoTargets() throws Exception {
         var change = execute(update("Changed"));
         var changed = service.read(alice, null);
@@ -283,6 +289,42 @@ class ArchitectureEditorServiceTest {
         assertThat(fixture.journal.operation(alice, metadata.commandId()).fingerprint())
                 .isEqualTo("cdc28a1aa5433097c3726a568f89a4f3635740fb1aebef9296768ec0f447279f");
         assertThat(service.execute(alice, request).replayed()).isTrue();
+    }
+
+    @Test void reviewedRelationshipsCreateOneOperationAndRejectAPartiallyInvalidSelection() throws Exception {
+        for (String id : List.of("first", "second")) {
+            execute(new SemanticCommand(new CreateArchitectureElement(id, "Component", Map.of("title", id))));
+        }
+        var resolver = mock(com.taxonomy.workspace.service.WorkspaceResolver.class);
+        when(resolver.resolveCurrentRepositoryContext()).thenReturn(alice);
+        var controller = new ArchitectureEditorController(service,
+                new ArchitectureEditorProjection(new com.taxonomy.export.LayeredDiagramLayoutService()), resolver);
+        var beginning = service.read(alice, null);
+        var audit = metadata();
+        var idMatch = "\"workspace-revision-2\"";
+        var first = new ArchitectureEditorController.RelationCreation("arch-existing", "CONTAINS", "first",
+                Map.of("provenance", "architecture-focus", "x-focus-evidence", "First evidence"));
+        var second = new ArchitectureEditorController.RelationCreation("arch-existing", "CONTAINS", "second",
+                Map.of("provenance", "architecture-focus", "x-focus-evidence", "Second evidence"));
+        var missing = new ArchitectureEditorController.RelationCreation("arch-existing", "CONTAINS", "missing", Map.of());
+        var invalid = new ArchitectureEditorController.WireCommand(beginning.context(), audit, "CREATE_RELATIONS",
+                null, null, Map.of(), null, null, null, null, null, null, List.of(), Set.of(), null, List.of(first, missing));
+        assertThatThrownBy(() -> controller.execute(invalid, idMatch, null)).isInstanceOf(CommandProblem.class);
+        assertThat(service.read(alice, null).dsl()).isEqualTo(beginning.dsl());
+        assertThat(service.read(alice, null).context().revision()).isEqualTo(2);
+
+        var valid = new ArchitectureEditorController.WireCommand(beginning.context(), audit, "CREATE_RELATIONS",
+                null, null, Map.of(), null, null, null, null, null, null, List.of(), Set.of(), null, List.of(first, second));
+        var changes = controller.preview(valid, idMatch, null).getBody().change().changedIds();
+        assertThat(changes).containsExactlyInAnyOrder("relation:arch-existing CONTAINS first", "relation:arch-existing CONTAINS second");
+        assertThat(service.read(alice, null).dsl()).isEqualTo(beginning.dsl());
+        var accepted = controller.execute(valid, idMatch, null).getBody();
+        assertThat(accepted.context().revision()).isEqualTo(3);
+        assertThat(service.read(alice, null).dsl()).contains("First evidence", "Second evidence");
+        assertThat(controller.execute(valid, idMatch, null).getBody().replayed()).isTrue();
+        assertThat(fixture.journal.read(alice).operations()).hasSize(3);
+        execute(new UndoArchitectureCommand(UUID.fromString(accepted.operationId())));
+        assertThat(service.read(alice, null).dsl()).doesNotContain("First evidence", "Second evidence", "relation arch-existing CONTAINS");
     }
 
     @Test void historyAndNormalEditsDoNotLoadHistoricalBodiesButInversesLoadTheirExactTarget() throws Exception {

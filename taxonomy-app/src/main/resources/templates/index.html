@@ -167,7 +167,8 @@
                                 th:text="#{responsibility.catalogue.cancel}">Cancel</button>
                     </section>
                 </details>
-                <div class="card-body overflow-auto" style="max-height:82vh;">
+                <div class="card-body overflow-auto taxonomy-browser-body" style="max-height:82vh;">
+                    <div th:replace="~{fragments/score-legend :: forTaxonomyBrowser('analysisScoreLegend')}"></div>
                     <div id="taxonomyResponsibilityControl" class="mb-2" hidden></div>
                     <div id="taxonomyResponsibilitySummary" class="mb-2" hidden></div>
                     <div id="taxonomyTree" th:attr="aria-label=#{ui.aria.taxonomy_tree}" aria-label="Taxonomy Tree" aria-busy="true">
@@ -277,17 +278,6 @@
                     </div>
                 </div>
 
-                <!-- Match Legend -->
-                <div id="analysisScoreLegend" class="score-legend mb-3" role="group"
-                     aria-labelledby="analysisScoreLegendLabel" th:title="#{legend.title}" title="Score colour coding: green intensity indicates the match percentage. 0% = no match (transparent), 100% = perfect match (solid green). Text turns white above 60%.">
-                    <small id="analysisScoreLegendLabel" class="text-muted" th:text="#{legend.label}">Match legend:</small>
-                    <span class="legend-box" style="background:rgba(0,128,0,0);" th:title="#{legend.0}" title="0% — No match detected">0%</span>
-                    <span class="legend-box" style="background:rgba(0,128,0,0.25);" th:title="#{legend.25}" title="25% — Weak match">25%</span>
-                    <span class="legend-box" style="background:rgba(0,128,0,0.50);" th:title="#{legend.50}" title="50% — Moderate match">50%</span>
-                    <span class="legend-box" style="background:rgba(0,128,0,0.75); color:#fff;" th:title="#{legend.75}" title="75% — Strong match">75%</span>
-                    <span class="legend-box" style="background:rgba(0,128,0,1.00); color:#fff;" th:title="#{legend.100}" title="100% — Perfect match">100%</span>
-                </div>
-
                 <section id="analysisNextSteps" class="card shadow-sm mb-3" aria-labelledby="analysisNextStepsHeading">
                     <div class="card-body">
                         <h2 id="analysisNextStepsHeading" class="h6" th:text="#{analysis.guide.title}">Next steps</h2>
@@ -313,7 +303,7 @@
                                th:text="#{editor.deliveryGuide}">Illustrated architecture delivery guide</a>
                         </div>
                         <p id="analysisReformulationHint" class="small text-muted mt-2 mb-1"></p>
-                        <p class="small text-muted mb-0" th:text="#{analysis.guide.lens.hint}">Investigate relationships in this analysis. Review its proposals before adopting them into the working architecture.</p>
+                        <p class="small text-muted mb-0" th:text="#{analysis.guide.lens.hint}">Investigate relationships in the analysis and review their evidence.</p>
                         <p id="analysisGuideError" class="small text-danger mt-2 mb-0" role="alert" hidden></p>
                     </div>
                 </section>
@@ -542,8 +532,6 @@
                                 <option value="snapshot" th:text="#{architecture.workspace.snapshot}">Saved analysis snapshot</option>
                                 <option value="working" th:text="#{architecture.workspace.working}">Working architecture</option>
                             </select>
-                            <button id="architectureLensAction" type="button" class="btn btn-outline-primary"
-                                    th:text="#{analysis.guide.lens}">Architecture focus lens</button>
                         </div>
                     </div>
                     <p id="architectureSourceDescription" class="text-muted" th:text="#{architecture.workspace.analysis.help}">The architecture from the current analysis. Your input and results stay available when switching sources.</p>
@@ -575,23 +563,15 @@
                 <!-- Architecture View Panel -->
                 <div id="architectureViewPanel" class="mb-3" style="display:none;">
                     <div class="card shadow-sm">
-                        <div class="card-header fw-semibold" th:text="#{architecture.requirement.view.title}">&#127959;&#65039; Requirement Architecture View</div>
+                        <div class="card-header d-flex flex-wrap align-items-center gap-2">
+                            <span class="fw-semibold" th:text="#{architecture.requirement.view.title}">Requirement Architecture View</span>
+                            <div th:replace="~{fragments/architecture-diagram-controls :: lens('architectureLensAction', 'architectureSourceLensEnabled', 'architectureSourceLens')}"></div>
+                        </div>
                         <div class="card-body" id="architectureViewContent"></div>
                     </div>
                 </div>
 
-                <!-- Suggested Relationships Panel (from analysis hypotheses) -->
-                <div id="suggestedRelationsPanel" class="mb-3" style="display:none;">
-                    <div class="card shadow-sm border-info">
-                        <div class="card-header d-flex justify-content-between align-items-center bg-info bg-opacity-10">
-                            <span class="fw-semibold" th:text="#{architecture.suggested.title}">&#128279; Suggested Relationships</span>
-                            <span id="suggestedRelationsBadge" class="badge bg-info">0</span>
-                        </div>
-                        <div class="card-body p-2" id="suggestedRelationsContent">
-                            <p class="text-muted small mb-0" th:text="#{architecture.no.suggestions}">No suggested relationships yet.</p>
-                        </div>
-                    </div>
-                </div>
+                <div id="analysisProposalOverview"></div>
 
                 <!-- Placeholder when no architecture data available -->
                 <div id="architecturePlaceholder" class="card shadow-sm">
@@ -617,32 +597,7 @@
                 <div class="view-help"><a th:replace="~{fragments/context-help :: button('USER_GUIDE', 'guide-section-13')}"></a></div>
                 <div id="tab-relations">
 
-                <!-- Relation Proposals Panel -->
-                <div id="analysisProposalInbox">
-                    <div id="proposalsPanel" class="mb-3">
-                        <div class="card shadow-sm">
-                            <div class="card-header d-flex justify-content-between align-items-center">
-                                <span class="fw-semibold" th:text="#{browse.proposals.panel.title}">&#128269; Relation Proposals</span>
-                                <span id="proposalPendingBadge" class="badge bg-warning text-dark proposal-pending-badge" th:text="#{browse.proposals.pending(0)}">0 pending</span>
-                            </div>
-                            <div class="card-body p-2">
-                                <div class="btn-group btn-group-sm mb-2 proposal-filter-group" role="group" th:attr="aria-label=#{ui.aria.proposal_status_filter}" aria-label="Proposal status filter">
-                                    <button id="filterPending"  class="btn btn-warning"          data-filter="PENDING"  aria-pressed="true" th:text="#{quality.pending}">Pending</button>
-                                    <button id="filterAll"      class="btn btn-outline-secondary" data-filter="ALL"      aria-pressed="false" th:text="#{compare.filter.all}">All</button>
-                                    <button id="filterAccepted" class="btn btn-outline-success"  data-filter="ACCEPTED" aria-pressed="false" th:text="#{browse.proposals.adoption.filter}">Accepted / check adoption</button>
-                                    <button id="filterRejected" class="btn btn-outline-danger"   data-filter="REJECTED" aria-pressed="false" th:text="#{quality.rejected}">Rejected</button>
-                                </div>
-                                <section id="proposalAdoptionSection" class="border-bottom mb-2 pb-2" aria-labelledby="proposalAdoptionHeading" hidden>
-                                    <h3 id="proposalAdoptionHeading" class="h6" th:text="#{browse.proposals.adoption.section}">Accepted proposals from the shared repository</h3>
-                                    <div id="proposalAdoptionTable" class="table-responsive" tabindex="0" role="region" aria-labelledby="proposalAdoptionHeading"></div>
-                                </section>
-                                <div id="proposalsTableContainer" class="table-responsive" tabindex="0" role="region" th:attr="aria-label=#{ui.aria.scrollable_data_table}" aria-label="Scrollable data table">
-                                    <div class="text-muted small p-2" th:text="#{proposals.loading.text}">Loading proposals&hellip;</div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                <div id="analysisProposalInbox"></div>
 
                 <!-- Relations Browser -->
                 <details id="relationsBrowser" class="mt-2">
@@ -804,12 +759,12 @@
                     </div><!-- /architectureAnalysisSource -->
                     <section id="architectureSnapshotSource" class="architecture-snapshot-surface" hidden>
                         <div class="architecture-source-actions workbench-toolbar"><th:block th:replace="~{architecture-workbench :: localActions}"></th:block></div>
-                        <section th:replace="~{architecture-workbench :: surface}"></section>
+                        <section th:replace="~{architecture-workbench :: surface(true)}"></section>
+                        <div id="snapshotProposalInbox"></div>
                     </section>
                     <section id="architectureWorkingSource" class="architecture-editor-surface" hidden>
                         <div class="architecture-source-actions"><a th:href="@{/integrations(lang=${#locale.language})}" href="/integrations" th:text="#{integration.title}">Tool integrations</a></div>
-                        <div id="workingProposalInbox"></div>
-                        <section th:replace="~{architecture-editor :: surface}"></section>
+                        <section th:replace="~{architecture-editor :: surface(true)}"></section>
                     </section>
                     <details id="architectureDialogue" class="my-2" data-taxonomy-feature="analysis">
                         <summary th:text="#{dialogue.title}">Ask about this architecture</summary>
@@ -822,7 +777,7 @@
                         </form>
                         <p id="architectureDialogueStatus" role="status" aria-live="polite"></p>
                     </details>
-                    <section th:replace="~{fragments/architecture-source-lens :: panel('architectureSourceLens')}"></section>
+                    <section th:replace="~{fragments/relationship-review :: inbox(true)}"></section>
                 </section><!-- /architectureWorkspace -->
             </div><!-- /tab-architecture -->
 
@@ -1703,6 +1658,7 @@
 <script th:src="@{/js/api/workspace-api.js}" src="/js/api/workspace-api.js"></script>
 <script th:src="@{/js/core/taxonomy-state.js}"></script>
 <script th:src="@{/js/shared/responsibility-display.js}" src="/js/shared/responsibility-display.js"></script>
+<script th:src="@{/js/shared/match-scale.js}"></script>
 <script th:src="@{/js/core/taxonomy-views.js}"></script>
 <script th:src="@{/js/workspace/taxonomy-git-status.js}"></script>
 <script th:src="@{/js/workspace/taxonomy-branch-adoption.js}"></script>
@@ -1918,6 +1874,7 @@
                 el.classList.toggle('d-none', pane !== subTabName);
             }
         });
+        window.TaxonomyRelationshipReview?.place(subTabName);
         // Adjust panel width based on active sub-tab
         var leftPanel  = document.getElementById('leftPanel');
         var rightPanel = document.getElementById('rightPanel');
@@ -1940,6 +1897,8 @@
             window.TaxonomyBrowse.updateExportGroupVisibility();
         }
     }
+
+    document.addEventListener('taxonomy:relationship-review-overview', function () { activateArchSubTab('arch-overview'); });
 
     function activatePage(pageName, permissionChecked) {
         if (!permissionChecked && pageName !== 'architecture' && window.TaxonomyArchitectureWorkspace?.isActive()) {
@@ -2099,6 +2058,7 @@
 
 <script th:src="@{/js/api/architecture-editor-api.js}" src="/js/api/architecture-editor-api.js"></script>
 <script th:src="@{/js/api/architecture-workbench-api.js}" src="/js/api/architecture-workbench-api.js"></script>
+<script th:src="@{/js/shared/relationship-review.js}" src="/js/shared/relationship-review.js"></script>
 <script th:src="@{/js/architecture-focus.js}" src="/js/architecture-focus.js"></script>
 <script th:src="@{/js/architecture-brief.js}" src="/js/architecture-brief.js"></script>
 <script th:src="@{/js/architecture-planning.js}" src="/js/architecture-planning.js"></script>

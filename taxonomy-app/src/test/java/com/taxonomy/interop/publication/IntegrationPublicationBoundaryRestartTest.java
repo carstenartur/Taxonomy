@@ -13,7 +13,7 @@ import java.util.concurrent.TimeUnit;
 import static org.junit.jupiter.api.Assertions.*;
 
 /** Separate provider/client JVMs, forcibly terminated at observed real durable boundaries. */
-@Tag("ci-app-shard-recovery")
+@Tag("ci-app-shard-domain-integration")
 class IntegrationPublicationBoundaryRestartTest {
     @TempDir Path directory;
     private final JsonMapper mapper = JsonMapper.builder().build();

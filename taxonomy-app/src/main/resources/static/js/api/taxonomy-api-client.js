@@ -843,6 +843,7 @@ window.TaxonomyApiClient = (function () {
 
 (function loadAuthenticatedUiSurfaces() {
     'use strict';
+    if (document.currentScript?.dataset?.authenticatedSurfaces === 'false') return;
 
     function resolveSurfaceUrl(source) {
         if (window.TaxonomyI18n && typeof window.TaxonomyI18n.resolveUrl === 'function') {

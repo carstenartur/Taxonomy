@@ -155,6 +155,7 @@
                     <systemPropertyVariables>
                         <taxonomy.project.version>${project.version}</taxonomy.project.version>
                         <taxonomy.maven.executable>${maven.home}/bin/mvn</taxonomy.maven.executable>
+                        <taxonomy.maven.local-repository>${session.localRepository.basedir}</taxonomy.maven.local-repository>
                         <taxonomy.maven.user-settings>${taxonomy.maven.user-settings}</taxonomy.maven.user-settings>
                         <taxonomy.app.shard.coverage.enabled>${taxonomy.app.shard.coverage.enabled}</taxonomy.app.shard.coverage.enabled>
                     </systemPropertyVariables>

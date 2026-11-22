@@ -15,13 +15,20 @@ import com.taxonomy.archimate.ArchiMateViewNode;
 import com.taxonomy.diagram.DiagramEdge;
 import com.taxonomy.diagram.DiagramModel;
 import com.taxonomy.diagram.DiagramNode;
+import com.taxonomy.diagram.DiagramScene;
+import com.taxonomy.diagram.DiagramSceneEdge;
+import com.taxonomy.diagram.DiagramSceneNode;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
+import java.util.TreeMap;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
@@ -31,13 +38,18 @@ import java.util.stream.Collectors;
  */
 public class ArchiMateDiagramService {
 
-    // Layout constants (pixels)
-    private static final int NODE_WIDTH  = 120;
-    private static final int NODE_HEIGHT =  40;
-    private static final int H_GAP       = 160;
-    private static final int V_GAP       =  60;
-    private static final int MARGIN_X    =  40;
-    private static final int MARGIN_Y    =  40;
+    private static final int MIN_NODE_WIDTH = 220;
+    private static final int MAX_NODE_WIDTH = 340;
+    private static final int MIN_NODE_HEIGHT = 52;
+    private static final int LABEL_HORIZONTAL_INSET = 54;
+    private static final int LABEL_VERTICAL_INSET = 22;
+    private static final int LABEL_CHARACTER_WIDTH = 9;
+    private static final int LABEL_LINE_HEIGHT = 17;
+    private static final int LAYER_GAP = 144;
+    private static final int ROW_GAP = 48;
+    private static final int MARGIN = 40;
+    private static final int MAX_ROUTING_NODE_EDGE_PAIRS = 20_000;
+    private static final Pattern LABEL_WORD = Pattern.compile("\\S+");
 
     /**
      * Converts a {@link DiagramModel} to an {@link ArchiMateModel}.
@@ -177,40 +189,42 @@ public class ArchiMateDiagramService {
     }
 
     private ArchiMateView buildView(DiagramModel model, Set<String> elementIds) {
-        // Group nodes by layer for left-to-right layout
-        Map<Integer, List<DiagramNode>> layerGroups = new LinkedHashMap<>();
+        Map<Integer, List<DiagramNode>> layerGroups = new TreeMap<>();
         for (DiagramNode node : model.nodes()) {
+            if (node.container()) continue;
             layerGroups.computeIfAbsent(node.layer(), k -> new ArrayList<>()).add(node);
         }
 
         List<ArchiMateViewNode> viewNodes = new ArrayList<>();
-        int layerIdx = 0;
-        for (var entry : layerGroups.entrySet().stream()
-                .sorted(Comparator.comparingInt(Map.Entry::getKey)).toList()) {
-            List<DiagramNode> layerNodes = entry.getValue();
-            for (int i = 0; i < layerNodes.size(); i++) {
-                DiagramNode node = layerNodes.get(i);
-                if (node.container()) continue; // visual-only container — not an ArchiMate element
-                int x = MARGIN_X + layerIdx * H_GAP;
-                int y = MARGIN_Y + i * V_GAP;
+        Map<String, Integer> nodeOrder = new HashMap<>();
+        int x = MARGIN;
+        for (List<DiagramNode> layerNodes : layerGroups.values()) {
+            int y = MARGIN;
+            int layerWidth = 0;
+            for (DiagramNode node : layerNodes) {
+                String sizingLabel = Objects.requireNonNullElse(node.label(), node.id());
+                int width = nodeWidth(sizingLabel);
+                int height = nodeHeight(sizingLabel, width);
                 int[] color = toColor(node.type());
                 int lineWidth = node.anchor() ? 3 : 1;
+                nodeOrder.put(node.id(), viewNodes.size());
                 viewNodes.add(new ArchiMateViewNode(
                         node.id(),
                         node.id(),
                         x, y,
-                        NODE_WIDTH, NODE_HEIGHT,
+                        width, height,
                         node.label(),
                         color[0], color[1], color[2],
                         lineWidth));
+                y += height + ROW_GAP;
+                layerWidth = Math.max(layerWidth, width);
             }
-            layerIdx++;
+            x += layerWidth + LAYER_GAP;
         }
 
-        Set<String> nodeIdSet = elementIds;
         List<ArchiMateViewConnection> viewConnections = new ArrayList<>();
         for (DiagramEdge edge : model.edges()) {
-            if (nodeIdSet.contains(edge.sourceId()) && nodeIdSet.contains(edge.targetId())) {
+            if (elementIds.contains(edge.sourceId()) && elementIds.contains(edge.targetId())) {
                 viewConnections.add(new ArchiMateViewConnection(
                         edge.id(),
                         edge.id(),
@@ -218,9 +232,80 @@ public class ArchiMateDiagramService {
                         edge.targetId()));
             }
         }
+        // Archi serializes outgoing connections in view-node order. Match that
+        // order while retaining the sequence of connections from each source.
+        viewConnections.sort(Comparator.comparingInt(connection -> nodeOrder.get(connection.sourceNodeId())));
 
         String viewName = model.title() != null ? model.title() : "Architecture View";
-        return new ArchiMateView("layered", viewName, viewNodes, viewConnections);
+        return new ArchiMateView("layered", viewName, viewNodes, routeConnections(viewNodes, viewConnections));
+    }
+
+    private static List<ArchiMateViewConnection> routeConnections(List<ArchiMateViewNode> viewNodes,
+                                                                  List<ArchiMateViewConnection> connections) {
+        // Testing candidate paths against every card is useful on ordinary views.
+        // Keep conversion bounded for the largest permitted exchange graphs.
+        if (connections.isEmpty() || (long) viewNodes.size() * connections.size() > MAX_ROUTING_NODE_EDGE_PAIRS) {
+            return connections;
+        }
+        var cards = viewNodes.stream().map(node -> new DiagramSceneNode(node.id(), node.label(), null, 0,
+                false, 0, 0, false, null, false, node.x(), node.y(), node.w(), node.h())).toList();
+        var byId = cards.stream().collect(Collectors.toMap(DiagramSceneNode::id, node -> node));
+        var edges = connections.stream().map(connection -> {
+            var source = byId.get(connection.sourceNodeId());
+            var target = byId.get(connection.targetNodeId());
+            var sourceX = source.x() <= target.x() ? source.x() + source.width() : source.x();
+            var targetX = source.x() >= target.x() ? target.x() + target.width() : target.x();
+            return new DiagramSceneEdge(connection.id(), source.id(), target.id(), null, 0, null,
+                    sourceX, source.y() + source.height() / 2, targetX, target.y() + target.height() / 2);
+        }).toList();
+        double width = cards.stream().mapToDouble(card -> card.x() + card.width()).max().orElseThrow() + MARGIN;
+        double height = cards.stream().mapToDouble(card -> card.y() + card.height()).max().orElseThrow() + MARGIN;
+        var routing = new DiagramEdgeRouting(new DiagramScene(null, width, height, "LR", cards, edges));
+        var result = new ArrayList<ArchiMateViewConnection>(connections.size());
+        for (int i = 0; i < connections.size(); i++) {
+            var connection = connections.get(i);
+            var detour = routing.detourForLine(edges.get(i));
+            if (detour == null) {
+                result.add(connection);
+                continue;
+            }
+            var points = detour.points();
+            var bends = points.subList(1, points.size() - 1).stream()
+                    .map(point -> new ArchiMateViewConnection.Bendpoint(
+                            Math.toIntExact(Math.round(point.x())), Math.toIntExact(Math.round(point.y())))).toList();
+            result.add(new ArchiMateViewConnection(connection.id(), connection.relationshipId(), connection.sourceNodeId(),
+                    connection.targetNodeId(), bends));
+        }
+        return result;
+    }
+
+    private static int nodeWidth(String label) {
+        int maximumCharacters = (MAX_NODE_WIDTH - LABEL_HORIZONTAL_INSET) / LABEL_CHARACTER_WIDTH + 1;
+        return Math.clamp(LABEL_HORIZONTAL_INSET + Math.min(label.length(), maximumCharacters) * LABEL_CHARACTER_WIDTH,
+                MIN_NODE_WIDTH, MAX_NODE_WIDTH);
+    }
+
+    private static int nodeHeight(String label, int width) {
+        // Allow for the native ArchiMate symbol and conservatively budget glyph widths
+        // so geometry is the same on exporter hosts with different system fonts.
+        int columns = (width - LABEL_HORIZONTAL_INSET) / LABEL_CHARACTER_WIDTH;
+        int lines = 1;
+        int usedColumns = 0;
+        var words = LABEL_WORD.matcher(label);
+        while (words.find()) {
+            int wordLength = words.end() - words.start();
+            if (usedColumns > 0 && usedColumns + 1 + wordLength > columns) {
+                lines++;
+                usedColumns = 0;
+            }
+            if (usedColumns == 0) {
+                lines += (wordLength - 1) / columns;
+                usedColumns = (wordLength - 1) % columns + 1;
+            } else {
+                usedColumns += 1 + wordLength;
+            }
+        }
+        return Math.max(MIN_NODE_HEIGHT, LABEL_VERTICAL_INSET + lines * LABEL_LINE_HEIGHT);
     }
 
     // ── Type mappings ─────────────────────────────────────────────────────────

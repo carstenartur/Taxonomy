@@ -360,7 +360,6 @@
 .architecture-snapshot-surface .architecture-node {
     cursor: pointer;
     outline: none;
-    transition: opacity 120ms ease;
 }
 
 .architecture-snapshot-surface .architecture-node-card {
@@ -391,8 +390,8 @@
     filter: drop-shadow(0 0 5px rgb(124 58 237 / 60%));
 }
 
-.architecture-snapshot-surface .architecture-node.is-muted {
-    opacity: 0.2;
+.architecture-snapshot-surface .architecture-node.is-muted:not(:hover, :focus-visible) .architecture-node-card {
+    filter: none;
 }
 
 .architecture-snapshot-surface .architecture-node-code {
@@ -442,7 +441,7 @@
 }
 
 .architecture-snapshot-surface .architecture-edge.is-muted .architecture-edge-path {
-    stroke-opacity: 0.09;
+    stroke-opacity: 0.28;
 }
 
 .architecture-snapshot-surface .architecture-edge.is-connected .architecture-edge-path, .architecture-snapshot-surface .architecture-edge.is-selected .architecture-edge-path {
@@ -660,10 +659,6 @@
         height: 160mm;
         max-height: 160mm;
         overflow: visible;
-    }
-
-    .architecture-snapshot-surface .architecture-print-view .architecture-node.is-muted {
-        opacity: 1;
     }
 
     .architecture-snapshot-surface .architecture-print-view .architecture-edge.is-muted .architecture-edge-path {

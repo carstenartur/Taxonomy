@@ -660,11 +660,9 @@
     }
 
     function nodeColor(code, colorMap, scores) {
-        if (scores && scores[code] !== undefined && scores[code] > 0) {
-            var alpha = Math.min(scores[code] / 100, 1).toFixed(2);
-            return 'rgba(0,128,0,' + alpha + ')';
-        }
-        return colorMap[code] || '#aaa';
+        const score = scores?.[code];
+        return window.TaxonomyMatchScale.positive(score)
+            ? window.TaxonomyMatchScale.background(score) : colorMap[code] || '#aaaaaa';
     }
 
     /** A display-only projection; retained ancestors give positive descendants their original context. */
@@ -775,7 +773,7 @@
             .attr('stroke', function (d) { return d.unit?.color || null; })
             .attr('stroke-width', function (d) { return d.unit ? 2 : null; })
             .attr('stroke-opacity', function (d) { return arcVisible(d.current) ? 1 : 0; })
-            .attr('fill-opacity', function (d) { return arcVisible(d.current) ? (d.children ? 0.85 : 0.7) : 0; })
+            .attr('fill-opacity', function (d) { return arcVisible(d.current) ? 1 : 0; })
             .attr('pointer-events', function (d) { return arcVisible(d.current) ? 'auto' : 'none'; })
             .attr('d', function (d) { return arc(d.current); })
             .style('cursor', function (d) { return d.children ? 'pointer' : 'default'; });
@@ -797,7 +795,7 @@
             .attr('text-anchor', 'middle')
             .attr('dy', '0.35em')
             .style('font-size', '9px')
-            .style('fill', '#fff')
+            .style('fill', d => window.TaxonomyMatchScale.foreground(nodeColor(d.data.code, colorMap, scores)))
             .style('font-weight', '600')
             .attr('fill-opacity', function (d) { return +labelVisible(d.current); })
             .attr('transform', function (d) { return labelTransform(d.current); })
@@ -866,7 +864,7 @@
                 .filter(function (d) {
                     return +this.getAttribute('fill-opacity') || arcVisible(d.target);
                 })
-                .attr('fill-opacity', function (d) { return arcVisible(d.target) ? (d.children ? 0.85 : 0.7) : 0; })
+                .attr('fill-opacity', function (d) { return arcVisible(d.target) ? 1 : 0; })
                 .attr('stroke-opacity', function (d) { return arcVisible(d.target) ? 1 : 0; })
                 .attr('pointer-events', function (d) { return arcVisible(d.target) ? 'auto' : 'none'; })
                 .attrTween('d', function (d) { return function () { return arc(d.current); }; });
@@ -2506,9 +2504,10 @@
                     var pct = scores[d.data.code];
                     var badgeText = scoreText(d.data.code, pct);
                     var badgeX = nx + treeBadgeX(d);
-                    ctx.fillStyle = 'rgba(0,128,0,0.75)';
+                    const badgeFill = window.TaxonomyMatchScale.positive(pct) ? fill : '#f1f3f5';
+                    ctx.fillStyle = badgeFill;
                     ctx.fillRect(badgeX, ny - 9, d._treeBadgeWidth, 18);
-                    ctx.fillStyle = '#fff';
+                    ctx.fillStyle = window.TaxonomyMatchScale.foreground(badgeFill);
                     ctx.font = TREE_BADGE_FONT;
                     ctx.textAlign = 'left';
                     ctx.textBaseline = 'middle';

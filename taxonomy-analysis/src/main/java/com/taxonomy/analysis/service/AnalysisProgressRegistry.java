@@ -133,9 +133,17 @@ public class AnalysisProgressRegistry {
 
     public Handle open(String requestedId, String owner, WorkspaceContext context,
                        AnalysisProvenance provenance) {
-        Reservation reservation = provenance == null
-                ? reserve(requestedId, owner, context, null)
-                : awaitDurableAdmission(requestedId, owner, context, provenance);
+        if (provenance != null) return openDurable(requestedId, owner, context, provenance);
+        return openReservation(reserve(requestedId, owner, context, null));
+    }
+
+    /** An already accepted job waits for shared capacity even when it has no portfolio snapshot. */
+    public Handle openDurable(String requestedId, String owner, WorkspaceContext context,
+                              AnalysisProvenance provenance) {
+        return openReservation(awaitDurableAdmission(requestedId, owner, context, provenance));
+    }
+
+    private Handle openReservation(Reservation reservation) {
         try {
             return reservation.open();
         } catch (RuntimeException | Error failure) {

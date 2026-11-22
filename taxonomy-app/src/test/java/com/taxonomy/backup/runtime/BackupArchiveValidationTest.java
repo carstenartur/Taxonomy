@@ -1,5 +1,6 @@
 package com.taxonomy.backup.runtime;
 
+import org.junit.jupiter.api.Tag;
 import com.taxonomy.backup.*;
 
 import com.google.crypto.tink.KeysetHandle;
@@ -23,6 +24,7 @@ import java.util.zip.CRC32;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.assertj.core.api.Assertions.*;
 
+@Tag("ci-app-shard-runtime")
 class BackupArchiveValidationTest {
     @TempDir Path root;
     static final String DATA = "data/records/current.ndjson";

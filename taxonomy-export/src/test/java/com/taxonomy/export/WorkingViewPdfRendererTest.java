@@ -10,6 +10,17 @@ import java.util.*;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class WorkingViewPdfRendererTest {
+    @Test void serverRunPdfRecordsTheAnalysisStateAndRetainedEvidence() throws Exception {
+        var source = new AnalysisDiagramSource("test-provider", "PARTIAL", "main", "a".repeat(40));
+        var bytes = new ArchitecturePdfRenderer().renderAnalysis(scene(2), source,
+                Map.of("NODE-0", "RETAINED-NODE-REASON"), Locale.GERMAN);
+        try (var document = Loader.loadPDF(bytes)) {
+            assertThat(document.getDocumentInformation().getSubject()).isEqualTo("Serverseitige Anforderungsanalyse");
+            assertThat(new PDFTextStripper().getText(document))
+                    .contains("PARTIAL", "test-provider", "main", "RETAINED-NODE-REASON");
+        }
+    }
+
     @Test void originalNodeReasonsUseTheCompleteReadablePaginatedInventory() throws Exception {
         String reason = java.util.stream.IntStream.range(0, 120)
                 .mapToObj(index -> "Original evidence for this selected node remains visible in the exported document. PARAGRAPH-" + index + "-END.")

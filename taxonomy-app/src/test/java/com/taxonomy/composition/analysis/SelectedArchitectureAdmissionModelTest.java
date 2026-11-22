@@ -14,6 +14,7 @@ import com.taxonomy.editor.ArchitectureCommandPort.Context;
 import com.taxonomy.editor.ArchitectureEditorService;
 import com.taxonomy.editor.ArchitectureEditorService.Document;
 import com.taxonomy.identity.StableIdentityHash;
+import com.taxonomy.workspace.model.SystemRepository;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
@@ -51,6 +52,19 @@ class SelectedArchitectureAdmissionModelTest {
 
     @BeforeEach void authorize() {
         when(resolver.resolveCurrentRepositoryContextForRead()).thenReturn(PROJECT);
+    }
+
+    @Test void primarySourceReadinessUsesOnlyTheConfiguredCentralBranch() throws Exception {
+        var primary = new SystemRepository();
+        primary.setPrimaryRepo(true);
+        primary.setRepositoryId("primary");
+        primary.setDefaultBranch("published");
+        var expected = RepositoryContext.centralRead("primary", "published", "mail-readiness");
+        when(editor.hasSourceAtHead(expected)).thenReturn(true);
+
+        assertTrue(admission.hasPrimarySource(primary, "mail-readiness"));
+        verify(editor).hasSourceAtHead(expected);
+        verifyNoInteractions(resolver, sources);
     }
 
     private static String brief(UUID generation) {
