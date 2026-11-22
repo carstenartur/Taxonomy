@@ -515,7 +515,9 @@ test('a focused relation remains the keyboard target after lens redraw', () => {
   const h = engineHarness(), renderer = configured(h, 'snapshot'); renderer.render(scene); h.flush();
   const edge = h.edge('AB'), target = edge.getAttribute('role') === 'button' ? edge : edge.querySelector('[role="button"]');
   assert.ok(target); target.focus();
-  renderer.presentFocus({ enabled: false, states: {}, suggestions: [] }); h.flush();
+  renderer.presentFocus({ enabled: true, states: {A:'supported'}, suggestions: [] }); h.flush();
+  assert.equal(h.edge('AB'), edge, 'Lens status updates preserve the base relationship and its native target');
+  assert.equal(h.document.activeElement, target);
   assert.ok(h.svg.contains(h.document.activeElement), 'focused target stays attached');
   assert.equal(h.document.activeElement.closest('[data-edge-id]')?.getAttribute('data-edge-id'), 'AB');
   renderer.destroy();
@@ -556,6 +558,9 @@ test('working defaults cap visible nodes at 200 and total rendered edges at 400 
   const relationIds = new Set(h.svg.querySelectorAll('[data-edge-id]').map(element => element.getAttribute('data-edge-id')));
   const proposalIds = new Set(h.svg.querySelectorAll('[data-suggestion-id]').map(element => element.getAttribute('data-suggestion-id')));
   assert.equal(proposalIds.size, 32); assert.equal(relationIds.size, 368); assert.equal(relationIds.size + proposalIds.size, 400);
+  renderer.presentFocus({ enabled: true, states: { N0:'supported' }, suggestions: [] });
+  assert.equal(h.svg.querySelectorAll('[data-edge-id]').length, 400, 'Removing proposals releases the budget for base relationships');
+  assert.equal(h.svg.querySelectorAll('[data-suggestion-id]').length, 0);
   renderer.destroy();
 });
 

@@ -594,7 +594,7 @@ window.TaxonomyArchitectureDiagram.create = function (svg, options) {
         });
         return result;
     }
-    function drawRelationships(focused) {
+    function drawRelationships(focused, lensUpdate) {
         var ids = new Set(drawnNodes.map(function (node) { return node.id; }));
         var byId = new Map(drawnNodes.map(function (node) { return [node.id, node]; }));
         var proposals = lens.enabled ? (lens.suggestions || []).filter(function (edge) { return ids.has(edge.sourceId) && ids.has(edge.targetId); }).slice(0, Math.min(limits.suggestions, limits.edges)) : [];
@@ -602,20 +602,27 @@ window.TaxonomyArchitectureDiagram.create = function (svg, options) {
         var edges = availableEdges.slice(0, Math.max(0, limits.edges - proposals.length));
         var selectedEdge = availableEdges.find(function (edge) { return edge.id === state.selectedEdgeId; });
         if (selectedEdge && !edges.includes(selectedEdge) && edges.length) edges[edges.length - 1] = selectedEdge;
-        definitions.replaceChildren(); relationships.replaceChildren(); overlay.replaceChildren(); edgeElements.clear();
-        var markers = new Map();
-        edges.forEach(function (edge) {
-            var color = edge.color || 'context-stroke';
-            if (!markers.has(color)) { var id = markerPrefix + 'edge-' + markers.size; markers.set(color, id); addMarker(id, color); }
-            var a = byId.get(source(edge)), b = byId.get(target(edge));
-            var path = edge.path || (edge.sourceX !== undefined ? 'M' + edge.sourceX + ',' + edge.sourceY + ' L' + edge.targetX + ',' + edge.targetY
-                : compact ? common.suggestionPath(a, b) : common.edgePath(a, b, 0));
-            var spec = Object.assign({ prefix: prefix, compact: compact, ariaLabel: source(edge) + ' ' + (edge.relationType || edge.type || '') + ' ' + target(edge) }, edge,
-                { source: source(edge), target: target(edge), path: path, markerId: markers.get(color) });
-            var group = common.renderEdge(relationships, spec, { select: selectEdge }); edgeElements.set(edge.id, group);
-            if (focused.kind === 'edge' && focused.id === edge.id) (group.getAttribute('role') === 'button' ? group : group.querySelector('[role="button"]')).focus({ preventScroll: true });
-        });
-        if (proposals.length) addMarker(markerPrefix + 'suggestion', '#7142a0');
+        // Lens progress and review selection do not change the base drawing. Its edge budget
+        // can still shrink or grow when visible suggestions share the working diagram's cap.
+        var baseChanged = !lensUpdate || edges.length !== edgeElements.size
+            || edges.some(function (edge) { return !edgeElements.has(edge.id); });
+        if (baseChanged) {
+            definitions.replaceChildren(); relationships.replaceChildren(); edgeElements.clear();
+            var markers = new Map();
+            edges.forEach(function (edge) {
+                var color = edge.color || 'context-stroke';
+                if (!markers.has(color)) { var id = markerPrefix + 'edge-' + markers.size; markers.set(color, id); addMarker(id, color); }
+                var a = byId.get(source(edge)), b = byId.get(target(edge));
+                var path = edge.path || (edge.sourceX !== undefined ? 'M' + edge.sourceX + ',' + edge.sourceY + ' L' + edge.targetX + ',' + edge.targetY
+                    : compact ? common.suggestionPath(a, b) : common.edgePath(a, b, 0));
+                var spec = Object.assign({ prefix: prefix, compact: compact, ariaLabel: source(edge) + ' ' + (edge.relationType || edge.type || '') + ' ' + target(edge) }, edge,
+                    { source: source(edge), target: target(edge), path: path, markerId: markers.get(color) });
+                var group = common.renderEdge(relationships, spec, { select: selectEdge }); edgeElements.set(edge.id, group);
+                if (focused.kind === 'edge' && focused.id === edge.id) (group.getAttribute('role') === 'button' ? group : group.querySelector('[role="button"]')).focus({ preventScroll: true });
+            });
+            addMarker(markerPrefix + 'suggestion', '#7142a0');
+        }
+        overlay.replaceChildren();
         proposals.forEach(function (edge) {
             var path = common.element('path', { 'data-suggestion-id': edge.id, 'class': 'editor-ghost' + (edge.id === lens.reviewed ? ' selected' : ''),
                 d: common.suggestionPath(byId.get(edge.sourceId), byId.get(edge.targetId)), fill: 'none', stroke: '#7142a0', 'stroke-width': 3,
@@ -624,16 +631,20 @@ window.TaxonomyArchitectureDiagram.create = function (svg, options) {
             common.activate(path, function () { if (active && onSuggestion) onSuggestion(edge.id); }); overlay.appendChild(path);
             if (focused.kind === 'suggestion' && focused.id === edge.id) path.focus({ preventScroll: true });
         });
+        return baseChanged;
     }
     function lensStyles() {
         drawnNodes.forEach(function (node) {
             var group = nodeElements.get(node.id), previous = group.getAttribute('data-lens-state');
             var assessment = lens.enabled && (lens.states || {})[node.id];
-            if (previous) group.classList.remove('lens-' + previous);
-            if (assessment) { group.classList.add('lens-' + assessment); group.setAttribute('data-lens-state', assessment); }
-            else group.removeAttribute('data-lens-state');
+            if (previous !== (assessment || null)) {
+                if (previous) group.classList.remove('lens-' + previous);
+                if (assessment) { group.classList.add('lens-' + assessment); group.setAttribute('data-lens-state', assessment); }
+                else group.removeAttribute('data-lens-state');
+            }
             var label = node.ariaLabel || (node.label || node.title || node.id) + ' · ' + node.id;
-            group.setAttribute('aria-label', label + (assessment ? ' · ' + (lens.label ? lens.label(assessment) : assessment) : ''));
+            if (assessment) label += ' · ' + (lens.label ? lens.label(assessment) : assessment);
+            if (group.getAttribute('aria-label') !== label) group.setAttribute('aria-label', label);
         });
         if (!(lens.hover ?? lens.enabled)) ring.setAttribute('display', 'none');
     }
@@ -832,7 +843,11 @@ window.TaxonomyArchitectureDiagram.create = function (svg, options) {
             if (destroyed) return;
             lens = value || { enabled: false };
             // Focus-panel feedback can reenter during a click; keep cards and their children attached.
-            if (hasScene) { drawRelationships(focusedTarget()); lensStyles(); interactionStyles(); }
+            if (hasScene) {
+                var baseChanged = drawRelationships(focusedTarget(), true);
+                lensStyles();
+                if (baseChanged) interactionStyles();
+            }
         },
         setActive: function (value) {
             if (destroyed) return;

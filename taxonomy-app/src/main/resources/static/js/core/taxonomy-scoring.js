@@ -2363,7 +2363,9 @@
 
         // Group elements by taxonomy sheet
         var groups = {};
+        var sheetByCode = new Map();
         displayElements.forEach(function (el) {
+            sheetByCode.set(el.nodeCode, el.taxonomySheet);
             var sheet = el.taxonomySheet || 'Unknown';
             if (!groups[sheet]) groups[sheet] = [];
             groups[sheet].push(el);
@@ -2380,11 +2382,7 @@
         var layerRelations = {};
         if (displayRelationships.length) {
             displayRelationships.forEach(function (r) {
-                var srcSheet = null, tgtSheet = null;
-                displayElements.forEach(function (el) {
-                    if (el.nodeCode === r.sourceCode) srcSheet = el.taxonomySheet;
-                    if (el.nodeCode === r.targetCode) tgtSheet = el.taxonomySheet;
-                });
+                var srcSheet = sheetByCode.get(r.sourceCode), tgtSheet = sheetByCode.get(r.targetCode);
                 if (srcSheet && tgtSheet && srcSheet !== tgtSheet) {
                     var key = srcSheet + '→' + tgtSheet;
                     if (!layerRelations[key]) layerRelations[key] = new Set();
