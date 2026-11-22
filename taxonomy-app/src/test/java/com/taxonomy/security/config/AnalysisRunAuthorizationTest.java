@@ -1,6 +1,7 @@
 package com.taxonomy.security.config;
 
 import com.taxonomy.analysis.controller.AnalysisProgressController;
+import com.taxonomy.analysis.service.AnalysisMemoryGuard;
 import com.taxonomy.analysis.service.AnalysisProgressRegistry;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
@@ -48,7 +49,12 @@ class AnalysisRunAuthorizationTest {
                 SecurityContextHolder.getContext().getAuthentication().getName());
         when(resolver.resolveCurrentContext()).thenReturn(SCOPE);
         mvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
-        handle = registry.open(null, "alice", SCOPE, null);
+        // Authorization cases start with an admitted run regardless of the shared test JVM's heap.
+        try (var heap = mockStatic(AnalysisMemoryGuard.class)) {
+            heap.when(AnalysisMemoryGuard::heapSample)
+                    .thenReturn(new AnalysisMemoryGuard.Sample(32L << 20, 256L << 20));
+            handle = registry.open(null, "alice", SCOPE, null);
+        }
     }
 
     @AfterEach
