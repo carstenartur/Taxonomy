@@ -343,6 +343,7 @@ jobs:
         run: bash .github/scripts/configure-docker-mirror.sh
       - name: Run the Maven-owned application shard
         env:
+          APP_TEST_SHARD: ${{ matrix.shard }}
           APP_TEST_PROFILE: ${{ matrix.profile }}
           HF_TOKEN: ${{ matrix.requiresModel && secrets.HF_TOKEN || '' }}
           TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/models/multilingual-minilm
@@ -351,6 +352,11 @@ jobs:
           VERSION_STATE_TAG: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
         run: |
           set -euo pipefail
+          if [[ "$APP_TEST_SHARD" == scenario ]]; then
+            export SPRING_PROFILES_ACTIVE=hsqldb-file
+            export TAXONOMY_HSQLDB_FILE_PATH="$RUNNER_TEMP/taxonomy-scenario-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+            export TAXONOMY_SEARCH_DIRECTORY_ROOT="$RUNNER_TEMP/taxonomy-scenario-lucene-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          fi
           ./mvnw -B -pl taxonomy-tooling,taxonomy-app -am verify -P"ci,$APP_TEST_PROFILE" -DrunOnnxTests=true
       - name: Publish shard JUnit results
         uses: dorny/test-reporter@d1b5dff021aa968b288b02285a8bf47471c5928a # v3
