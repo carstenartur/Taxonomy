@@ -125,3 +125,4 @@ taxonomy-app/src/test/js/contextual-help.cjs
 .github/scripts/evidence-consumers.test.mjs
 .github/scripts/visible-analysis-context.test.mjs
 .github/scripts/ui-primary-graph-fixture.test.mjs
+.github/scripts/release-superseded-pr-verification.test.mjs
