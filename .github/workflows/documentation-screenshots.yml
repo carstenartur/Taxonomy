@@ -32,7 +32,7 @@ permissions:
 
 concurrency:
   group: taxonomy-documentation-screenshots-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   EMBEDDING_MODEL_REVISION: e8f8c211226b894fcb81acc59f3b34ba3efd5f42
