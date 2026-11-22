@@ -89,7 +89,7 @@ public class LayeredDiagramLayoutService {
                         firstRowY + row * (NODE_HEIGHT + ROW_GAP),
                         NODE_WIDTH,
                         NODE_HEIGHT,
-                        node.responsibility(), node.missingMeasurements());
+                        node.responsibility(), node.missingMeasurements(), node.catalogueUuid());
                 sceneNodes.add(sceneNode);
                 byId.put(sceneNode.id(), sceneNode);
             }

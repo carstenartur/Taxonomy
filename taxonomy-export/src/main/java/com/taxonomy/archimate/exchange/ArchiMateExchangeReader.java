@@ -105,7 +105,7 @@ public final class ArchiMateExchangeReader {
             return new DiagramNode(element.id(), element.label(), value(p, "taxonomy.type"),
                     number(p, "taxonomy.relevance"), flag(p, "taxonomy.anchor"), integer(p, "taxonomy.layer"),
                     integer(p, "taxonomy.depth"), flag(p, "taxonomy.selectedForImpact"),
-                    optional(p, "taxonomy.parentId"), false);
+                    optional(p, "taxonomy.parentId"), false, null, null, optional(p, "taxonomy.catalogueUuid"));
         }).toList();
         List<DiagramEdge> edges = model.relationships().stream().map(relation -> {
             var p = relation.properties();

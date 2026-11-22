@@ -320,6 +320,7 @@
             && context.request.includeArchitectureView !== false
             && S.lastAnalyzedText === context.request.businessText && sameScope(previousScope, S.lastAnalysisScope);
         S.currentArchView = result.architectureView || (sameEvidenceScope ? S.currentArchView : null);
+        window.TaxonomyExport?.retainArchitectureCatalogue?.(result.architectureView, result.tree);
         var hasRelationEvidence = Object.prototype.hasOwnProperty.call(result, 'relationSearchReport')
             || (result.architectureView && Object.prototype.hasOwnProperty.call(
                 result.architectureView, 'relationSearchReport'));

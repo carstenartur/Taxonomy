@@ -114,11 +114,16 @@ public final class PartialArchitectureProjection {
             element.setSelectedForImpact(true);
             elements.add(element); included.add(node.getCode()); added++;
         }
+        var uuids = truncated || !pending.isEmpty() ? Map.<String, String>of()
+                : CatalogueSourceUuids.fromTree(result.getTree());
         // Containment is the retained hierarchy, not a generated architectural relationship.
         for (var element : elements) {
             var node = index.get(element.getNodeCode());
             if (node != null && Objects.equals(node.getTaxonomyRoot(), element.getTaxonomySheet())) {
                 element.retainCatalogueTitles(node.getNameEn(), node.getNameDe());
+                String recorded = uuids.get(node.getCode());
+                String supplied = element.getCatalogueUuid();
+                element.setCatalogueUuid(supplied == null || supplied.equals(recorded) ? recorded : null);
             }
             boolean parentRemoved = navigationContext.contains(element.getParentNodeCode())
                     && !included.contains(element.getParentNodeCode());

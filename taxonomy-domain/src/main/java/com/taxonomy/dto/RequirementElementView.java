@@ -8,6 +8,12 @@ import com.fasterxml.jackson.annotation.JsonSetter;
 public class RequirementElementView {
 
     private String nodeCode;
+    private String catalogueUuid;
+
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public String getCatalogueUuid() { return catalogueUuid; }
+    public void setCatalogueUuid(String value) { catalogueUuid = CatalogueSourceUuids.normalize(value); }
+
     private String title;
     private CatalogueTitles catalogueTitles;
 

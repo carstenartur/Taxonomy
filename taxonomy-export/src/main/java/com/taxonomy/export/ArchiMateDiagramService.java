@@ -122,6 +122,7 @@ public class ArchiMateDiagramService {
             var mapping = ArchiMateExchangeProfile.element(node.type());
             Map<String, ArchiMateProperty> properties = new LinkedHashMap<>();
             properties.put("taxonomy.type", ArchiMateProperty.text(node.type()));
+            if (node.catalogueUuid() != null) properties.put("taxonomy.catalogueUuid", ArchiMateProperty.text(node.catalogueUuid()));
             properties.put("taxonomy.relevance", score(node.relevance()));
             properties.put("taxonomy.anchor", ArchiMateProperty.flag(node.anchor()));
             properties.put("taxonomy.selectedForImpact", ArchiMateProperty.flag(node.selectedForImpact()));

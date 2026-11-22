@@ -125,6 +125,12 @@ public class DiagramProjectionService {
     }
 
     public DiagramModel projectRaw(RequirementArchitectureView view, String title, boolean german) {
+        return projectRaw(view, title, german, null);
+    }
+
+    /** A retained tree, when supplied, disambiguates catalogue identities for this snapshot only. */
+    public DiagramModel projectRaw(RequirementArchitectureView view, String title, boolean german,
+                                   Map<String, String> retainedUuids) {
         if (view == null) {
             return new DiagramModel(title, List.of(), List.of(),
                     new DiagramLayout("LR", true));
@@ -159,6 +165,11 @@ public class DiagramProjectionService {
             Integer recordedDepth = el.recordedTaxonomyDepth();
             boolean relevanceMissing = recordedRelevance == null;
             boolean depthMissing = recordedDepth == null;
+            String sourceUuid = el.getCatalogueUuid();
+            if (retainedUuids != null) {
+                String recorded = retainedUuids.get(el.getNodeCode());
+                sourceUuid = sourceUuid == null || sourceUuid.equals(recorded) ? recorded : null;
+            }
             nodes.add(new DiagramNode(
                     el.getNodeCode(),
                     el.getTitle() != null ? el.displayTitle(german) : el.getNodeCode(),
@@ -171,7 +182,7 @@ public class DiagramProjectionService {
                     parentId,
                     false,
                     el.getResponsibility(), relevanceMissing || depthMissing
-                            ? new DiagramNode.MissingMeasurements(relevanceMissing, depthMissing) : null));
+                            ? new DiagramNode.MissingMeasurements(relevanceMissing, depthMissing) : null, sourceUuid));
         }
 
         List<DiagramEdge> edges = new ArrayList<>();

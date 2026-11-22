@@ -169,7 +169,8 @@ public class ArchitectureEditorProjection {
         List<DiagramNode> nodes = model.getElements().stream().map(element -> new DiagramNode(
                 element.getId(), displayTitles.getOrDefault(element.getId(), element.getTitle()), element.getType(), 0, false,
                 typeRanks.getOrDefault(element.getType(), 0), 0, false,
-                parents.get(element.getId()), false, assignments.get(element.getId()))).toList();
+                parents.get(element.getId()), false, assignments.get(element.getId()), null,
+                element.getExtensions().get(com.taxonomy.dsl.model.CatalogueReference.UUID_PROPERTY))).toList();
         List<DiagramEdge> edges = model.getRelations().stream().map(relation -> new DiagramEdge(
                 relation.getSourceId() + " " + relation.getRelationType() + " " + relation.getTargetId(),
                 relation.getSourceId(), relation.getTargetId(), relation.getRelationType(), 0)).toList();

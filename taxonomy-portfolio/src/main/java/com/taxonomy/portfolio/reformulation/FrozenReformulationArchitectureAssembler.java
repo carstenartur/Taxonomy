@@ -49,12 +49,15 @@ final class FrozenReformulationArchitectureAssembler {
                 && Objects.equals(json.write(catalogue), json.write(detail.analysis().getTree() == null ? List.of() : detail.analysis().getTree())),
                 "Frozen catalogue or mappings disagree with snapshot detail");
 
+        var sourceUuids = new HashMap<>(CatalogueSourceUuids.fromTree(Arrays.asList(catalogue)));
         var names = new HashMap<String, TaxonomyNodeDto>();
         for (var root : catalogue) index(root, names);
         var view = payload.getArchitectureView();
         var assignments = new HashMap<String, TaxonomyResponsibilityLookup.Assignment>();
         if (view != null && view.getIncludedElements() != null) {
             for (var element : view.getIncludedElements()) {
+                String explicit = element.getCatalogueUuid();
+                if (explicit != null && !explicit.equals(sourceUuids.get(element.getNodeCode()))) sourceUuids.remove(element.getNodeCode());
                 if (element.getResponsibility() != null) assignments.putIfAbsent(element.getNodeCode(), element.getResponsibility());
             }
         }
@@ -72,7 +75,7 @@ final class FrozenReformulationArchitectureAssembler {
             nodes.add(new DiagramNode(element.nodeCode(), label,
                     Objects.toString(element.taxonomyRoot(), "Unknown"), element.relevance(),
                     element.directScore() > 0, 0, node.getLevel(), element.selectedForImpact(),
-                    parent, false, assignments.get(element.nodeCode())));
+                    parent, false, assignments.get(element.nodeCode()), null, sourceUuids.get(element.nodeCode())));
             elementDetails.add(element.nodeCode() + " — " + label + " · " + Objects.toString(element.presenceReason(), "")
                     + " · " + Objects.toString(baseline.language().equals("de") ? node.getDescriptionDe() : node.getDescriptionEn(), "")
                     + " · " + element.reviewStatus());

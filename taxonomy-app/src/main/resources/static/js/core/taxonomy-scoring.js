@@ -502,6 +502,7 @@
         S.storedBusinessText = text;
         S.lastAnalyzedText = text;
         if (result.architectureView || replacesDerivedEvidence) S.currentArchView = result.architectureView || null;
+        window.TaxonomyExport?.retainArchitectureCatalogue?.(result.architectureView, result.tree);
         B().renderView(S.taxonomyData, S.currentScores);
 
         console.log('[Taxonomy] Analysis result:', result);

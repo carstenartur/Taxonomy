@@ -7,6 +7,10 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.*;
 
 class AnalysisSnapshotAdoptionTest {
+    @Test void retainsTheCompactOriginalUuidOfTheCatalogueBusinessRole() {
+        assertThat(com.taxonomy.dsl.model.CatalogueReference.from("dbae351d4be84e9eb3865be83c73b9b4", null, null).uuid())
+                .isEqualTo("dbae351d-4be8-4e9e-b386-5be83c73b9b4");
+    }
     private final ArchitectureDslCommands dsl = new ArchitectureDslCommands();
     private final RelationKey relation = new RelationKey("system", "CONTAINS", "component");
     private AdoptAnalysisSnapshot adoption(String fingerprint) {

@@ -384,6 +384,26 @@ class ArchitectureWorkbenchServiceTest {
     }
 
     @Test
+    void legacySnapshotProjectsOnlyUuidsRecordedInItsOwnTree() {
+        var snapshot = snapshotWithArchitecture();
+        var root = new com.taxonomy.dto.TaxonomyNodeDto();
+        root.setCode("CP");
+        var child = new com.taxonomy.dto.TaxonomyNodeDto();
+        child.setCode("CP-1");
+        child.setLevel(1);
+        child.setUuid("c51af50e-1588-4ef1-bda8-3cc9c967963b");
+        root.setChildren(List.of(child));
+        snapshot.analysis().setTree(List.of(root));
+        prepareSnapshot(snapshot);
+
+        var diagram = service.load(PROJECT_ID, SNAPSHOT_ID, "alice", CONTEXT).diagram();
+        assertThat(diagram.nodes()).filteredOn(node -> node.id().equals("CP-1")).singleElement()
+                .extracting(node -> node.catalogueUuid()).isEqualTo(child.getUuid());
+        assertThat(diagram.nodes()).filteredOn(node -> node.id().equals("CR-1")).singleElement()
+                .extracting(node -> node.catalogueUuid()).isNull();
+    }
+
+    @Test
     void removesEmptyAndDuplicatePersistedWarningsWithoutChangingTheirOrder() {
         SnapshotDetail persisted = snapshotWithArchitecture();
         persisted.analysis().setWarnings(java.util.Arrays.asList(null, "", "Review relation", "  "));

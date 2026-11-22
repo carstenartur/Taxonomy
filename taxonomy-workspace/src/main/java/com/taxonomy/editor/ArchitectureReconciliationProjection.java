@@ -93,7 +93,8 @@ public final class ArchitectureReconciliationProjection {
                     var node = nodes.get(position.id());
                     return new DiagramSceneNode(node.id(), node.label(), node.type(), node.relevance(), node.anchor(), node.layer(),
                             node.depth(), node.selectedForImpact(), node.parentId(), node.container(),
-                            position.x(), position.y(), position.width(), position.height());
+                            position.x(), position.y(), position.width(), position.height(),
+                            node.responsibility(), node.missingMeasurements(), node.catalogueUuid());
                 }).toList();
         List<DiagramSceneEdge> projectedEdges = common.edges().stream().filter(position -> edges.containsKey(position.id()))
                 .filter(position -> nodes.containsKey(position.sourceId()) && nodes.containsKey(position.targetId()))

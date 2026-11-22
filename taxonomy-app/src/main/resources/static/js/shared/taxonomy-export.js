@@ -321,6 +321,40 @@
             'blob');
     }
 
+    // Only a tree delivered together with this specific view identifies its historical catalogue.
+    var retainedCatalogueUuids = new WeakMap();
+    function normalizedCatalogueUuid(value) {
+        if (typeof value !== 'string') return null;
+        var uuid = value.trim().toLowerCase();
+        if (uuid.startsWith('{') && uuid.endsWith('}')) uuid = uuid.slice(1, -1);
+        uuid = uuid.replace(/^([0-9a-f]{8})([0-9a-f]{4})([0-9a-f]{4})([0-9a-f]{4})([0-9a-f]{12})$/, '$1-$2-$3-$4-$5');
+        if (!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(uuid)
+                || uuid === '00000000-0000-0000-0000-000000000000') return null;
+        return uuid;
+    }
+    function retainArchitectureCatalogue(view, tree) {
+        if (!view || typeof view !== 'object' || !Array.isArray(tree) || !tree.length) return;
+        var byCode = new Map(), byUuid = new Map(), ambiguous = new Set(), visited = new Set();
+        var pending = tree.slice();
+        while (pending.length) {
+            var node = pending.pop();
+            if (!node || visited.has(node)) continue;
+            visited.add(node);
+            if (Array.isArray(node.children)) node.children.forEach(function (child) { pending.push(child); });
+            if (!(node.level > 0) || typeof node.code !== 'string' || !node.code.trim()) continue;
+            var uuid = normalizedCatalogueUuid(node.uuid);
+            if (!uuid) continue;
+            if (byCode.has(node.code) && byCode.get(node.code) !== uuid) ambiguous.add(node.code);
+            else byCode.set(node.code, uuid);
+            if (byUuid.has(uuid) && byUuid.get(uuid) !== node.code) {
+                ambiguous.add(node.code);
+                ambiguous.add(byUuid.get(uuid));
+            } else byUuid.set(uuid, node.code);
+        }
+        ambiguous.forEach(function (code) { byCode.delete(code); });
+        retainedCatalogueUuids.set(view, byCode);
+    }
+
     var diagramExportBusy = false;
     var diagramButtons = ['exportVisio', 'exportSparx', 'exportArchiMate', 'exportMermaid', 'exportStructurizr'];
 
@@ -498,7 +532,13 @@
             if (/\/visio$/.test(url) && typeof exportView.originalRequirementText !== 'string') {
                 exportView.originalRequirementText = state.lastAnalyzedText;
             }
+            var sourceUuids = retainedCatalogueUuids.get(state.currentArchView);
             exportView.includedElements = exportView.includedElements.map(function (element) {
+                if (sourceUuids) {
+                    var recorded = sourceUuids.get(element.nodeCode);
+                    var explicit = normalizedCatalogueUuid(element.catalogueUuid);
+                    element = Object.assign({}, element, {catalogueUuid: !explicit || explicit === recorded ? recorded : undefined});
+                }
                 var reason = state.currentReasons?.[element.nodeCode];
                 if (typeof reason !== 'string' || !reason.trim()
                         || reason === element.includedBecause || reason === element.presenceReason) return element;
@@ -634,6 +674,7 @@
     }
 
     window.TaxonomyExport = Object.freeze({
+        retainArchitectureCatalogue: retainArchitectureCatalogue,
         exportSvg: exportSvg,
         exportPng: exportPng,
         exportPdf: exportPdf,

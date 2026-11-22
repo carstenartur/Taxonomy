@@ -2,9 +2,12 @@ package com.taxonomy.dsl.model;
 
 import java.util.Map;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 /** Read-only reference to a source catalogue entry; native tool GUIDs have their own namespace. */
 public record CatalogueReference(String uuid, String titleEn, String titleDe) {
+    private static final Pattern COMPACT_UUID = Pattern.compile(
+            "([0-9A-Fa-f]{8})([0-9A-Fa-f]{4})([0-9A-Fa-f]{4})([0-9A-Fa-f]{4})([0-9A-Fa-f]{12})");
     public static final String UUID_PROPERTY = "x-catalogue-uuid";
     public static final String TITLE_EN = "x-catalogue-title-en";
     public static final String TITLE_DE = "x-catalogue-title-de";
@@ -14,9 +17,11 @@ public record CatalogueReference(String uuid, String titleEn, String titleDe) {
         if (rawUuid != null) {
             String text = rawUuid.strip();
             if (text.startsWith("{") && text.endsWith("}")) text = text.substring(1, text.length() - 1);
+            if (text.length() == 32) text = COMPACT_UUID.matcher(text).replaceFirst("$1-$2-$3-$4-$5");
             try {
                 String normalized = UUID.fromString(text).toString();
-                if (normalized.equalsIgnoreCase(text)) uuid = normalized;
+                if (normalized.equalsIgnoreCase(text) && !normalized.equals("00000000-0000-0000-0000-000000000000"))
+                    uuid = normalized;
             } catch (IllegalArgumentException ignored) {
                 // Legacy imports may have a non-UUID external key.
             }

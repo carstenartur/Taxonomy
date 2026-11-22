@@ -526,6 +526,7 @@
             S.currentDiscrepancies = payload.discrepancies || [];
             S.currentProductCoverageGaps = payload.productCoverageGaps || [];
             S.currentArchView = payload.architectureView || null;
+            window.TaxonomyExport?.retainArchitectureCatalogue?.(payload.architectureView, payload.taxonomyTree);
             // Hydration precedes renderer readiness; never depend on the scoring module here.
             var report = Object.prototype.hasOwnProperty.call(payload, 'relationSearchReport')
                 ? payload.relationSearchReport : payload.architectureView?.relationSearchReport;

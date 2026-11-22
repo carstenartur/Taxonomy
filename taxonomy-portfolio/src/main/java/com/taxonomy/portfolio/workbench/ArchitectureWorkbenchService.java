@@ -3,10 +3,10 @@ package com.taxonomy.portfolio.workbench;
 import com.taxonomy.diagram.DiagramModel;
 import com.taxonomy.diagram.DiagramScene;
 import com.taxonomy.dto.AnalysisResult;
+import com.taxonomy.dto.CatalogueSourceUuids;
 import com.taxonomy.dto.RequirementArchitectureView;
 import com.taxonomy.export.DiagramProjectionService;
 import com.taxonomy.export.LayeredDiagramLayoutService;
-import com.taxonomy.export.PersistedDiagramProjection;
 import com.taxonomy.export.SvgDiagramRenderer;
 import com.taxonomy.portfolio.dto.PortfolioDtos.ElementMappingView;
 import com.taxonomy.portfolio.dto.PortfolioDtos.ProjectView;
@@ -138,8 +138,10 @@ public class ArchitectureWorkbenchService {
             architectureView.setAnalysisCoverage(analysis.getAnalysisCoverage());
         }
         boolean recordedReplay = providerBinding.isRecordedReplay(snapshot.summary().provider());
-        DiagramModel diagram = PersistedDiagramProjection.project(
-                diagramProjectionService, architectureView, SnapshotExportLabel.forReplay(recordedReplay).title(title));
+        var retainedTree = analysis.getTree();
+        var retainedUuids = retainedTree == null || retainedTree.isEmpty() ? null : CatalogueSourceUuids.fromTree(retainedTree);
+        DiagramModel diagram = diagramProjectionService.projectRaw(architectureView,
+                SnapshotExportLabel.forReplay(recordedReplay).title(title), false, retainedUuids);
         if (diagram.nodes() == null || diagram.nodes().isEmpty()) {
             throw PortfolioException.conflict(
                     "The persisted architecture view contains no exportable architecture elements");

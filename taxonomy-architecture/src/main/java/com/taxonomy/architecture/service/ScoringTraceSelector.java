@@ -102,6 +102,7 @@ public class ScoringTraceSelector {
 
         if (node != null) {
             entry.setTitle(node.getNameEn());
+            entry.setCatalogueUuid(node.getLevel() > 0 ? node.getUuid() : null);
             entry.setTaxonomySheet(node.getTaxonomyRoot());
             entry.setTaxonomyDepth(node.getLevel());
         }
