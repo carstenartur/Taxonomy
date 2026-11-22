@@ -765,6 +765,18 @@
     font-size: 0.8rem;
 }
 
+.proposal-filter-group {
+    display: flex;
+    flex-wrap: wrap;
+    max-width: 100%;
+    gap: 0.25rem;
+}
+
+.proposal-filter-group.btn-group > .btn {
+    margin-left: 0;
+    border-radius: var(--bs-border-radius-sm, 0.25rem);
+}
+
 .proposal-filter-group .btn {
     font-size: 0.78rem;
 }

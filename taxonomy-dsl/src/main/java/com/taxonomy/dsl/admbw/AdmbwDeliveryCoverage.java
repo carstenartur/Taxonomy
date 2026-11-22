@@ -34,7 +34,7 @@ public record AdmbwDeliveryCoverage(String status, String sourceViewId,
         ArchitectureView selected = viewId == null || viewId.isBlank() ? null : model.getViews().stream()
                 .filter(view -> viewId.equals(view.getId())).findFirst().orElseThrow();
         Set<String> members = selected == null ? model.allElementIds() : new HashSet<>(selected.getIncludes());
-        String recorded = selected == null ? null : selected.getExtensions().get("x-analysis-relation-members");
+        String recorded = AdmbwFffmlvProfile.recordedRelationMembers(selected);
         Set<String> allowedRelations = recorded == null ? null : new HashSet<>(Arrays.asList(recorded.split("\n")));
         Set<String> represented = Stream.concat(c1.elements().stream(), r7.elements().stream())
                 .map(AdmbwFffmlvProfile.Element::ref).collect(Collectors.toSet());

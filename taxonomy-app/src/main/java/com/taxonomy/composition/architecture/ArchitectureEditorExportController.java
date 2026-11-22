@@ -8,6 +8,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 
 import com.taxonomy.dsl.admbw.AdmbwFffmlvProfile;
+import com.taxonomy.dsl.admbw.AdmbwPreparation;
 import com.taxonomy.dsl.command.ArchitectureDslCommands.CommandProblem;
 import com.taxonomy.editor.ArchitectureEditorExportPort;
 import com.taxonomy.editor.ArchitectureEditorExportPort.ExportDocument;
@@ -123,7 +124,17 @@ public final class ArchitectureEditorExportController {
                 throw admbwExporterUnavailable();
             var delivery = new AdmbwQeaExport.Delivery(report.projectCode(), checked.commit(),
                     views.stream().map(ArchitectureEditorExportController::nativeView).toList(), report.coverage().notes());
-            var file = writer.exportAdmbw(delivery, rootPackageGuid, readQeaBasis(request));
+            byte[] bytes = readQeaBasis(request);
+            var checkpoint = exports.readCheckpoint(readContext(repositoryId, workspaceScopeKey, branch), commit);
+            if (AdmbwPreparation.requiresBasisInspection(checkpoint.dsl(), report)) {
+                if (!writer.supportsBasisInspection()) throw admbwExporterUnavailable();
+                var basis = writer.inspectAdmbwBasis(bytes);
+                AdmbwPreparation.validateDeliveryBasis(checkpoint.dsl(), report, rootPackageGuid,
+                        new AdmbwPreparation.Basis(basis.sha256(), basis.projectGuid(), basis.references().stream()
+                                .map(ref -> new AdmbwPreparation.Reference(ref.guid(), ref.stereotype(), ref.name(), ref.notes(),
+                                        ref.packagePath(), ref.rootGuid(), ref.ownerGuid())).toList()));
+            }
+            var file = writer.exportAdmbw(delivery, rootPackageGuid, bytes);
             return ResponseEntity.ok()
                     .cacheControl(CacheControl.noStore())
                     .contentType(MediaType.parseMediaType(file.mediaType()))
@@ -143,12 +154,15 @@ public final class ArchitectureEditorExportController {
         var context = readContext(repositoryId, workspaceScopeKey, branch);
         var checkpoint = exports.readCheckpoint(context, commit);
         var assessment = new AdmbwFffmlvProfile().assess(checkpoint.dsl(), projectCode, viewId);
-        var qeaIssues = assessment.requirementDerivation().elements().stream()
+        return new AdmbwAssessment(repositoryId, workspaceScopeKey, branch, checkpoint.commit(), assessment, qeaIssues(assessment));
+    }
+
+    static List<AdmbwFffmlvProfile.Issue> qeaIssues(AdmbwFffmlvProfile.Report assessment) {
+        return assessment.requirementDerivation().elements().stream()
                 .filter(e -> e.stereotype().equals("ResourceRole") && e.catalogueGuid() == null)
                 .map(e -> new AdmbwFffmlvProfile.Issue("ADMBW_QEA_PART_OWNER", e.ref(),
                         "Bind this ResourceRole to an existing owned EA Part before native delivery."))
                 .toList();
-        return new AdmbwAssessment(repositoryId, workspaceScopeKey, branch, checkpoint.commit(), assessment, qeaIssues);
     }
 
     private static AdmbwQeaExport.View nativeView(AdmbwFffmlvProfile.View view) {

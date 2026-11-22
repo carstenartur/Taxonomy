@@ -60,6 +60,13 @@
             renderer.fit({initial:true});
         }
     });
+    var preparationPanel = window.TaxonomyAdmbwPreparation?.create({root:root, api:api, t:t, report:report,
+        onAccepted:async function (publication, origin, viewId) {
+            if (!active || loading || !view || !sameScope(context(), origin) || context().actor !== origin.actor) return;
+            selectedView = viewId;
+            await load(preserveWorkspacePin(publication.context, origin), null, true);
+        }
+    });
     function el(id) { return root.querySelector('#' + id); }
     function t(key) { return window.TaxonomyI18n.t.apply(null, arguments); }
     function short(commit) { return commit ? commit.substring(0, 12) : t('editor.emptyBranch'); }
@@ -133,7 +140,7 @@
                 var list = document.createElement('ul');
                 reportView.issues.map(function (issue) { return issue.object + ' · ' + issue.detail; })
                     .concat(reportView.requiredReviews).forEach(function (detail) {
-                        var item = document.createElement('li'); item.textContent = detail; list.append(item);
+                        var item = document.createElement('li'); item.textContent = window.TaxonomyAdmbwCoverage.message(detail, t); list.append(item);
                     });
                 result.append(title, list);
             });
@@ -224,6 +231,7 @@
         briefPanel?.setEnabled(writable);
         directory?.setEnabled(writable);
         planningPanel.setEnabled(writable);
+        preparationPanel?.update(active ? view : null, active && !busy && !loading);
         focusPanel.setLocked(!active || busy || loading);
         renderAdmbwExport();
         el('editorArrange').disabled = busy || loading || !view;

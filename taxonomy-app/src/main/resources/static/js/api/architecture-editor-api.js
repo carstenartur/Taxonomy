@@ -41,6 +41,15 @@ window.ArchitectureEditorApi = (function () {
             method: 'POST', headers: headers, body: JSON.stringify(body)
         }, Object.assign({ retries: 0 }, exactPolicy(context), policy)).then(function (response) { return response.json(); });
     }
+    function prepareAdmbw(action, request, file, signal) {
+        var context = request.context, parts = new FormData();
+        parts.append('request', new Blob([JSON.stringify(request)], {type:'application/json'}));
+        parts.append('basis', file, file.name);
+        return window.TaxonomyApiClient.request(base + '/admbw/' + action + '?' + query(context), {
+            method:'POST', headers:{'If-Match':'"workspace-revision-' + context.revision + '"'}, body:parts
+        }, Object.assign({retries:0, timeoutMillis:120000, signal:signal, preservePreconditionFailure:action === 'accept'},
+            exactPolicy(context))).then(response => response.json());
+    }
     return {
         load: function (context, revision, signal, layout, layoutRevision, viewId) {
             return window.TaxonomyApiClient.getJson(base + '?' + query(context, revision, layout, layoutRevision, viewId), Object.assign({ signal: signal }, exactPolicy(context)));
@@ -83,6 +92,13 @@ window.ArchitectureEditorApi = (function () {
             if (['svg', 'pdf'].indexOf(format) < 0) throw new Error('Unknown export format');
             return window.TaxonomyI18n.resolveUrl(base + '.' + format + '?' + query(context, source === 'GIT_CHECKPOINT' ? context.commit : context.revision, layout, layoutRevision, viewId));
         },
+        inspectAdmbwBasis: function (context, file, signal) {
+            return window.TaxonomyApiClient.request(base + '/admbw/basis?' + query(context), {
+                method: 'POST', headers: {'Content-Type':'application/vnd.sparx.qea'}, body: file
+            }, Object.assign({retries:0, timeoutMillis:120000, signal:signal}, exactPolicy(context))).then(response => response.json());
+        },
+        previewAdmbwPreparation: function (request, file, signal) { return prepareAdmbw('preview', request, file, signal); },
+        acceptAdmbwPreparation: function (request, file) { return prepareAdmbw('accept', request, file); },
         admbwUrl: function (context, projectCode, viewId) {
             return window.TaxonomyI18n.resolveUrl(admbwPath(context, projectCode, viewId));
         },

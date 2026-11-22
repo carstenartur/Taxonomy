@@ -60,6 +60,60 @@
             <p id="editorAdmbwQeaStatus" role="status" aria-live="polite" hidden></p>
         </div>
     </details>
+    <details id="editorAdmbwPreparation" hidden>
+        <summary data-i18n="editor.prep.title">Prepare C1–S1 and R7 from this workspace</summary>
+        <p data-i18n="editor.prep.basisHelp">Select objects from the agreed project catalogue. The public MASC example provides training references.</p>
+        <form id="prepForm">
+            <fieldset id="prepInputs">
+                <legend data-i18n="editor.prep.inputs">Sources and proposed derivation</legend>
+                <label for="prepBasis" data-i18n="editor.admbw.qeaBasis">QEA basis (up to 32 MiB)</label>
+                <input id="prepBasis" type="file" accept=".qea,application/vnd.sparx.qea" required />
+                <button id="prepInspect" type="button" data-i18n="editor.prep.inspect">Inspect QEA basis</button>
+                <div class="prep-grid">
+                    <div><label for="prepProject" data-i18n="editor.admbw.projectCode">Project code</label>
+                        <input id="prepProject" maxlength="32" pattern="[A-Za-z0-9][A-Za-z0-9_\-]{0,31}" required /></div>
+                    <div><label for="prepRoot" data-i18n="editor.prep.root">Model root from the QEA</label>
+                        <select id="prepRoot" required></select></div>
+                    <div><label for="prepService" data-i18n="editor.prep.service">Canonical service</label>
+                        <select id="prepService" required></select></div>
+                    <div><label for="prepCapability" data-i18n="editor.prep.capability">Native capability</label>
+                        <select id="prepCapability" required></select></div>
+                    <div><label for="prepRequirement" data-i18n="editor.planning.requirement">Requirement</label>
+                        <select id="prepRequirement" required></select></div>
+                    <div><label for="prepType" data-i18n="editor.prep.type">R7 classification</label>
+                        <select id="prepType" required>
+                            <option value="" data-i18n="editor.prep.choose">Select…</option>
+                            <option value="FunctionalRequirement" data-i18n="editor.planning.choice.FunctionalRequirement">Functional requirement</option>
+                            <option value="NonfunctionalRequirement" data-i18n="editor.planning.choice.NonfunctionalRequirement">Non-functional requirement</option>
+                        </select></div>
+                </div>
+                <label for="prepSource" data-i18n="editor.prep.source">Current requirement text</label>
+                <textarea id="prepSource" readonly rows="5"></textarea>
+                <label for="prepQuote" data-i18n="editor.prep.quote">Verbatim evidence from this requirement</label>
+                <textarea id="prepQuote" rows="2" maxlength="8000" required></textarea>
+                <label for="prepConstraint" data-i18n="editor.prep.constraint">Proposed operational constraint</label>
+                <textarea id="prepConstraint" rows="3" maxlength="8000" required></textarea>
+                <label for="prepSubject" data-i18n="editor.prep.subject">Native subject of the constraint</label>
+                <select id="prepSubject" required></select>
+                <label for="prepRationale" data-i18n="editor.rationale">Reason for the command</label>
+                <textarea id="prepRationale" rows="2" maxlength="1000" required></textarea>
+                <button id="prepPreview" type="submit" data-i18n="editor.preview">Preview change</button>
+            </fieldset>
+        </form>
+        <p id="prepStatus" role="status" aria-live="polite"></p>
+        <section id="prepResult" aria-labelledby="prepResultTitle" hidden></section>
+        <fieldset id="prepReview" hidden>
+            <legend data-i18n="editor.prep.review">Review before saving</legend>
+            <div><input id="prepRelationshipReviewed" type="checkbox" />
+                <label for="prepRelationshipReviewed" data-i18n="editor.prep.relationshipReviewed">I reviewed the service-to-capability relationship.</label></div>
+            <div><input id="prepDerivationReviewed" type="checkbox" />
+                <label for="prepDerivationReviewed" data-i18n="editor.prep.derivationReviewed">I reviewed the R7 derivation against the quoted requirement and its native subject.</label></div>
+            <button id="prepAccept" type="button" disabled data-i18n="editor.prep.accept">Save reviewed changes and checkpoint</button>
+        </fieldset>
+        <p id="prepReceipt" role="status" aria-live="polite"></p>
+        <button id="prepRetry" type="button" hidden data-i18n="editor.prep.retry">Retry the same operation</button>
+        <button id="prepDownload" type="button" aria-describedby="prepReceipt" hidden data-i18n="editor.admbw.qeaDownload">Download ADMBw QEA copy</button>
+    </details>
     <p id="editorMode"></p>
     <section id="editorCollaboration" aria-labelledby="editorCollaborationTitle" hidden>
         <h2 id="editorCollaborationTitle" data-i18n="editor.collaboration.title">Shared editing</h2>
@@ -287,6 +341,7 @@
 <script th:src="@{/js/architecture-responsibility-tree.js}" src="/js/architecture-responsibility-tree.js"></script>
 <script th:src="@{/js/architecture-organization-directory.js}" src="/js/architecture-organization-directory.js"></script>
 <script th:src="@{/js/architecture-admbw-coverage.js}" src="/js/architecture-admbw-coverage.js"></script>
+<script th:src="@{/js/architecture-admbw-preparation.js}" src="/js/architecture-admbw-preparation.js"></script>
 <script th:src="@{/js/architecture-editor.js}" src="/js/architecture-editor.js"></script>
 </body>
 </html>

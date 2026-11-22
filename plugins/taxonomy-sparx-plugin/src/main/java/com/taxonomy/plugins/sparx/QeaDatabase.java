@@ -28,7 +28,8 @@ final class QeaDatabase {
     private static final byte[] MAGIC = "SQLite format 3\0".getBytes(StandardCharsets.US_ASCII);
     private static final List<String> TABLES = List.of("usys_system", "t_package", "t_object", "t_connector",
             "t_diagram", "t_diagramobjects", "t_diagramlinks", "t_objectproperties", "t_connectortag", "t_xref");
-    private static final List<String> ADMBW_TABLES = TABLES;
+    private enum ReadMode { EXCHANGE, ADMBW_EXPORT, ADMBW_REFERENCES }
+    private static final List<String> REFERENCE_TABLES = List.of("usys_system", "t_package", "t_object", "t_xref", "t_connector");
     private static final Map<String, List<String>> ADMBW_COLUMNS = Map.of(
             "usys_system", List.of("property", "value"),
             "t_package", List.of("package_id", "parent_id", "name", "ea_guid"),
@@ -85,12 +86,15 @@ final class QeaDatabase {
     private int textCharacters;
     private boolean interrupted;
 
-    Snapshot read(byte[] bytes) { return read(bytes, false); }
+    Snapshot read(byte[] bytes) { return read(bytes, ReadMode.EXCHANGE); }
 
-    Snapshot readAdmbw(byte[] bytes) { return read(bytes, true); }
+    Snapshot readAdmbw(byte[] bytes) { return read(bytes, ReadMode.ADMBW_EXPORT); }
 
-    private Snapshot read(byte[] bytes, boolean admbw) {
-        List<String> selectedTables = admbw ? ADMBW_TABLES : TABLES;
+    Snapshot readAdmbwReferences(byte[] bytes) { return read(bytes, ReadMode.ADMBW_REFERENCES); }
+
+    private Snapshot read(byte[] bytes, ReadMode mode) {
+        List<String> selectedTables = mode == ReadMode.ADMBW_REFERENCES ? REFERENCE_TABLES : TABLES;
+        if (bytes == null) throw fail("QEA_FILE_INVALID", "Supply a closed QEA basis");
         if (bytes.length > MAX_BYTES) throw fail("QEA_LIMIT", "The QEA upload exceeds 32 MiB");
         if (bytes.length < 512 || !Arrays.equals(MAGIC, Arrays.copyOf(bytes, MAGIC.length)))
             throw fail("QEA_FILE_INVALID", "Upload a complete SQLite QEA snapshot with a valid database header");
@@ -132,7 +136,7 @@ final class QeaDatabase {
                 }
                 Map<String, List<Row>> tables = new LinkedHashMap<>();
                 for (String table : selectedTables) if (schema.containsKey(table))
-                    tables.put(table, table(connection, table, admbw));
+                    tables.put(table, table(connection, table, mode));
                 List<String> omitted = schema.keySet().stream().filter(t -> !selectedTables.contains(t) && !t.startsWith("sqlite_"))
                         .filter(t -> Set.of("table", "view").contains(schema.get(t).kind())).sorted().toList();
                 return new Snapshot(Map.copyOf(tables), omitted, digest(bytes), bytes.length);
@@ -164,13 +168,19 @@ final class QeaDatabase {
         return result;
     }
 
-    private List<Row> table(Connection connection, String table, boolean admbw) throws SQLException {
+    private List<Row> table(Connection connection, String table, ReadMode mode) throws SQLException {
+        boolean admbw = mode != ReadMode.EXCHANGE;
         var result = new ArrayList<Row>();
         // Native delivery retains structural fields and distinct orphan IDs that new rows could otherwise reuse.
         Collection<String> required = admbw ? ADMBW_COLUMNS.get(table) : COLUMNS.get(table);
-        // table is chosen exclusively from TABLES or ADMBW_TABLES.
+        // Table and column identifiers are chosen exclusively from fixed schema constants.
         String from = " FROM \"" + table + "\"";
         String query = !admbw ? "SELECT *" + from : switch (table) {
+            case "t_object" -> mode == ReadMode.ADMBW_REFERENCES
+                    ? "SELECT " + String.join(", ", required) + ", package_id, "
+                        + "CASE WHEN " + AdmbwQeaProfile.REFERENCE_FILTER + " THEN name END AS name, "
+                        + "CASE WHEN " + AdmbwQeaProfile.REFERENCE_FILTER + " THEN note END AS note" + from
+                    : "SELECT " + String.join(", ", required) + from;
             case "t_xref" -> "SELECT xrefid, name, type, client, CASE WHEN lower(name) = 'stereotypes' THEN description END AS description" + from;
             case "usys_system" -> "SELECT property, CASE WHEN lower(property) = 'projectguid' THEN value END AS value" + from;
             case "t_diagramobjects" -> """
