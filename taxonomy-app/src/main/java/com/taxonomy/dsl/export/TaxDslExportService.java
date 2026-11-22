@@ -94,6 +94,8 @@ public class TaxDslExportService implements com.taxonomy.workspace.service.Proje
                 el.setTitle(node.getNameEn());
                 el.setDescription(node.getDescriptionEn());
                 el.setTaxonomy(node.getTaxonomyRoot());
+                var reference = CatalogueReference.from(node.getUuid(), node.getNameEn(), node.getNameDe());
+                if (reference != null) reference.writeTo(el.getExtensions());
                 if (node.getParentCode() != null) el.getExtensions().put("x-catalogue-parent", node.getParentCode());
                 if (node.getSortOrder() != null) el.getExtensions().put("x-catalogue-order", node.getSortOrder().toString());
                 model.getElements().add(el);

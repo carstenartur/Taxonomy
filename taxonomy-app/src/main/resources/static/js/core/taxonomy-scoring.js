@@ -113,6 +113,15 @@
         return String(locale || '').toLowerCase().startsWith('de');
     }
 
+    function displayArchitectureElements(elements) {
+        if (!isGermanLocale()) return elements;
+        return elements.map(function (element) {
+            var titles = element.catalogueTitles;
+            return titles && element.title === titles.en && typeof titles.de === 'string' && titles.de.trim()
+                ? Object.assign({}, element, {title: titles.de}) : element;
+        });
+    }
+
     function scoreLabel(code, effective, raw, detail) {
         if (isProductScore(detail)) {
             if (productRelevancePending(detail)) {
@@ -1768,7 +1777,7 @@
                 view.notes.map(n => escapeHtml(n)).join('<br>') + '</div>';
         }
 
-        const elements = view.includedElements || [];
+        const elements = displayArchitectureElements(view.includedElements || []);
         const relationships = view.includedRelationships || [];
         const anchors = view.anchors || [];
 
@@ -2326,7 +2335,7 @@
 
         // Project the display only; the saved architecture remains authoritative for exports.
         // "All" also preserves external/legacy elements absent from the current catalogue.
-        var displayElements = view.includedElements;
+        var displayElements = displayArchitectureElements(view.includedElements);
         var displayRelationships = view.includedRelationships || [];
         var displayAnchors = view.anchors || [];
         if (B().isRelevanceFilterActive?.()) {

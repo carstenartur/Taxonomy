@@ -566,3 +566,28 @@ for (const source of [undefined, 'Original view source']) test(`Visio freezes ca
     assert.equal(JSON.parse(f.requests[0].options.body).originalRequirementText, source || 'original');
     f.resolve(binaryResponse()); await work;
 });
+
+test('architecture result cards use the frozen German title and preserve edits and source titles', () => {
+    const first = Object.freeze({nodeCode: 'BP-1016', title: 'Accounting', taxonomySheet: 'BP', relevance: 0.8,
+        catalogueTitles: {en: 'Accounting', de: 'Rechnungswesen'}});
+    const edited = Object.freeze({nodeCode: 'BP-1017', title: 'My process', taxonomySheet: 'BP', relevance: 0.7,
+        catalogueTitles: {en: 'Acquire Data', de: 'Daten beschaffen'}});
+    const state = {currentArchView: {includedElements: [first, edited]}};
+    const tree = {querySelector: () => ({appendChild() {}}), querySelectorAll: () => []};
+    const document = {getElementById: id => id === 'taxonomyTree' ? tree : null,
+        createElement: () => ({setAttribute() {}})};
+    let language = 'de';
+    const i18n = {getLocale: () => language, t: key => key};
+    const window = {TaxonomyState: state, TaxonomyI18n: i18n};
+    const script = readFileSync(path.resolve(__dirname, '../../main/resources/static/js/core/taxonomy-scoring.js'), 'utf8');
+    vm.runInNewContext(script, {window, document, TaxonomyI18n: i18n, TaxonomyUtils: {escapeHtml: String}});
+    window.TaxonomyScoring.renderSummaryView([], {});
+    assert.match(tree.innerHTML, /Rechnungswesen/);
+    assert.match(tree.innerHTML, /My process/);
+    assert.doesNotMatch(tree.innerHTML, /Daten beschaffen|Accounting/);
+    language = 'en';
+    window.TaxonomyScoring.renderSummaryView([], {});
+    assert.match(tree.innerHTML, /Accounting/);
+    assert.doesNotMatch(tree.innerHTML, /Rechnungswesen/);
+    assert.equal(first.title, 'Accounting');
+});

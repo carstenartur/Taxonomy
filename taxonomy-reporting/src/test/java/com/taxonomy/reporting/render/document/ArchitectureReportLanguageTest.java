@@ -14,6 +14,31 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class ArchitectureReportLanguageTest {
+    @Test void frozenCatalogueTitlesFollowTheDocumentLanguageAndPreserveRenamedElements() throws Exception {
+        var report = new ArchitectureReport();
+        report.setBusinessText("Catalogue request");
+        var view = new RequirementArchitectureView();
+        var accounting = new RequirementElementView();
+        accounting.setNodeCode("BP-1016");
+        accounting.setTitle("Accounting");
+        accounting.retainCatalogueTitles("Accounting", "Rechnungswesen");
+        var renamed = new RequirementElementView();
+        renamed.setNodeCode("BP-1017");
+        renamed.setTitle("Custom title");
+        renamed.retainCatalogueTitles("Acquire Data", "Daten beschaffen");
+        view.setIncludedElements(List.of(accounting, renamed));
+        report.setArchitectureView(view);
+        var text = new ArchitectureReportTextRenderer();
+        try (var word = new XWPFDocument(new ByteArrayInputStream(new ArchitectureReportDocxRenderer().render(report, "de")));
+             var extractor = new XWPFWordExtractor(word)) {
+            for (String rendered : List.of(text.renderMarkdown(report, "de"), text.renderHtml(report, "de"), extractor.getText())) {
+                assertThat(rendered).contains("Rechnungswesen", "Custom title").doesNotContain("Daten beschaffen");
+            }
+        }
+        assertThat(text.renderMarkdown(report, "en")).contains("Accounting", "Custom title").doesNotContain("Rechnungswesen");
+        assertThat(accounting.getTitle()).isEqualTo("Accounting");
+    }
+
     @Test void retainedModelAndCatalogueAreReadableInEveryDeliveredDocument() throws Exception {
         var report = new ArchitectureReport();
         report.setBusinessText("Museum catalogue");

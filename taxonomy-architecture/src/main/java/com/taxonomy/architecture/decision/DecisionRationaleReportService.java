@@ -334,7 +334,7 @@ public class DecisionRationaleReportService {
         Instant generatedAt = Instant.now();
 
         TaxonomyCatalogueMetadataService.CatalogueMetadata catalogue =
-                catalogueMetadataService.getMetadata();
+                input.taxonomyTree().isEmpty() ? catalogueMetadataService.getMetadata() : null;
         DecisionReportBuildMetadataService.BuildMetadata buildMetadata =
                 buildMetadataService.current();
         List<TaxonomyNodeDto> fingerprintTree = input.taxonomyTree().isEmpty()

@@ -383,7 +383,7 @@
         if (responsibilityDisplay?.enabled() && !displayedAssignments) {
             displayedAssignments = responsibilityDisplay.fromEditor(view);
         }
-        tree.render({elements: view.model.elements, hierarchy: view.hierarchy,
+        tree.render({elements: view.model.elements, hierarchy: view.hierarchy, displayTitles: view.displayTitles,
             selected: selected, query: el('editorSearch').value,
             assignments: responsibilityDisplay?.enabled() ? displayedAssignments : null});
     }
@@ -485,7 +485,8 @@
     }
     function renderRelationTargets() {
         relationTargets.replaceChildren();
-        legalRelationTargets().forEach(function (target) { option(relationTargets, target.id, target.title || target.id); });
+        legalRelationTargets().forEach(function (target) { option(relationTargets, target.id,
+            Object.hasOwn(view.displayTitles || {}, target.id) ? view.displayTitles[target.id] : target.title || target.id); });
         validateRelationTarget();
     }
     function renderRelationChoices() {

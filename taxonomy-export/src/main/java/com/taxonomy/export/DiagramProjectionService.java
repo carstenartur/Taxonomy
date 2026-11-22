@@ -83,7 +83,11 @@ public class DiagramProjectionService {
      * @return a curated diagram model
      */
     public DiagramModel project(RequirementArchitectureView view, String title) {
-        DiagramModel raw = projectRaw(view, title);
+        return project(view, title, false);
+    }
+
+    public DiagramModel project(RequirementArchitectureView view, String title, boolean german) {
+        DiagramModel raw = projectRaw(view, title, german);
         DiagramModel curated = policy.apply(raw);
         if (view != null && view.getRelationSearchReport() != null) {
             // A visual policy may omit nodes/edges, but may not transform a verified
@@ -117,6 +121,10 @@ public class DiagramProjectionService {
      * @return a raw diagram model with all projected nodes and edges
      */
     public DiagramModel projectRaw(RequirementArchitectureView view, String title) {
+        return projectRaw(view, title, false);
+    }
+
+    public DiagramModel projectRaw(RequirementArchitectureView view, String title, boolean german) {
         if (view == null) {
             return new DiagramModel(title, List.of(), List.of(),
                     new DiagramLayout("LR", true));
@@ -153,7 +161,7 @@ public class DiagramProjectionService {
             boolean depthMissing = recordedDepth == null;
             nodes.add(new DiagramNode(
                     el.getNodeCode(),
-                    el.getTitle() != null ? el.getTitle() : el.getNodeCode(),
+                    el.getTitle() != null ? el.displayTitle(german) : el.getNodeCode(),
                     type,
                     relevanceMissing ? el.getRelevance() : recordedRelevance,
                     el.isAnchor(),

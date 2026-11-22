@@ -5,10 +5,10 @@
     const PAGE_SIZE = 50;
     const ROOT = Symbol('top level');
 
-    function buildIndex(elements, hierarchy, t) {
+    function buildIndex(elements, hierarchy, t, titles) {
         const nodes = new Map(), parents = new Map(), children = new Map();
         for (const item of elements) {
-            nodes.set(item.id, {id:item.id, label:item.title || item.id, item});
+            nodes.set(item.id, {id:item.id, label:Object.hasOwn(titles, item.id) ? titles[item.id] : item.title || item.id, item});
         }
         for (const item of elements) {
             const parent = Object.hasOwn(hierarchy, item.id) && hierarchy[item.id]?.parentId;
@@ -72,7 +72,7 @@
             for (const node of index.nodes.values()) {
                 const item = node.item;
                 if (!item) continue;
-                const searchable = [item.id, item.title, item.type, item.type && t('editor.type.' + item.type)].filter(Boolean).join(' ').toLocaleLowerCase();
+                const searchable = [item.id, item.title, node.label, item.type, item.type && t('editor.type.' + item.type)].filter(Boolean).join(' ').toLocaleLowerCase();
                 if (node.id === extraSearchSelection || searchable.includes(query)) {
                     included.add(node.id);
                     ancestors(node.id, open);
@@ -193,7 +193,7 @@
             const changed = !index || elements !== data.elements || hierarchy !== data.hierarchy;
             if (changed) {
                 elements = data.elements; hierarchy = data.hierarchy;
-                index = buildIndex(elements || [], hierarchy || {}, t);
+                index = buildIndex(elements || [], hierarchy || {}, t, data.displayTitles || {});
             }
             enteredQuery = String(data.query || '').trim();
             const nextQuery = enteredQuery.toLocaleLowerCase();

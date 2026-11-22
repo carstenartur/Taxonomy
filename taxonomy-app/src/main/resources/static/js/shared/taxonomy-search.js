@@ -407,7 +407,7 @@
             html += '<span class="search-result-code fw-semibold me-1">'
                 + escapeHtml(node.code) + '</span> ';
             html += '<span class="search-result-name text-truncate flex-grow-1">'
-                + escapeHtml(node.nameEn || '') + '</span>';
+                + escapeHtml((document.documentElement.lang?.toLowerCase().startsWith('de') && node.nameDe) || node.nameEn || node.name || '') + '</span>';
             html += percentageBadge;
             html += '</a></div>';
         }

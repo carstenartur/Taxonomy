@@ -128,6 +128,11 @@ public final class PortfolioDtos {
             String createdBy,
             Instant createdAt,
             SourceReference source) {
+        @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+        @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_DEFAULT)
+        public boolean isDecisionSectionPresent() {
+            return !RequirementDecisionSection.questions(text).isEmpty();
+        }
     }
 
     public record RequirementView(

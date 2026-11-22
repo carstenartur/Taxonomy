@@ -24,4 +24,9 @@ public final class PersistedDiagramProjection {
         Objects.requireNonNull(projectionService, "projectionService");
         return projectionService.projectRaw(view, title);
     }
+
+    public static DiagramModel project(DiagramProjectionService projectionService, RequirementArchitectureView view,
+                                       String title, boolean german) {
+        return projectionService.projectRaw(view, title, german);
+    }
 }

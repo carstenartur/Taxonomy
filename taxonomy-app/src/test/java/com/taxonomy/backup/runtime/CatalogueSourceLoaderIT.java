@@ -3,6 +3,7 @@ package com.taxonomy.backup.runtime;
 import com.taxonomy.backup.*;
 
 import com.taxonomy.catalog.model.*;
+import com.taxonomy.catalog.definition.BundledCatalogue;
 import com.taxonomy.catalog.provenance.*;
 import com.taxonomy.catalog.provenance.CatalogueSourceJournal.*;
 import com.taxonomy.catalog.repository.*;
@@ -155,6 +156,41 @@ class CatalogueSourceLoaderIT {
         }
     }
 
+    @Test void restartAddsTranslationsWithoutReplacingOriginalNodeOrRelationRows() throws Exception {
+        try (var f = new Fixture()) {
+            String original = "classpath:data/C3_Taxonomy_Catalogue_25AUG2025.xlsx";
+            String overlay = "classpath:data/nato-taxonomy.json";
+            var resources = new DefaultResourceLoader();
+            assertThat(f.start(true, false, resources, original, overlay).isReady()).isTrue();
+            var originalGeneration = f.journal.current();
+            var account = f.nodes.findByCode("BP-1016").orElseThrow();
+            var relationIds = f.relations.findAll().stream().map(TaxonomyRelation::getId).sorted().toList();
+            assertThat(relationIds).isNotEmpty();
+            assertThat(account.getNameDe()).isNull();
+            assertThat(f.service.appliedWorkbookSha256()).contains(BundledCatalogue.ORIGINAL_SHA256);
+            f.tx.executeWithoutResult(s -> f.em.find(TaxonomyNode.class, account.getId()).setNameDe("Custom accounting title"));
+            assertThat(f.start(true, false, resources, BundledCatalogue.BILINGUAL_RESOURCE, overlay).isReady()).isTrue();
+            assertThat(f.journal.current().id()).isEqualTo(originalGeneration.id());
+            assertThat(f.service.appliedWorkbookSha256()).contains(BundledCatalogue.ORIGINAL_SHA256);
+            assertThat(f.nodes.findByCode("BP-1016").orElseThrow().getNameDe()).isEqualTo("Custom accounting title");
+            f.tx.executeWithoutResult(s -> f.em.find(TaxonomyNode.class, account.getId()).setNameDe(null));
+            assertThat(f.start(true, false, resources, BundledCatalogue.BILINGUAL_RESOURCE, overlay).isReady()).isTrue();
+            var updated = f.nodes.findByCode("BP-1016").orElseThrow();
+            assertThat(updated.getId()).isEqualTo(account.getId());
+            assertThat(updated.getUuid()).isEqualTo(account.getUuid());
+            assertThat(updated.getNameDe()).isEqualTo("Rechnungswesen");
+            assertThat(f.relations.findAll().stream().map(TaxonomyRelation::getId).sorted().toList()).isEqualTo(relationIds);
+            var translated = f.journal.current();
+            assertThat(translated.id()).isNotEqualTo(originalGeneration.id());
+            assertThat(translated.workbook().sha256()).isNotEqualTo(originalGeneration.workbook().sha256());
+            assertThat(f.service.appliedWorkbookSha256()).contains(translated.workbook().sha256());
+            assertThat(translated.relations()).isEqualTo(originalGeneration.relations());
+            assertThat(f.journal.retainedWorkbook(originalGeneration.workbook()).sha256()).isEqualTo(BundledCatalogue.ORIGINAL_SHA256);
+            assertThat(f.start(true, false, resources, BundledCatalogue.BILINGUAL_RESOURCE, overlay).isReady()).isTrue();
+            assertThat(f.journal.current().id()).isEqualTo(translated.id());
+        }
+    }
+
     @Test void inputOpenFailureDoesNotExposeConfiguredResourceDiagnostics() throws Exception {
         try (var f = new Fixture()) {
             f.resources.workbook.openFailure = new IOException("https://user:password@private.example/base.xlsx");
@@ -226,12 +262,16 @@ class CatalogueSourceLoaderIT {
             tx.executeWithoutResult(s -> systems.ensureSystemRepository());
         }
         AppInitializationStateService start(boolean overlayEnabled, boolean reload) {
+            return start(overlayEnabled, reload, resources, WORKBOOK, OVERLAY);
+        }
+        AppInitializationStateService start(boolean overlayEnabled, boolean reload, ResourceLoader resourceLoader,
+                                               String workbook, String overlay) {
             var state = new AppInitializationStateService(); var loader = new TaxonomyService(nodes, relations, state);
             service = loader;
             ReflectionTestUtils.setField(loader, "entityManager", em); ReflectionTestUtils.setField(loader, "transactionManager", transactionManager);
-            ReflectionTestUtils.setField(loader, "resourceLoader", resources); ReflectionTestUtils.setField(loader, "catalogueResource", WORKBOOK);
+            ReflectionTestUtils.setField(loader, "resourceLoader", resourceLoader); ReflectionTestUtils.setField(loader, "catalogueResource", workbook);
             ReflectionTestUtils.setField(loader, "catalogueSourceJournal", journal); ReflectionTestUtils.setField(loader, "reloadExisting", reload);
-            ReflectionTestUtils.setField(loader, "catalogueOverlayService", new CatalogueOverlayService(new ObjectMapper(), resources, overlayEnabled, OVERLAY));
+            ReflectionTestUtils.setField(loader, "catalogueOverlayService", new CatalogueOverlayService(new ObjectMapper(), resourceLoader, overlayEnabled, overlay));
             loader.initOnStartup(); return state;
         }
         void load(boolean overlayEnabled, boolean reload) { var state = start(overlayEnabled, reload); assertThat(state.getState()).as("initialization error: %s", state.getError()).isEqualTo(AppInitializationStateService.State.READY); }

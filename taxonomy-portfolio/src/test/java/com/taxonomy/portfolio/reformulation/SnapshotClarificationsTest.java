@@ -44,6 +44,24 @@ class SnapshotClarificationsTest {
                 .doesNotContainAnyElementsOf(first.questions().stream().map(DecisionQuestion::id).toList());
     }
 
+    @Test void importsOnlyExplicitAuthoredDecisionsWithExactSourceSpansAndNoInventedCatalogueNode() {
+        String question = "Welche der vorgesehenen Rollen darf diese Protokolle einsehen?";
+        String context = "Die Leseberechtigung für die Protokolle zu Veröffentlichung, Änderungen und Zugriffen ist noch offen. ";
+        String original = "Introduction?\n\n```md\n## Open decisions\nFake heading?\n```\n\n## Offene Entscheidung\n\n"
+                + context + question + "\n\n> Zitat?\n\n```\nBeispiel?\n```\n\n[ANSWERED] Already answered?\n\n"
+                + "## Open decisions\n\n- Who reviews?\n- Who approves?\n\n## Details\n\nUnrelated?";
+        var json = new PortfolioJsonCodec(JsonMapper.builder().build());
+        var result = SnapshotClarifications.from(null, "a3", json).withSourceQuestions(original, "a3", json);
+        assertThat(result.questions()).extracting(DecisionQuestion::wording).containsExactly(question, "Who reviews?", "Who approves?");
+        var discovery = result.questions().getFirst().discoveries().getFirst();
+        assertThat(discovery.nodeIds()).isEmpty();
+        assertThat(discovery.edgeIds()).isEmpty();
+        assertThat(discovery.sourceSpans()).allMatch(span -> span.matches(original));
+        assertThat(discovery.sourceSpans()).extracting(com.taxonomy.reformulation.Statement.SourceSpan::exactText)
+                .containsExactly(context + question, question);
+        assertThat(result.sections()).hasSize(3).allMatch(section -> section.taxonomyCode().isEmpty());
+    }
+
     private static AnalysisCoverage.NodeAssessment unknown(String reason) {
         return new AnalysisCoverage.NodeAssessment(AnalysisCoverage.State.UNKNOWN, null, null,
                 AnalysisCoverage.Descendants.UNASSESSED, reason);

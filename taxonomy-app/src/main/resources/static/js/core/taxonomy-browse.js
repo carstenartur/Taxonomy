@@ -663,12 +663,12 @@
                 taxonomyLoading = false;
                 setStartupBanner(false);
                 S.taxonomyData = data;
-                window.TaxonomyAnalysisScope?.render(data);
-                populateTreeRootSelect(data);
-                renderView(data, null);
+                window.TaxonomyAnalysisScope?.render(S.taxonomyData);
+                populateTreeRootSelect(S.taxonomyData);
+                renderView(S.taxonomyData, null);
                 // Populate Graph Explorer node suggestions
                 if (window.TaxonomyGraph) {
-                    window.TaxonomyGraph.populateNodeSuggestions(data);
+                    window.TaxonomyGraph.populateNodeSuggestions(S.taxonomyData);
                 }
             })
             .catch(function (err) {

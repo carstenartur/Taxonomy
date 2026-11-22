@@ -80,6 +80,7 @@ public class ElementBuildStep implements ArchitecturePipelineStep {
             if (nodeOpt.isPresent()) {
                 TaxonomyNode node = nodeOpt.get();
                 element.setTitle(node.getNameEn());
+                element.retainCatalogueTitles(node.getNameEn(), node.getNameDe());
                 element.setTaxonomySheet(node.getTaxonomyRoot());
                 element.setTaxonomyDepth(node.getLevel());
             }

@@ -76,7 +76,7 @@ public class ReformulationService {
                         com.taxonomy.dto.AnalysisLanguage.ENGLISH).value();
         if(!language.equals("de") && !language.equals("en")) throw PortfolioException.validation("language must be de or en");
         var clarification = questionnaire
-                ? SnapshotClarifications.from(detail.analysis(), snapshot.getId(), json)
+                ? SnapshotClarifications.from(detail.analysis(), snapshot.getId(), json).withSourceQuestions(version.getText(), snapshot.getId(), json)
                 : new SnapshotClarifications(List.of(), List.of());
         if (questionnaire && clarification.questions().isEmpty())
             throw PortfolioException.conflict("This snapshot contains no recorded domain questions");

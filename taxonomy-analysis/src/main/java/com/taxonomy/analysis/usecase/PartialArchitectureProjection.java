@@ -117,6 +117,9 @@ public final class PartialArchitectureProjection {
         // Containment is the retained hierarchy, not a generated architectural relationship.
         for (var element : elements) {
             var node = index.get(element.getNodeCode());
+            if (node != null && Objects.equals(node.getTaxonomyRoot(), element.getTaxonomySheet())) {
+                element.retainCatalogueTitles(node.getNameEn(), node.getNameDe());
+            }
             boolean parentRemoved = navigationContext.contains(element.getParentNodeCode())
                     && !included.contains(element.getParentNodeCode());
             if (node == null || element.getHierarchyPath() != null && !parentRemoved) continue;

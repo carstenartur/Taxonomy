@@ -3,6 +3,7 @@ package com.taxonomy.portfolio.reformulation;
 import com.taxonomy.dto.AnalysisResult;
 import com.taxonomy.dto.TaxonomyNodeDto;
 import com.taxonomy.identity.StableIdentityHash;
+import com.taxonomy.portfolio.dto.RequirementDecisionSection;
 import com.taxonomy.portfolio.service.PortfolioJsonCodec;
 import com.taxonomy.reformulation.DecisionQuestion;
 import com.taxonomy.reformulation.Section;
@@ -58,6 +59,25 @@ record SnapshotClarifications(List<DecisionQuestion> questions, List<Section> se
         var sections = byNode.entrySet().stream().map(entry -> new Section(entry.getKey(),
                 roots.getOrDefault(entry.getKey(), ""), entry.getKey(), "", List.of(), List.of(), entry.getValue())).toList();
         return new SnapshotClarifications(List.copyOf(questions.values()), sections);
+    }
+
+    SnapshotClarifications withSourceQuestions(String original, String snapshot, PortfolioJsonCodec json) {
+        var authored = RequirementDecisionSection.questions(original);
+        if (authored.isEmpty()) return this;
+        var combined = new ArrayList<>(questions);
+        var combinedSections = new ArrayList<>(sections);
+        for (var entry : authored) {
+            // A source decision has no inferred catalogue owner. Refine the exact passage in its own section.
+            String id = "source-question-" + StableIdentityHash.sha256(json.write(List.of(
+                    entry.heading(), entry.question(), entry.paragraph())));
+            var discovery = new DecisionQuestion.Discovery(snapshot, entry.heading(), "",
+                    entry.paragraph().equals(entry.question()) ? List.of(entry.question()) : List.of(entry.paragraph(), entry.question()),
+                    List.of(), List.of());
+            combined.add(new DecisionQuestion(id, new DecisionQuestion.Key(id, "SOURCE_DECISION", id), entry.question().exactText(),
+                    List.of(discovery), List.of(), TEXT, List.of(), List.of(), "", DecisionQuestion.State.OPEN));
+            combinedSections.add(new Section(id, "", entry.heading(), entry.paragraph().exactText(), List.of(), List.of(), List.of(id)));
+        }
+        return new SnapshotClarifications(List.copyOf(combined), List.copyOf(combinedSections));
     }
 
     private static void collectRoots(TaxonomyNodeDto node, String root, Map<String, String> roots) {

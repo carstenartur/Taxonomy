@@ -24,7 +24,7 @@
     function layerLabel(code) {
         var roots = window.TaxonomyState?.taxonomyData;
         var node = Array.isArray(roots) && roots.find(root => root.code === code);
-        return (node && node.nameEn) || LAYER_LABELS[code] || code || '';
+        return (node && (node.name || node.nameEn)) || LAYER_LABELS[code] || code || '';
     }
 
     function getBusinessText() {

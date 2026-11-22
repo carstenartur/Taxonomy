@@ -10,6 +10,30 @@ const source = name => readFileSync(path.join(resources, 'static/js', name), 'ut
 const tick = () => new Promise(resolve => setImmediate(resolve));
 function deferred() { let resolve, reject; const promise = new Promise((yes, no) => {resolve = yes; reject = no;}); return {promise, resolve, reject}; }
 
+test('German catalogue presentation survives nested and restored trees without altering their source evidence', () => {
+    let language = 'de-DE';
+    const window = {TaxonomyI18n: {getLocale: () => language}};
+    vm.runInNewContext(source('core/taxonomy-state.js'), {window});
+    const original = [{code: 'BP', nameEn: 'Processes', nameDe: 'Prozesse', children: [
+        {code: 'BP-1', uuid: 'original-uuid', nameEn: 'Accounting', name: 'Accounting', nameDe: 'Rechnungswesen',
+            descriptionEn: 'Accounting rules', descriptionDe: 'Buchungsregeln'},
+        {code: 'BP-2', nameEn: 'Legacy item', description: 'Legacy description'}
+    ]}];
+    window.TaxonomyState.taxonomyData = original;
+    let tree = window.TaxonomyState.taxonomyData;
+    assert.equal(tree[0].name, 'Prozesse');
+    assert.equal(tree[0].children[0].name, 'Rechnungswesen');
+    assert.equal(tree[0].children[0].description, 'Buchungsregeln');
+    assert.equal(tree[0].children[1].name, 'Legacy item');
+    assert.equal(tree[0].children[1].description, 'Legacy description');
+    assert.equal(original[0].children[0].name, 'Accounting');
+    language = 'en';
+    window.TaxonomyState.taxonomyData = tree;
+    tree = window.TaxonomyState.taxonomyData;
+    assert.equal(tree[0].children[0].name, 'Accounting');
+    assert.equal(tree[0].children[0].uuid, 'original-uuid');
+});
+
 test('a verified central checkpoint link keeps its source when viewed from a draft under a context path', () => {
     const window = {
         location: new URL('https://taxonomy.example/taxonomy/?repositoryId=repo&workspaceId=private&branch=draft'),

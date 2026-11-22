@@ -147,6 +147,8 @@ rather than treating an exported diagram as the end of the analysis.
 | Analyse again | Separately request a new analysis of the adopted version. | Earlier evidence is retained; inherited decisions keep their origins. |
 | Preserve the rationale | Export a saved revision or adoption receipt and create an explicit checkpoint when needed. | Unsaved browser text is not included in a historical export. |
 
+A saved analysis may already contain questions for the architect. In the requirement detail page, open the desired snapshot under **Analyses** and choose **Answer analysis questions…**. Record your decision and select **Reword affected sections**. Review the proposed changes before adopting and analysing the new requirement version. In the training portal example, this lets you decide who may read audit logs while preserving the separate rule on instructors viewing learner progress.
+
 **Illustrative example, not a recorded model result:** “Staff must be able to
 record working hours on mobile devices” may require a decision about offline
 capture or who may correct entries. The benefit is not just a rewritten sentence:

@@ -111,7 +111,7 @@ public class CatalogueParentIndex {
             Map<String, IndexedNode> result = new HashMap<>();
             hierarchy.nodes().forEach((id, node) -> result.put(id, new IndexedNode(
                     new Node(id, node.getTaxonomyRoot(), node.getParentCode(), node.getNameEn(), node.getNameDe(),
-                            node.getSortOrder()), node.getLevel())));
+                            node.getSortOrder(), node.getUuid()), node.getLevel())));
             return Map.copyOf(result);
         }
     }

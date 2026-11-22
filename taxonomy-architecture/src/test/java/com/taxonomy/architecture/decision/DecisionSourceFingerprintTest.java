@@ -31,7 +31,7 @@ class DecisionSourceFingerprintTest {
             new AnalysisScoreDetail("CP-product", AnalysisScoreKind.PRODUCT_SUITABILITY, 80, 64, "CP", 80));
     private final DecisionRationaleScoreSemanticsAdapter adapter = new DecisionRationaleScoreSemanticsAdapter();
     private final DecisionRationaleReportService service = new DecisionRationaleReportService(null,
-            new TaxonomyCatalogueMetadataService(null, null, "catalogue.xlsx") {
+            new TaxonomyCatalogueMetadataService(null, null, null, "catalogue.xlsx") {
                 @Override
                 public CatalogueMetadata getMetadata() {
                     return new CatalogueMetadata("catalogue.xlsx", "v1", "hash", "source", null, null, null, null);

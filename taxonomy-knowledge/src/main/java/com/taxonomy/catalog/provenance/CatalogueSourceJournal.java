@@ -40,10 +40,18 @@ public class CatalogueSourceJournal {
 
     @Transactional(propagation = Propagation.MANDATORY)
     public Snapshot reconcileOverlay(SourceUse overlay) {
+        return reconcileOverlay(overlay, null);
+    }
+
+    /** Adding a versioned translation column retains previously imported relation evidence. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public Snapshot reconcileOverlay(SourceUse overlay, CatalogueSourceBytes translatedWorkbook) {
         requireTransaction();
         var state = lockState(); var previous = snapshot(state);
         var unknown = new InputReference(Use.NOT_RETAINED, null, 0);
-        return record(state, previous, previous == null ? unknown : previous.workbook(), retain(overlay),
+        var workbook = translatedWorkbook == null ? (previous == null ? unknown : previous.workbook())
+                : retain(SourceUse.applied(translatedWorkbook));
+        return record(state, previous, workbook, retain(overlay),
                 previous == null ? unknown : previous.relations());
     }
 

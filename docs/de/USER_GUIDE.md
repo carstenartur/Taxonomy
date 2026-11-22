@@ -153,6 +153,8 @@ der Anforderungsanalyse sein.
 | Erneut analysieren | Eine neue Analyse der übernommenen Version gesondert starten. | Frühere Nachweise und die Herkunft übernommener Entscheidungen bleiben erhalten. |
 | Begründung sichern | Eine gespeicherte Revision oder den Übernahmenachweis exportieren und bei Bedarf einen ausdrücklichen Checkpoint anlegen. | Ungespeicherter Browsertext gehört nicht zum historischen Export. |
 
+Ein gespeichertes Analyseergebnis kann bereits konkrete Rückfragen enthalten. Öffnen Sie in der Anforderungsdetailseite unter **Analysen** den gewünschten Snapshot und wählen Sie **Analysefragen beantworten…**. Die Fragen beziehen sich auf genau diese Textversion. Geben Sie Ihre Entscheidung ein und wählen Sie **Betroffene Abschnitte neu formulieren**. Prüfen Sie die Änderungen in der Vorschau, bevor Sie die neue Anforderungsversion übernehmen und analysieren. Beim Ausbildungsportal kann so die Leseberechtigung für Protokolle geklärt werden, während die gesonderte Ausbildersicht auf Bearbeitungsstände erhalten bleibt.
+
 **Illustratives Beispiel, kein protokolliertes Modellergebnis:** „Mitarbeitende
 sollen Arbeitszeiten mobil erfassen können“ kann Entscheidungen zur Offline-Erfassung
 oder zu Korrekturberechtigungen erfordern. Der Nutzen ist nicht nur ein besserer

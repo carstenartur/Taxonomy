@@ -105,7 +105,7 @@ public final class ArchitectureReportTextRenderer {
             for (var element : view.getIncludedElements()) {
                 Double relevance = element.recordedRelevance();
                 md.append("| ").append(tableCode(element.getNodeCode())).append(" | ")
-                        .append(tableText(element.getTitle())).append(" | ")
+                        .append(tableText(element.displayTitle(labels.german()))).append(" | ")
                         .append(relevance == null ? labels.notEvaluated() : com.taxonomy.export.DiagramPresentation.percent(relevance)).append(" | ")
                         .append(tableText(element.getIncludedBecause())).append(" |\n");
             }
@@ -316,7 +316,7 @@ public final class ArchitectureReportTextRenderer {
             html.append(markdownToHtml(renderMarkdown(report, language, nodeReasons)));
         } else {
             html.append(markdownToHtml(reportMarkdown(report, nodeReasons, labels).append(diagramHeading(report, labels)).toString()));
-            var graph = PersistedDiagramProjection.project(new DiagramProjectionService(), view, labels.architectureTitle());
+            var graph = PersistedDiagramProjection.project(new DiagramProjectionService(), view, labels.architectureTitle(), labels.german());
             var scene = new LayeredDiagramLayoutService().layout(graph);
             // The projected scene already carries the relationship evidence recorded in the view.
             String svg = new SvgDiagramRenderer(themes).render(scene, nodeReasons, Map.of(), Locale.forLanguageTag(language));

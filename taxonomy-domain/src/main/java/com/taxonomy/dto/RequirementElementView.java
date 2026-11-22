@@ -9,6 +9,24 @@ public class RequirementElementView {
 
     private String nodeCode;
     private String title;
+    private CatalogueTitles catalogueTitles;
+
+    /** Source titles captured with the node. User-edited titles remain authoritative. */
+    public record CatalogueTitles(String en, String de) {}
+
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public CatalogueTitles getCatalogueTitles() { return catalogueTitles; }
+    public void setCatalogueTitles(CatalogueTitles titles) { this.catalogueTitles = titles; }
+
+    public void retainCatalogueTitles(String english, String german) {
+        catalogueTitles = english == null || english.isBlank() || german == null || german.isBlank()
+                ? null : new CatalogueTitles(english, german);
+    }
+
+    public String displayTitle(boolean german) {
+        return german && catalogueTitles != null && title != null && title.equals(catalogueTitles.en())
+                && catalogueTitles.de() != null && !catalogueTitles.de().isBlank() ? catalogueTitles.de() : title;
+    }
     private String taxonomySheet;
     private Double relevance;
     private int hopDistance;

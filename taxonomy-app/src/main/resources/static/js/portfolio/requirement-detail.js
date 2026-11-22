@@ -571,7 +571,8 @@
     function renderClarificationAction(detail) {
         if (!state.account?.architectureMutationAllowed) return '';
         const analysis = detail.analysis, report = analysis?.relationSearchReport ?? analysis?.architectureView?.relationSearchReport;
-        const hasQuestion = Object.values(analysis?.analysisCoverage?.nodes || {})
+        const source = state.versions.find(version => String(version.id) === String(detail.summary.requirementVersionId));
+        const hasQuestion = source?.decisionSectionPresent || Object.values(analysis?.analysisCoverage?.nodes || {})
             .some(node => node.reason?.startsWith('CLARIFICATION:'))
             || report?.sources?.some(source => source.question?.trim())
             || report?.result?.unfinished?.some(work => ['UNRESOLVED', 'ENDPOINT_REFINEMENT'].includes(work.reason) && work.question?.trim());

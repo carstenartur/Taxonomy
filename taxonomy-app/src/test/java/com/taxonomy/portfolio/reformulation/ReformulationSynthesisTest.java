@@ -101,6 +101,30 @@ class ReformulationSynthesisTest extends RetainedPortfolioCatalogue {
     @Autowired org.springframework.web.client.RestTemplate restTemplate;
     @Autowired ReformulationService reformulations;
 
+    @Test void opensAnAuthoredDecisionEvenWhenTheAnalysisRecordedNoModelQuestion() {
+        String question = "Welche der vorgesehenen Rollen darf diese Protokolle einsehen?";
+        String source = "Ereignisse werden protokolliert.\n\n## Offene Entscheidung\n\nDie Leseberechtigung ist noch offen. " + question;
+        var req = projects.createRequirement(project.id(), new CreateRequirementRequest("LOG", "Protokollzugriff", source,
+                RequirementStatus.DRAFT, 50, Criticality.HIGH, RequirementType.FUNCTIONAL, ReviewStatus.PROPOSED,
+                "architect", "Quelle", null), "architect", context);
+        String saved = snapshot(req);
+        var offer = reformulations.create(project.id(), req.id(), new ReformulationDtos.CreateRequest(req.currentVersionId(), saved, "de", true),
+                "architect", context);
+        var decision = offer.currentRevision().questions().getFirst();
+        assertThat(offer.currentRevision().questions()).hasSize(1);
+        assertThat(decision.wording()).isEqualTo(question);
+        assertThat(decision.discoveries().getFirst().nodeIds()).isEmpty();
+        assertThat(decision.discoveries().getFirst().sourceSpans()).allMatch(span -> span.matches(source));
+        var revised = reformulations.answer(project.id(), req.id(), offer.id(), 1, new ReformulationDtos.AnswerRequest(
+                decision.id(), "ANSWER", List.of("Nur die Rolle Revision"), "", "Entscheidung des Fachverantwortlichen"), "architect", context);
+        assertThat(revised.currentRevision().impact().sectionIds()).containsExactly(decision.key().scope());
+        assertThat(revised.currentRevision().impact().boundaryEdgeIds()).isEmpty();
+        assertThat(revised.currentRevision().questions().getFirst().state()).isEqualTo(com.taxonomy.reformulation.DecisionQuestion.State.ANSWERED);
+        var resumed = reformulations.create(project.id(), req.id(), new ReformulationDtos.CreateRequest(req.currentVersionId(), saved, "de", true),
+                "architect", context);
+        assertThat(resumed.currentRevision().answers()).isEqualTo(revised.currentRevision().answers());
+    }
+
     @Test void answersRecordedSnapshotQuestionAndRewordsOnlyItsAffectedSection() throws Exception {
         var node = new com.taxonomy.dto.RelationSearchModel.Node("BP-1", "BP", "Time capture", "", false);
         var independent = new com.taxonomy.dto.RelationSearchModel.Node("BP-2", "BP", "Billing", "", false);

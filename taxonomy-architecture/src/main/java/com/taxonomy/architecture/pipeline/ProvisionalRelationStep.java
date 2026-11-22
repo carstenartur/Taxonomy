@@ -121,6 +121,7 @@ public class ProvisionalRelationStep implements ArchitecturePipelineStep {
             if (element.getTitle() == null) {
                 element.setTitle(node.getNameEn());
             }
+            element.retainCatalogueTitles(node.getNameEn(), node.getNameDe());
             element.setTaxonomySheet(node.getTaxonomyRoot());
         }
 

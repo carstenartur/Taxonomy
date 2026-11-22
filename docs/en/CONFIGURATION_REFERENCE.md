@@ -60,6 +60,10 @@ Several preferences (`taxonomy.llm.*`, `taxonomy.analysis.min-score`, `taxonomy.
 | `TAXONOMY_BACKUP_MAX_RETAINED_BYTES` | `taxonomy.backup.jobs.max-retained-bytes` | `68719476736` | 64 GiB retained artifact quota; expired files count until deletion succeeds. |
 | `TAXONOMY_BACKUP_MAX_TEMPORARY_BYTES` | `taxonomy.backup.jobs.max-temporary-bytes` | `77309411328` | 72 GiB temporary quota, reserving 24 GiB per worker. Failed jobs retain reservations until cleanup. Minimum 24 GiB. |
 
+The default workbook `data/bilingual/C3_Taxonomy_Catalogue_25AUG2025.xlsx` adds a project translation in the `Title DE` column. The source edition remains at `data/C3_Taxonomy_Catalogue_25AUG2025.xlsx`. On a standard installation with the retained original workbook and matching source rows, the application adds the German titles to the existing nodes and keeps the earlier catalogue generation for historical projects. A custom workbook can include `Title DE` and `Description DE` anywhere in its named columns. German views fall back to the English text when a translation is missing.
+
+Full catalogue DSL exports and elements adopted from a revision-bound catalogue keep their page code and carry the source UUID in `x-catalogue-uuid`. ADMBw native references are selected from the actual target repository. A source UUID alone cannot establish that mapping.
+
 ### Configuring catalogue roots
 
 The optional worksheet `Catalogue Definition` defines which worksheets contain taxonomy nodes, their root codes, their DSL element types and permitted relation directions. A workbook without this sheet uses the eight standard roots. The following rows add a museum collection to the standard catalogue.

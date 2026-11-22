@@ -14,7 +14,11 @@ public interface CatalogueDefinitionResolver {
         return java.util.Map.of();
     }
 
-    record Node(String code, String root, String parentCode, String nameEn, String nameDe, Integer sortOrder) {}
+    record Node(String code, String root, String parentCode, String nameEn, String nameDe, Integer sortOrder, String uuid) {
+        public Node(String code, String root, String parentCode, String nameEn, String nameDe, Integer sortOrder) {
+            this(code, root, parentCode, nameEn, nameDe, sortOrder, null);
+        }
+    }
     record AssignmentTarget(boolean known, String catalogueRevision) {}
 
     static Map<String, String> parentLinks(List<Node> nodes) {
@@ -29,6 +33,17 @@ public interface CatalogueDefinitionResolver {
     default List<Node> catalogueNodes(CanonicalArchitectureModel model) { return List.of(); }
 
     default List<Node> analysisNodes(String revision) { return List.of(); }
+
+    /** Presentation-only titles resolved from source identity and the exact catalogue revision. */
+    default Map<String, String> translatedTitles(CanonicalArchitectureModel model, String language) {
+        if (!"de".equals(language)) return Map.of();
+        Map<String, String> titles = new HashMap<>();
+        for (var element : model.getElements()) {
+            String display = CatalogueReference.displayTitle(element, language);
+            if (display != null && !display.equals(element.getTitle())) titles.put(element.getId(), display);
+        }
+        return titles;
+    }
 
     /** An editable code must belong to the actual catalogue selected by this model. */
     default AssignmentTarget assignmentTarget(CanonicalArchitectureModel model, String code) {

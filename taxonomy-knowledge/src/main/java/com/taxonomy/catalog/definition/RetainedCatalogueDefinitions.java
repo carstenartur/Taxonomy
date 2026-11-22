@@ -2,6 +2,8 @@ package com.taxonomy.catalog.definition;
 
 import com.taxonomy.catalog.provenance.CatalogueSourceJournal;
 import com.taxonomy.dsl.model.CatalogueDefinition;
+import com.taxonomy.dsl.model.CatalogueDefinitionResolver;
+import com.taxonomy.dsl.model.CatalogueReference;
 import com.taxonomy.dsl.model.CanonicalArchitectureModel;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.context.annotation.Lazy;
@@ -14,7 +16,7 @@ import java.util.NoSuchElementException;
 
 /** A descriptor belongs to the bytes of one recorded workbook, including after an import or restart. */
 @Service
-public class RetainedCatalogueDefinitions implements com.taxonomy.dsl.model.CatalogueDefinitionResolver {
+public class RetainedCatalogueDefinitions implements CatalogueDefinitionResolver {
     private final CatalogueSourceJournal sources;
     private String lastWorkbook;
     private CatalogueDefinition lastDefinition;
@@ -58,6 +60,46 @@ public class RetainedCatalogueDefinitions implements com.taxonomy.dsl.model.Cata
         if (revision == null || hierarchy == null) return List.of();
         archivedHierarchy(revision);
         return hierarchy.catalogueNodes(revision);
+    }
+
+    @Override
+    public Map<String, String> translatedTitles(CanonicalArchitectureModel model, String language) {
+        var embedded = CatalogueDefinitionResolver.super.translatedTitles(model, language);
+        if (!"de".equals(language) || embedded.size() == model.getElements().size()) return embedded;
+        var result = new java.util.HashMap<>(embedded);
+        String revision = model.getCatalogueRevision();
+        var generation = revision == null ? null : sources.findRevision(revision).orElse(null);
+        if (generation != null && generation.workbook().use() == CatalogueSourceJournal.Use.APPLIED) {
+            var definition = forGeneration(generation);
+            if (BundledCatalogue.ORIGINAL_SHA256.equals(generation.workbook().sha256())) {
+                // This project's bilingual edition preserves every cell (including source UUIDs) of the exact original.
+                addMatchingTitles(model, definition, BundledCatalogue.originalEditionTranslations(), false, result);
+            } else if (hierarchy != null) {
+                var nodes = new java.util.HashMap<String, Node>();
+                hierarchy.catalogueNodes(revision).forEach(node -> nodes.put(node.code(), node));
+                addMatchingTitles(model, definition, nodes, false, result);
+            }
+        }
+        // An adopted source may come from a different edition than the target workspace, or predate its pin.
+        if (model.getElements().stream().anyMatch(e -> !result.containsKey(e.getId())
+                && e.getExtensions().containsKey(CatalogueReference.UUID_PROPERTY))) {
+            addMatchingTitles(model, CatalogueDefinition.standard(), BundledCatalogue.originalEditionTranslations(), true, result);
+        }
+        return result;
+    }
+
+    private static void addMatchingTitles(CanonicalArchitectureModel model, CatalogueDefinition definition,
+                                          Map<String, Node> nodes, boolean requireUuid, Map<String, String> result) {
+        for (var element : model.getElements()) {
+            var node = nodes.get(element.getId());
+            String uuid = element.getExtensions().get(CatalogueReference.UUID_PROPERTY);
+            if (node != null && node.uuid() != null && node.nameDe() != null && !node.nameDe().isBlank()
+                    && node.nameEn().equals(element.getTitle()) && java.util.Objects.equals(definition.typeFor(node.root()), element.getType())
+                    && (element.getTaxonomy() == null || element.getTaxonomy().equals(node.root()))
+                    && (uuid == null ? !requireUuid : uuid.equalsIgnoreCase(node.uuid()))) {
+                result.putIfAbsent(element.getId(), node.nameDe());
+            }
+        }
     }
 
     @Override

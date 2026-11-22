@@ -99,7 +99,11 @@ class PortfolioRequirementReviewIT {
         var summary = Map.of("id", "qa-partial", "projectId", 1, "requirementId", 2, "requirementVersionId", 11,
                 "requirementVersionNumber", 1, "status", "PARTIAL");
         String question = "Welches Team bestätigt den Eingang?";
-        var analysis = Map.of("analysisCoverage", Map.of("nodes", Map.of("BP", Map.of("reason", "CLARIFICATION:" + question))));
+        // The analysis did not ask a question; the selected historical version has an explicit decision section.
+        var older = new java.util.LinkedHashMap<>(PortfolioRequirementFixture.version(11, 1, "## Offene Entscheidung\n\n" + question));
+        older.put("decisionSectionPresent", true);
+        fixture.versions.set(List.of(fixture.versions.get().getFirst(), older));
+        var analysis = Map.of("analysisCoverage", Map.of("nodes", Map.of()));
         page.route("GET", REQUIREMENT + "/snapshots", request -> json(200, List.of(summary)));
         page.route("GET", ROOT + "/snapshots/qa-partial", request -> json(200, Map.of("summary", summary, "analysis", analysis)));
         var item = Map.of("id", "analysis-1", "state", "OPEN", "wording", question, "discoveries", List.of(),

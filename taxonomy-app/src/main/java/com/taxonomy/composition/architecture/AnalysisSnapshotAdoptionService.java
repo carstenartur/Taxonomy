@@ -8,6 +8,8 @@ import com.taxonomy.dto.RequirementRelationshipView;
 import com.taxonomy.dsl.command.ArchitectureDslCommands.CommandProblem;
 import com.taxonomy.dsl.model.ArchitectureOrganization;
 import com.taxonomy.dsl.model.CatalogueDefinition;
+import com.taxonomy.dsl.model.CatalogueDefinitionResolver.Node;
+import com.taxonomy.dsl.model.CatalogueReference;
 import com.taxonomy.dsl.model.CatalogueDefinitionResolver;
 import com.taxonomy.editor.ArchitectureCommandPort.*;
 import com.taxonomy.editor.ArchitectureEditorService;
@@ -155,11 +157,11 @@ public class AnalysisSnapshotAdoptionService {
         var binding = snapshot.analysis().getModelBinding();
         String catalogueRevision = binding == null ? null : binding.analysisCatalogueRevision();
         CatalogueDefinition definition = CatalogueDefinition.standard();
-        Map<String, String> recordedRoots = new HashMap<>();
+        Map<String, Node> recordedNodes = new HashMap<>();
         if (catalogueRevision != null) {
             try {
                 definition = catalogues.forRevision(catalogueRevision);
-                catalogues.analysisNodes(catalogueRevision).forEach(node -> recordedRoots.put(node.code(), node.root()));
+                catalogues.analysisNodes(catalogueRevision).forEach(node -> recordedNodes.put(node.code(), node));
             } catch (IllegalStateException | NoSuchElementException unavailable) {
                 throw problem("CATALOGUE_UNAVAILABLE", "The catalogue recorded for the retained analysis is unavailable");
             }
@@ -171,7 +173,8 @@ public class AnalysisSnapshotAdoptionService {
             if (type == null)
                 throw problem("UNKNOWN_TYPE", "Snapshot has unsupported or missing recorded taxonomy type");
             // Recorded root plus recorded code establish identity; do not synthesize nodes from renderer containers.
-            String root = recordedRoots.getOrDefault(element.getNodeCode(), recordedDefinition.rootFromId(element.getNodeCode()));
+            var node = recordedNodes.get(element.getNodeCode());
+            String root = node == null ? recordedDefinition.rootFromId(element.getNodeCode()) : node.root();
             if (!Objects.equals(root, sheet))
                 throw problem("AMBIGUOUS_SNAPSHOT_IDENTITY", "Recorded element identity and taxonomy type disagree");
             var assigned = element.getResponsibility();
@@ -180,7 +183,7 @@ public class AnalysisSnapshotAdoptionService {
                             assigned.unitId(), assigned.name(), assigned.sourceId());
             return new SnapshotElement(element.getNodeCode(), type,
                     element.getTitle(),Objects.toString(element.getPresenceReason(), Objects.toString(element.getIncludedBecause(),"")),
-                    responsibility);
+                    responsibility, node == null ? null : CatalogueReference.from(node.uuid(), node.nameEn(), node.nameDe()));
         }).sorted(Comparator.comparing(SnapshotElement::id,Comparator.nullsFirst(String::compareTo))).toList();
         List<RelationKey> relations = graph.getIncludedRelationships().stream().map(relation -> {
             if (relation == null || relation.getSourceCode() == null || relation.getTargetCode() == null || relation.getRelationType() == null)
@@ -214,6 +217,8 @@ public class AnalysisSnapshotAdoptionService {
         var document = editor.read(target,null);
         var model = new ArchitectureDslCommands().model(document.dsl());
         var existingView = model.getViews().stream().filter(v -> v.getId().equals(viewId)).findFirst();
+        if (existingView.isEmpty() || existingView.get().getExtensions().containsKey("x-analysis-catalogue-revision"))
+            put(provenance, "x-analysis-catalogue-revision", catalogueRevision);
         // A pre-evidence adoption has only the original graph proof. Reopening uses its original command fingerprint.
         boolean legacyView = existingView.isPresent() && !existingView.get().getExtensions().containsKey(SnapshotEvidence.FINGERPRINT);
         AdoptAnalysisSnapshot adoption;
@@ -250,6 +255,11 @@ public class AnalysisSnapshotAdoptionService {
         boolean existing = existingView.isPresent();
         List<String> previewParts = new ArrayList<>(Arrays.asList(viewId,title,requirementText,graphFingerprint,
                 request.context().toString(),request.metadata().toString()));
+        for (var element : elements) {
+            var reference = element.catalogueReference();
+            if (reference != null)
+                previewParts.addAll(Arrays.asList("catalogue-entry", element.id(), reference.uuid(), reference.titleEn(), reference.titleDe()));
+        }
         new TreeMap<>(adoption.provenance()).forEach((key,value) -> previewParts.addAll(List.of(key,value)));
         return new Prepared(adoption,new Summary(List.copyOf(addedElements),List.copyOf(reusedElements),List.copyOf(addedRelations),
                 List.copyOf(reusedRelations),List.copyOf(differences),List.of()),existing,hash(previewParts));

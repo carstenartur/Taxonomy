@@ -7,6 +7,7 @@ import com.taxonomy.dsl.model.CatalogueDefinition;
 import com.taxonomy.dsl.validation.DslValidator;
 import com.taxonomy.catalog.provenance.CatalogueSourceJournal;
 import com.taxonomy.catalog.provenance.CatalogueSourceBytes;
+import com.taxonomy.catalog.service.TaxonomyService;
 import org.apache.poi.ss.usermodel.Sheet;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -30,6 +31,98 @@ class WorkbookCatalogueDefinitionTest {
             assertThat(roots).extracting(CatalogueDefinition.Root::code)
                     .containsExactly("BP", "BR", "CP", "CI", "CO", "CR", "IP", "UA");
             assertThat(roots).allSatisfy(root -> assertThat(book.getSheet(root.sheet()).getLastRowNum()).isPositive());
+        }
+    }
+
+    @Test void optionalTranslationColumnsCanBeInsertedBetweenOriginalColumns() throws Exception {
+        try (var book = new XSSFWorkbook()) {
+            var sheet = book.createSheet("Business Processes");
+            row(sheet, 0, "Page", "UUID", "Title", "Title DE", "Description", "Description DE", "Parent",
+                    "Dataset", "External ID", "Source", "Reference", "Order", "State", "Level");
+            row(sheet, 1, "BP-20", "4ec1702a-929e-42a8-807b-cb7c82e1ab47", "Accounting", "Buchhaltung",
+                    "Accounts", "Konten", "BP-10", "data", "external", "author", "source ref", "30", "approved", "3");
+            var imported = TaxonomyService.readWorkbookNodes(book);
+            var node = imported.nodes().get("BP-20");
+            assertThat(node.getNameDe()).isEqualTo("Buchhaltung");
+            assertThat(node.getDescriptionEn()).isEqualTo("Accounts");
+            assertThat(node.getDescriptionDe()).isEqualTo("Konten");
+            assertThat(node.getParentCode()).isEqualTo("BP-10");
+            assertThat(node.getLevel()).isEqualTo(3);
+            assertThat(node.getExternalId()).isEqualTo("external");
+            assertThat(imported.uuidToCode()).containsEntry("4ec1702a-929e-42a8-807b-cb7c82e1ab47", "BP-20");
+        }
+    }
+
+    @Test void partialNamedWorksheetNeverUsesTranslatedTextAsAnIdentifierOrSourceDescription() throws Exception {
+        try (var book = new XSSFWorkbook()) {
+            var sheet = book.createSheet("Business Processes");
+            row(sheet, 0, "Page", "Title DE", "Title");
+            row(sheet, 1, "BP-20", "Buchhaltung", "Accounting");
+            var imported = TaxonomyService.readWorkbookNodes(book);
+            var node = imported.nodes().get("BP-20");
+            assertThat(imported.uuidToCode()).isEmpty();
+            assertThat(node.getUuid()).isNull();
+            assertThat(node.getNameDe()).isEqualTo("Buchhaltung");
+            assertThat(node.getDescriptionEn()).isNull();
+            assertThat(node.getParentCode()).isNull();
+        }
+    }
+
+    @Test void bilingualEditionAddsEveryProjectTitleAndPreservesEverySourceCell() throws Exception {
+        try (var original = getClass().getResourceAsStream("/data/C3_Taxonomy_Catalogue_25AUG2025.xlsx");
+             var translated = getClass().getResourceAsStream("/" + BundledCatalogue.BILINGUAL_PATH);
+             var sourceBook = new XSSFWorkbook(original); var translatedBook = new XSSFWorkbook(translated)) {
+            var sourceNodes = TaxonomyService.readWorkbookNodes(sourceBook);
+            var translatedNodes = TaxonomyService.readWorkbookNodes(translatedBook);
+            assertThat(translatedNodes.uuidToCode()).hasSize(2564).isEqualTo(sourceNodes.uuidToCode());
+            assertThat(translatedNodes.nodes()).containsOnlyKeys(sourceNodes.nodes().keySet().toArray(String[]::new));
+            for (var sheet : sourceBook) {
+                var copy = translatedBook.getSheet(sheet.getSheetName());
+                assertThat(copy.getLastRowNum()).isEqualTo(sheet.getLastRowNum());
+                assertThat(copy.getRow(0).getCell(12).getStringCellValue()).isEqualTo("Title DE");
+                for (var row : sheet) {
+                    var translatedRow = copy.getRow(row.getRowNum());
+                    for (var cell : row) {
+                        var actual = translatedRow.getCell(cell.getColumnIndex());
+                        assertThat(actual.getCellType()).isEqualTo(cell.getCellType());
+                        assertThat(actual.toString()).isEqualTo(cell.toString());
+                    }
+                }
+            }
+            assertThat(translatedNodes.nodes().values()).allSatisfy(node -> assertThat(node.getNameDe()).isNotBlank());
+            assertThat(translatedNodes.nodes().get("BP-1016").getNameDe()).isEqualTo("Rechnungswesen");
+        }
+    }
+
+    @Test void historicalGermanDisplayRequiresAnIdenticalSourceAndPreservesEditedTitles() throws Exception {
+        var journal = mock(CatalogueSourceJournal.class);
+        try (var source = getClass().getResourceAsStream("/data/C3_Taxonomy_Catalogue_25AUG2025.xlsx")) {
+            var bytes = CatalogueSourceBytes.read(source);
+            var workbook = new CatalogueSourceJournal.InputReference(CatalogueSourceJournal.Use.APPLIED, bytes.sha256(), bytes.length());
+            var unused = new CatalogueSourceJournal.InputReference(CatalogueSourceJournal.Use.NOT_USED, null, 0);
+            var generation = new CatalogueSourceJournal.Snapshot("old", Instant.EPOCH, workbook, unused, unused);
+            when(journal.findRevision("old")).thenReturn(Optional.of(generation));
+            when(journal.retainedWorkbook(workbook)).thenReturn(bytes);
+            var reader = new RetainedCatalogueDefinitions(journal);
+            var model = new CanonicalArchitectureModel();
+            model.setCatalogueRevision("old");
+            var entry = new ArchitectureElement("BP-1016", "Process", "Accounting", null, "BP");
+            model.getElements().add(entry);
+            assertThat(reader.translatedTitles(model, "de")).isEqualTo(java.util.Map.of("BP-1016", "Rechnungswesen"));
+            assertThat(entry.getTitle()).isEqualTo("Accounting");
+            assertThat(reader.translatedTitles(model, "en")).isEmpty();
+            entry.getExtensions().put("x-catalogue-uuid", "d3483d54-ed70-420e-8da9-f4851258cb65");
+            assertThat(reader.translatedTitles(model, "de")).isEmpty();
+            entry.getExtensions().clear();
+            entry.setTitle("Project costing");
+            assertThat(reader.translatedTitles(model, "de")).isEmpty();
+            entry.setTitle("Accounting");
+            model.setCatalogueRevision(null);
+            assertThat(reader.translatedTitles(model, "de")).isEmpty();
+            entry.getExtensions().put("x-catalogue-uuid", "4ec1702a-929e-42a8-807b-cb7c82e1ab47");
+            assertThat(reader.translatedTitles(model, "de")).isEqualTo(java.util.Map.of("BP-1016", "Rechnungswesen"));
+            entry.setType("System");
+            assertThat(reader.translatedTitles(model, "de")).isEmpty();
         }
     }
 

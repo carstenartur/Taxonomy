@@ -20,6 +20,7 @@ import com.taxonomy.visio.VisioExportMetadata;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
+import org.springframework.context.i18n.LocaleContextHolder;
 import java.util.List;
 import java.util.Map;
 
@@ -158,7 +159,8 @@ public class ExportFacade {
         }
         String title = view.getViewTitle();
         return diagramProjectionService.projectRaw(view,
-                title == null || title.isBlank() ? "Requirement architecture" : title);
+                title == null || title.isBlank() ? "Requirement architecture" : title,
+                "de".equals(LocaleContextHolder.getLocale().getLanguage()));
     }
 
     private DiagramModel analyzeAndProject(String businessText) {
@@ -170,6 +172,6 @@ public class ExportFacade {
         String title = businessText.length() > 60
                 ? businessText.substring(0, 57) + "..."
                 : businessText;
-        return diagramProjectionService.project(view, title);
+        return diagramProjectionService.project(view, title, "de".equals(LocaleContextHolder.getLocale().getLanguage()));
     }
 }
