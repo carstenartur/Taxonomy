@@ -123,6 +123,12 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
 
     public Document read(RepositoryContext context, String commit) throws IOException { return read(context, commit, null); }
 
+    /** Check that the selected Git branch contains an architecture source. */
+    public boolean hasSourceAtHead(RepositoryContext context) throws IOException {
+        String dsl = repositories.resolveRepository(context).getDslAtHead(context.branch());
+        return dsl != null && !dsl.isBlank();
+    }
+
     /** Find the completed Git checkpoint for these historical journal bytes in the selected workspace. */
     public String historicalCheckpoint(RepositoryContext context, Document document, String expectedCommit) {
         requireContext(context, document.context());

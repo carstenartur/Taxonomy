@@ -19,6 +19,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import com.taxonomy.analysis.service.AnalysisProgressRegistry;
 import com.taxonomy.analysis.service.AnalysisRunControl;
 import com.taxonomy.analysis.service.AnalysisStoppedException;
+import com.taxonomy.analysis.cluster.ClusterAnalysisExecution;
 
 import com.taxonomy.analysis.dag.AnalysisOperationContext;
 import com.taxonomy.analysis.dag.AnalysisTaskId;
@@ -39,7 +40,7 @@ import java.util.function.Supplier;
 public class AnalyzeRequirementUseCase {
 
     @Autowired(required = false)
-    private com.taxonomy.analysis.cluster.ClusterAnalysisExecution clusterExecution;
+    private ClusterAnalysisExecution clusterExecution;
 
     @Autowired
     private AnalysisProgressRegistry analysisProgressRegistry;
@@ -91,7 +92,9 @@ public class AnalyzeRequirementUseCase {
                                                         Supplier<AnalyzeRequirementCommand> admission) {
         AnalysisTaskId.requireOperationId(operationId);
         if (clustered()) {
-            var retained = clusterExecution.resumeUnpublished(operationId, scope, requirementText);
+            var resumeScope = new ClusterAnalysisExecution.ResumeScope(
+                    scope.username(), scope.repositoryId(), scope.workspaceId(), scope.currentBranch());
+            var retained = clusterExecution.resumeUnpublished(operationId, resumeScope, requirementText);
             if (retained.isPresent()) return new AnalyzeRequirementResult(retained.get());
         }
         var command = admission.get();

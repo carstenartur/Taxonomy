@@ -8,6 +8,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -27,13 +28,6 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
-import com.taxonomy.catalog.service.AppInitializationStateService;
-import com.taxonomy.catalog.snapshot.CatalogueRuntimePolicy;
-import com.taxonomy.workspace.model.SystemRepository;
-import com.taxonomy.workspace.service.RepositoryContext;
-import com.taxonomy.workspace.service.SystemRepositoryService;
-import com.taxonomy.workspace.storage.DslGitRepository;
-import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -64,17 +58,8 @@ class MailAnalysisQueueTest {
     }
 
     @Test
-    void confirmedMailWaitsForCatalogueAndPrimaryArchitectureSource() throws Exception {
-        var appState = new AppInitializationStateService();
-        var primary = new SystemRepository();
-        primary.setRepositoryId("primary");
-        primary.setPrimaryRepo(true);
-        var repositories = mock(SystemRepositoryService.class);
-        var git = mock(DslGitRepositoryFactory.class);
-        var primaryGit = mock(DslGitRepository.class);
-        when(repositories.getPrimaryRepository()).thenReturn(primary);
-        when(git.resolveRepository(any(RepositoryContext.class))).thenReturn(primaryGit);
-        when(primaryGit.getDslAtHead("draft")).thenReturn(null, "element test type ApplicationComponent\n");
+    void confirmedMailWaitsUntilItsSourceReadinessProbeSucceeds() {
+        when(processor.sourceReady()).thenReturn(false, false, true);
         when(processor.process(anyString(), eq(COMMAND), eq(FIRST.requirementText()), any())).thenReturn(MailAnalysisQueue.Outcome.failed("Result"));
 
         try (var context = new AnnotationConfigApplicationContext()) {
@@ -82,10 +67,6 @@ class MailAnalysisQueueTest {
             context.getEnvironment().getPropertySources().addFirst(new MapPropertySource("mail-test", Map.of(
                     "taxonomy.mail.enabled", "true", "taxonomy.mail.queue.directory", directory.toString())));
             context.registerBean(ObjectMapper.class, JsonMapper.builder()::build);
-            context.registerBean(AppInitializationStateService.class, () -> appState);
-            context.registerBean(CatalogueRuntimePolicy.class, CatalogueRuntimePolicy::fullCatalogue);
-            context.registerBean(SystemRepositoryService.class, () -> repositories);
-            context.registerBean(DslGitRepositoryFactory.class, () -> git);
             context.registerBean(MailAnalysisProcessor.class, () -> processor);
             context.registerBean(MailAnalysisDelivery.class, () -> delivery);
             context.register(MailAnalysisQueue.class);
@@ -96,12 +77,12 @@ class MailAnalysisQueueTest {
             queue.confirmReceipt(token);
             queue.processNext();
             assertThat(queue.status(token).orElseThrow().state()).isEqualTo(MailAnalysisQueue.State.QUEUED);
-            verifyNoInteractions(processor, delivery);
 
-            appState.update(AppInitializationStateService.State.READY, "Catalogue loaded");
             queue.processNext();
             assertThat(queue.status(token).orElseThrow().state()).isEqualTo(MailAnalysisQueue.State.QUEUED);
-            verifyNoInteractions(processor, delivery);
+            verify(processor, never()).classify(anyString(), anyString());
+            verify(processor, never()).process(anyString(), any(), anyString(), any());
+            verifyNoInteractions(delivery);
 
             queue.processNext();
             verify(delivery).sendFailure(FIRST.sender(), FIRST.subject(), "Result");

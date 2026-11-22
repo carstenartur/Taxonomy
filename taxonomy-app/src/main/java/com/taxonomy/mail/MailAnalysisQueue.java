@@ -26,14 +26,8 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
 
-import com.taxonomy.catalog.service.AppInitializationStateService;
-import com.taxonomy.catalog.snapshot.CatalogueRuntimePolicy;
 import com.taxonomy.identity.StableIdentityHash;
 import com.taxonomy.shared.features.ConditionalOnFeature;
-import com.taxonomy.workspace.model.RepositoryLifecycleState;
-import com.taxonomy.workspace.service.RepositoryContext;
-import com.taxonomy.workspace.service.SystemRepositoryService;
-import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.DisposableBean;
@@ -151,11 +145,8 @@ public final class MailAnalysisQueue implements ApplicationListener<ApplicationR
             @Value("${taxonomy.mail.queue.directory:./data/mail-analysis}") Path directory,
             @Value("${taxonomy.mail.queue.capacity:16}") int capacity,
             @Value("${taxonomy.mail.queue.retention:PT48H}") Duration retention,
-            ObjectMapper mapper, MailAnalysisProcessor processor, MailAnalysisDelivery delivery,
-            AppInitializationStateService initialization, CatalogueRuntimePolicy catalogue,
-            SystemRepositoryService repositories, DslGitRepositoryFactory git) {
-        this(directory, capacity, retention, mapper, processor, delivery, Clock.systemUTC(),
-                () -> primarySourceReady(initialization, catalogue, repositories, git));
+            ObjectMapper mapper, MailAnalysisProcessor processor, MailAnalysisDelivery delivery) {
+        this(directory, capacity, retention, mapper, processor, delivery, Clock.systemUTC(), processor::sourceReady);
     }
 
     MailAnalysisQueue(Path directory, int capacity, Duration retention, ObjectMapper mapper,
@@ -178,21 +169,6 @@ public final class MailAnalysisQueue implements ApplicationListener<ApplicationR
         this.delivery = delivery;
         this.sourceReady = sourceReady;
         openDirectory();
-    }
-
-    private static boolean primarySourceReady(AppInitializationStateService initialization, CatalogueRuntimePolicy catalogue,
-            SystemRepositoryService repositories, DslGitRepositoryFactory git) {
-        if (!initialization.isReady() || catalogue.workerOnly()) return false;
-        try {
-            var primary = repositories.getPrimaryRepository();
-            if (primary.getLifecycleState() != RepositoryLifecycleState.ACTIVE) return false;
-            var context = RepositoryContext.centralRead(primary.getRepositoryId(), primary.getDefaultBranch(), "mail-readiness");
-            String dsl = git.resolveRepository(context).getDslAtHead(context.branch());
-            return dsl != null && !dsl.isBlank();
-        } catch (IOException | RuntimeException unavailable) {
-            log.debug("Primary mail analysis source is unavailable ({})", unavailable.getClass().getSimpleName());
-            return false;
-        }
     }
 
     public synchronized Submission submit(IncomingMail mail) {

@@ -1,5 +1,6 @@
 package com.taxonomy.mail;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -35,6 +36,8 @@ import com.taxonomy.workspace.model.SystemRepository;
 import com.taxonomy.workspace.service.RepositoryMembershipService;
 import com.taxonomy.workspace.service.SystemRepositoryService;
 import com.taxonomy.workspace.service.WorkspaceContext;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.dao.DataAccessException;
@@ -48,6 +51,9 @@ import org.springframework.web.server.ResponseStatusException;
 @ConditionalOnProperty(name = "taxonomy.mail.enabled", havingValue = "true")
 @ConditionalOnFeature({"analysis", "architecture", "reporting"})
 final class MailAnalysisProcessor {
+    private static final Logger log = LoggerFactory.getLogger(MailAnalysisProcessor.class);
+    private static final String READINESS_ACTOR = "mail-readiness";
+
     static final class Rejected extends RuntimeException {
         Rejected(String message) { super(message); }
     }
@@ -97,6 +103,16 @@ final class MailAnalysisProcessor {
         this.locale = Locale.forLanguageTag(language);
         if (maxResultBytes < 1 || maxResultBytes > 50_000_000) throw new IllegalArgumentException("Invalid email export size limit");
         this.maxResultBytes = maxResultBytes;
+    }
+
+    boolean sourceReady() {
+        if (!taxonomies.isLiveCatalogueReady()) return false;
+        try {
+            return admission.hasPrimarySource(primaryRepository(READINESS_ACTOR), READINESS_ACTOR);
+        } catch (IOException | RuntimeException unavailable) {
+            log.debug("Primary mail analysis source is unavailable ({})", unavailable.getClass().getSimpleName());
+            return false;
+        }
     }
 
     MailAnalysisCommand classify(String subject, String requirementText) {

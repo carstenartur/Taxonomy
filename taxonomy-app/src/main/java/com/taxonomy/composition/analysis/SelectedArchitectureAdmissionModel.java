@@ -61,9 +61,17 @@ public class SelectedArchitectureAdmissionModel implements AnalysisAdmissionMode
 
     /** The mailbox worker reads the authorized primary branch without a browser session or active workspace. */
     public AnalysisModelBinding capturePrimary(SystemRepository primary, String actor, AnalysisScope scope) {
+        return capture(primaryReadContext(primary, actor), null, null, scope);
+    }
+
+    /** Mail intake can wait for the exact primary source before classifying a new request. */
+    public boolean hasPrimarySource(SystemRepository primary, String actor) throws IOException {
+        return editor.hasSourceAtHead(primaryReadContext(primary, actor));
+    }
+
+    private static RepositoryContext primaryReadContext(SystemRepository primary, String actor) {
         if (!primary.isPrimaryRepo()) throw new IllegalArgumentException("Expected the primary catalogue");
-        var context = RepositoryContext.centralRead(primary.getRepositoryId(), primary.getDefaultBranch(), actor);
-        return capture(context, null, null, scope);
+        return RepositoryContext.centralRead(primary.getRepositoryId(), primary.getDefaultBranch(), actor);
     }
 
     private AnalysisModelBinding capture(RepositoryContext context, String expectedCommit, Long expectedRevision,

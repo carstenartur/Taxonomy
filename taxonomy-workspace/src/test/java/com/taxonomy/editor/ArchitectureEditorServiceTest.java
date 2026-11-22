@@ -26,6 +26,12 @@ class ArchitectureEditorServiceTest {
     }
     @AfterEach void close() { fixture.close(); }
 
+    @Test void sourceReadinessChecksTheExactGitBranch() throws Exception {
+        assertThat(service.hasSourceAtHead(alice)).isTrue();
+        assertThat(service.hasSourceAtHead(RepositoryContext.workspace("repo-a", "workspace-a1", "unpublished", "alice")))
+                .isFalse();
+    }
+
     @Test void editorReadReturnsServerSelectedPersonalUndoAndRedoTargets() throws Exception {
         var change = execute(update("Changed"));
         var changed = service.read(alice, null);

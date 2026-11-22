@@ -136,10 +136,11 @@ public final class DurableClusterAnalysisExecution implements ClusterAnalysisExe
     }
 
     @Override
-    public Optional<AnalysisResult> resumeUnpublished(String operationId, WorkspaceContext scope, String requirementText) {
+    public Optional<AnalysisResult> resumeUnpublished(String operationId, ResumeScope scope, String requirementText) {
         requireOutsideTransaction();
         var requirement = RequirementReference.adHoc(requirementText);
-        return store.findAuthorized(operationId, scope.username(), scope).map(context -> {
+        var workspace = new WorkspaceContext(scope.owner(), scope.workspaceId(), scope.branch(), scope.repositoryId());
+        return store.findAuthorized(operationId, scope.owner(), workspace).map(context -> {
             if (!requirement.equals(context.requirement()))
                 throw new SecurityException("Analysis operation is unavailable in this scope");
             return awaitResult(context, () -> { }, ignored -> { });

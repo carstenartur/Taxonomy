@@ -166,8 +166,9 @@ class DurableClusterAnalysisExecutionTest {
         });
 
         try (var workers = Executors.newSingleThreadExecutor()) {
+            var scope = new ClusterAnalysisExecution.ResumeScope("alice", "repository", "workspace", "draft");
             var observation = workers.submit(() -> execution.resumeUnpublished(context.operationId(),
-                    command.workspaceContext(), command.businessText()));
+                    scope, command.businessText()));
             try {
                 assertThat(subscribed.await(5, TimeUnit.SECONDS)).isTrue();
                 assertThat(observation.isDone()).isFalse();
@@ -190,16 +191,26 @@ class DurableClusterAnalysisExecutionTest {
     void reattachmentRejectsOtherScopesOrChangedRequirementTextBeforeObservingTheRun() {
         var context = context("mail-protected");
         var command = command(AnalysisMode.TAXONOMIES_ONLY, "MOCK");
-        var foreign = new WorkspaceContext(command.username(), command.workspaceContext().workspaceId(),
-                "other-branch", command.workspaceContext().repositoryId());
-        when(store.findAuthorized(context.operationId(), command.username(), foreign))
-                .thenThrow(new SecurityException("Analysis operation is unavailable in this scope"));
+        var missingRepository = new ClusterAnalysisExecution.ResumeScope("alice", " ", null, "draft");
+        assertThatThrownBy(() -> execution.resumeUnpublished(context.operationId(), missingRepository, command.businessText()))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("repositoryId");
+        verifyNoInteractions(store);
+        for (var foreign : List.of(new WorkspaceContext("bob", "workspace", "draft", "repository"),
+                new WorkspaceContext("alice", "workspace", "draft", "other-repository"),
+                new WorkspaceContext("alice", "other-workspace", "draft", "repository"),
+                new WorkspaceContext("alice", "workspace", "other-branch", "repository"),
+                new WorkspaceContext("alice", null, "draft", "repository"))) {
+            when(store.findAuthorized(context.operationId(), foreign.username(), foreign))
+                    .thenThrow(new SecurityException("Analysis operation is unavailable in this scope"));
+            var scope = new ClusterAnalysisExecution.ResumeScope(
+                    foreign.username(), foreign.repositoryId(), foreign.workspaceId(), foreign.currentBranch());
+            assertThatThrownBy(() -> execution.resumeUnpublished(context.operationId(), scope, command.businessText()))
+                    .isInstanceOf(SecurityException.class);
+        }
         when(store.findAuthorized(context.operationId(), command.username(), command.workspaceContext()))
                 .thenReturn(Optional.of(context));
-
-        assertThatThrownBy(() -> execution.resumeUnpublished(context.operationId(), foreign, command.businessText()))
-                .isInstanceOf(SecurityException.class);
-        assertThatThrownBy(() -> execution.resumeUnpublished(context.operationId(), command.workspaceContext(),
+        var scope = new ClusterAnalysisExecution.ResumeScope("alice", "repository", "workspace", "draft");
+        assertThatThrownBy(() -> execution.resumeUnpublished(context.operationId(), scope,
                 command.businessText() + " ")).isInstanceOf(SecurityException.class);
         verify(store, never()).snapshot(any());
         verifyNoInteractions(catalogue, views);

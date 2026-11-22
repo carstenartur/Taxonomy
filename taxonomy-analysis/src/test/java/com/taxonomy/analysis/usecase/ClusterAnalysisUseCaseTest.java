@@ -32,6 +32,8 @@ class ClusterAnalysisUseCaseTest {
             new WorkspaceContext("alice", "workspace", "draft", "repo"), null,
             new AnalysisScope(Set.of("CP"), AnalysisMode.FULL)).withAnalysisReasonLength(AnalysisReasonLength.STANDARD).withAnalysisLanguage(AnalysisLanguage.ENGLISH);
     private final ViewContext view = new ViewContext("commit", "draft", null, false, false, false);
+    private final ClusterAnalysisExecution.ResumeScope resumeScope =
+            new ClusterAnalysisExecution.ResumeScope("alice", "repo", "workspace", "draft");
 
     @Test
     void admittedHistoricalOrUncommittedModelKeepsItsOwnIdentityWhenHeadMoves() {
@@ -122,10 +124,12 @@ class ClusterAnalysisUseCaseTest {
         ReflectionTestUtils.setField(usecase, "clusterExecution", execution);
         var result = new AnalysisResult();
         result.setStatus("ERROR");
-        when(execution.resumeUnpublished("mail-existing", command.workspaceContext(), command.businessText()))
+        var central = new WorkspaceContext("mail-owner", null, "main", "primary");
+        var centralResume = new ClusterAnalysisExecution.ResumeScope("mail-owner", "primary", null, "main");
+        when(execution.resumeUnpublished("mail-existing", centralResume, command.businessText()))
                 .thenReturn(Optional.of(result));
 
-        assertThat(usecase.analyzeUnpublished("mail-existing", command.workspaceContext(), command.businessText(),
+        assertThat(usecase.analyzeUnpublished("mail-existing", central, command.businessText(),
                 () -> { throw new AssertionError("An admitted operation must not be rebuilt"); }).analysisResult()).isSameAs(result);
         verifyNoInteractions(views, llm, budget);
     }
@@ -134,7 +138,7 @@ class ClusterAnalysisUseCaseTest {
     void deliveryOnlyAdmitsWhenTheLookupReturnsAnAbsentOperation() {
         var usecase = new AnalyzeRequirementUseCase(llm, budget, null, null, null, views, null);
         ReflectionTestUtils.setField(usecase, "clusterExecution", execution);
-        when(execution.resumeUnpublished("mail-new", command.workspaceContext(), command.businessText()))
+        when(execution.resumeUnpublished("mail-new", resumeScope, command.businessText()))
                 .thenReturn(Optional.empty());
         when(views.getViewContext("alice", "draft", command.workspaceContext())).thenReturn(view);
         var result = new AnalysisResult();
@@ -145,7 +149,7 @@ class ClusterAnalysisUseCaseTest {
                 () -> command).analysisResult()).isSameAs(result);
 
         var unavailable = new IllegalStateException("Durable state is unavailable");
-        when(execution.resumeUnpublished("mail-existing", command.workspaceContext(), command.businessText()))
+        when(execution.resumeUnpublished("mail-existing", resumeScope, command.businessText()))
                 .thenThrow(unavailable);
         assertThatThrownBy(() -> usecase.analyzeUnpublished("mail-existing", command.workspaceContext(), command.businessText(),
                 () -> { throw new AssertionError("An unavailable lookup must never admit new work"); })).isSameAs(unavailable);

@@ -11,6 +11,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Locale;
@@ -91,11 +92,26 @@ class MailAnalysisProcessorTest {
         var primary = new SystemRepository();
         primary.setRepositoryId("primary");
         primary.setDefaultBranch("main");
+        primary.setPrimaryRepo(true);
         when(repositories.getPrimaryRepository()).thenReturn(primary);
         when(membership.canRead(eq(primary), org.mockito.ArgumentMatchers.startsWith("mail-"))).thenReturn(true);
         when(taxonomy.getRootCodes()).thenReturn(Set.of("BP-1000", "CI-1000", "IP-1000"));
         when(settings.getInt("limits.max-business-text", 5_000)).thenReturn(5_000);
         when(settings.getInt("limits.max-architecture-nodes", 50)).thenReturn(50);
+    }
+
+    @Test
+    void readinessRequiresAnInitializedLiveCatalogueAndAnAvailablePrimarySource() throws IOException {
+        assertThat(processor.sourceReady()).isFalse();
+        verifyNoInteractions(repositories, membership, admission);
+
+        when(taxonomy.isLiveCatalogueReady()).thenReturn(true);
+        when(admission.hasPrimarySource(any(SystemRepository.class), eq("mail-readiness")))
+                .thenReturn(false, true).thenThrow(new IOException("Primary Git is temporarily unavailable"));
+        assertThat(processor.sourceReady()).isFalse();
+        assertThat(processor.sourceReady()).isTrue();
+        assertThat(processor.sourceReady()).isFalse();
+        verifyNoInteractions(classifier, analysis);
     }
 
     @Test

@@ -114,6 +114,11 @@ public class TaxonomyService {
         return stateService.isReady();
     }
 
+    /** Whether live catalogue reads are available on this runtime. */
+    public boolean isLiveCatalogueReady() {
+        return isInitialized() && !catalogueRuntimePolicy.workerOnly();
+    }
+
     /** Digest of the workbook actually applied to the live catalogue, including across a configuration change. */
     @Transactional(readOnly = true)
     public Optional<String> appliedWorkbookSha256() {
