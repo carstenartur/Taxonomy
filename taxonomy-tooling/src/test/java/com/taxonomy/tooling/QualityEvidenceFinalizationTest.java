@@ -2,15 +2,21 @@ package com.taxonomy.tooling;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.io.RandomAccessFile;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.DigestInputStream;
 import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.zip.GZIPInputStream;
+import java.util.zip.GZIPOutputStream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -90,6 +96,66 @@ class QualityEvidenceFinalizationTest {
     }
   }
 
+  @Test
+  void publishesOversizeCoverageLosslesslyAndCanFinalizeAgain() throws Exception {
+    fixture();
+    String evidence = QUALITY + "evidence/application-test-shards/core/";
+    Path raw = checkout.resolve(evidence + "coverage.exec");
+    Path compressed = checkout.resolve(evidence + "coverage.exec.gz");
+    long githubFileLimit = 100L * 1024 * 1024;
+    try (var file = new RandomAccessFile(raw.toFile(), "rw")) {
+      file.setLength(githubFileLimit + 1);
+    }
+    String originalDigest = sha256(Files.newInputStream(raw));
+    String manifest =
+        read(evidence + "manifest.json")
+            .replace(sha256("fixture execution data core"), originalDigest);
+    put(evidence + "manifest.json", manifest);
+
+    Result result = finalizeEvidence();
+
+    assertThat(result.exit()).as(result.output()).isZero();
+    assertThat(raw).doesNotExist();
+    assertThat(Files.size(compressed)).isLessThan(githubFileLimit);
+    assertThat(sha256(new GZIPInputStream(Files.newInputStream(compressed))))
+        .isEqualTo(originalDigest);
+    assertThat(read(evidence + "manifest.json")).isEqualTo(manifest);
+    String packedDigest = sha256(Files.newInputStream(compressed));
+
+    Result retry = finalizeEvidence();
+
+    assertThat(retry.exit()).as(retry.output()).isZero();
+    assertThat(sha256(Files.newInputStream(compressed))).isEqualTo(packedDigest);
+  }
+
+  @Test
+  void refusesOtherUnpublishableFilesBeforeThePagesUpload() throws Exception {
+    fixture();
+    Path largeEvidence = checkout.resolve(QUALITY + "evidence/oversize.txt");
+    Files.createDirectories(largeEvidence.getParent());
+    try (var file = new RandomAccessFile(largeEvidence.toFile(), "rw")) {
+      file.setLength(100L * 1024 * 1024 + 1);
+    }
+
+    Result result = finalizeEvidence();
+
+    assertThat(result.exit()).as(result.output()).isEqualTo(1);
+    assertThat(result.output()).contains("100 MiB", "oversize.txt");
+  }
+
+  @Test
+  void verifiesEarlierQualityArchivesWithUncompressedCoverage() throws Exception {
+    fixture();
+    Result result = finalizeEvidence();
+    assertThat(result.exit()).as(result.output()).isZero();
+
+    String evidence = QUALITY + "evidence/application-test-shards/core/";
+    Files.delete(checkout.resolve(evidence + "coverage.exec.gz"));
+    put(evidence + "coverage.exec", "fixture execution data core");
+
+    QualitySite.verifyLocal(checkout.resolve(QUALITY), fixtureCommit);
+  }
+
   @ParameterizedTest
   @ValueSource(ints = {1, 2})
   void preservesApplicationEvidenceAcrossPartialAndPublicationRetries(int browserAttempt)
@@ -142,6 +208,9 @@ class QualityEvidenceFinalizationTest {
     "core,report-bytes",
     "core,missing-report",
     "core,coverage-bytes",
+    "core,coverage-corrupt-gzip",
+    "core,coverage-missing",
+    "core,coverage-duplicate",
     "core,commit",
     "core,sourceTree",
     "core,buildId",
@@ -167,7 +236,15 @@ class QualityEvidenceFinalizationTest {
       case "report-bytes" -> put(report, xml("changed-result", false));
       case "missing-report" -> Files.delete(checkout.resolve(report));
       case "missing-manifest" -> Files.delete(checkout.resolve(manifest));
-      case "coverage-bytes" -> put(evidence + "coverage.exec", "changed execution data");
+      case "coverage-bytes" -> {
+        Path compressed = checkout.resolve(evidence + "coverage.exec.gz");
+        try (var output = new GZIPOutputStream(Files.newOutputStream(compressed))) {
+          output.write("changed execution data".getBytes(StandardCharsets.UTF_8));
+        }
+      }
+      case "coverage-corrupt-gzip" -> put(evidence + "coverage.exec.gz", "not a gzip file");
+      case "coverage-missing" -> Files.delete(checkout.resolve(evidence + "coverage.exec.gz"));
+      case "coverage-duplicate" -> put(evidence + "coverage.exec", "fixture execution data " + shard);
       case "commit" ->
           put(manifest, read(manifest).replace("\"" + fixtureCommit + "\"", "\"other-commit\""));
       case "sourceTree" -> put(manifest, read(manifest).replace(tree(), "0".repeat(40)));
@@ -488,6 +565,14 @@ class QualityEvidenceFinalizationTest {
     return HexFormat.of()
         .formatHex(
             MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8)));
+  }
+
+  private static String sha256(InputStream source) throws Exception {
+    var digest = MessageDigest.getInstance("SHA-256");
+    try (var input = new DigestInputStream(source, digest)) {
+      input.transferTo(OutputStream.nullOutputStream());
+    }
+    return HexFormat.of().formatHex(digest.digest());
   }
 
   private static Path repositoryRoot() {
