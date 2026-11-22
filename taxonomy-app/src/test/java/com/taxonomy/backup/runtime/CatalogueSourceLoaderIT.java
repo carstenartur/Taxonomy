@@ -285,6 +285,9 @@ class CatalogueSourceLoaderIT {
             byte[] actual = jdbc.queryForObject("select payload from catalogue_source_blob where sha256=?", (r, n) -> r.getBytes(1), reference.sha256());
             assertThat(actual).isEqualTo(expected);
         }
-        @Override public void close() { factory.close(); }
+        @Override public void close() {
+            factory.close();
+            jdbc.execute("SHUTDOWN");
+        }
     }
 }
