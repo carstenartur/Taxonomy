@@ -28,6 +28,15 @@ class SvgDiagramRendererTest {
     private final SvgDiagramRenderer renderer = new SvgDiagramRenderer();
 
     @Test
+    void preservesQuotedCanonicalViewTextAndOmitsCharactersOutsideXml10() throws Exception {
+        String selection = "A & B <Entwurf> 'Hof' \"Übung\"";
+        var evidence = new com.taxonomy.diagram.DiagramCanonicalEvidence(selection + (char) 3, List.of(), Map.of());
+        String svg = renderer.renderCanonical(WorkingViewPdfRendererTest.scene(2), evidence);
+        assertThat(visibleText(parse(svg))).contains("Source view: " + selection);
+        assertThat(svg).doesNotContain(String.valueOf((char) 3));
+    }
+
+    @Test
     void rendersStandaloneScriptFreeSvgFromTheScene() {
         DiagramScene scene = layout.layout(new DiagramModel(
                 "Secure <architecture>",
