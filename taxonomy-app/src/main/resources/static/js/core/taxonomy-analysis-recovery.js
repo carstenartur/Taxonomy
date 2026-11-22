@@ -430,7 +430,9 @@
         return observation.promise;
     }
     function scheduleRead() {
-        if (current()?.distributed || !statusKnown()) return; // Reconnect is a read-only explicit action.
+        var context = current();
+        // The run monitor covers admission; the journal timer observes confirmed local work.
+        if (context?.confirmed !== true || context.distributed || !statusKnown()) return;
         clearTimeout(poll);
         poll = setTimeout(function () { poll = null; refresh({ background: true }); }, 1200);
     }
@@ -1068,6 +1070,7 @@
             if (context.workspaceId !== C.runtime.workspaceId || (input() && input() !== snapshot.request.businessText)) return;
             var field = document.getElementById('businessText'); if (field && !input()) field.value = snapshot.request.businessText;
             context.request = snapshot.request;
+            context.confirmed = true;
             context.noFollowups = Boolean(snapshot.request.relationSourceContinuationId)
                 || Boolean(snapshot.request.taxonomySourceContinuationId)
                 || snapshot.request.analysisScope?.mode === 'TAXONOMIES_ONLY';

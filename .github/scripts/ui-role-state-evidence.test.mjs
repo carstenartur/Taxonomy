@@ -138,13 +138,11 @@ function browserHarness() {
     snapshot: () => draftSnapshot,
     holdDraft() { holdDraftRead = true; },
     run: () => evidence.runAxe('analysis-success'),
-    async rejectStart({ backgroundRead = false } = {}) {
+    async rejectStart({ explicitRead = false } = {}) {
       const finished = window.TaxonomyAnalysisRecovery.startManagedAnalysis();
       assert.equal(starts.length, 1);
-      if (backgroundRead) {
-        const [id, timer] = [...timers].find(([, timer]) => timer.delay === 1200);
-        timers.delete(id);
-        timer.callback();
+      if (explicitRead) {
+        window.TaxonomyAnalysisRecovery.refresh();
         await observationStarted.promise;
       }
       scoring.reject(Object.assign(new Error('Injected HTTP 503'), { httpStatus: 503 }));
@@ -283,10 +281,10 @@ test('a same-revision server mutation cannot hide behind an otherwise matching a
   assert.equal(h.audits.length, 0);
 });
 
-for (const backgroundRead of [false, true]) {
-  test(`rejected-START observation wait consumes the final real GET body with ${backgroundRead ? 'two reads' : 'one read'}`, async () => {
+for (const explicitRead of [false, true]) {
+  test(`rejected-START observation wait consumes the final real GET body with ${explicitRead ? 'two reads' : 'one read'}`, async () => {
     const h = browserHarness(), fixture = createRejectedAnalysisFixture();
-    const { finished } = await h.rejectStart({ backgroundRead });
+    const { finished } = await h.rejectStart({ explicitRead });
     await fixture.rejectStart({ request: () => ({ method: () => 'POST',
       url: () => 'https://taxonomy.example/api/analyze', postDataJSON: () => h.starts[0] }),
     fulfill: async () => {} });
@@ -294,7 +292,7 @@ for (const backgroundRead of [false, true]) {
     const waiting = fixture.waitForObservation(h.page).then(() => { settled = true; });
     await new Promise(resolve => setImmediate(resolve));
     assert.equal(settled, false, 'An unfinished receipt body must precede blocking Axe');
-    if (backgroundRead) {
+    if (explicitRead) {
       h.observation.resolve();
       await h.decisionObservationStarted.promise;
       await new Promise(resolve => setImmediate(resolve));
@@ -305,7 +303,7 @@ for (const backgroundRead of [false, true]) {
     await waiting;
     assert.equal(settled, true);
     const reads = h.requests.filter(request => request.path.startsWith('/api/analysis-continuations/'));
-    assert.equal(reads.length, backgroundRead ? 2 : 1, 'The wait itself does not refresh recovery');
+    assert.equal(reads.length, explicitRead ? 2 : 1, 'The wait itself does not refresh recovery');
     assert.ok(reads.every(read => read.path === '/api/analysis-continuations/' + h.starts[0].continuationId));
     assert.equal(h.starts.length, 1);
   });
