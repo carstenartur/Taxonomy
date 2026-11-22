@@ -233,7 +233,7 @@ test('the architecture toolbar waits for the currently selected snapshot before 
     const workspace = f.context.TaxonomyArchitectureWorkspace;
     const activation = workspace.open('snapshot', {source:snapshot});
     await f.settle();
-    const opening = f.node('architectureLensAction').click();
+    const opening = f.node('snapshotArchitectureLensAction').click();
     await f.settle();
     assert.deepEqual(lens,[]);
     activateSnapshot();

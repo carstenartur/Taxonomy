@@ -150,9 +150,9 @@ selected snapshot. Both sources remain unchanged. If complete retained evidence
 is unavailable, the application explains why; **Refresh source** checks it again.
 
 **Relationship proposals** shows the proposals available for the displayed
-architecture. Select an element in the diagram and choose
-**Investigate selection**. Open **Investigation settings and activity** to
-enable investigation on hover. Possible endpoints span the displayed model.
+architecture. Select an element in the diagram, open its **Architecture focus
+lens**, and choose **Investigate selection**. The diagram also has an
+**Investigate on hover** switch. Possible endpoints span the displayed model.
 
 Investigations use local text by default. Selecting **Ask the configured AI
 provider when available** allows a request to the configured provider. The
@@ -161,14 +161,16 @@ Pausing lets the current request finish.
 
 Select a proposal or a dashed arrow to review its direction, rationale and
 source excerpts. **Source and method** shows the technical provenance. In
-analysis and snapshot sources, you can dismiss the proposal or show its target
-element. The snapshot action **Review adoption of this snapshot** opens an
+analysis and snapshot sources, you can dismiss the proposal or show the other
+element. The snapshot action **Open adoption preview** opens an
 adoption preview for the entire saved snapshot.
 
 In the current editable **Working architecture**, **Preview relationship
-change** opens the standard editor preview. Confirm the preview to save the
-individual relationship, its rationale and provenance. **Undo** previews the
-inverse of the accepted operation. Investigate the element again when its
+change** shows the element names, direction, and evidence. To review several
+relationships together, mark the relevant proposals in the list and open the
+preview for the selection. Confirmation saves those relationships and their
+individual rationale and evidence together. **Undo** previews reversing the
+entire confirmed change. Investigate the element again when its
 proposal becomes stale. Accepted relationships and their evidence are durable.
 
 **Stable order** preserves the default arrangement. **Reduce crossings**, followed
@@ -232,9 +234,12 @@ The shared application navigation remains available on this page. Repository, wo
 3. Open **Prepare C1–S1 and R7 from this workspace**. Inspect the agreed closed
    `.qea` file, select the native references, and review the service contribution
    and the operational constraint against the current requirement quotation.
-4. Check the selected delivery coverage in the preview. Save the reviewed
-   changes to a checkpoint, export its assessment and QEA copy, and verify the
-   native delivery in Enterprise Architect with the agreed ADMBw MDG.
+4. Check delivery coverage and review the service contribution and R7
+   derivation separately. Save the reviewed changes to a checkpoint. Download
+   the assessment and, when the native checks permit it, the QEA copy from the
+   same panel. Taxonomy uses the saved checkpoint, reviewed view and selected
+   basis for the download. Verify the native delivery in Enterprise Architect
+   with the agreed ADMBw MDG.
 
 The Sparx plugin is required for native QEA delivery. See the
 [illustrated walkthrough (German)](https://github.com/carstenartur/Taxonomy/blob/main/docs/de/ARCHITECTURE_EDITOR.md#architecture-delivery-guide).

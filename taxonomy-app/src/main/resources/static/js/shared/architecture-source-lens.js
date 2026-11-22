@@ -136,6 +136,9 @@ window.TaxonomyArchitectureSourceLens = (function () {
         }
         var panel = window.ArchitectureFocusPanel({ root: root, idPrefix: prefix, t: t,
             capabilities: { readOnly: true }, request: request, present: present, canReview: canReview, errorMessage: problemMessage,
+            elementNames: function () {
+                return new Map((diagram()?.getModel?.()?.nodes || []).map(function (node) { return [node.id, node.label || node.title]; }));
+            },
             language: function () { return window.TaxonomyI18n.getLocale() === 'de' ? 'de' : 'en'; },
             locate: function (id, item) { if (canReview(item)) workspace.select(id); } });
         function activate(source, force) {

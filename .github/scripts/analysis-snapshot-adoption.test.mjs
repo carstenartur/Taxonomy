@@ -45,6 +45,21 @@ test('opening adoption panel never previews or accepts automatically',()=>{
     panel.update(view(target,false));assert.equal(node('adoptionPreview').disabled,true);
 });
 
+test('the snapshot action opens the read-only preview and waits for a separate acceptance', async () => {
+    const {context,node}=boot();let previews=0, accepted=0;
+    const panel=context.AnalysisSnapshotAdoption({t:key=>key,metadata:()=>({commandId:'one'}),api:{
+        previewAdoption:async()=>{previews++;return {fingerprint:'one',summary:{addedElements:[],reusedElements:[],
+            addedRelations:[],reusedRelations:[],differences:[],conflicts:[]}};},
+        adoptSnapshot:async()=>{accepted++;}
+    }});
+    panel.update(view());await panel.showPreview();
+    assert.equal(previews,1);assert.equal(accepted,0);
+    assert.equal(node('adoptionSummary').focused,true);assert.equal(node('adoptionPreview').hidden,true);
+    assert.equal(node('adoptionAccept').disabled,false);
+    node('adoptionCancel').click();assert.equal(node('adoptionPreview').hidden,false);
+    assert.equal(node('adoptionSummary').hidden,true);assert.equal(accepted,0);
+});
+
 test('changing the frozen source invalidates a reviewed preview even when the target stays the same',async()=>{
     const {context,node,source}=boot();const accepted=[];let current={...source};
     context.TaxonomyArchitectureWorkflow.adoptionSource=()=>current;
@@ -54,7 +69,7 @@ test('changing the frozen source invalidates a reviewed preview even when the ta
     }});
     panel.update(view());await node('adoptionPreview').click();assert.equal(node('adoptionAccept').disabled,false);
     current={...source,snapshotId:'new-snapshot',requirementVersionId:10};panel.update(view());
-    assert.match(node('adoptionSource').textContent,/new-snapshot/);
+    assert.match(node('adoptionIdentity').textContent,/new-snapshot/);
     assert.equal(node('adoptionAccept').disabled,true);assert.equal(node('adoptionSummary').hidden,true);
     await node('adoptionAccept').click();assert.equal(accepted.length,0);
 });
@@ -101,9 +116,9 @@ test('deliberate canonical view selection uses its source B while retaining inde
     const current=view();current.model.views=[{id:'analysis-B',title:'Recorded B',extensions}];
     panel=context.AnalysisSnapshotAdoption({t:key=>key,metadata:()=>({commandId:'one'}),report:error=>{throw error;},selectedView:()=>selectedId,
         onSelectView:id=>{selectedId=id;panel.update(current);},api:{previewAdoption:async request=>{requests.push(request);return {fingerprint:'B',summary:{addedElements:[],reusedElements:[],addedRelations:[],reusedRelations:[],differences:[],conflicts:[]}};}}});
-    panel.update(current);assert.match(node('adoptionSource').textContent,new RegExp(source.snapshotId));
+    panel.update(current);assert.match(node('adoptionIdentity').textContent,new RegExp(source.snapshotId));
     node('adoptionView').value='analysis-B';node('adoptionView').change();
-    assert.match(node('adoptionSource').textContent,/snapshot-B/);
+    assert.match(node('adoptionIdentity').textContent,/snapshot-B/);
     const link=new URL(node('adoptionSourceLink').href,'https://example.test');
     assert.equal(link.searchParams.get('snapshotId'),'snapshot-B');assert.equal(link.searchParams.get('workspaceId'),'source-copy-B');
     await node('adoptionPreview').click();

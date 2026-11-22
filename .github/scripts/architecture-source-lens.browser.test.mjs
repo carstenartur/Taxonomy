@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import path from 'node:path';
 import {chromium} from 'playwright';
+import { architectureLensMarkup } from './architecture-lens-fixture.mjs';
 
 const resources=process.env.TAXONOMY_TEST_RESOURCE_ROOT||path.resolve('taxonomy-app/src/main/resources');
 let browser;
@@ -15,10 +16,8 @@ after(async()=>{await browser?.close();});
 test('a candidate in a copy named __shared__ is reviewed with that exact source',async()=>{
     const page=await browser.newPage();const errors=[];page.on('pageerror',error=>errors.push(error.message));
     try {
-        const template=await readFile(path.join(resources,'templates/fragments/architecture-source-lens.html'),'utf8');
-        // Render this fragment's parameterized IDs; the actual production controls and handlers remain intact.
-        const markup=template.replace(/th:id="\$\{idPrefix(?: \+ '([^']+)')?\}"/g,(_match,suffix)=>`id="sourceLens${suffix||''}"`);
-        await page.setContent(markup);
+        const { panel, controls } = await architectureLensMarkup(resources, 'sourceLens');
+        await page.setContent(controls + panel);
         await page.evaluate(()=>{
             const source={kind:'snapshot',repositoryId:'repo',workspaceScopeKey:'__shared__',workspaceId:'__shared__',branch:'draft',projectId:1,
                 requirementId:2,requirementVersionId:3,snapshotId:'saved-source'};
@@ -33,7 +32,8 @@ test('a candidate in a copy named __shared__ is reviewed with that exact source'
                 return{json:async()=>({source:request.source,sourceId:'arch-a',sourceHash:'a'.repeat(64),method:'LOCAL_TEXT_UNASSESSED',
                     outcome:'LOCAL_CANDIDATES',modelCalls:0,candidateCount:2,suggestions:[
                         {id:'first',sourceId:'arch-a',targetId:'arch-b',relationType:'SUPPORTS',rationale:'First hypothesis',evidence:[],properties:{}},
-                        {id:'second',sourceId:'arch-a',targetId:'arch-c',relationType:'SUPPORTS',rationale:'Second reviewed hypothesis',evidence:[],properties:{}}
+                        {id:'second',sourceId:'arch-c',targetId:'arch-a',relationType:'SUPPORTS',rationale:'Second reviewed hypothesis',
+                            evidence:[{elementId:'arch-c',field:'title',quote:'Candidate source'},{elementId:'arch-a',field:'title',quote:'Investigation subject'}],properties:{}}
                     ]})};
             }};
         });
@@ -47,6 +47,7 @@ test('a candidate in a copy named __shared__ is reviewed with that exact source'
         assert.equal(await page.locator('#sourceLensEnabled').isChecked(),false);
         await page.locator('#sourceLensInspect').click();
         await page.waitForFunction(()=>document.querySelectorAll('#sourceLensSuggestions button').length===2);
+        assert.match(await page.locator('#sourceLensSuggestions button').nth(1).innerText(), /Candidate source .* Investigation subject/);
         await page.locator('#sourceLensSuggestions button').nth(1).click();
         assert.equal(await page.evaluate(()=>window.handoff),undefined,'Review alone cannot open the editor');
         assert.deepEqual(await page.evaluate(()=>window.focusPins),
@@ -63,8 +64,8 @@ test('a candidate in a copy named __shared__ is reviewed with that exact source'
 });
 
 async function workingPanel(page) {
-    const template = await readFile(path.join(resources, 'templates/fragments/architecture-source-lens.html'), 'utf8');
-    await page.setContent(template.replace(/th:id="\$\{idPrefix(?: \+ '([^']+)')?\}"/g, (_match, suffix) => `id="editorLens${suffix || ''}"`));
+    const { panel, controls } = await architectureLensMarkup(resources, 'editorLens');
+    await page.setContent(controls + panel);
     await page.addScriptTag({ path: path.join(resources, 'static/js/architecture-focus.js') });
     await page.evaluate(() => {
         const root = document.getElementById('editorLens');
@@ -86,6 +87,46 @@ async function workingPanel(page) {
     await retry.waitFor();
     return retry;
 }
+
+test('a working investigation previews only the relationships explicitly selected', async () => {
+    const page = await browser.newPage({viewport:{width:390,height:850}});
+    const errors = [];
+    page.on('pageerror', error => errors.push(error.message));
+    try {
+        const fragment = await readFile(path.join(resources, 'templates/fragments/architecture-source-lens.html'), 'utf8');
+        const panel = fragment.replace(/th:id="\$\{idPrefix(?: \+ '([^']+)')?\}"/g, (_, suffix) => `id="editorLens${suffix || ''}"`);
+        await page.setContent(`<section class="relationship-review">${panel}</section>`);
+        await page.addStyleTag({path:path.join(resources, 'static/css/architecture-editor.css')});
+        await page.addScriptTag({path:path.join(resources, 'static/js/architecture-focus.js')});
+        await page.evaluate(() => {
+            const root = document.getElementById('editorLens');
+            const context = {repositoryId:'repo',workspaceScopeKey:'copy',branch:'draft',revision:1,commit:null,actor:'tester',writeMode:'PRIVATE_WORKSPACE'};
+            const names = new Map([['source','Training application'],['a','User service'],['b','Content repository'],['c','Support team']]);
+            const focus = ArchitectureFocusPanel({root, t:(key,...args)=>key === 'mermaid.relation.supports' ? 'unterstützt' : [key,...args].join(' '),
+                request: async () => ({context,sourceId:'source',method:'LOCAL_TEXT_UNASSESSED',outcome:'UNASSESSED',modelCalls:0,suggestions:['a','b','c'].map(id => ({
+                    id, sourceId:'source',targetId:id,relationType:'SUPPORTS',rationale:`Evidence ${id}`,properties:{'x-focus-evidence':id}
+                }))}), elementNames:() => names, present() {}, accept() {}, undo() {}, canUndo:() => false, locate() {},
+                acceptSelection:items=>{window.reviewedRelationships=items.map(item=>[item.targetId,item.properties['x-focus-evidence']]);}
+            });
+            focus.setContext(context,true);
+            focus.select('source');
+        });
+        await page.locator('#editorLensInspect').click();
+        const candidates = page.locator('#editorLensSuggestions');
+        await candidates.locator('button').last().waitFor();
+        assert.match(await candidates.locator('button').first().innerText(), /Training application — unterstützt → User service/);
+        assert.equal(await candidates.evaluate(el=>getComputedStyle(el).overflowY), 'visible');
+        const checks = candidates.getByRole('checkbox');
+        await checks.nth(0).check();
+        await checks.nth(2).check();
+        assert.ok(await checks.nth(0).isChecked());
+        assert.ok(!await checks.nth(1).isChecked());
+        assert.equal(await page.evaluate(()=>window.reviewedRelationships), undefined);
+        await page.locator('#editorLensBatch').click();
+        assert.deepEqual(await page.evaluate(()=>window.reviewedRelationships), [['a','a'],['c','c']]);
+        assert.deepEqual(errors, []);
+    } finally { await page.close(); }
+});
 
 test('paused and fully reserved working lens controls cannot start investigations', async () => {
     const page = await browser.newPage();
@@ -135,18 +176,17 @@ test('the snapshot adoption link previews B after leaving an adopted working vie
     try {
         await page.route('http://lens.test/**', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><body></body>' }));
         await page.goto('http://lens.test/taxonomy/');
-        const lensTemplate = await readFile(path.join(resources, 'templates/fragments/architecture-source-lens.html'), 'utf8');
+        const lensMarkup = await architectureLensMarkup(resources, 'sourceLens');
         const editorTemplate = await readFile(path.join(resources, 'templates/architecture-editor.html'), 'utf8');
         const workflowTemplate = await readFile(path.join(resources, 'templates/fragments/architecture-workflow.html'), 'utf8');
-        await page.evaluate(({ lensTemplate, editorTemplate, workflowTemplate }) => {
+        await page.evaluate(({ lensMarkup, editorTemplate, workflowTemplate }) => {
             const editor = new DOMParser().parseFromString(editorTemplate, 'text/html');
             const workflow = new DOMParser().parseFromString(workflowTemplate, 'text/html');
             document.body.insertAdjacentHTML('beforeend', editor.getElementById('snapshotAdoption').outerHTML);
             document.body.insertAdjacentHTML('beforeend', workflow.getElementById('architectureWorkflow').outerHTML);
-            document.body.insertAdjacentHTML('beforeend', lensTemplate.replace(/th:id="\$\{idPrefix(?: \+ '([^']+)')?\}"/g,
-                (_match, suffix) => `id="sourceLens${suffix || ''}"`));
+            document.body.insertAdjacentHTML('beforeend', lensMarkup.controls + lensMarkup.panel);
             window.TaxonomyI18n = { t: key => key, getLocale: () => 'en', resolveUrl: path => '/taxonomy' + path, getBasePath: () => '/taxonomy' };
-        }, { lensTemplate, editorTemplate, workflowTemplate });
+        }, { lensMarkup, editorTemplate, workflowTemplate });
         for (const file of ['shared/architecture-workflow.js', 'shared/architecture-workspace.js', 'analysis-snapshot-adoption.js',
             'architecture-focus.js', 'shared/architecture-source-lens.js']) {
             await page.addScriptTag({ path: path.join(resources, 'static/js', file) });
@@ -171,7 +211,10 @@ test('the snapshot adoption link previews B after leaving an adopted working vie
                         conflicts: [], differences: [] }, fingerprint: 'pinned-preview' };
                 } } });
             const workspace = create({ initial: working, defaults: { working, snapshot }, adapters: {
-                working: { activate: source => { selectedView = source.viewId; adoption.update(workingView); } },
+                working: { activate: async source => {
+                    selectedView = source.viewId; adoption.update(workingView);
+                    if (source.adoption === 'preview') await adoption.showPreview();
+                } },
                 snapshot: { getData: () => data }
             }, beforeChange(source) { history.replaceState(null, '', urlFor(new URL(location.href), source, '/taxonomy/')); } });
             window.ArchitectureSourceFocusApi = { suggest: async body => ({ source: body.source, sourceId: body.sourceId,
@@ -193,7 +236,8 @@ test('the snapshot adoption link previews B after leaving an adopted working vie
         await page.locator('#sourceLensReview').getByText('A source B hypothesis').waitFor();
         assert.equal(await page.locator('#sourceLensReview [data-focus-action="adopt"]').count(),0);
         await page.locator('#workflow-adopt').click();
-        await page.locator('#adoptionPreview').click();
+        await page.locator('#adoptionSummary').waitFor();
+        assert.equal(await page.locator('#adoptionAccept').isVisible(),true);
         const captured = await page.evaluate(() => window.previewedSource);
         assert.equal(captured.snapshotId, 'saved-B', 'The displayed snapshot owns adoption, even when the working editor previously retained view A');
         assert.equal(captured.requirementVersionId, 9);

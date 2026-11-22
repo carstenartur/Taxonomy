@@ -362,13 +362,17 @@
             if (!window.TaxonomyRelationshipReview?.open('focus')) lens?.open();
         }
     };
-    el('architectureLensAction')?.addEventListener('click', async function () {
+    async function openDiagramLens(event) {
         try {
             if (sourceActivation) await awaitSelectedSource(sourceActivation);
+            if (document.fullscreenElement?.contains(event?.target)) await document.exitFullscreen();
             if (workspace.isActive()) workspace.openLens();
         } catch (error) {
             report(error);
         }
+    }
+    ['architectureLensAction', 'snapshotArchitectureLensAction'].forEach(function (id) {
+        el(id)?.addEventListener('click', openDiagramLens);
     });
     workspace.restoreUrl=function(){pendingAnalysisHistory=null;writeUrl(workspace.getSource(),{replace:true});};
     window.TaxonomyArchitectureWorkspace = workspace;

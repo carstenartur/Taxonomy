@@ -76,7 +76,7 @@ window.ArchitectureFocusSession = function (options) {
             var previous = suggestions[index];
             // An investigation can refresh evidence without rewriting a reviewer's decision or command.
             if (previous && (previous.dismissed || previous.accepted || previous.command)) return;
-            var retained = Object.assign({}, value, { id: id, method: result.method,
+            var retained = Object.assign({}, value, { id: id, investigationElementId: request.id, method: result.method,
                 outcome: result.outcome, sourceHash: result.sourceHash, stale: false });
             retained[sourceMode ? 'source' : 'context'] = request.context;
             if (!investigations.has(id)) investigations.set(id, new Map());
@@ -186,9 +186,9 @@ window.ArchitectureFocusSession = function (options) {
             if (reviewed === id) reviewed = (suggestions.find(function (s) { return !s.dismissed; }) || {}).id || null;
             changed();
         },
-        accepted: function (id, result) {
+        accepted: function (id, result, items) {
             var item = suggestions.find(function (s) { return s.id === id; });
-            if (item) { item.accepted = result; item.stale = true; reviewed = id; }
+            if (item) { item.accepted = result; item.acceptedItems = items; item.stale = true; reviewed = id; }
             changed();
         },
         undone: function (id) { var item = suggestions.find(function (s) { return s.id === id; }); if (item) item.undone = true; changed(); }
@@ -200,8 +200,11 @@ window.ArchitectureFocusPanel = function (options) {
     'use strict';
     var session, selected = null, lastReview = null, reviewFocus = null;
     var readOnly = options.capabilities && options.capabilities.readOnly === true;
+    var checked = new Set();
+    var lensPrefix = options.idPrefix || 'editorLens';
+    var hoverControls = Array.from(document.querySelectorAll('[data-architecture-lens-hover="' + lensPrefix + '"]'));
     function el(id) {
-        var scopedId = id.replace(/^editorLens/, options.idPrefix || 'editorLens');
+        var scopedId = id.replace(/^editorLens/, lensPrefix);
         return options.root ? options.root.querySelector('#' + scopedId) : document.getElementById(scopedId);
     }
     function t() { return options.t.apply(null, arguments); }
@@ -211,6 +214,11 @@ window.ArchitectureFocusPanel = function (options) {
         if (focusKey) item.dataset.focusAction = focusKey;
         return item;
     }
+    function otherEnd(item) {
+        var origin = selected === item.sourceId || selected === item.targetId ? selected : item.investigationElementId;
+        return item.targetId === origin ? item.sourceId : item.targetId;
+    }
+    function canAccept(item) { return !item.stale && !item.accepted; }
     function reviewSuggestion(id) {
         var item = session.snapshot().suggestions.find(function (value) { return value.id === id; });
         if (!item || readOnly && options.canReview && !options.canReview(item)) return false;
@@ -218,8 +226,10 @@ window.ArchitectureFocusPanel = function (options) {
         return true;
     }
     function render(state) {
-        el('editorLensEnabled').checked = state.enabled;
-        el('editorLensEnabled').disabled = !state.available || state.locked;
+        hoverControls.forEach(function (control) {
+            control.checked = state.enabled;
+            control.disabled = !state.available || state.locked;
+        });
         el('editorLensPause').disabled = !state.available || state.locked;
         el('editorLensPause').textContent = t(state.paused ? 'editor.lens.resume' : 'editor.lens.pause');
         el('editorLensInspect').disabled = !session.canInspect(selected, true, true);
@@ -249,26 +259,55 @@ window.ArchitectureFocusPanel = function (options) {
             statuses.append(row);
         });
         if (focusedRetry) {
-            var retryFocus = restoreRetry || ['editorLensInspect', 'editorLensPause', 'editorLensEnabled', 'editorLensBudget']
+            var retryFocus = restoreRetry || ['editorLensInspect', 'editorLensPause', 'editorLensBudget']
                 .map(el).find(function (control) { return !control.disabled; });
             if (retryFocus) retryFocus.focus({ preventScroll: true });
         }
         var list = el('editorLensSuggestions');
-        var focusedProposal = list.contains(document.activeElement) ? document.activeElement.dataset.proposalId : null;
+        var activeProposal = list.contains(document.activeElement) ? document.activeElement : null;
+        var focusedProposal = activeProposal?.dataset.proposalId;
+        var controlTag = activeProposal?.tagName;
         list.replaceChildren();
-        state.suggestions.slice(-32).forEach(function (item) {
+        var visible = state.suggestions.slice(-32);
+        var names = state.suggestions.length ? options.elementNames?.() : null;
+        function name(item, id) {
+            return names?.get(id) || item.evidence?.find(function (e) { return e.elementId === id && e.field === 'title'; })?.quote || id;
+        }
+        function label(item) { return window.ArchitectureFocusPanel.relationLabel(item, name, t); }
+        var marked = visible.filter(function (item) { return canAccept(item) && checked.has(item.id); });
+        checked = new Set(marked.map(function (item) { return item.id; }));
+        visible.forEach(function (item) {
             var row = node('li');
-            var select = action(item.sourceId + ' → ' + item.targetId + ' · ' + item.relationType,
-                function () { reviewSuggestion(item.id); });
+            var select = action(label(item), function () { reviewSuggestion(item.id); });
             select.className = 'relationship-review-candidate';
             select.setAttribute('aria-pressed', String(state.reviewed === item.id));
             select.dataset.proposalId = item.id;
+            if (!readOnly && options.acceptSelection && canAccept(item)) {
+                var checkbox = node('input'); checkbox.type = 'checkbox'; checkbox.checked = checked.has(item.id);
+                checkbox.disabled = state.locked || !state.available;
+                checkbox.dataset.proposalId = item.id;
+                checkbox.setAttribute('aria-label', t('relationshipReview.mark', label(item)));
+                checkbox.onchange = function () {
+                    if (this.checked) checked.add(item.id); else checked.delete(item.id);
+                    render(session.snapshot());
+                };
+                row.className = 'relationship-review-selectable';
+                row.append(checkbox);
+            }
             row.append(select, node('small', t(item.accepted ? (item.undone ? 'editor.lens.undone' : 'editor.lens.accepted') : item.stale ? 'editor.lens.stale'
-                : item.outcome === 'ASSESSED' ? 'relationshipReview.assessed' : 'relationshipReview.local'))); list.append(row);
+                : item.outcome === 'ASSESSED' ? 'relationshipReview.assessed' : 'relationshipReview.local')));
+            list.append(row);
         });
         if (focusedProposal) {
-            var restore = Array.from(list.querySelectorAll('button')).find(function (b) { return b.dataset.proposalId === focusedProposal; });
+            var restore = Array.from(list.querySelectorAll(controlTag)).find(function (control) { return control.dataset.proposalId === focusedProposal; });
             if (restore) restore.focus({ preventScroll: true });
+        }
+        var batch = el('editorLensBatch');
+        if (batch) {
+            batch.hidden = !marked.length;
+            batch.disabled = state.locked || !state.available;
+            batch.textContent = t(marked.length === 1 ? 'editor.lens.accept' : 'relationshipReview.previewSelected', marked.length);
+            batch.onclick = function () { options.acceptSelection(marked); };
         }
         var count = el('editorLensCount');
         count.hidden = state.suggestions.length === 0;
@@ -280,14 +319,14 @@ window.ArchitectureFocusPanel = function (options) {
         var reviewWasFocused = review.contains(document.activeElement);
         if (reviewWasFocused) reviewFocus = document.activeElement.dataset.focusAction || null;
         // Preserve text selection and keyboard focus while queue updates arrive.
-        var reviewKey = chosen && JSON.stringify([chosen.id, chosen.stale, Boolean(chosen.accepted), chosen.undone,
+        var reviewKey = chosen && JSON.stringify([chosen.id, label(chosen), otherEnd(chosen), chosen.stale, Boolean(chosen.accepted), chosen.undone,
             state.locked, state.available, chosen.rationale, chosen.evidence, chosen.method, chosen.outcome,
             chosen.sourceHash, chosen.properties]);
         if (reviewKey !== lastReview) {
             lastReview = reviewKey; review.replaceChildren();
             if (!chosen) review.append(node('p', t('editor.lens.empty')));
             else {
-                review.append(node('h3', chosen.sourceId + ' — ' + chosen.relationType + ' → ' + chosen.targetId));
+                review.append(node('h3', label(chosen)));
                 review.append(node('p', t(chosen.stale && !chosen.accepted ? 'editor.lens.stale' : chosen.outcome === 'ASSESSED' ? 'editor.lens.hypothesis' : 'editor.lens.local'), 'editor-lens-notice'));
                 review.append(node('p', chosen.rationale, 'editor-lens-rationale'));
                 if (chosen.evidence?.length) {
@@ -303,7 +342,9 @@ window.ArchitectureFocusPanel = function (options) {
                 var actions = node('div', '', 'relationship-review-toolbar');
                 if (!readOnly && chosen.accepted) {
                     actions.append(node('span', t(chosen.undone ? 'editor.lens.undone' : 'editor.lens.accepted')));
-                    actions.append(action(t('editor.undo'), function () { options.undo(chosen); }, chosen.undone || state.locked || !options.canUndo(chosen), 'undo'));
+                    var undoCount = chosen.acceptedItems?.length || 1;
+                    actions.append(action(undoCount === 1 ? t('editor.undo') : t('relationshipReview.undoSelected', undoCount),
+                        function () { options.undo(chosen); }, chosen.undone || state.locked || !options.canUndo(chosen), 'undo'));
                 } else {
                     if (!readOnly) {
                         var apply = action(t('editor.lens.accept'), function () { options.accept(chosen); }, chosen.stale || state.locked || !state.available, 'accept');
@@ -312,7 +353,8 @@ window.ArchitectureFocusPanel = function (options) {
                     }
                     actions.append(action(t('editor.lens.dismiss'), function () { session.dismiss(chosen.id); }, state.locked, 'dismiss'));
                 }
-                actions.append(action(t('editor.lens.locate'), function () { options.locate(chosen.targetId, chosen); }, state.locked, 'locate'));
+                var other = otherEnd(chosen);
+                actions.append(action(t('relationshipReview.locate', name(chosen, other)), function () { options.locate(other, chosen); }, state.locked, 'locate'));
                 review.append(actions);
                 var provenance = node('details', '', 'relationship-review-provenance');
                 provenance.append(node('summary', t('relationshipReview.provenance')));
@@ -339,7 +381,9 @@ window.ArchitectureFocusPanel = function (options) {
     session = window.ArchitectureFocusSession({ request: options.request, language: options.language, changed: render,
         sourceMode: readOnly, errorMessage: options.errorMessage,
         onPending: window.AnalysisAdapterApi?.pendingButton(el('editorLensInspect')) });
-    el('editorLensEnabled').onchange = function () { session.setEnabled(this.checked); };
+    hoverControls.forEach(function (control) {
+        control.onchange = function () { session.setEnabled(this.checked); };
+    });
     el('editorLensPause').onclick = function () { session.setPaused(!session.snapshot().paused); };
     el('editorLensBudget').onchange = function () { session.setBudget(this.value); this.value = session.snapshot().budget; };
     el('editorLensUseAi').onchange = function () { session.setUseAi(this.checked); };
@@ -351,4 +395,11 @@ window.ArchitectureFocusPanel = function (options) {
         select: function (id) { selected = id; render(session.snapshot()); },
         refresh: function () { lastReview = null; render(session.snapshot()); }
     };
+};
+
+window.ArchitectureFocusPanel.relationLabel = function (item, name, t) {
+    var key = 'mermaid.relation.' + item.relationType.toLowerCase().replaceAll('_', '.');
+    var translated = t(key);
+    var relation = !translated || translated === key ? item.relationType : translated;
+    return name(item, item.sourceId) + ' — ' + relation + ' → ' + name(item, item.targetId);
 };

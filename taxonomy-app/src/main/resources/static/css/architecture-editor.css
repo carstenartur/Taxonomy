@@ -142,6 +142,13 @@
     inline-size: 100%;
 }
 .relationship-review .editor-lens-suggestions small { display: block; margin: .2rem .4rem 0; color: var(--review-muted); }
+.relationship-review-selectable { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 0 .5rem; }
+.relationship-review-selectable > input { inline-size: 1.2rem; block-size: 1.2rem; margin-inline: .35rem; }
+.relationship-review-selectable > small { grid-column: 2; }
+.relationship-review-batch { margin-block-start: .5rem; overflow-wrap: anywhere; }
+.editor-focus-preview { margin-block: .75rem; overflow-wrap: anywhere; }
+.editor-focus-preview > li { margin-block: .75rem; }
+.editor-focus-preview > li > p { margin: .25rem 0; }
 .relationship-review-detail { min-inline-size: 0; overflow-wrap: anywhere; }
 .relationship-review-detail > p { margin: .5rem 0; }
 .relationship-review .editor-lens-rationale, .relationship-review-evidence blockquote { white-space: pre-wrap; }
@@ -177,7 +184,7 @@
 .relationship-review .editor-lens-state.examining { font-weight: 700; }
 @media (max-width: 54rem) {
     .relationship-review-results { grid-template-columns: minmax(0, 1fr); }
-    .relationship-review .editor-lens-suggestions { max-block-size: 12rem; }
+    .relationship-review .editor-lens-suggestions { max-block-size: none; overflow: visible; }
 }
 .architecture-editor-surface #editorGraph .editor-lens-ring { fill: #7142a00c; stroke: #7142a0; stroke-width: 2; pointer-events: none; }
 .architecture-editor-surface #editorGraph .editor-ghost { stroke: #7142a0; stroke-width: 3; stroke-dasharray: 8 5; fill: none; cursor: pointer; }
@@ -206,3 +213,11 @@
 #prepResult .editor-admbw-profile ul { margin-block-start: .35rem; padding-inline-start: 1.25rem; }
 #prepResult pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 18rem; overflow: auto; }
 #prepResult table { width: 100%; }
+#prepResult > details, #prepAssessment { margin-block: .5rem; }
+#prepAssessment { display: inline-block; margin-inline-end: .75rem; }
+#prepAssessment[hidden] { display: none; }
+.prep-review-decision { margin-block-end: .75rem; padding: .75rem .9rem; border-inline-start: 3px solid var(--taxonomy-panel-border, #8795a8); background: var(--taxonomy-panel-background, white); }
+.prep-review-decision h4 { margin: 0 0 .35rem; font-size: 1rem; }
+.prep-review-decision p { margin: 0 0 .35rem; }
+.prep-review-decision blockquote { margin: 0; padding-inline-start: .75rem; border-inline-start: 2px solid var(--taxonomy-panel-border, #8795a8); }
+.prep-review-source-text { white-space: pre-wrap; overflow-wrap: anywhere; }

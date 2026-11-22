@@ -41,6 +41,8 @@ function panelFixture() {
     document.body = new Element('body'); document.activeElement = document.body;
     document.createElement = tag => new Element(tag);
     document.getElementById = id => ids[id] || (ids[id] = new Element('div'));
+    document.querySelectorAll = selector => selector === '[data-architecture-lens-hover="editorLens"]'
+        ? [document.getElementById('editorLensEnabled')] : [];
     global.document = document;
     const panel = window.ArchitectureFocusPanel({ t: (...parts) => parts.join(' '),
         request: body => new Promise((resolve, reject) => calls.push({ body, resolve, reject })),

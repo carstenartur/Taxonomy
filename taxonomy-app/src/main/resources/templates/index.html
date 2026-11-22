@@ -168,6 +168,7 @@
                     </section>
                 </details>
                 <div class="card-body overflow-auto" style="max-height:82vh;">
+                    <div th:replace="~{fragments/score-legend :: matches('analysisScoreLegend')}"></div>
                     <div id="taxonomyResponsibilityControl" class="mb-2" hidden></div>
                     <div id="taxonomyResponsibilitySummary" class="mb-2" hidden></div>
                     <div id="taxonomyTree" th:attr="aria-label=#{ui.aria.taxonomy_tree}" aria-label="Taxonomy Tree" aria-busy="true">
@@ -275,17 +276,6 @@
                             <p id="analysisRelationsExtensionHint" class="small text-muted mt-1 mb-0" role="status"></p>
                         </div>
                     </div>
-                </div>
-
-                <!-- Match Legend -->
-                <div id="analysisScoreLegend" class="score-legend mb-3" role="group"
-                     aria-labelledby="analysisScoreLegendLabel" th:title="#{legend.title}" title="Score colour coding: green intensity indicates the match percentage. 0% = no match (transparent), 100% = perfect match (solid green). Text turns white above 60%.">
-                    <small id="analysisScoreLegendLabel" class="text-muted" th:text="#{legend.label}">Match legend:</small>
-                    <span class="legend-box" style="background:rgba(0,128,0,0);" th:title="#{legend.0}" title="0% — No match detected">0%</span>
-                    <span class="legend-box" style="background:rgba(0,128,0,0.25);" th:title="#{legend.25}" title="25% — Weak match">25%</span>
-                    <span class="legend-box" style="background:rgba(0,128,0,0.50);" th:title="#{legend.50}" title="50% — Moderate match">50%</span>
-                    <span class="legend-box" style="background:rgba(0,128,0,0.75); color:#fff;" th:title="#{legend.75}" title="75% — Strong match">75%</span>
-                    <span class="legend-box" style="background:rgba(0,128,0,1.00); color:#fff;" th:title="#{legend.100}" title="100% — Perfect match">100%</span>
                 </div>
 
                 <section id="analysisNextSteps" class="card shadow-sm mb-3" aria-labelledby="analysisNextStepsHeading">
@@ -542,8 +532,6 @@
                                 <option value="snapshot" th:text="#{architecture.workspace.snapshot}">Saved analysis snapshot</option>
                                 <option value="working" th:text="#{architecture.workspace.working}">Working architecture</option>
                             </select>
-                            <button id="architectureLensAction" type="button" class="btn btn-outline-primary"
-                                    th:text="#{analysis.guide.lens}">Architecture focus lens</button>
                         </div>
                     </div>
                     <p id="architectureSourceDescription" class="text-muted" th:text="#{architecture.workspace.analysis.help}">The architecture from the current analysis. Your input and results stay available when switching sources.</p>
@@ -575,7 +563,10 @@
                 <!-- Architecture View Panel -->
                 <div id="architectureViewPanel" class="mb-3" style="display:none;">
                     <div class="card shadow-sm">
-                        <div class="card-header fw-semibold" th:text="#{architecture.requirement.view.title}">&#127959;&#65039; Requirement Architecture View</div>
+                        <div class="card-header d-flex flex-wrap align-items-center gap-2">
+                            <span class="fw-semibold" th:text="#{architecture.requirement.view.title}">Requirement Architecture View</span>
+                            <div th:replace="~{fragments/architecture-diagram-controls :: lens('architectureLensAction', 'architectureSourceLensEnabled', 'architectureSourceLens')}"></div>
+                        </div>
                         <div class="card-body" id="architectureViewContent"></div>
                     </div>
                 </div>
@@ -768,7 +759,7 @@
                     </div><!-- /architectureAnalysisSource -->
                     <section id="architectureSnapshotSource" class="architecture-snapshot-surface" hidden>
                         <div class="architecture-source-actions workbench-toolbar"><th:block th:replace="~{architecture-workbench :: localActions}"></th:block></div>
-                        <section th:replace="~{architecture-workbench :: surface}"></section>
+                        <section th:replace="~{architecture-workbench :: surface(true)}"></section>
                         <div id="snapshotProposalInbox"></div>
                     </section>
                     <section id="architectureWorkingSource" class="architecture-editor-surface" hidden>

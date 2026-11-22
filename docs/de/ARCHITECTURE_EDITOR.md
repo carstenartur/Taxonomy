@@ -166,10 +166,10 @@ unverändert. Fehlt eine vollständige gespeicherte Quelle, zeigt die Anwendung 
 Grund; **Quelle aktualisieren** prüft den Stand erneut.
 
 Der Bereich **Beziehungsvorschläge** zeigt die zum gewählten Architekturstand
-passenden Vorschläge. Wählen Sie im Diagramm ein Element und klicken Sie auf
-**Auswahl untersuchen**. Beim Zeigen auf Elemente können Sie die Untersuchung in
-**Einstellungen und Untersuchungsverlauf** zusätzlich aktivieren. Mögliche
-Endpunkte liegen im gesamten angezeigten Modell.
+passenden Vorschläge. Wählen Sie im Diagramm ein Element, öffnen Sie dort die
+**Architektur-Lupe** und klicken Sie auf **Auswahl untersuchen**. Direkt am
+Diagramm können Sie auch **Beim Zeigen auf Elemente untersuchen** einschalten.
+Mögliche Endpunkte liegen im gesamten angezeigten Modell.
 
 Eine Untersuchung verwendet standardmäßig lokale Texte. Wenn Sie
 **Konfigurierten KI-Anbieter nutzen, wenn verfügbar** wählen, kann eine Anfrage
@@ -180,14 +180,16 @@ endet eine laufende Anfrage regulär.
 Klicken Sie auf einen Vorschlag oder einen gestrichelten Pfeil, um Richtung,
 Begründung und Quellenauszüge zu prüfen. **Quelle und Methode** zeigt die
 technischen Belege zum untersuchten Stand. Beim Analyseentwurf und beim
-gespeicherten Snapshot können Sie den Vorschlag verwerfen oder zum Zielelement
-wechseln. Die Aktion **Übernahme dieses Snapshots prüfen** am Snapshot öffnet
+gespeicherten Snapshot können Sie den Vorschlag verwerfen oder zum anderen Element
+wechseln. Die Aktion **Vorschau zur Übernahme öffnen** am Snapshot öffnet
 die Übernahmevorschau für den vollständigen gespeicherten Stand.
 
 In der aktuellen bearbeitbaren **Arbeitsarchitektur** öffnet
-**Änderungsvorschau öffnen** die reguläre Editorvorschau. Erst die Bestätigung
-speichert die einzelne Beziehung mit Begründung und Herkunft. **Rückgängig**
-verwendet die angenommene Operation und öffnet ebenfalls eine Vorschau.
+**Änderungsvorschau öffnen** eine fachliche Vorschau mit Namen, Richtung und
+Belegen. Für eine gemeinsame Übernahme markieren Sie die gewünschten Vorschläge
+in der Liste und öffnen die Vorschau für die Auswahl. Erst die Bestätigung
+speichert alle ausgewählten Beziehungen mit ihren jeweiligen Begründungen und
+Belegen. **Rückgängig** stellt die gesamte bestätigte Änderung zur Vorschau.
 Bei einem veralteten Vorschlag untersuchen Sie das Element am neuen Stand
 erneut. Angenommene Beziehungen und ihre Belege bleiben dauerhaft gespeichert.
 
@@ -281,7 +283,7 @@ Sie ein Element aus und verwenden Sie **Auswahl untersuchen**. Prüfen Sie für
 jeden Kandidaten Richtung, Zweck und Originalbeleg. **Fragen zu dieser
 Architektur** beantwortet Fragen zum ausgewählten Stand mit Modellbelegen.
 
-Wählen Sie am gespeicherten Snapshot **Übernahme dieses Snapshots prüfen**. Kontrollieren Sie
+Wählen Sie am gespeicherten Snapshot **Vorschau zur Übernahme öffnen**. Kontrollieren Sie
 Anforderungsversion, Ausgangsstand und die betroffenen Elemente und Beziehungen
 in der Vorschau. Nehmen Sie die Änderung ausdrücklich an. In der Arbeitsarchitektur
 können Sie anschließend einzelne belegte Beziehungen prüfen, übernehmen und über
@@ -310,12 +312,18 @@ und erfassen Sie bei Bedarf eine separat versionierte Anforderung. Bestätigen S
 beide Prüfungen und wählen Sie **Geprüfte Änderungen
 speichern und Checkpoint erstellen**.
 
-Öffnen Sie den Checkpoint und verwenden Sie **ADMBw-Abgabe am Checkpoint prüfen**. Der
-JSON-Prüfbericht führt die ausgewählte Sicht und die offenen Punkte auf. Öffnen
-Sie die heruntergeladene QEA-Kopie in Enterprise Architect mit der vereinbarten
-ADMBw-MDG. Prüfen Sie dort Diagramme, native Identitäten, Verbindungsrollen,
-Require.7-Felder und die im Vorhaben vereinbarten Sichten. **Fachliche und
-technische Prüfung erforderlich** bedeutet, dass Abnahmepunkte offen sind.
+Laden Sie im selben Bereich den **ADMBw-Prüfbericht** und, wenn der native
+Strukturcheck die Abgabe zulässt, die **ADMBw-QEA-Kopie** herunter. Beide
+Downloads verwenden den gespeicherten Checkpoint und die geprüfte Liefersicht.
+Für die QEA-Kopie verwendet Taxonomy die bereits eingelesene Basisdatei und
+Modellwurzel. Der Prüfbericht führt die ausgewählte Sicht und die offenen
+Punkte auf. Für einen später geöffneten Checkpoint steht **ADMBw-Abgabe am
+Checkpoint prüfen** zur Verfügung.
+
+Öffnen Sie die QEA-Kopie in Enterprise Architect mit der vereinbarten ADMBw-MDG.
+Prüfen Sie dort Diagramme, native Identitäten, Verbindungsrollen, Require.7-Felder
+und die im Vorhaben vereinbarten Sichten. **Fachliche und technische Prüfung
+erforderlich** bedeutet, dass Abnahmepunkte offen sind.
 
 ## ADMBw-Abgabe vorbereiten
 

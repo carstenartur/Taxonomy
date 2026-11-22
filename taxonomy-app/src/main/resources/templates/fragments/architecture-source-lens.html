@@ -14,6 +14,8 @@
         <div>
             <p th:id="${idPrefix + 'Count'}" class="relationship-review-count"></p>
             <ul th:id="${idPrefix + 'Suggestions'}" class="editor-lens-suggestions"></ul>
+            <button th:unless="${readOnly}" th:id="${idPrefix + 'Batch'}" type="button"
+                    class="relationship-review-primary relationship-review-batch" hidden></button>
         </div>
         <section th:id="${idPrefix + 'Review'}" class="relationship-review-detail" th:aria-label="#{editor.lens.review}"></section>
     </div>
@@ -22,8 +24,6 @@
         <p th:if="${readOnly}" th:id="${idPrefix + 'Source'}" class="relationship-review-status" role="status"></p>
         <p th:text="#{editor.lens.cost}">Each investigation may send one request to the configured provider.</p>
         <div class="relationship-review-toolbar">
-            <label class="relationship-review-check"><input th:id="${idPrefix + 'Enabled'}" type="checkbox" disabled/>
-                <span th:text="#{editor.lens.enable}">Investigate on hover</span></label>
             <label class="relationship-review-check"><input th:id="${idPrefix + 'UseAi'}" type="checkbox"/>
                 <span th:text="#{editor.lens.useAi}">Use the configured AI provider</span></label>
             <label class="editor-lens-budget">

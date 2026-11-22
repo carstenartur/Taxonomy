@@ -160,9 +160,9 @@ async function runSnapshotAdoptionAcceptance(page, base, initial, navigationEvid
   const frozenNode = page.locator('#architectureCanvas [data-node-id]').first();
   await frozenNode.focus(); await page.keyboard.press('Enter');
   const frozenSelection = await frozenNode.getAttribute('data-node-id');
-  await page.locator('#architectureLensAction').click();
+  await page.locator('#snapshotArchitectureLensAction').click();
   assert.equal(await page.locator('#architectureSourceLensUseAi').isChecked(),false);
-  assert.equal(await page.locator('#architectureSourceLensEnabled').isChecked(),false);
+  assert.equal(await page.locator('#snapshotArchitectureLensEnabled').isChecked(),false);
   const frozenInvestigationResponse = page.waitForResponse(response =>
     new URL(response.url()).pathname.endsWith('/api/architecture/focus/suggestions')
       && response.request().method() === 'POST');
@@ -519,6 +519,7 @@ export async function runArchitectureEditorAcceptance({ page, role, baseUrl, evi
     await page.keyboard.press('Escape');
     assert.equal(await page.locator('#editorUnfocus').isDisabled(), true, 'Escape updates the visible control');
     await page.locator('#editorFocus').click();
+    await page.locator('#editorArchitectureLensAction').click();
     await page.locator('#editorLensSettings > summary').click();
     await page.locator('#editorLensUseAi').uncheck();
     assert.equal(await page.locator('#editorLensEnabled').isChecked(), false, 'Hover investigations require opt-in');

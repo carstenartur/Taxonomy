@@ -1,5 +1,6 @@
 /** Shared SVG renderer acceptance using the packaged D3 dependency, with no API/provider calls. */
 import {installBrowserApiFixture} from './canonical-browser-fixture.mjs';
+import { architectureLensMarkup } from './architecture-lens-fixture.mjs';
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
@@ -46,17 +47,14 @@ async function mountAnalysis(page) {
     await page.waitForFunction(() => document.querySelector('.impact-map-workbench').dataset.fitState === 'complete');
 }
 async function appendFocusPanel(page, prefix) {
-    const template = await readFile(path.join(resources, 'templates/fragments/architecture-source-lens.html'), 'utf8');
-    await page.evaluate(({ template, prefix }) => {
-        // Resolve only this fragment's parameterized IDs; retain its actual controls.
-        const markup = template.replace(/th:id="\$\{idPrefix(?: \+ '([^']+)')?\}"/g,
-            (_match, suffix) => `id="${prefix}${suffix || ''}"`);
-        const parsed = new DOMParser().parseFromString(markup, 'text/html');
+    const markup = await architectureLensMarkup(resources, prefix);
+    await page.evaluate(({panel, controls}) => {
+        document.body.insertAdjacentHTML('afterbegin', controls);
         const review = document.createElement('div');
         review.className = 'relationship-review';
-        review.append(parsed.querySelector('section'));
+        review.insertAdjacentHTML('afterbegin', panel);
         document.body.append(review);
-    }, { template, prefix });
+    }, markup);
     await page.addScriptTag({ path: path.join(resources, 'static/js/architecture-focus.js') });
 }
 test('the source lens keeps its numeric limit next to its label at desktop and mobile widths', async () => {
@@ -129,10 +127,8 @@ async function attachSourceLens(page, source, enabled) {
         }
     }, source);
     assert.equal(await page.locator('#nativeSourceLensUseAi').isChecked(), false);
-    if (enabled) {
-        await page.locator('#nativeSourceLensSettings summary').click();
-        await page.locator('#nativeSourceLensEnabled').check();
-    }
+    assert.equal(await page.locator('#nativeSourceLensSettings').getAttribute('open'), null);
+    if (enabled) await page.locator('#nativeSourceLensEnabled').check();
     assert.equal(await page.locator('#nativeSourceLensEnabled').isChecked(), enabled);
 }
 async function recordNativeDoubleClick(page) {
@@ -236,10 +232,8 @@ for (const enabled of [false, true]) test(`working: native double-click survives
             workingFocusPanel.setContext(context, true); workingFocusPanel.select(null);
         });
         assert.equal(await page.locator('#editorLensUseAi').isChecked(), false);
-        if (enabled) {
-            await page.locator('#editorLensSettings summary').click();
-            await page.locator('#editorLensEnabled').check();
-        }
+        assert.equal(await page.locator('#editorLensSettings').getAttribute('open'), null);
+        if (enabled) await page.locator('#editorLensEnabled').check();
         await recordNativeDoubleClick(page);
         await page.locator('[data-node-id="A"]').dblclick();
         assert.deepEqual(await page.evaluate(() => ({ selected: renderer.getState().selectedNodeId, mode: renderer.getState().mode,

@@ -52,6 +52,11 @@
             el('prepRelationshipReviewed').checked = el('prepDerivationReviewed').checked = false;
             status('');
         }
+        function checkpointContext(operation) {
+            const checkpoint = Object.create(operation.request.context);
+            Object.defineProperty(checkpoint, 'commit', {value:operation.publication.checkpoint.commitId});
+            return checkpoint;
+        }
         function controls() {
             const operation = operations.get(scopeKey), state = operation?.state;
             const pending = ['SENDING','UNKNOWN','CHECKPOINT_PENDING'].includes(state);
@@ -75,9 +80,13 @@
                 || !el('prepDerivationReviewed').checked || !el('prepRationale').value.trim();
             el('prepRetry').hidden = !retry;
             el('prepRetry').disabled = !available;
-            el('prepReceipt').textContent = operation ? text('state.' + state) + ' · ' + operation.request.selection.projectCode + ' · ' + operation.preview.viewId
-                + (operation.publication?.checkpoint ? ' · ' + operation.publication.checkpoint.commitId : '')
+            el('prepReceipt').textContent = operation ? text('state.' + state) + ' · ' + operation.request.selection.projectCode
+                + (operation.publication?.checkpoint?.commitId ? ' · ' + operation.publication.checkpoint.commitId.slice(0, 12) : '')
                 + (operation.publication?.detail ? ' · ' + operation.publication.detail : '') : '';
+            const assessment = el('prepAssessment');
+            assessment.hidden = !available || state !== 'CHECKPOINTED';
+            if (assessment.hidden) assessment.removeAttribute('href');
+            else assessment.href = api.admbwUrl(checkpointContext(operation), operation.request.selection.projectCode, operation.preview.viewId);
             el('prepDownload').hidden = !(state === 'CHECKPOINTED' && exportable(operation.preview));
             el('prepDownload').disabled = !available || !!download;
         }
@@ -116,7 +125,9 @@
         }
         function showPreview(result, selection) {
             const area = el('prepResult');
-            const heading = node('h3', text('review')); heading.id = 'prepResultTitle';
+            const heading = node('h3', text('assessment'));
+            heading.id = 'prepResultTitle';
+            heading.tabIndex = -1;
             area.replaceChildren(heading);
             for (const [profile, viewpoint] of [[result.assessment.capabilityToService, 'C1–S1'],
                     [result.assessment.requirementDerivation, 'R7']]) {
@@ -135,22 +146,37 @@
                 }
                 area.append(section);
             }
-            area.append(
+            for (const note of result.notes) area.append(node('p', window.TaxonomyAdmbwCoverage.message(note, t)));
+            for (const issue of result.qeaIssues || []) area.append(node('p', issue.object + ' · ' + issue.detail));
+            area.append(window.TaxonomyAdmbwCoverage.render(result.assessment.coverage, t));
+            const technicalDetails = document.createElement('details');
+            technicalDetails.append(node('summary', text('technicalDetails')),
                 node('p', el('prepService').selectedOptions[0].textContent + ' → ' + el('prepCapability').selectedOptions[0].textContent),
                 node('p', result.requirementId + ' · ' + text('version', result.requirementVersion) + ' · SHA-256 ' + result.requirementContentHash),
                 node('p', t('editor.planning.choice.' + selection.requirementType) + ' · ' + el('prepSubject').selectedOptions[0].textContent),
                 node('p', 'QEA SHA-256 ' + result.basisSha256));
-            for (const note of result.notes) area.append(node('p', window.TaxonomyAdmbwCoverage.message(note, t)));
-            for (const issue of result.qeaIssues || []) area.append(node('p', issue.object + ' · ' + issue.detail));
-            area.append(window.TaxonomyAdmbwCoverage.render(result.assessment.coverage, t));
             for (const change of result.changes) {
                 const details = document.createElement('details');
                 details.append(node('summary', change.id));
                 if (change.before != null) details.append(node('p', text('before')), node('pre', change.before));
                 if (change.after != null) details.append(node('p', text('after')), node('pre', change.after));
-                area.append(details);
+                technicalDetails.append(details);
             }
+            area.append(technicalDetails);
+
+            const service = services().find(item => item.id === selection.serviceId);
+            const capability = basis.references.find(item => item.guid === selection.capabilityGuid);
+            const requirement = requirements().find(item => item.id === selection.requirementId);
+            const subject = basis.references.find(item => item.guid === selection.subjectGuid);
+            el('prepRelationshipSummary').textContent = text('relationshipSummary', service?.title || selection.serviceId,
+                capability?.name || selection.capabilityGuid);
+            el('prepDerivationSummary').textContent = text('derivationSummary', requirement?.title || selection.requirementId,
+                text('version', result.requirementVersion), t('editor.planning.choice.' + selection.requirementType),
+                subject?.name || selection.subjectGuid);
+            el('prepConstraintSummary').textContent = selection.constraintText;
+            el('prepEvidenceQuote').textContent = selection.evidenceQuote;
             area.hidden = false;
+            heading.focus();
         }
         function exactQuote(quote) {
             const source = requirements().find(r => r.id === el('prepRequirement').value)?.text || '';
@@ -286,10 +312,9 @@
             const ticket = download = new AbortController();
             controls();
             try {
-                const {request, publication} = operation, selected = request.selection;
-                const checkpoint = Object.create(request.context);
-                Object.defineProperty(checkpoint, 'commit', {value:publication.checkpoint.commitId});
-                const blob = await api.admbwQea(checkpoint, selected.projectCode, operation.preview.viewId, selected.rootPackageGuid, operation.file, ticket.signal);
+                const selected = operation.request.selection;
+                const blob = await api.admbwQea(checkpointContext(operation), selected.projectCode, operation.preview.viewId,
+                    selected.rootPackageGuid, operation.file, ticket.signal);
                 if (ticket !== download || operation !== operations.get(scopeKey) || !available) return;
                 const link = document.createElement('a'), url = URL.createObjectURL(blob);
                 link.href = url; link.download = selected.projectCode + '-admbw.qea';

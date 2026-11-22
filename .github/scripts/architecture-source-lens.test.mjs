@@ -37,7 +37,8 @@ function fixture() {
     }
     const node=id=>{if(!ids.has(id))ids.set(id,new Element());return ids.get(id);};
     document={readyState:'complete',documentElement:{lang:'en'},body:new Element('body'),getElementById:node,createElement:tag=>new Element(tag),
-        querySelector:()=>null,addEventListener:(name,fn)=>handlers.set(name,[...(handlers.get(name)||[]),fn]),
+        querySelector:()=>null,querySelectorAll:selector=>selector==='[data-architecture-lens-hover="sourceLens"]'?[node('sourceLensEnabled')]:[],
+        addEventListener:(name,fn)=>handlers.set(name,[...(handlers.get(name)||[]),fn]),
         dispatchEvent:event=>(handlers.get(event.type)||[]).forEach(fn=>fn(event))};document.activeElement=document.body;
     const calls=[],opens=[],presented=[];let current={kind:'analysis',repositoryId:'repo',workspaceScopeKey:'alice',branch:'feature'};
     let session={ready:true,workspaceId:'alice',version:7};let saves=0;
