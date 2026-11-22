@@ -483,6 +483,14 @@
     white-space: nowrap;
 }
 
+#architectureViewPanel:fullscreen {
+    overflow: auto;
+    background: var(--bs-body-bg, #fff);
+}
+/* Fullscreen inspects the network. Its own toolbar and the lens stay accessible together. */
+#architectureViewPanel:fullscreen #architectureViewContent > :not(#impactGraphView) {
+    display: none;
+}
 .impact-map-workbench:fullscreen {
     width: 100vw;
     height: 100vh;
@@ -491,6 +499,7 @@
     background: var(--bs-body-bg, #fff);
 }
 
+#architectureViewPanel:fullscreen .impact-map-canvas,
 .impact-map-workbench:fullscreen .impact-map-canvas {
     --impact-map-canvas-height: calc(100vh - 18rem);
 }

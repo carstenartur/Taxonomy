@@ -38,19 +38,15 @@ class MailAnalysisStatusController {
 
     @GetMapping("/{token}/status")
     @ResponseBody
-    JobProgress status(@PathVariable String token, HttpServletResponse response) {
+    MailAnalysisQueue.Status status(@PathVariable String token, HttpServletResponse response) {
         return lookup(token, response);
     }
 
-    private JobProgress lookup(String token, HttpServletResponse response) {
+    private MailAnalysisQueue.Status lookup(String token, HttpServletResponse response) {
         response.setHeader(HttpHeaders.CACHE_CONTROL, "no-store");
         response.setHeader("Referrer-Policy", "no-referrer");
         response.setHeader("X-Robots-Tag", "noindex, nofollow");
         if (!TOKEN.matcher(token).matches()) throw new ResponseStatusException(HttpStatus.NOT_FOUND);
-        var job = queue.status(token).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
-        var state = job.state().name();
-        return new JobProgress(state, job.position(), job.queuedJobs(), "COMPLETED".equals(state) || "FAILED".equals(state));
+        return queue.status(token).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
     }
-
-    record JobProgress(String state, Integer position, int queuedJobs, boolean finished) { }
 }

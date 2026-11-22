@@ -1359,9 +1359,8 @@
             btn.textContent = rootNode.code + ' ' + rootNode.name;
 
             // Green underline when scored
-            if (scores && scores[rootNode.code] > 0) {
-                const alpha = Math.min(scores[rootNode.code] / 100, 1).toFixed(2);
-                btn.style.borderBottom = '3px solid rgba(0,128,0,' + alpha + ')';
+            if (window.TaxonomyMatchScale.positive(scores?.[rootNode.code])) {
+                btn.style.borderBottom = '3px solid ' + window.TaxonomyMatchScale.background(scores[rootNode.code]);
             }
 
             li.appendChild(btn);
@@ -1592,6 +1591,7 @@
             ? rootAssessment.reason.substring('CLARIFICATION:'.length).trim() : '';
         area.className = assessedArea ? 'tax-container-score' : 'tax-container-area-state';
         area.classList.toggle('tax-container-score-positive', assessedArea && recorded > 0);
+        window.TaxonomyMatchScale.apply(area, recorded);
         area.classList.toggle('tax-container-area-clarification', Boolean(clarification));
         area.textContent = assessedArea
             ? t('browse.container.relevance', recorded) : t(clarification
@@ -1759,13 +1759,7 @@
         const header = document.createElement('div');
         header.className = 'tax-node-header';
 
-        // Apply green background based on match percentage (M11: contrast-safe)
-        if (pct !== null && pct > 0) {
-            const alpha = Math.min(pct / 100, 1).toFixed(2);
-            header.style.backgroundColor = 'rgba(0,128,0,' + alpha + ')';
-            if (pct >= 75) { header.style.color = '#fff'; }
-            else { header.style.color = '#1a1a1a'; }
-        }
+        window.TaxonomyMatchScale.apply(header, pct);
 
         // Toggle arrow
         const toggle = document.createElement('span');
@@ -2053,14 +2047,7 @@
                     const childEl = wrapper.querySelector('[data-code="' + CSS.escape(code) + '"]');
                     if (childEl) {
                         const childHeader = childEl.querySelector(':scope > .tax-node-header');
-                        if (pct > 0) {
-                            const alpha = Math.min(pct / 100, 1).toFixed(2);
-                            childHeader.style.backgroundColor = 'rgba(0,128,0,' + alpha + ')';
-                            if (pct >= 60) { childHeader.style.color = '#fff'; }
-                        } else {
-                            childHeader.style.backgroundColor = '';
-                            childHeader.style.color = '';
-                        }
+                        window.TaxonomyMatchScale.apply(childHeader, pct);
 
                         // Add/update percentage badge
                         let badge = childHeader.querySelector('.tax-pct');

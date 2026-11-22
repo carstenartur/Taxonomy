@@ -22,7 +22,9 @@ class AnalysisDurableAdmissionTest {
         return new AnalysisProgressRegistry(environment);
     }
 
-    @Test void durableWorkWaitsForCapacityInsteadOfFailingItsClaim() throws Exception {
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {true, false})
+    void durableWorkWaitsForCapacityInsteadOfFailingItsClaim(boolean portfolioJob) throws Exception {
         var registry = registry();
         var scope = new WorkspaceContext("alice", "work-a", "draft", "repo-a");
         var reservations = new ArrayList<AnalysisProgressRegistry.Reservation>();
@@ -36,8 +38,9 @@ class AnalysisDurableAdmissionTest {
                         () -> registry.reserve(null, "alice", scope, null)).getStatusCode().value());
                 var future = executor.submit(() -> {
                     started.countDown();
-                    try (var run = registry.open(null, "alice", scope,
-                            new AnalysisProvenance(1L, 2L, "snapshot", "portfolio:snapshot"))) {
+                    try (var run = portfolioJob
+                            ? registry.open(null, "alice", scope, new AnalysisProvenance(1L, 2L, "snapshot", "portfolio:snapshot"))
+                            : registry.openDurable(null, "alice", scope, null)) {
                         assertTrue(AnalysisRunControl.active());
                         AnalysisRunControl.checkpoint();
                         run.finish("SUCCESS");

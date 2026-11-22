@@ -93,6 +93,16 @@ class MailRequestParserTest {
     }
 
     @Test
+    void skipsMalformedOrRepeatedFromHeadersSoTheCollectorCanAdvance() throws Exception {
+        var parser = new MailRequestParser(new DocumentParserService(), properties(5000));
+        var source = message();
+        source.addHeader("From", "other@example.test");
+        assertThat(parser.acceptedSender(source)).isNull();
+        source.setHeader("From", "Invalid <");
+        assertThat(parser.acceptedSender(source)).isNull();
+    }
+
+    @Test
     void rejectsOversizedTextWithoutSilentlyTruncatingRequirements() throws Exception {
         var source = message();
         source.setText("Äußerst lange Vorgabe. ".repeat(10), "UTF-8");

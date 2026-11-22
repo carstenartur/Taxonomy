@@ -48,17 +48,17 @@ final class MailRequestParser {
     }
 
     String acceptedSender(Message message) throws MessagingException {
-        if (message.getHeader("From") == null || automated(message)) {
-            return null;
-        }
-        Address[] from = message.getFrom();
-        if (from == null || from.length != 1 || !(from[0] instanceof InternetAddress internet) || internet.isGroup()) {
+        if (headers(message, "From").length != 1 || automated(message)) {
             return null;
         }
         try {
+            Address[] from = message.getFrom();
+            if (from == null || from.length != 1 || !(from[0] instanceof InternetAddress internet) || internet.isGroup()) {
+                return null;
+            }
             String sender = canonicalAddress(internet.getAddress());
             return allowedSenders.contains(sender) && !sender.equals(ownAddress) ? sender : null;
-        } catch (IllegalArgumentException invalid) {
+        } catch (AddressException | IllegalArgumentException invalid) {
             return null;
         }
     }

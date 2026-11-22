@@ -5,10 +5,10 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 
 import com.taxonomy.analysis.service.AnalysisRuntimeSettings;
-import com.taxonomy.analysis.usecase.AnalysisAdmissionModelPort;
-import com.taxonomy.analysis.usecase.AnalysisRequestModelAdmission;
+import com.taxonomy.composition.analysis.SelectedArchitectureAdmissionModel;
 import com.taxonomy.analysis.usecase.AnalyzeRequirementCommand;
 import com.taxonomy.analysis.usecase.AnalyzeRequirementUseCase;
 import com.taxonomy.architecture.decision.DecisionRationaleReportService;
@@ -20,21 +20,17 @@ import com.taxonomy.dto.AnalysisMode;
 import com.taxonomy.dto.AnalysisResult;
 import com.taxonomy.dto.AnalysisScope;
 import com.taxonomy.dto.RequirementArchitectureView;
+import com.taxonomy.export.AnalysisDiagramSource;
 import com.taxonomy.export.ArchitecturePdfRenderer;
 import com.taxonomy.export.LayeredDiagramLayoutService;
 import com.taxonomy.export.service.ExportFacade;
-import com.taxonomy.export.service.ExportFormatExtensionRegistry;
 import com.taxonomy.export.spi.ExportContext;
 import com.taxonomy.extension.api.report.ReportRenderContext;
-import com.taxonomy.reporting.api.decision.DecisionRationaleReportPlugin;
 import com.taxonomy.reporting.api.decision.DecisionReportOptions;
-import com.taxonomy.reporting.render.document.ReportRendererRegistry;
 import com.taxonomy.shared.features.ConditionalOnFeature;
 import com.taxonomy.workspace.service.RepositoryMembershipService;
 import com.taxonomy.workspace.service.SystemRepositoryService;
 import com.taxonomy.workspace.service.WorkspaceContext;
-import com.taxonomy.workspace.service.WorkspaceManager;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
@@ -52,16 +48,15 @@ final class MailAnalysisProcessor {
     private final TaxonomyService taxonomies;
     private final SystemRepositoryService repositories;
     private final RepositoryMembershipService membership;
-    private final ObjectProvider<AnalysisAdmissionModelPort> admission;
+    private final SelectedArchitectureAdmissionModel admission;
     private final AnalysisRuntimeSettings settings;
     private final AnalyzeRequirementUseCase analysis;
     private final ExportFacade diagrams;
-    private final ExportFormatExtensionRegistry formats;
+    private final MailAnalysisRenderers renderers;
     private final LayeredDiagramLayoutService layout;
     private final ArchitecturePdfRenderer pdf;
     private final ArchitectureReportService architectureReport;
     private final DecisionRationaleReportService reports;
-    private final ReportRendererRegistry reportFormats;
     private final DecisionRationaleScoreSemanticsAdapter scoreSemantics = new DecisionRationaleScoreSemanticsAdapter();
     private final Locale locale;
     private final AnalysisLanguage language;
@@ -69,10 +64,10 @@ final class MailAnalysisProcessor {
 
     MailAnalysisProcessor(MailAnalysisCommandClassifier classifier, TaxonomyService taxonomies,
             SystemRepositoryService repositories, RepositoryMembershipService membership,
-            ObjectProvider<AnalysisAdmissionModelPort> admission, AnalysisRuntimeSettings settings,
-            AnalyzeRequirementUseCase analysis, ExportFacade diagrams, ExportFormatExtensionRegistry formats,
+            SelectedArchitectureAdmissionModel admission, AnalysisRuntimeSettings settings,
+            AnalyzeRequirementUseCase analysis, ExportFacade diagrams, MailAnalysisRenderers renderers,
             LayeredDiagramLayoutService layout, ArchitecturePdfRenderer pdf,
-            ArchitectureReportService architectureReport, DecisionRationaleReportService reports, ReportRendererRegistry reportFormats,
+            ArchitectureReportService architectureReport, DecisionRationaleReportService reports,
             @Value("${taxonomy.mail.queue.language:de}") String language,
             @Value("${taxonomy.mail.queue.max-result-bytes:15000000}") int maxResultBytes) {
         this.classifier = classifier;
@@ -83,12 +78,11 @@ final class MailAnalysisProcessor {
         this.settings = settings;
         this.analysis = analysis;
         this.diagrams = diagrams;
-        this.formats = formats;
+        this.renderers = renderers;
         this.layout = layout;
         this.pdf = pdf;
         this.architectureReport = architectureReport;
         this.reports = reports;
-        this.reportFormats = reportFormats;
         this.language = AnalysisLanguage.fromValue(language);
         this.locale = Locale.forLanguageTag(language);
         if (maxResultBytes < 1 || maxResultBytes > 50_000_000) throw new IllegalArgumentException("Invalid email export size limit");
@@ -105,7 +99,7 @@ final class MailAnalysisProcessor {
             command = classifier.classify(subject);
         } catch (IllegalArgumentException invalid) {
             throw new Rejected("Der Betreff beschreibt keinen eindeutigen Auftrag mit verfügbaren Exportformaten."
-                    + " Beispiel: Entscheidungsbaum BP und CI als Word.");
+                    + " Beispiel: Entscheidungsbaum BP und CR als Word.");
         }
         boolean architecture = command.mode() == MailAnalysisCommand.Mode.ARCHITECTURE;
         Set<String> roots = Set.copyOf(command.taxonomyCodes());
@@ -116,12 +110,12 @@ final class MailAnalysisProcessor {
             throw new Rejected("Eine ausgewählte Teiltaxonomie ist derzeit nicht verfügbar.");
         }
 
-        // Mail requests use the shared catalogue context. They never inherit a person's selected workspace.
+        // Each mail analysis has its own diagnostic owner on the shared read-only catalogue.
         var primary = repositories.getPrimaryRepository();
-        String actor = WorkspaceManager.DEFAULT_USER;
+        String actor = "mail-" + UUID.randomUUID();
         if (!membership.canRead(primary, actor)) throw new Rejected("Die gemeinsame Taxonomie ist derzeit nicht verfügbar.");
         var context = new WorkspaceContext(actor, null, primary.getDefaultBranch(), primary.getRepositoryId());
-        var source = AnalysisRequestModelAdmission.capture(admission.getIfAvailable(), context, null, null, scope);
+        var source = admission.capturePrimary(primary, actor, scope);
         int maxNodes = Math.max(1, Math.min(1_000, settings.getInt("limits.max-architecture-nodes", 50)));
         var request = new AnalyzeRequirementCommand(requirementText, architecture, maxNodes, null, actor, context, null, scope)
                 .withAnalysisLanguage(language).withModelBinding(source);
@@ -137,7 +131,7 @@ final class MailAnalysisProcessor {
         String summary = partial
                 ? "Die Analyse enthält einen Teilstand. Offene Bewertungen oder Beziehungen können im Export gekennzeichnet sein."
                 : "Die Analyse ist abgeschlossen. Die angeforderten Exporte sind angehängt.";
-        return new MailAnalysisQueue.Outcome(summary, List.copyOf(attachments), true);
+        return new MailAnalysisQueue.Outcome(summary, List.copyOf(attachments), true, partial);
     }
 
     private List<MailAnalysisAttachment> architectureFiles(MailAnalysisCommand command, AnalysisResult result, String requirementText) {
@@ -145,44 +139,57 @@ final class MailAnalysisProcessor {
         if (view == null || view.getIncludedElements() == null || view.getIncludedElements().isEmpty()) {
             throw new Rejected("Die Analyse hat keine exportierbare Architektur geliefert.");
         }
-        var diagram = diagrams.buildCurrentDiagram(view, language.value());
+        boolean exportDrawing = command.exports().stream()
+                .anyMatch(format -> format.architectureRoute() != MailAnalysisCommand.ArchitectureRoute.REPORT);
+        var diagram = exportDrawing ? diagrams.buildCurrentDiagram(view, language.value()) : null;
         var reasons = ExportFacade.elementReasons(view);
+        var source = AnalysisDiagramSource.from(result);
         var options = new java.util.HashMap<String, Object>();
         options.put("elementReasons", reasons);
         options.put("locale", language.value());
+        options.put("analysisSource", source);
         if (view.getOriginalRequirementText() != null) options.put("originalRequirementText", view.getOriginalRequirementText());
 
         var files = new ArrayList<MailAnalysisAttachment>();
+        ReportRenderContext report = null;
         long total = 0;
         for (var format : command.exports()) {
             MailAnalysisAttachment file;
-            if (format == MailAnalysisCommand.Format.PDF) {
-                byte[] bytes = pdf.renderWorkingView(layout.layout(diagram), reasons, Map.of(), locale);
-                file = new MailAnalysisAttachment("requirement-architecture.pdf", "application/pdf", bytes);
-            } else if (format == MailAnalysisCommand.Format.DOCX) {
-                file = architectureWord(result, requirementText);
-            } else {
-                var renderer = formats.findByFormatId(format.name().toLowerCase(Locale.ROOT))
-                        .orElseThrow(() -> new Rejected("Ein angefordertes Architekturformat ist derzeit nicht verfügbar."));
-                var descriptor = renderer.descriptor();
-                var output = renderer.export(new ExportContext(diagram, options));
-                file = new MailAnalysisAttachment("requirement-architecture." + descriptor.fileExtension(),
-                        descriptor.contentType(), output.bytes());
+            switch (format.architectureRoute()) {
+                case ARCHITECTURE_PDF -> {
+                    byte[] bytes = pdf.renderAnalysis(layout.layout(diagram), source, reasons, locale);
+                    file = new MailAnalysisAttachment("requirement-architecture.pdf", "application/pdf", bytes);
+                }
+                case REPORT -> {
+                    if (report == null) report = prepareArchitectureReport(result, requirementText);
+                    var renderer = renderers.report(command.mode(), format)
+                            .orElseThrow(() -> new Rejected("Ein angefordertes Berichtsformat ist derzeit nicht verfügbar."));
+                    var descriptor = renderer.descriptor();
+                    file = new MailAnalysisAttachment("architecture-report." + descriptor.fileExtension(),
+                            descriptor.contentType(), renderer.render(report).bytes());
+                }
+                case DIAGRAM -> {
+                    var renderer = renderers.diagram(format)
+                            .orElseThrow(() -> new Rejected("Ein angefordertes Diagrammformat ist derzeit nicht verfügbar."));
+                    var descriptor = renderer.descriptor();
+                    var output = renderer.export(new ExportContext(diagram, options));
+                    file = new MailAnalysisAttachment("requirement-architecture." + descriptor.fileExtension(),
+                            descriptor.contentType(), output.bytes());
+                }
+                default -> throw new IllegalStateException("Unknown architecture export route");
             }
             total = include(files, file, total);
         }
         return files;
     }
 
-    private MailAnalysisAttachment architectureWord(AnalysisResult result, String requirementText) {
+    private ReportRenderContext prepareArchitectureReport(AnalysisResult result, String requirementText) {
         if (result.getCopilot() == null) throw new Rejected("Die Analyse hat keinen exportierbaren Architekturbericht geliefert.");
-        var renderer = reportFormats.findByFormatId("docx")
-                .orElseThrow(() -> new Rejected("Der Word-Architekturbericht ist derzeit nicht verfügbar."));
         var report = architectureReport.generateRetainedReport(result, requirementText);
-        var reasons = result.getReasons() == null ? Map.of() : result.getReasons();
-        var output = renderer.render(new ReportRenderContext(report, Map.of("language", language.value(), "nodeReasons", reasons)));
-        var descriptor = renderer.descriptor();
-        return new MailAnalysisAttachment("architecture-report." + descriptor.fileExtension(), descriptor.contentType(), output.bytes());
+        Map<String, String> reasons = result.getReasons() == null ? Map.of() : result.getReasons();
+        report.setNodeReasons(reasons);
+        report.setLanguageTag(language.value());
+        return new ReportRenderContext(report, Map.of("language", language.value(), "nodeReasons", reasons));
     }
 
     private List<MailAnalysisAttachment> decisionFiles(MailAnalysisCommand command, AnalysisResult result,
@@ -199,11 +206,11 @@ final class MailAnalysisProcessor {
                 null, null, null, false);
 
         var report = scoreSemantics.adapt(reports.generate(input, context, result.getViewContext(), locale, options), details, locale);
+        if (result.getModelBinding() != null) report = report.withScope(report.scope().withModelBinding(result.getModelBinding()));
         var files = new ArrayList<MailAnalysisAttachment>();
         long total = 0;
         for (var format : command.exports()) {
-            var id = format == MailAnalysisCommand.Format.PDF ? "visio-pdf" : format.name().toLowerCase(Locale.ROOT);
-            var renderer = reportFormats.findByFormatId(DecisionRationaleReportPlugin.REPORT_TYPE_ID, id)
+            var renderer = renderers.report(command.mode(), format)
                     .orElseThrow(() -> new Rejected("Ein angefordertes Entscheidungsbaumformat ist derzeit nicht verfügbar."));
             var descriptor = renderer.descriptor();
             byte[] bytes = renderer.render(ReportRenderContext.ofPayload(report)).bytes();

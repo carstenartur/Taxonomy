@@ -8,6 +8,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -40,15 +41,19 @@ import com.taxonomy.extension.api.report.ReportRendererExtension;
 import com.taxonomy.reporting.api.decision.DecisionRationaleReport;
 import com.taxonomy.reporting.api.decision.DecisionRationaleReportPlugin;
 import com.taxonomy.reporting.api.decision.DecisionReportOptions;
+import com.taxonomy.reporting.render.document.ArchitectureReportTextRenderer;
+import com.taxonomy.reporting.render.document.HtmlReportRendererExtension;
+import com.taxonomy.reporting.render.document.JsonReportRendererExtension;
+import com.taxonomy.reporting.render.document.MarkdownReportRendererExtension;
 import com.taxonomy.reporting.render.document.ReportRendererRegistry;
 import com.taxonomy.workspace.model.SystemRepository;
 import com.taxonomy.workspace.service.RepositoryMembershipService;
 import com.taxonomy.workspace.service.SystemRepositoryService;
-import com.taxonomy.workspace.service.WorkspaceManager;
 import org.junit.jupiter.api.BeforeEach;
+import org.springframework.beans.factory.support.StaticListableBeanFactory;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
-import org.springframework.beans.factory.support.StaticListableBeanFactory;
+import com.taxonomy.composition.analysis.SelectedArchitectureAdmissionModel;
 
 class MailAnalysisProcessorTest {
     private final MailAnalysisCommandClassifier classifier = mock(MailAnalysisCommandClassifier.class);
@@ -64,9 +69,10 @@ class MailAnalysisProcessorTest {
     private final ReportRendererRegistry reportFormats = mock(ReportRendererRegistry.class);
 
     private final MailAnalysisProcessor processor = new MailAnalysisProcessor(classifier, taxonomy, repositories, membership,
-            new StaticListableBeanFactory().getBeanProvider(com.taxonomy.analysis.usecase.AnalysisAdmissionModelPort.class),
-            settings, analysis, diagrams, formats, mock(LayeredDiagramLayoutService.class), mock(ArchitecturePdfRenderer.class),
-            architectureReport, reports, reportFormats, "de", 10_000);
+            mock(SelectedArchitectureAdmissionModel.class),
+            settings, analysis, diagrams, new MailAnalysisRenderers(formats, reportFormats),
+            mock(LayeredDiagramLayoutService.class), mock(ArchitecturePdfRenderer.class),
+            architectureReport, reports, "de", 10_000);
 
     @BeforeEach
     void setUp() {
@@ -74,7 +80,7 @@ class MailAnalysisProcessorTest {
         primary.setRepositoryId("primary");
         primary.setDefaultBranch("main");
         when(repositories.getPrimaryRepository()).thenReturn(primary);
-        when(membership.canRead(primary, WorkspaceManager.DEFAULT_USER)).thenReturn(true);
+        when(membership.canRead(eq(primary), org.mockito.ArgumentMatchers.startsWith("mail-"))).thenReturn(true);
         when(taxonomy.getRootCodes()).thenReturn(Set.of("BP-1000", "CI-1000", "IP-1000"));
         when(settings.getInt("limits.max-business-text", 5_000)).thenReturn(5_000);
         when(settings.getInt("limits.max-architecture-nodes", 50)).thenReturn(50);
@@ -112,9 +118,50 @@ class MailAnalysisProcessorTest {
         var request = capturedAnalysis();
         assertThat(request.businessText()).isEqualTo("Text und Anhang");
         assertThat(request.workspaceContext().workspaceId()).isNull();
+        assertThat(request.username()).startsWith("mail-").isEqualTo(request.workspaceContext().username());
+        verify(membership).canRead(any(SystemRepository.class), eq(request.username()));
         assertThat(request.workspaceContext().repositoryId()).isEqualTo("primary");
         assertThat(request.includeArchitectureView()).isTrue();
         assertThat(request.analysisScope().legacyFull()).isTrue();
+    }
+
+    @Test
+    void reportOnlyDeliveryRendersOneCapturedReportInEachSelectedFormat() {
+        var requested = List.of(MailAnalysisCommand.Format.MARKDOWN, MailAnalysisCommand.Format.HTML,
+                MailAnalysisCommand.Format.JSON);
+        when(classifier.classify("Berichte")).thenReturn(new MailAnalysisCommand(
+                MailAnalysisCommand.Mode.ARCHITECTURE, List.of(), requested));
+        var result = result("SUCCESS");
+        var architecture = new RequirementArchitectureView();
+        var node = new RequirementElementView();
+        node.setNodeCode("BP-1000");
+        architecture.setIncludedElements(List.of(node));
+        result.setArchitectureView(architecture);
+        result.setCopilot(mock(AnalysisCopilotResult.class));
+        result.setReasons(Map.of("BP-1000", "Begründung aus dem Lauf"));
+        when(analysis.analyzeUnpublished(any())).thenReturn(new AnalyzeRequirementResult(result));
+        var retained = new ArchitectureReport();
+        retained.setBusinessText("Dienstreise genehmigen");
+        retained.setScores(result.getScores());
+        when(architectureReport.generateRetainedReport(result, "Dienstreise genehmigen")).thenReturn(retained);
+        var text = new ArchitectureReportTextRenderer();
+        for (var renderer : List.of(new MarkdownReportRendererExtension(text), new HtmlReportRendererExtension(text),
+                new JsonReportRendererExtension(new StaticListableBeanFactory().getBeanProvider(
+                        com.fasterxml.jackson.databind.ObjectMapper.class)))) {
+            when(reportFormats.findByFormatId(renderer.descriptor().id())).thenReturn(Optional.of(renderer));
+        }
+
+        var output = processor.process("Berichte", "Dienstreise genehmigen");
+
+        assertThat(output.attachments()).extracting(MailAnalysisAttachment::filename)
+                .containsExactly("architecture-report.md", "architecture-report.html", "architecture-report.json");
+        assertThat(output.attachments()).allSatisfy(file -> assertThat(new String(file.content(), StandardCharsets.UTF_8))
+                .contains("Dienstreise genehmigen", "BP-1000"));
+        var json = new tools.jackson.databind.ObjectMapper().readTree(output.attachments().getLast().content());
+        assertThat(json.get("languageTag").asString()).isEqualTo("de");
+        assertThat(json.get("nodeReasons").get("BP-1000").asString()).isEqualTo("Begründung aus dem Lauf");
+        verify(architectureReport).generateRetainedReport(result, "Dienstreise genehmigen");
+        verifyNoInteractions(diagrams);
     }
 
     @Test
@@ -133,6 +180,7 @@ class MailAnalysisProcessorTest {
 
         var output = processor.process("Entscheidungsbaum BP/CI", "Anforderung");
 
+        assertThat(output.partial()).isTrue();
         assertThat(output.summary()).contains("Teilstand");
         assertThat(output.attachments()).extracting(MailAnalysisAttachment::filename).containsExactly("decision-tree.html");
         var request = capturedAnalysis();

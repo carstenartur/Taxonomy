@@ -1,6 +1,7 @@
 package com.taxonomy.export.service;
 
 import com.taxonomy.dto.DocumentLanguage;
+import com.taxonomy.export.AnalysisDiagramSource;
 import com.taxonomy.export.VisioDiagramService;
 import com.taxonomy.export.VisioPackageBuilder;
 import com.taxonomy.export.spi.ExportContext;
@@ -69,7 +70,8 @@ public class VisioExportExtension implements ExportFormatExtension {
         String locale = context.options().get("locale") instanceof String configured ? configured : null;
         var language = DocumentLanguage.resolve(DocumentLanguage.optionalOverride(locale), null, LocaleContextHolder.getLocale());
         VisioDocument document = visioDiagramService.convert(context.diagram(),
-                new VisioExportMetadata(VisioWorkingViewMetadata.document(originalText, workingViewMetadata),
+                new VisioExportMetadata(VisioWorkingViewMetadata.document(originalText, workingViewMetadata,
+                                context.options().get("analysisSource") instanceof AnalysisDiagramSource analysis ? analysis : null),
                         elements, Map.of(), VisioExportMetadata.unbound().losses()).withLanguage(language));
         try {
             return new ExportResult(visioPackageBuilder.build(document));

@@ -5,14 +5,22 @@ Senden Sie die Anforderung als Nachrichtentext, als Anhang oder in beiden Formen
 | Beispielbetreff | Ergebnis |
 |---|---|
 | `Vollständige Architektur als PDF und ArchiMate` | Bewertung und Relationssuche über alle verfügbaren Teiltaxonomien. Die Mail enthält beide Architekturdateien. |
-| `Entscheidungsbaum für Business Processes und Core Services als Word` | Entscheidungsauswertung für die Teiltaxonomien BP und CI. Die Mail enthält das Word-Dokument. |
+| `Entscheidungsbaum für Business Processes und Core Services als Word` | Entscheidungsauswertung für die Teiltaxonomien BP und CR. Die Mail enthält das Word-Dokument. |
 | `Entscheidungsbaum für alle Teiltaxonomien als HTML und Visio` | Entscheidungsauswertung für alle geladenen Teiltaxonomien. |
+| `Build the complete architecture and return HTML and Markdown reports` | Architekturbericht in den beiden angeforderten Formaten. |
 
-Für Architekturen stehen PDF, SVG, Word, Visio, ArchiMate und Structurizr zur Verfügung. Ohne Formatangabe ist PDF vorgesehen. Für Entscheidungsbäume stehen HTML, Word und Visio zur Verfügung. Ohne Formatangabe ist HTML vorgesehen. PDF für Entscheidungsbäume setzt `taxonomy.reporting.visio-pdf.enabled=true` und LibreOffice voraus. Taxonomy prüft das aus dem Betreff erzeugte strukturierte Kommando anhand des geladenen Katalogs und der für den Auftrag verfügbaren Formate.
+Taxonomy wertet den Betreff mit den deutschen und englischen Namen des geladenen Katalogs aus. Der Auftrag kann mehrere Formate kombinieren. Welche davon zur Verfügung stehen, hängt von den installierten Exportern ab.
+
+| Auftrag | Anforderbare Formate | Standard |
+|---|---|---|
+| Vollständige Architektur | Diagramm als PDF, SVG, Visio, ArchiMate, Structurizr, Mermaid oder Sparx-EA-Austauschpaket. Architekturbericht als Word, HTML, Markdown oder JSON. | PDF |
+| Entscheidungsbaum | Entscheidungsbericht als HTML, Word, Visio, JSON oder PDF. | HTML mit der Standardinstallation |
+
+Mermaid benötigt das Mermaid-Plugin. PDF für Entscheidungsbäume setzt `taxonomy.reporting.visio-pdf.enabled=true` und den eingerichteten Visio-PDF-Konverter voraus. Taxonomy weist ein aus dem Betreff erzeugtes Kommando zurück, wenn es eine unbekannte Teiltaxonomie oder ein für diesen Auftrag nicht verfügbares Format enthält.
 
 Unterstützte Anhänge sind PDF, DOCX, HTML, Markdown und Text. Texthaltige PDFs können direkt gelesen werden. Gescannte PDFs brauchen eine durchsuchbare Textschicht. Die Grenzen gelten für Text und Anhänge zusammen. Standardmäßig gelten 10 MiB Nachrichtengröße, acht Anhänge und 5.000 Zeichen extrahierter Anforderungstext. Die Laufzeitgrenze der normalen Taxonomy-Analyse gilt auch für E-Mail-Aufträge.
 
-Sobald Taxonomy eine Nachricht eingelesen und einen Platz reserviert hat, bestätigt es den Eingang per E-Mail mit Warteschlangenposition und Live-Link. Eine volle Warteschlange führt zur sofortigen Ablehnung beim Einlesen. Der Live-Link zeigt den Bearbeitungsstand, die Position und die Gesamtzahl wartender Aufträge. Wer den Link hat, kann diese Angaben sehen. Nachricht, Anforderung und Exporte erscheinen dort nicht. Die Ergebnisse kommen als Anhänge an die zugelassene Absenderadresse. Teilstände sind in der Ergebnisnachricht gekennzeichnet.
+Sobald Taxonomy eine Nachricht eingelesen und einen Platz reserviert hat, bestätigt es den Eingang per E-Mail mit Warteschlangenposition und Live-Link. Eine volle Warteschlange führt zur sofortigen Ablehnung beim Einlesen. Der Live-Link zeigt den Bearbeitungsstand und die aktuelle Position des eigenen Auftrags. Für das gesamte Postfach zeigt er die belegten und konfigurierten Warteplätze, die Zahl der laufenden Analysen und die Ergebnisse im Versand. Ein Auftrag gibt seinen Warteplatz bei Beginn der Analyse frei. Ist der eigene Auftrag abgeschlossen, bleiben die Zahlen der Warteschlange bis zum Ablauf des Links sichtbar und werden weiter aktualisiert. Wer den Link hat, kann diese Angaben sehen. Nachricht, Anforderung und Exporte erscheinen dort nicht. Die Ergebnisse kommen als Anhänge an die zugelassene Absenderadresse. Teilstände sind in der Ergebnisnachricht gekennzeichnet.
 
 ## Einrichtung
 

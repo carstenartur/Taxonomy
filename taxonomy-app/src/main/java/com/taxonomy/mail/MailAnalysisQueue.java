@@ -14,6 +14,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -49,14 +50,27 @@ public final class MailAnalysisQueue implements ApplicationListener<ApplicationR
     private static final Comparator<Job> DELIVERY_ORDER = Comparator
             .comparing(Job::retryAfter, Comparator.nullsFirst(Comparator.naturalOrder())).thenComparing(FIFO);
 
-    public enum State { QUEUED, RUNNING, DELIVERING, COMPLETED, FAILED }
+    public enum State { QUEUED, RUNNING, DELIVERING, COMPLETED, PARTIAL, FAILED, REJECTED }
 
-    public record Submission(String jobToken, Integer position, boolean accepted, boolean duplicate, String rejectionReason) {}
+    private static final String CAPACITY_REJECTION = "Die Warteschlange ist voll. Bitte senden Sie den Auftrag später erneut.";
+
+    public record Submission(String jobToken, Integer position, boolean accepted, boolean duplicate,
+                             boolean receiptConfirmed, String rejectionReason) {}
 
     /** The bearer link deliberately has no request, address, or attachment data. */
-    public record Status(State state, Integer position, Instant submittedAt, Instant updatedAt, int queuedJobs) {}
+    public record Status(State state, Integer position, int queuedJobs, int capacity,
+                         int runningJobs, int deliveringJobs, boolean finished) {}
 
-    record Outcome(String summary, List<MailAnalysisAttachment> attachments, boolean successful) {
+    record Outcome(String summary, List<MailAnalysisAttachment> attachments, boolean successful, boolean partial) {
+        Outcome(String summary, List<MailAnalysisAttachment> attachments, boolean successful) {
+            this(summary, attachments, successful, false);
+        }
+
+        State deliveredState() {
+            if (!successful) return State.FAILED;
+            return partial ? State.PARTIAL : State.COMPLETED;
+        }
+
         static Outcome failed(String summary) {
             return new Outcome(summary, List.of(), false);
         }
@@ -64,20 +78,20 @@ public final class MailAnalysisQueue implements ApplicationListener<ApplicationR
 
     private record Job(String token, String identity, long sequence, IncomingMail mail, State state,
                        boolean receiptConfirmed, Instant submittedAt, Instant updatedAt, Instant retryAfter,
-                       Instant deliveryStartedAt) {
+                       Instant deliveryStartedAt, Integer admissionPosition) {
         boolean terminal() {
-            return state == State.COMPLETED || state == State.FAILED;
+            return state == State.COMPLETED || state == State.PARTIAL || state == State.FAILED || state == State.REJECTED;
         }
 
         Job update(State next, boolean confirmed, Instant updated, Instant retry) {
             IncomingMail retained = switch (next) {
-                case COMPLETED, FAILED -> null;
+                case COMPLETED, PARTIAL, FAILED, REJECTED -> null;
                 case DELIVERING -> new IncomingMail(null, mail.sender(), mail.subject(), null);
                 default -> mail;
             };
             Instant firstDelivery = next == State.DELIVERING && deliveryStartedAt == null ? updated : deliveryStartedAt;
             return new Job(token, identity, sequence, retained, next, confirmed,
-                    submittedAt, updated, retry, firstDelivery);
+                    submittedAt, updated, retry, firstDelivery, admissionPosition);
         }
     }
 
@@ -125,36 +139,43 @@ public final class MailAnalysisQueue implements ApplicationListener<ApplicationR
         pruneExpired();
         String identity = StableIdentityHash.sha256(mail.sender() + "\n" + mail.messageId());
         Optional<Job> existing = jobs.values().stream().filter(job -> job.identity().equals(identity)).findFirst();
-        if (existing.isPresent()) {
-            Job job = existing.get();
-            return new Submission(job.token(), job.state() == State.QUEUED ? position(job) : 0, true, true, null);
-        }
-        long waiting = jobs.values().stream().filter(job -> job.state() == State.QUEUED).count();
-        if (waiting >= capacity) {
-            return new Submission(null, null, false, false,
-                    "Die Warteschlange ist voll. Bitte senden Sie den Auftrag später erneut.");
-        }
+        if (existing.isPresent()) return submission(existing.get(), true);
+
+        int waiting = Math.toIntExact(jobs.values().stream().filter(job -> job.state() == State.QUEUED).count());
+        boolean accepted = waiting < capacity;
         Instant admitted = clock.instant();
-        Job job = new Job(UUID.randomUUID().toString(), identity, ++lastSequence, mail, State.QUEUED,
-                false, admitted, admitted, null, null);
+        // Record each decision before SMTP. A retry of the same IMAP UID must never change the answer.
+        Job job = new Job(UUID.randomUUID().toString(), identity, ++lastSequence, accepted ? mail : null,
+                accepted ? State.QUEUED : State.REJECTED, false, admitted, admitted, null, null,
+                accepted ? waiting + 1 : null);
         store(job);
-        return new Submission(job.token(), Math.toIntExact(waiting + 1), true, false, null);
+        return submission(job, false);
+    }
+
+    private Submission submission(Job job, boolean duplicate) {
+        boolean accepted = job.state() != State.REJECTED;
+        Integer admittedAt = job.admissionPosition();
+        if (admittedAt == null && job.state() == State.QUEUED) admittedAt = position(job);
+        return new Submission(job.token(), admittedAt, accepted, duplicate, job.receiptConfirmed(),
+                accepted ? null : CAPACITY_REJECTION);
     }
 
     /** The worker starts only after the mailbox adapter successfully sent the admission receipt. */
     public synchronized void confirmReceipt(String jobToken) {
         Job job = jobs.get(jobToken);
-        if (job != null && job.state() == State.QUEUED && !job.receiptConfirmed()) {
-            store(job.update(State.QUEUED, true, clock.instant(), null));
+        if (job != null && !job.receiptConfirmed()) {
+            store(job.update(job.state(), true, clock.instant(), null));
         }
     }
 
     public synchronized Optional<Status> status(String jobToken) {
         Job job = jobs.get(jobToken);
-        if (job == null || removable(job, clock.instant())) return Optional.empty();
+        if (job == null || job.state() == State.REJECTED || removable(job, clock.instant())) return Optional.empty();
+        var counts = new EnumMap<State, Integer>(State.class);
+        for (Job candidate : jobs.values()) counts.merge(candidate.state(), 1, Integer::sum);
         Integer position = job.state() == State.QUEUED ? position(job) : null;
-        int queuedJobs = Math.toIntExact(jobs.values().stream().filter(candidate -> candidate.state() == State.QUEUED).count());
-        return Optional.of(new Status(job.state(), position, job.submittedAt(), job.updatedAt(), queuedJobs));
+        return Optional.of(new Status(job.state(), position, counts.getOrDefault(State.QUEUED, 0), capacity,
+                counts.getOrDefault(State.RUNNING, 0), counts.getOrDefault(State.DELIVERING, 0), job.terminal()));
     }
 
     private int position(Job job) {
@@ -214,7 +235,7 @@ public final class MailAnalysisQueue implements ApplicationListener<ApplicationR
             log.warn("Email job delivery will be retried ({})", unavailable.getClass().getSimpleName());
             return;
         }
-        update(job.update(outcome.successful() ? State.COMPLETED : State.FAILED, true, clock.instant(), null));
+        update(job.update(outcome.deliveredState(), true, clock.instant(), null));
         delete(outgoing);
     }
 

@@ -7,6 +7,7 @@ import vm from 'node:vm';
 const sourcePath = '../../taxonomy-app/src/main/resources/static/js/';
 const sources = ['shared/taxonomy-utils.js', 'core/taxonomy-browse.js', 'core/taxonomy-scoring.js']
     .map(file => readFileSync(new URL(sourcePath + file, import.meta.url), 'utf8'));
+const matchScale = readFileSync(new URL(sourcePath + 'shared/match-scale.js', import.meta.url), 'utf8');
 const searchSource = readFileSync(new URL(sourcePath + 'shared/taxonomy-search.js', import.meta.url), 'utf8');
 const onboardingSource = readFileSync(new URL(sourcePath + 'shared/taxonomy-onboarding.js', import.meta.url), 'utf8');
 const viewsSource = readFileSync(new URL(sourcePath + 'core/taxonomy-views.js', import.meta.url), 'utf8');
@@ -188,6 +189,7 @@ function harness({ view = 'list', data = catalogue(), scores = null, interactive
         }
     });
     canonicalFixture.install(context, ['api/reference-api.js', 'api/analysis-api.js', 'api/export-api.js', 'api/proposals-api.js', 'api/search-api.js', 'api/relations-api.js']);
+    vm.runInContext(matchScale, context);
     vm.runInContext(sources[0], context); context.TaxonomyUtils = window.TaxonomyUtils;
     if (relevance) vm.runInContext(viewsSource, context);
     // Exercise the real expand/collapse commands without adding a production API.
@@ -268,6 +270,8 @@ test('list renders BP/BR as named groups and original entries as the first actua
         assert.equal(h.row(code), null);
     }
     assert.equal(h.group('BP').querySelector('.tax-container-score').textContent, 'Area relevance: 91%');
+    assert.equal(h.group('BP').querySelector('.tax-container-score').style.backgroundColor,
+        h.window.TaxonomyMatchScale.background(91));
     assert.equal(h.row('BP-1000').querySelector('.tax-pct').textContent, '64%');
     assert.equal(JSON.stringify(data), before, 'presentation must preserve the full source snapshot');
     assert.deepEqual(h.state.currentScores, { BP: 91, 'BP-1000': 64, BR: 37 });

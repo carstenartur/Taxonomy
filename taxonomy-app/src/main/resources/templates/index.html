@@ -167,8 +167,8 @@
                                 th:text="#{responsibility.catalogue.cancel}">Cancel</button>
                     </section>
                 </details>
-                <div class="card-body overflow-auto" style="max-height:82vh;">
-                    <div th:replace="~{fragments/score-legend :: matches('analysisScoreLegend')}"></div>
+                <div class="card-body overflow-auto taxonomy-browser-body" style="max-height:82vh;">
+                    <div th:replace="~{fragments/score-legend :: forTaxonomyBrowser('analysisScoreLegend')}"></div>
                     <div id="taxonomyResponsibilityControl" class="mb-2" hidden></div>
                     <div id="taxonomyResponsibilitySummary" class="mb-2" hidden></div>
                     <div id="taxonomyTree" th:attr="aria-label=#{ui.aria.taxonomy_tree}" aria-label="Taxonomy Tree" aria-busy="true">
@@ -1658,6 +1658,7 @@
 <script th:src="@{/js/api/workspace-api.js}" src="/js/api/workspace-api.js"></script>
 <script th:src="@{/js/core/taxonomy-state.js}"></script>
 <script th:src="@{/js/shared/responsibility-display.js}" src="/js/shared/responsibility-display.js"></script>
+<script th:src="@{/js/shared/match-scale.js}"></script>
 <script th:src="@{/js/core/taxonomy-views.js}"></script>
 <script th:src="@{/js/workspace/taxonomy-git-status.js}"></script>
 <script th:src="@{/js/workspace/taxonomy-branch-adoption.js}"></script>

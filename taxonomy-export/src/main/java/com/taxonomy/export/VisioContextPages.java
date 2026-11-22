@@ -223,6 +223,7 @@ final class VisioContextPages {
             value = switch (value) {
                 case "Unavailable: public base URL is not configured." -> "Die öffentliche Basis-URL ist nicht konfiguriert.";
                 case "Unavailable: this working view has no saved requirement editing target." -> "Für die Arbeitsansicht ist kein Bearbeitungsziel gespeichert.";
+                case "Server-side requirement analysis." -> "Serverseitige Anforderungsanalyse.";
                 case "Client-provided working source; no saved requirement version authority." -> "Übergebener Arbeitstext ohne gespeicherte Anforderungsversion.";
                 default -> value;
             };

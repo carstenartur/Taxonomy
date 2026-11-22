@@ -79,27 +79,31 @@ public class AnalyzeRequirementUseCase {
      * claim has been revalidated and locked.
      */
     public AnalyzeRequirementResult analyze(AnalyzeRequirementCommand command) {
-        return analyzeWithPublicationPolicy(command, command.provenance() == null);
+        return execute(command, command.provenance() == null ? Submission.AD_HOC : Submission.QUEUED);
     }
 
-    /** Run the same assessment and projection for delivery without publishing hypotheses to the source repository. */
+    /** Execute an accepted delivery job under normal capacity limits and keep its hypotheses private. */
     public AnalyzeRequirementResult analyzeUnpublished(AnalyzeRequirementCommand command) {
-        return analyzeWithPublicationPolicy(command, false);
+        return execute(command, Submission.QUEUED);
     }
 
-    private AnalyzeRequirementResult analyzeWithPublicationPolicy(AnalyzeRequirementCommand command, boolean publishHypotheses) {
+    private enum Submission { AD_HOC, QUEUED }
+
+    private AnalyzeRequirementResult execute(AnalyzeRequirementCommand command, Submission submission) {
         command = freezeGenerationContract(command);
         if (clusterExecution != null && !com.taxonomy.analysis.recovery.AnalysisCheckpointSession.active()) {
             ViewContext view = resolveViewContext(command);
             return analyze(command, operationContext(command, view), view);
         }
+        boolean publishHypotheses = submission == Submission.AD_HOC
+                && !com.taxonomy.analysis.recovery.AnalysisCheckpointSession.active();
         if (analysisProgressRegistry == null || AnalysisRunControl.active()) {
-            return analyze(command, publishHypotheses && !com.taxonomy.analysis.recovery.AnalysisCheckpointSession.active());
+            return analyze(command, publishHypotheses);
         }
-        // Portfolio/Copilot callers retain their durable job and claim boundaries.
-        try (var run = analysisProgressRegistry.open(null, command.username(),
-                command.workspaceContext(), command.provenance())) {
-            AnalyzeRequirementResult result = analyze(command, publishHypotheses && !com.taxonomy.analysis.recovery.AnalysisCheckpointSession.active());
+        try (var run = submission == Submission.QUEUED
+                ? analysisProgressRegistry.openDurable(null, command.username(), command.workspaceContext(), command.provenance())
+                : analysisProgressRegistry.open(null, command.username(), command.workspaceContext(), null)) {
+            AnalyzeRequirementResult result = analyze(command, publishHypotheses);
             run.finish(result.analysisResult());
             return result;
         }

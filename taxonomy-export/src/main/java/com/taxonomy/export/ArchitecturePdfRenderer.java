@@ -163,6 +163,19 @@ public final class ArchitecturePdfRenderer {
                         List.of(), null), nodeReasons, relationReasons, language);
     }
 
+    /** A server-run assessment may be exported before it has been adopted as a project snapshot. */
+    public byte[] renderAnalysis(DiagramScene scene, AnalysisDiagramSource source, Map<String, String> reasons, Locale locale) {
+        requireScene(scene);
+        var language = DiagramLanguage.from(locale);
+        String origin = language.text("Server-side requirement analysis", "Serverseitige Anforderungsanalyse");
+        var header = new ArrayList<String>();
+        header.add(language.text("Analysis status: ", "Analysestatus: ") + safe(source.status()));
+        if (source.provider() != null) header.add(language.text("Provider: ", "Anbieter: ") + source.provider());
+        if (source.branch() != null) header.add("Branch: " + source.branch() + " · Commit: " + abbreviated(source.commit()));
+        return renderScene(scene, document -> configureSource(document, scene, origin),
+                new Decoration(scene.title(), header, List.of(origin), List.of(), null), reasons, Map.of(), language);
+    }
+
     private static void requireScene(DiagramScene scene) {
         if (scene == null || scene.isEmpty()) throw new IllegalArgumentException("Architecture scene must not be empty");
     }

@@ -17,7 +17,11 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -47,7 +51,7 @@ class MailAnalysisQueueTest {
             var admission = before.submit(FIRST);
             token = admission.jobToken();
             assertThat(admission.position()).isEqualTo(1);
-            assertThat(before.submit(SECOND).accepted()).isFalse();
+            assertThat(admission.receiptConfirmed()).isFalse();
             assertThat(before.status(token).orElseThrow().state()).isEqualTo(MailAnalysisQueue.State.QUEUED);
             before.processNext();
             verifyNoInteractions(processor, delivery);
@@ -68,7 +72,43 @@ class MailAnalysisQueueTest {
             assertThat(after.status(token).orElseThrow().queuedJobs()).isZero();
             assertThat(Files.readString(directory.resolve(token + ".job")))
                     .doesNotContain(FIRST.subject(), FIRST.requirementText(), FIRST.sender());
+            assertThat(after.submit(FIRST).receiptConfirmed()).isTrue();
             assertThat(after.submit(SECOND).accepted()).isTrue();
+        } finally {
+            after.destroy();
+        }
+    }
+
+    @Test
+    void aFullQueueRejectionSurvivesFreedCapacityRestartAndRedelivery() throws Exception {
+        var before = queue(1, NOW);
+        String rejectionId;
+        when(processor.process(FIRST.subject(), FIRST.requirementText())).thenReturn(MailAnalysisQueue.Outcome.failed("test"));
+        try {
+            var admitted = before.submit(FIRST);
+            var rejected = before.submit(SECOND);
+            rejectionId = rejected.jobToken();
+            assertThat(rejected.accepted()).isFalse();
+            assertThat(rejected.receiptConfirmed()).isFalse();
+            assertThat(rejected.position()).isNull();
+            assertThat(before.status(rejectionId)).isEmpty();
+            assertThat(Files.readString(directory.resolve(rejectionId + ".job")))
+                    .doesNotContain(SECOND.sender(), SECOND.subject(), SECOND.requirementText());
+            before.confirmReceipt(admitted.jobToken());
+            before.processNext();
+        } finally {
+            before.destroy();
+        }
+        var after = queue(1, NOW.plusSeconds(1));
+        try {
+            var retry = after.submit(SECOND);
+            assertThat(retry.accepted()).isFalse();
+            assertThat(retry.duplicate()).isTrue();
+            assertThat(retry.jobToken()).isEqualTo(rejectionId);
+            after.confirmReceipt(rejectionId);
+            assertThat(after.submit(SECOND).receiptConfirmed()).isTrue();
+            var resubmitted = new IncomingMail("new-uid", SECOND.sender(), SECOND.subject(), SECOND.requirementText());
+            assertThat(after.submit(resubmitted).accepted()).isTrue();
         } finally {
             after.destroy();
         }
@@ -95,7 +135,9 @@ class MailAnalysisQueueTest {
             before.confirmReceipt(secondToken);
             before.processNext();
             assertThat(before.status(firstToken).orElseThrow().state()).isEqualTo(MailAnalysisQueue.State.DELIVERING);
-            assertThat(before.status(secondToken).orElseThrow().position()).isEqualTo(1);
+            assertThat(before.status(secondToken).orElseThrow()).isEqualTo(
+                    new MailAnalysisQueue.Status(MailAnalysisQueue.State.QUEUED, 1, 1, 2, 0, 1, false));
+            assertThat(before.submit(SECOND).position()).isEqualTo(2);
             assertThat(Files.exists(directory.resolve(firstToken + ".outgoing"))).isTrue();
             before.processNext();
             verify(delivery).sendFailure(SECOND.sender(), SECOND.subject(), "Fachlicher Fehler");
@@ -121,6 +163,23 @@ class MailAnalysisQueueTest {
             assertThat(Files.exists(directory.resolve(firstToken + ".outgoing"))).isFalse();
         } finally {
             after.destroy();
+        }
+    }
+
+    @Test
+    void aDeliveredPartialResultHasItsOwnTerminalStatus() {
+        when(processor.process(FIRST.subject(), FIRST.requirementText())).thenReturn(
+                new MailAnalysisQueue.Outcome("Teilergebnis", List.of(), true, true));
+        var queue = queue(1, NOW);
+        try {
+            String token = queue.submit(FIRST).jobToken();
+            queue.confirmReceipt(token);
+            queue.processNext();
+            verify(delivery).sendResult(FIRST.sender(), FIRST.subject(), "Teilergebnis", List.of());
+            assertThat(queue.status(token).orElseThrow()).isEqualTo(
+                    new MailAnalysisQueue.Status(MailAnalysisQueue.State.PARTIAL, null, 0, 1, 0, 0, true));
+        } finally {
+            queue.destroy();
         }
     }
 
@@ -210,6 +269,32 @@ class MailAnalysisQueueTest {
             assertThat(after.status(thirdToken).orElseThrow().state()).isEqualTo(MailAnalysisQueue.State.FAILED);
         } finally {
             after.destroy();
+        }
+    }
+
+    @Test
+    void simultaneousAdmissionsReturnUniquePositionsUpToCapacity() throws Exception {
+        var queue = queue(3, NOW);
+        var start = new CountDownLatch(1);
+        try (var writers = Executors.newVirtualThreadPerTaskExecutor()) {
+            var submissions = new ArrayList<Future<MailAnalysisQueue.Submission>>();
+            for (int i = 0; i < 12; i++) {
+                var mail = new IncomingMail("uid-" + i, FIRST.sender(), FIRST.subject(), FIRST.requirementText());
+                submissions.add(writers.submit(() -> {
+                    start.await();
+                    return queue.submit(mail);
+                }));
+            }
+            start.countDown();
+            var acceptedPositions = new ArrayList<Integer>();
+            for (var submission : submissions) {
+                var result = submission.get();
+                if (result.accepted()) acceptedPositions.add(result.position());
+                else assertThat(result.rejectionReason()).contains("voll");
+            }
+            assertThat(acceptedPositions).containsExactlyInAnyOrder(1, 2, 3);
+        } finally {
+            queue.destroy();
         }
     }
 

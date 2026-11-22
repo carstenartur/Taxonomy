@@ -333,6 +333,7 @@
         var root = createElement('section', 'impact-map-workbench');
         root.setAttribute('aria-labelledby', instanceId + '-title');
         root.dataset.impactMapInstance = instanceId;
+        var fullscreenSurface = options.fullscreenSurface || root;
 
         var header = createElement('div', 'impact-map-workbench-header');
         var heading = createElement('div', 'impact-map-heading');
@@ -398,7 +399,7 @@
         zoomGroup.appendChild(fitButton);
         zoomGroup.appendChild(zoomInButton);
         zoomGroup.appendChild(fullscreenButton);
-        fullscreenButton.hidden = typeof root.requestFullscreen !== 'function';
+        fullscreenButton.hidden = typeof fullscreenSurface.requestFullscreen !== 'function';
         toolbar.appendChild(zoomGroup);
 
         var status = createElement('div', 'impact-map-status');
@@ -429,8 +430,8 @@
 
         var details = createElement('div', 'impact-map-details is-empty');
         details.setAttribute('aria-live', 'polite');
-        root.appendChild(details);
         root.appendChild(canvas);
+        root.appendChild(details);
         container.appendChild(root);
 
         function updateStatus() {
@@ -689,15 +690,15 @@
         zoomOutButton.addEventListener('click', function () { diagram.zoom(0.8); });
         fitButton.addEventListener('click', function () { diagram.fit(); });
         fullscreenButton.addEventListener('click', function () {
-            if (document.fullscreenElement === root) {
+            if (document.fullscreenElement === fullscreenSurface) {
                 document.exitFullscreen();
-            } else if (root.requestFullscreen) {
-                root.requestFullscreen();
+            } else if (fullscreenSurface.requestFullscreen) {
+                fullscreenSurface.requestFullscreen();
             }
         });
 
         function onFullscreenChange() {
-            var full = document.fullscreenElement === root;
+            var full = document.fullscreenElement === fullscreenSurface;
             fullscreenButton.title = full ? t('impactmap.exit.fullscreen') : t('impactmap.fullscreen');
             fullscreenButton.setAttribute('aria-label', fullscreenButton.title);
             diagram.fit();

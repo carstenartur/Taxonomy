@@ -98,11 +98,13 @@ final class ImapMailAnalysisPoller {
                     }
                     var request = parser.parse(messageIdentity(generation, uid), sender, message);
                     MailAnalysisQueue.Submission reply = queue.submit(request);
-                    if (reply.accepted()) {
-                        delivery.sendReceipt(sender, request.subject(), reply.jobToken(), reply.position());
+                    if (!reply.receiptConfirmed()) {
+                        if (reply.accepted()) {
+                            delivery.sendReceipt(sender, request.subject(), reply.jobToken(), reply.position());
+                        } else {
+                            delivery.sendRejection(sender, request.subject(), reply.rejectionReason());
+                        }
                         queue.confirmReceipt(reply.jobToken());
-                    } else {
-                        delivery.sendRejection(sender, request.subject(), reply.rejectionReason());
                     }
                 } catch (MailRequestParser.Rejected rejected) {
                     delivery.sendRejection(sender, subject, rejected.getMessage());

@@ -672,6 +672,65 @@ class ArchitectureWorkspaceBrowserIT {
     }
 
     @ParameterizedTest @CsvSource({"en,1440", "de,390"})
+    void legendsFollowTheRenderedViewAndCurrentAnalysisLensStaysWithItsDiagram(String locale, int width) throws IOException {
+        open(locale, width);
+        var scoreLegend = page.driver().findElement(By.id("analysisScoreLegend"));
+        var decisionLegend = page.driver().findElement(By.className("decision-legend"));
+        var summaryLegend = page.driver().findElement(By.className("summary-legend"));
+        assertThat(scoreLegend.isDisplayed()).isTrue();
+        assertThat(scoreLegend.findElements(By.cssSelector(".legend-box:not([data-score='0'])")))
+                .extracting(box -> box.getCssValue("background-color")).hasSize(4).doesNotHaveDuplicates();
+        page.driver().findElement(By.id("viewDecision")).sendKeys(Keys.ENTER);
+        wait.until(ExpectedConditions.visibilityOf(decisionLegend));
+        assertThat(scoreLegend.isDisplayed()).isFalse();
+        assertThat(decisionLegend.getAccessibleName()).isEqualTo(locale.equals("de") ? "Legende zum Entscheidungsbaum" : "Decision map legend");
+        assertThat(decisionLegend.findElements(By.className("legend-box"))).hasSize(5);
+        Path directory = Path.of("target", "unified-architecture-acceptance", locale + "-" + width);
+        Files.createDirectories(directory);
+        Files.write(directory.resolve("decision-legend.png"), decisionLegend.getScreenshotAs(OutputType.BYTES));
+        page.driver().findElement(By.id("viewSummary")).sendKeys(Keys.ENTER);
+        wait.until(ExpectedConditions.visibilityOf(summaryLegend));
+        assertThat(scoreLegend.isDisplayed()).isFalse();
+        assertThat(decisionLegend.isDisplayed()).isFalse();
+        page.driver().findElement(By.id("viewList")).sendKeys(Keys.ENTER);
+        wait.until(ExpectedConditions.visibilityOf(scoreLegend));
+        assertThat(summaryLegend.isDisplayed()).isFalse();
+
+        source("analysis", scope("repository-A", "analysis-A", "draft/A"));
+        page.driver().executeScript("""
+                TaxonomyScoring.renderArchitectureView({...TaxonomyState.currentArchView,
+                    notes: Array.from({length: 35}, (_, index) => 'Assessment ' + (index + 1))});
+                """);
+        var graph = wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("impactGraphView")));
+        var lens = page.driver().findElement(By.id("architectureLensAction"));
+        var hover = page.driver().findElement(By.id("architectureSourceLensEnabled"));
+        wait.until(ExpectedConditions.elementToBeClickable(hover));
+        assertThat(page.driver().executeScript("""
+                const lens = arguments[0].getBoundingClientRect(), graph = arguments[1].getBoundingClientRect();
+                return graph.top >= lens.bottom && graph.top - lens.bottom < 180;
+                """, lens, graph)).as("The selected analysis diagram starts directly beneath its lens controls").isEqualTo(true);
+        page.driver().executeScript("arguments[0].scrollIntoView({block:'center',behavior:'instant'});", lens);
+        Files.write(directory.resolve("analysis-lens-controls.png"), page.driver().getScreenshotAs(OutputType.BYTES));
+        var layers = page.driver().findElement(By.cssSelector(".impact-view-btn[data-mode='swimlane']"));
+        var network = page.driver().findElement(By.cssSelector(".impact-view-btn[data-mode='graph']"));
+        layers.sendKeys(Keys.ENTER);
+        assertThat(layers.getDomAttribute("aria-pressed")).isEqualTo("true");
+        assertThat(network.getDomAttribute("aria-pressed")).isEqualTo("false");
+        network.sendKeys(Keys.ENTER);
+        assertThat(network.getDomAttribute("aria-pressed")).isEqualTo("true");
+        hover.sendKeys(Keys.SPACE);
+        assertThat(hover.isSelected()).isTrue();
+        hover.sendKeys(Keys.SPACE);
+        var fullscreen = graph.findElement(By.cssSelector("button[aria-label='" + (locale.equals("de") ? "Vollbild" : "Fullscreen") + "']"));
+        fullscreen.click();
+        wait.until(driver -> Boolean.TRUE.equals(page.driver().executeScript("return document.fullscreenElement?.contains(arguments[0]);", lens)));
+        lens.sendKeys(Keys.ENTER);
+        wait.until(driver -> page.driver().executeScript("return document.fullscreenElement;") == null);
+        wait.until(driver -> "architectureSourceLensTitle".equals(page.driver().switchTo().activeElement().getDomAttribute("id")));
+        noScriptErrors();
+    }
+
+    @ParameterizedTest @CsvSource({"en,1440", "de,390"})
     void renderedApplicationHasOneNavigationAndLensOpensAnalysisInPlace(String locale, int width) throws IOException {
         open(locale, width);
         assertThat(page.driver().findElements(By.cssSelector("#applicationWorkspaces [data-app-route]")))
