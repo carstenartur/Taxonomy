@@ -27,7 +27,7 @@ import java.util.Map;
 /** Native Visio drawings from the same captured hierarchy and architecture as the other decision reports. */
 public class DecisionRationaleVisioRenderer implements ReportRendererExtension {
     private static final ReportFormatDescriptor DESCRIPTOR = new ReportFormatDescriptor(
-            "visio", "Visio", "vsdx", "application/vnd.ms-visio.drawing", false);
+            "visio", "Visio", "vsdx", "application/vnd.ms-visio.drawing", true);
 
     private final VisioDiagramService diagrams;
     private final VisioPackageBuilder packages;

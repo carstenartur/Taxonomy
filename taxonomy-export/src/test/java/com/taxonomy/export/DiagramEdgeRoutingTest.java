@@ -1,5 +1,6 @@
 package com.taxonomy.export;
 
+import com.taxonomy.diagram.DiagramCanonicalEvidence;
 import com.taxonomy.diagram.DiagramScene;
 import com.taxonomy.diagram.DiagramSceneEdge;
 import com.taxonomy.diagram.DiagramSceneNode;
@@ -7,6 +8,8 @@ import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.contentstream.operator.Operator;
 import org.apache.pdfbox.cos.COSNumber;
 import org.apache.pdfbox.pdfparser.PDFStreamParser;
+import org.apache.pdfbox.text.PDFTextStripper;
+import org.apache.pdfbox.text.TextPosition;
 import org.junit.jupiter.api.Test;
 import org.w3c.dom.Element;
 import org.xml.sax.InputSource;
@@ -20,6 +23,8 @@ import java.io.StringReader;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -67,6 +72,58 @@ class DiagramEdgeRoutingTest {
         var scene = new DiagramScene("Clear", 760, 420, "LR", List.of(source, target), List.of(edge));
         assertThat(new SvgDiagramRenderer().render(scene))
                 .contains("<line x1=\"290.00\" y1=\"93.00\" x2=\"382.00\" y2=\"93.00\"");
+    }
+
+    @Test void admbwDeliveryViewLabelsItsDirectRelationshipClearOfAllFourCards() throws Exception {
+        var target = card("admbw-native-a8cd1f93-21d8-4d8f-8904-e2071eaaf431", 52, 110);
+        var upper = card("admbw-constraint-d898e450629d458f576bff712d9adc7168ff7a55842695d147f2a8cc4d6cc7d4", 382, 52);
+        var lower = card("admbw-native-59f81f16-da5f-4339-8efe-129b58c43df3", 382, 168);
+        var source = card("arch-e03f6ff6-005a-5b6d-81f5-e74c28c019a9", 712, 110);
+        String id = source.id() + " FULFILLS " + target.id();
+        var edge = new DiagramSceneEdge(id, source.id(), target.id(), "FULFILLS", 0, "impact", 712, 151, 290, 151);
+        var scene = new DiagramScene("ADMBw-Liefersicht", 1002, 420, "LR", List.of(target, upper, lower, source), List.of(edge));
+        var evidence = new DiagramCanonicalEvidence("delivery", List.of(),
+                Map.of(id, new DiagramCanonicalEvidence.Relationship("accepted", null, null)));
+        var svg = new SvgDiagramRenderer().renderCanonical(scene, evidence, Locale.GERMAN);
+        var doc = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(new InputSource(new StringReader(svg)));
+        var edgeGroup = (Element) doc.getElementsByTagName("line").item(0).getParentNode();
+        var labels = edgeGroup.getElementsByTagName("text");
+        var values = new ArrayList<String>();
+        for (int i = 0; i < labels.getLength(); i++) {
+            var label = (Element) labels.item(i);
+            values.add(label.getTextContent());
+            double width = Double.parseDouble(label.getAttribute("textLength"));
+            var glyphs = new Font("Arial", Font.PLAIN, 11).getStringBounds(label.getTextContent(),
+                    new FontRenderContext(null, true, true));
+            var box = new Rectangle2D.Double(Double.parseDouble(label.getAttribute("x")) - width / 2,
+                    Double.parseDouble(label.getAttribute("y")) + glyphs.getY(), width, glyphs.getHeight());
+            assertCaptionClearsCards(scene, box);
+        }
+        assertThat(values).containsExactly("FULFILLS", "accepted");
+
+        try (var pdf = Loader.loadPDF(new ArchitecturePdfRenderer().renderCanonical(scene, "", evidence, Locale.GERMAN))) {
+            var stripper = new PDFTextStripper() {
+                @Override protected void writeString(String value, List<TextPosition> positions) throws java.io.IOException {
+                    if (value.contains("FULFILLS")) {
+                        for (var glyph : positions) {
+                            double x = glyph.getXDirAdj() - PdfDiagramPages.PAGE_MARGIN;
+                            double baseline = glyph.getYDirAdj() - PdfDiagramPages.PAGE_MARGIN - PdfDiagramPages.HEADER_HEIGHT;
+                            assertCaptionClearsCards(scene, new Rectangle2D.Double(x, baseline - glyph.getHeightDir(),
+                                    glyph.getWidthDirAdj(), glyph.getHeightDir()));
+                        }
+                    }
+                    super.writeString(value, positions);
+                }
+            };
+            stripper.setEndPage(1);
+            assertThat(stripper.getText(pdf)).contains("FULFILLS · accepted");
+        }
+    }
+
+    private static void assertCaptionClearsCards(DiagramScene scene, Rectangle2D box) {
+        for (var node : scene.nodes())
+            assertThat(box.intersects(node.x(), node.y(), node.width(), node.height()))
+                    .as("caption %s overlaps card %s", box, node.id()).isFalse();
     }
 
     @Test void verticalLoopAndParallelSvgLinksRetainTheirPortsAndAvoidTheCards() throws Exception {

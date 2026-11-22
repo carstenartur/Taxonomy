@@ -269,7 +269,7 @@ public class ExportApiController {
             return ResponseEntity.notFound().build();
         }
         try {
-            DiagramModel diagram = exportFacade.buildCurrentDiagram(view);
+            DiagramModel diagram = exportFacade.buildCurrentDiagram(view, locale);
             ExportFormatExtension extension = extensionOpt.get();
             ExportFormatDescriptor descriptor = extension.descriptor();
             Map<String, Object> options = new HashMap<>();

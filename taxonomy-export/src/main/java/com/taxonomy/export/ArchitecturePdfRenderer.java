@@ -275,7 +275,6 @@ public final class ArchitecturePdfRenderer {
             var detour = routing.detourForLine(edge);
             stream.moveTo(x1, y1);
             float arrowStartX = x1, arrowStartY = y1;
-            float captionX = (x1 + x2) / 2, captionY = (y1 + y2) / 2;
             if (detour == null) {
                 stream.lineTo(x2, y2);
             } else {
@@ -287,18 +286,17 @@ public final class ArchitecturePdfRenderer {
                 var beforeTarget = points.get(points.size() - 2);
                 arrowStartX = diagramX + (float) beforeTarget.x() * scale;
                 arrowStartY = diagramTop - (float) beforeTarget.y() * scale;
-                var caption = detour.labelAnchor();
-                captionX = diagramX + (float) caption.x() * scale;
-                captionY = diagramTop - (float) caption.y() * scale;
             }
             stream.stroke();
             drawArrow(stream, arrowStartX, arrowStartY, x2, y2, Math.max(4.0f, 7.0f * scale));
             if (edge.relationType() == null || edge.relationType().isBlank()) continue;
             String state = canonical == null ? DiagramPresentation.relationshipStatus(edge.metadata(), language.german())
                     : DiagramPresentation.canonicalRelationshipStatus(canonical, edge.id(), language);
-            var caption = placeCaption(edge.relationType() + " · " + state, captionX, captionY,
+            var anchors = DiagramEdgeRouting.captionAnchors(edge, detour).stream().map(anchor ->
+                    new DiagramEdgeRouting.Point(diagramX + anchor.x() * scale, diagramTop - anchor.y() * scale)).toList();
+            var caption = placeCaption(edge.relationType() + " · " + state, anchors,
                     diagramTop, nodeBounds, captions, fonts.regular(), labelSize);
-            if (caption == null) caption = placeCaption(edge.relationType(), captionX, captionY,
+            if (caption == null) caption = placeCaption(edge.relationType(), anchors,
                     diagramTop, nodeBounds, captions, fonts.regular(), labelSize);
             if (caption != null) captions.add(caption);
         }
@@ -313,17 +311,20 @@ public final class ArchitecturePdfRenderer {
         }
     }
 
-    private static EdgeCaption placeCaption(String label, float x, float y, float diagramTop,
+    private static EdgeCaption placeCaption(String label, List<DiagramEdgeRouting.Point> anchors, float diagramTop,
             List<Rectangle2D.Float> nodeBounds, List<EdgeCaption> captions, PDFont font, float labelSize) throws IOException {
         String text = PdfDiagramText.wrap(label, font, labelSize, 210, 1).getFirst();
         float width = PdfDiagramText.width(font, labelSize, text) + 8;
-        for (int offset : new int[]{12, -20, 26, -34}) {
-            var rect = new Rectangle2D.Float(x - width / 2, y + offset, width, 12);
-            if (rect.x < PAGE_MARGIN || rect.getMaxX() > PdfDiagramPages.PAGE_WIDTH - PAGE_MARGIN
-                    || rect.y < PAGE_MARGIN || rect.getMaxY() > diagramTop
-                    || nodeBounds.stream().anyMatch(rect::intersects)
-                    || captions.stream().anyMatch(other -> rect.intersects(other.bounds()))) continue;
-            return new EdgeCaption(rect, text);
+        int[] offsets = {12, -20, 26, -34};
+        for (var anchor : anchors) {
+            for (int offset : offsets) {
+                var rect = new Rectangle2D.Float((float) anchor.x() - width / 2, (float) anchor.y() + offset, width, 12);
+                if (rect.x < PAGE_MARGIN || rect.getMaxX() > PdfDiagramPages.PAGE_WIDTH - PAGE_MARGIN
+                        || rect.y < PAGE_MARGIN || rect.getMaxY() > diagramTop
+                        || nodeBounds.stream().anyMatch(rect::intersects)
+                        || captions.stream().anyMatch(other -> rect.intersects(other.bounds()))) continue;
+                return new EdgeCaption(rect, text);
+            }
         }
         return null;
     }

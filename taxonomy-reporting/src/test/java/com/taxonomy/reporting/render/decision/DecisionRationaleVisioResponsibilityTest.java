@@ -48,6 +48,7 @@ class DecisionRationaleVisioResponsibilityTest {
         var beans = new DefaultListableBeanFactory();
         var renderer = new DecisionRationaleVisioRenderer(beans.getBeanProvider(VisioDiagramService.class),
                 beans.getBeanProvider(VisioPackageBuilder.class));
+        assertThat(renderer.descriptor().binary()).isTrue();
         var result = renderer.render(ReportRenderContext.ofPayload(decision));
         var pages = new StringBuilder();
         var drawingText = new StringBuilder();

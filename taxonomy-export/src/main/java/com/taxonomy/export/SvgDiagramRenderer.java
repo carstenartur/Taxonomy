@@ -132,7 +132,7 @@ public class SvgDiagramRenderer {
         var captionFont = font(11, false);
         var captionContext = new FontRenderContext(null, true, true);
         var metrics = captionFont.getLineMetrics("Ag", captionContext);
-        var detourCaptions = new ArrayList<Rectangle2D>();
+        var captions = new ArrayList<Rectangle2D>();
         for (var edge : scene.edges()) {
             double strokeWidth = 1.2 + Math.max(0, edge.relevance()) * 1.8;
             String status = canonical == null ? DiagramPresentation.relationshipStatus(edge.metadata(), language.german())
@@ -165,19 +165,19 @@ public class SvgDiagramRenderer {
             svg.append("<metadata><relationship xmlns=\"urn:taxonomy:diagram\">");
             metadataValue(svg, "provenance", canonical == null ? edge.metadata() : canonical.relationships().get(edge.id()));
             svg.append("</relationship></metadata>\n");
+            var anchors = DiagramEdgeRouting.captionAnchors(edge, detour);
             if (detour == null) {
-                double captionWidth = Math.max(12, Math.min(210, Math.abs(edge.targetX() - edge.sourceX()) - 12));
-                double captionX = (edge.sourceX() + edge.targetX()) / 2;
-                double captionY = (edge.sourceY() + edge.targetY()) / 2;
-                // SVG marker units scale with the stroke. Leave room for the actual font's ascenders and descenders.
+                // SVG markers scale with the stroke. Keep the text clear of their full height.
                 double markerClearance = 4 * strokeWidth + 2;
-                text(svg, captionX, captionY - Math.max(15, markerClearance + metrics.getDescent()), "middle", 11, false, theme.canvasText("#394150"),
-                        DiagramTextWrapper.wrapMeasured(edge.relationType(), captionFont, captionWidth, 1, language.text("Relationship", "Beziehung")).getFirst());
-                text(svg, captionX, captionY + Math.max(23, markerClearance + metrics.getAscent()), "middle", 11, false, theme.canvasText("#394150"),
-                        DiagramTextWrapper.wrapMeasured(status, captionFont, captionWidth, 1, language.text("Origin unrecorded", "Herkunft nicht aufgezeichnet")).getFirst());
+                double above = -Math.max(15, markerClearance + metrics.getDescent());
+                double below = Math.max(23, markerClearance + metrics.getAscent());
+                String kind = edge.relationType() == null || edge.relationType().isBlank()
+                        ? language.text("Relationship", "Beziehung") : edge.relationType();
+                drawCaption(svg, scene, anchors, kind, captionFont, captionContext, theme, captions, above, below);
+                drawCaption(svg, scene, anchors, status, captionFont, captionContext, theme, captions, below, above);
             } else {
-                drawDetourCaption(svg, scene, detour, edge.relationType() + " · " + status,
-                        captionFont, captionContext, theme, detourCaptions);
+                drawCaption(svg, scene, anchors, edge.relationType() + " · " + status,
+                        captionFont, captionContext, theme, captions, -6, 16);
             }
             svg.append("</g></a>\n");
         }
@@ -235,22 +235,23 @@ public class SvgDiagramRenderer {
         return svg.append("</svg>\n").toString();
     }
 
-    private static void drawDetourCaption(StringBuilder svg, DiagramScene scene, DiagramEdgeRouting.Detour detour,
-            String label, Font font, FontRenderContext context, ExportTheme theme, List<Rectangle2D> occupied) {
-        var anchor = detour.labelAnchor();
+    private static void drawCaption(StringBuilder svg, DiagramScene scene, List<DiagramEdgeRouting.Point> anchors,
+            String label, Font font, FontRenderContext context, ExportTheme theme, List<Rectangle2D> occupied, double... offsets) {
         String caption = DiagramTextWrapper.wrapMeasured(label, font, 210, 1, "").getFirst();
         var glyphs = font.getStringBounds(caption, context);
-        for (int offset : new int[]{-6, 16}) {
-            double baseline = anchor.y() + offset;
-            var box = new Rectangle2D.Double(anchor.x() - glyphs.getWidth() / 2, baseline + glyphs.getY(),
-                    glyphs.getWidth(), glyphs.getHeight());
-            if (box.getMinX() < 0 || box.getMaxX() > scene.width() || box.getMinY() < 0 || box.getMaxY() > scene.height()
-                    || occupied.stream().anyMatch(box::intersects)
-                    || scene.nodes().stream().anyMatch(node -> box.intersects(node.x(), node.y(), node.width(), node.height())))
-                continue;
-            text(svg, anchor.x(), baseline, "middle", 11, false, theme.canvasText("#394150"), caption);
-            occupied.add(box);
-            return;
+        for (var anchor : anchors) {
+            for (double offset : offsets) {
+                double baseline = anchor.y() + offset;
+                var box = new Rectangle2D.Double(anchor.x() - glyphs.getWidth() / 2, baseline + glyphs.getY(),
+                        glyphs.getWidth(), glyphs.getHeight());
+                if (box.getMinX() < 0 || box.getMaxX() > scene.width() || box.getMinY() < 0 || box.getMaxY() > scene.height()
+                        || occupied.stream().anyMatch(box::intersects)
+                        || scene.nodes().stream().anyMatch(node -> box.intersects(node.x(), node.y(), node.width(), node.height())))
+                    continue;
+                text(svg, anchor.x(), baseline, "middle", 11, false, theme.canvasText("#394150"), caption);
+                occupied.add(box);
+                return;
+            }
         }
         // The hyperlink still points to the full relationship label and status in the inventory.
     }
