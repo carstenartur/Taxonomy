@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en" th:lang="${#locale.language}" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="referrer" content="no-referrer">
+    <title th:text="#{mail.analysis.title}">Email analysis status</title>
+    <link rel="stylesheet" th:href="@{/webjars/bootstrap/5.3.8/dist/css/bootstrap.min.css}">
+    <script defer th:src="@{/js/mail-analysis-status.js}"></script>
+</head>
+<body class="bg-body-tertiary">
+<main class="container py-4">
+    <section id="mailAnalysisStatus" class="card card-body mx-auto" style="max-width:36rem"
+             th:attr="data-url=@{/mail-analysis/jobs/{token}/status(token=${jobToken})},data-finished=${status.finished}">
+        <h1 class="h3" th:text="#{mail.analysis.title}">Email analysis status</h1>
+        <dl aria-live="polite" class="mt-3 mb-1">
+            <dt th:text="#{mail.analysis.state}">Status</dt>
+            <dd data-job-state th:text="#{${'mail.analysis.state.' + status.state}}">Queued</dd>
+            <dt th:text="#{mail.analysis.position}">Position in the queue</dt>
+            <dd data-job-position th:text="${status.position != null ? status.position : '—'}">1</dd>
+            <dt th:text="#{mail.analysis.waiting}">Jobs waiting in total</dt>
+            <dd data-job-queued th:text="${status.queuedJobs}">1</dd>
+        </dl>
+        <p data-job-error class="text-body-secondary mb-0" role="status" hidden
+           th:text="#{mail.analysis.refreshError}">The status is temporarily unavailable.</p>
+        <template data-state-labels>
+            <span data-state="QUEUED" th:text="#{mail.analysis.state.QUEUED}">Waiting</span>
+            <span data-state="RUNNING" th:text="#{mail.analysis.state.RUNNING}">Analysing and preparing results</span>
+            <span data-state="DELIVERING" th:text="#{mail.analysis.state.DELIVERING}">Sending the result by email</span>
+            <span data-state="COMPLETED" th:text="#{mail.analysis.state.COMPLETED}">Completed</span>
+            <span data-state="FAILED" th:text="#{mail.analysis.state.FAILED}">Failed</span>
+        </template>
+    </section>
+</main>
+</body>
+</html>

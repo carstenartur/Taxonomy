@@ -79,18 +79,27 @@ public class AnalyzeRequirementUseCase {
      * claim has been revalidated and locked.
      */
     public AnalyzeRequirementResult analyze(AnalyzeRequirementCommand command) {
+        return analyzeWithPublicationPolicy(command, command.provenance() == null);
+    }
+
+    /** Run the same assessment and projection for delivery without publishing hypotheses to the source repository. */
+    public AnalyzeRequirementResult analyzeUnpublished(AnalyzeRequirementCommand command) {
+        return analyzeWithPublicationPolicy(command, false);
+    }
+
+    private AnalyzeRequirementResult analyzeWithPublicationPolicy(AnalyzeRequirementCommand command, boolean publishHypotheses) {
         command = freezeGenerationContract(command);
         if (clusterExecution != null && !com.taxonomy.analysis.recovery.AnalysisCheckpointSession.active()) {
             ViewContext view = resolveViewContext(command);
             return analyze(command, operationContext(command, view), view);
         }
         if (analysisProgressRegistry == null || AnalysisRunControl.active()) {
-            return analyze(command, command.provenance() == null && !com.taxonomy.analysis.recovery.AnalysisCheckpointSession.active());
+            return analyze(command, publishHypotheses && !com.taxonomy.analysis.recovery.AnalysisCheckpointSession.active());
         }
         // Portfolio/Copilot callers retain their durable job and claim boundaries.
         try (var run = analysisProgressRegistry.open(null, command.username(),
                 command.workspaceContext(), command.provenance())) {
-            AnalyzeRequirementResult result = analyze(command, command.provenance() == null && !com.taxonomy.analysis.recovery.AnalysisCheckpointSession.active());
+            AnalyzeRequirementResult result = analyze(command, publishHypotheses && !com.taxonomy.analysis.recovery.AnalysisCheckpointSession.active());
             run.finish(result.analysisResult());
             return result;
         }

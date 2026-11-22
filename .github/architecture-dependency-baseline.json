@@ -1039,6 +1039,83 @@
     },
     {
       "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.mail",
+      "toContext": "analysis",
+      "toPackage": "com.taxonomy.analysis.service",
+      "classDependencyCount": 3
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.mail",
+      "toContext": "analysis",
+      "toPackage": "com.taxonomy.analysis.usecase",
+      "classDependencyCount": 5
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.mail",
+      "toContext": "architecture",
+      "toPackage": "com.taxonomy.architecture.decision",
+      "classDependencyCount": 3
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.mail",
+      "toContext": "architecture",
+      "toPackage": "com.taxonomy.architecture.service",
+      "classDependencyCount": 1
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.mail",
+      "toContext": "knowledge",
+      "toPackage": "com.taxonomy.catalog.model",
+      "classDependencyCount": 1
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.mail",
+      "toContext": "knowledge",
+      "toPackage": "com.taxonomy.catalog.service",
+      "classDependencyCount": 2
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.mail",
+      "toContext": "legacy-export-adapters",
+      "toPackage": "com.taxonomy.export.service",
+      "classDependencyCount": 2
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.mail",
+      "toContext": "provenance",
+      "toPackage": "com.taxonomy.provenance.service",
+      "classDependencyCount": 3
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.mail",
+      "toContext": "reporting",
+      "toPackage": "com.taxonomy.reporting.render.document",
+      "classDependencyCount": 1
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.mail",
+      "toContext": "workspace",
+      "toPackage": "com.taxonomy.workspace.model",
+      "classDependencyCount": 1
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.mail",
+      "toContext": "workspace",
+      "toPackage": "com.taxonomy.workspace.service",
+      "classDependencyCount": 3
+    },
+    {
+      "fromContext": "app-composition",
       "fromPackage": "com.taxonomy.security.access",
       "toContext": "interop",
       "toPackage": "com.taxonomy.interop",
