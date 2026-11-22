@@ -71,8 +71,26 @@ window.TaxonomyArchitectureSourceLens = (function () {
             return true;
         }
         function observe(ids) { if (readyForInteraction()) panel.observe(ids); }
+        function revealReview(selectSuggestion) {
+            function show() {
+                if (selectSuggestion && !selectSuggestion()) return;
+                if (window.TaxonomyRelationshipReview?.open('focus')) return;
+                root.hidden = false;
+                el('Title').scrollIntoView({ block: 'nearest' });
+                el('Title').focus({ preventScroll: true });
+            }
+            var fullscreen = document.fullscreenElement;
+            if (!fullscreen || fullscreen.contains(root)) return show();
+            var ticket = generation;
+            return document.exitFullscreen().then(function () {
+                if (active && ticket === generation) show();
+            }).catch(function (error) {
+                if (active && ticket === generation) report(error);
+            });
+        }
         function review(id) {
-            if (readyForInteraction() && panel.review(id)) window.TaxonomyRelationshipReview?.open('focus');
+            if (!readyForInteraction()) return;
+            return revealReview(function () { return readyForInteraction() && panel.review(id); });
         }
         function present(state) {
             if (pinned && !isCurrent(pinned)) { invalidate(); return; }
@@ -195,7 +213,7 @@ window.TaxonomyArchitectureSourceLens = (function () {
         });
         return {
             activate: activate, suspend: suspend, refresh: refresh,
-            open: function () { if (!active) return; root.hidden = false; el('Title').scrollIntoView({ block: 'nearest' }); el('Title').focus({ preventScroll: true }); },
+            open: function () { if (active) return revealReview(); },
             select: function (id) { selected = id || null; panel.select(selected); },
             dialoguePin: function () { return pinned && isCurrent(pinned) ? pinned : null; },
             observe: observe, review: review

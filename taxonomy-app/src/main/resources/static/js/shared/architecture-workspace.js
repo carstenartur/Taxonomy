@@ -356,17 +356,15 @@
         return true;
     };
     workspace.openLens = function () {
-        if (workspace.getSource().kind === 'working') editor?.openLens();
-        else {
-            lens?.select(workspace.getSource().element);
-            if (!window.TaxonomyRelationshipReview?.open('focus')) lens?.open();
-        }
+        var source = workspace.getSource();
+        if (source.kind === 'working') return editor?.openLens();
+        lens?.select(source.element);
+        return lens?.open();
     };
-    async function openDiagramLens(event) {
+    async function openDiagramLens() {
         try {
             if (sourceActivation) await awaitSelectedSource(sourceActivation);
-            if (document.fullscreenElement?.contains(event?.target)) await document.exitFullscreen();
-            if (workspace.isActive()) workspace.openLens();
+            if (workspace.isActive()) await workspace.openLens();
         } catch (error) {
             report(error);
         }

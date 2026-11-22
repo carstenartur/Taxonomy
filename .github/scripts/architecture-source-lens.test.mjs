@@ -181,6 +181,37 @@ async function reviewedDraft() {
     return {...f,controller,locate,candidate:f.presented.at(-1).suggestions[0]};
 }
 
+function deferFullscreenExit(f) {
+    const exit = Promise.withResolvers();
+    const {document} = f.context;
+    document.fullscreenElement = f.node('fullscreenDiagram');
+    document.exitFullscreen = () => exit.promise.then(() => { document.fullscreenElement = null; });
+    return exit;
+}
+
+test('a proposal arrow waits for fullscreen exit before opening its review', async () => {
+    const f = await reviewedDraft();
+    const exit = deferFullscreenExit(f);
+    const opening = f.controller.review(f.candidate.id);
+    assert.deepEqual(f.opens, [], 'The review is outside the fullscreen diagram');
+    exit.resolve();
+    await opening;
+    assert.equal(f.context.document.fullscreenElement, null);
+    assert.deepEqual(f.opens, [['review', 'focus']]);
+});
+
+test('evidence that changes during fullscreen exit cannot open an old proposal review', async () => {
+    const f = await reviewedDraft();
+    const exit = deferFullscreenExit(f);
+    const opening = f.controller.review(f.candidate.id);
+    f.context.TaxonomyState.currentArchView.elements[0].description = 'Updated evidence';
+    exit.resolve();
+    await opening;
+    assert.deepEqual(f.opens, []);
+    assert.equal(f.node('sourceLensEnabled').disabled, true);
+    assert.match(f.node('sourceLensError').textContent, /CONTEXT_CHANGED/);
+});
+
 for(const [name,changed] of [['version',{version:8}],['conflict',{ready:false,conflict:true}],['workspace',{workspaceId:'bob'}]]) {
     test(`a reviewed draft cannot navigate from old evidence after its ${name} changes`,async()=>{
         const f=await reviewedDraft();f.setSession(changed);

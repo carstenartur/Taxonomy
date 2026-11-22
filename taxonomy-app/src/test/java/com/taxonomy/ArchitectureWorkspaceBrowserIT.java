@@ -721,12 +721,16 @@ class ArchitectureWorkspaceBrowserIT {
         hover.sendKeys(Keys.SPACE);
         assertThat(hover.isSelected()).isTrue();
         hover.sendKeys(Keys.SPACE);
-        var fullscreen = graph.findElement(By.cssSelector("button[aria-label='" + (locale.equals("de") ? "Vollbild" : "Fullscreen") + "']"));
-        fullscreen.click();
+        var fullscreen = By.cssSelector("#impactGraphView button[aria-label='" + (locale.equals("de") ? "Vollbild" : "Fullscreen") + "']");
+        page.driver().findElement(fullscreen).click();
         wait.until(driver -> Boolean.TRUE.equals(page.driver().executeScript("return document.fullscreenElement?.contains(arguments[0]);", lens)));
         lens.sendKeys(Keys.ENTER);
         wait.until(driver -> page.driver().executeScript("return document.fullscreenElement;") == null);
         wait.until(driver -> "architectureSourceLensTitle".equals(page.driver().switchTo().activeElement().getDomAttribute("id")));
+        graph.findElement(By.cssSelector("[data-node-id='CP-1000']")).sendKeys(Keys.ENTER);
+        wait.until(ExpectedConditions.elementToBeClickable(By.id("architectureSourceLensInspect"))).click();
+        activateFullscreenProposal(fullscreen, "#impactGraphView");
+        assertThat(page.driver().findElement(By.id("architectureSourceLensReview")).getText()).contains("Deterministic retained evidence");
         noScriptErrors();
     }
 
@@ -861,6 +865,18 @@ class ArchitectureWorkspaceBrowserIT {
         noScriptErrors();
     }
 
+    private void activateFullscreenProposal(By fullscreen, String diagram) {
+        String selector = diagram + " [data-suggestion-id]";
+        var proposal = By.cssSelector(selector);
+        wait.until(ExpectedConditions.visibilityOfElementLocated(proposal));
+        wait.until(ExpectedConditions.elementToBeClickable(fullscreen)).click();
+        wait.until(driver -> Boolean.TRUE.equals(page.driver().executeScript(
+                "return !!document.fullscreenElement?.querySelector(arguments[0]);", selector)));
+        page.driver().findElement(proposal).sendKeys(Keys.ENTER);
+        wait.until(driver -> page.driver().executeScript("return document.fullscreenElement;") == null);
+        wait.until(driver -> "architectureSourceLensTitle".equals(page.driver().switchTo().activeElement().getDomAttribute("id")));
+    }
+
     @Test void snapshotLensIsReadOnlyPrintRetainsEvidenceAndAdoptionRemainsAnExplicitPreview() {
         open("de", 390);
         var snapshot = snapshotSource("__shared__");
@@ -873,6 +889,7 @@ class ArchitectureWorkspaceBrowserIT {
         assertThat(diagramToolbar.findElement(By.id("snapshotArchitectureLensEnabled")).isSelected()).isFalse();
         wait.until(ExpectedConditions.elementToBeClickable(By.id("architectureSourceLensInspect"))).click();
         wait.until(ExpectedConditions.elementToBeClickable(By.cssSelector("#architectureSourceLensSuggestions button"))).click();
+        activateFullscreenProposal(By.id("fullscreenArchitecture"), "#architectureCanvas");
         var review = page.driver().findElement(By.id("architectureSourceLensReview"));
         assertThat(review.getText()).contains("Deterministic retained evidence").doesNotContain("b".repeat(64));
         review.findElement(By.cssSelector("details > summary")).click();
