@@ -36,6 +36,9 @@ import org.springframework.security.authentication.event.InteractiveAuthenticati
 import org.springframework.security.web.csrf.HttpSessionCsrfTokenRepository;
 import org.springframework.security.web.csrf.XorCsrfTokenRequestAttributeHandler;
 import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
@@ -81,8 +84,20 @@ class ScenarioArchitectureAcceptanceTest {
     })
     @Import({ScenarioLlmConfiguration.class, com.taxonomy.interop.publication.PublicationScenarioConfiguration.class,
             BrowserSessions.class})
+    @ActiveProfiles("hsqldb-file")
     @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-    static class Scenario extends ScenarioArchitectureAcceptanceTest { }
+    static class Scenario extends ScenarioArchitectureAcceptanceTest {
+        @DynamicPropertySource
+        static void scenarioStorage(DynamicPropertyRegistry properties) {
+            // The scenario retains hundreds of snapshots. Keep the two growing stores disk-backed
+            // in its own child JVM. Other Spring test contexts can coexist in the Maven fork.
+            String directory = Objects.requireNonNull(System.getProperty(ScenarioAcceptanceProcess.STORAGE_PROPERTY),
+                    "Scenario child storage directory is required");
+            Path storage = Path.of(directory);
+            properties.add("TAXONOMY_HSQLDB_FILE_PATH", () -> storage.resolve("database").toString());
+            properties.add("TAXONOMY_SEARCH_DIRECTORY_ROOT", () -> storage.resolve("index").toString());
+        }
+    }
 
     /** Spring Boot registers this test-only listener in the existing child application. */
     @TestConfiguration(proxyBeanMethods = false)
@@ -184,8 +199,8 @@ class ScenarioArchitectureAcceptanceTest {
     private boolean initialCheckpointPublished;
     private JsonNode evidenceIdentity;
 
-    @Test void generatesAndReopensScenarioArchitectureThroughTheRealCopilot() throws Exception {
-        ScenarioAcceptanceProcess.verify();
+    @Test void generatesAndReopensScenarioArchitectureThroughTheRealCopilot(@TempDir Path storage) throws Exception {
+        ScenarioAcceptanceProcess.verify(storage);
     }
 
     @Test void nativeClickWaitsForTransientObstructionWithoutBypassingPermanentOverlay(
