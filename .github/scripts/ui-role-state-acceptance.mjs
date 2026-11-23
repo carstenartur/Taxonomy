@@ -328,7 +328,13 @@ try {
   }
   checks.push('exact-context architecture editor, semantic history, export and reflow');
   taskMeasurements.failedStep = 'standards integration acceptance';
-  taskMeasurements.integrations = await runIntegrationAcceptance({ page, role, baseUrl, evidence, outputDir, httpFailures });
+  taskMeasurements.integrations = await runIntegrationAcceptance({
+    page, role, baseUrl, evidence, outputDir, httpFailures,
+    onInitialNavigationStart: declaration => navigationPollEvidence.begin('en', 'integrations-entry', declaration),
+    onInitialNavigationEnd: succeeded => navigationPollEvidence.end('en', succeeded, 'integrations-entry'),
+    onInitialNavigationVerified: () => navigationPollEvidence.verifyDestination('en', 'integrations-entry')
+  });
+  reconcileSystemInformationConsoleErrors([]);
   if (consoleErrors.length !== editorConsoleErrors || externalRequests.length !== editorExternalRequests) {
     throw new Error('Standards integration introduced console errors or external requests');
   }

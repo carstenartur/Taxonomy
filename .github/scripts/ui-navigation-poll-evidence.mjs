@@ -1,4 +1,5 @@
 import { isDeepStrictEqual } from 'node:util';
+import { classifyIntegrationNavigationCancellation } from './ui-integration-navigation-evidence.mjs';
 
 /** A proof can remove only the particular recorded error that produced it. */
 export function createConsoleErrorLedger(messages, reconciled) {
@@ -228,7 +229,8 @@ export function createNavigationPollEvidence({ browserName, baseUrl }) {
   const requests = new WeakMap(), bodyTasks = new Set();
   const base = new URL(baseUrl);
   const prefix = base.pathname.replace(/\/$/, '');
-  const endpoints = [`${prefix}/api/status/startup`, `${prefix}/api/workspace/sync-state`,
+  const startupPath = `${prefix}/api/status/startup`, profilesPath = `${prefix}/api/integrations/profiles`;
+  const endpoints = [startupPath, profilesPath, `${prefix}/api/workspace/sync-state`,
     `${prefix}/api/git/state`, `${prefix}/api/context/current`];
   let page, currentDocument = null, activeNavigation = null, sequence = 0, nextRead = 0;
   function record(value) {
@@ -287,10 +289,17 @@ export function createNavigationPollEvidence({ browserName, baseUrl }) {
         const projectRead = url.pathname.startsWith(prefix + '/')
           && /^\/api\/projects\/[1-9]\d*\/(?:analysis-jobs(?:\/[A-Za-z0-9._-]+)?|architecture-workbench\/[A-Za-z0-9._-]+)$/.test(url.pathname.slice(prefix.length));
         if (url.origin !== base.origin || !endpoints.includes(url.pathname) && !projectRead) return;
+        const headers = request.headers();
         const read = { id: ++nextRead, url: request.url(), method: request.method(),
           documentEpoch: currentDocument?.epoch, pageUrl: page.url(),
-          workspaceId: request.headers()['x-taxonomy-workspace-id'] || null,
+          workspaceId: headers['x-taxonomy-workspace-id'] || null,
           redirected: Boolean(request.redirectedFrom()), finished: false, jsonParsed: false };
+        if (url.pathname === startupPath || url.pathname === profilesPath) {
+          read.workspaceHeaderPresent = Object.hasOwn(headers, 'x-taxonomy-workspace-id');
+          // Fetches in the main document can be attributed to its observed epoch.
+          try { read.mainFrame = request.frame() === page.mainFrame(); }
+          catch { read.mainFrame = false; }
+        }
         read.sequence = record({ type: 'poll-request', ...read }).sequence;
         requests.set(request, read); reads.push(read);
       });
@@ -298,8 +307,8 @@ export function createNavigationPollEvidence({ browserName, baseUrl }) {
         const read = requests.get(response.request());
         if (!read) return;
         read.status = response.status();
-        record({ type: 'poll-response', requestId: read.id, documentEpoch: read.documentEpoch,
-          url: read.url, status: read.status });
+        read.responseSequence = record({ type: 'poll-response', requestId: read.id, documentEpoch: read.documentEpoch,
+          url: read.url, status: read.status }).sequence;
       });
       page.on('requestfailed', request => {
         const read = requests.get(request);
@@ -317,7 +326,10 @@ export function createNavigationPollEvidence({ browserName, baseUrl }) {
         const task = (async () => {
           try {
             const response = await request.response();
-            if (response?.status() !== 200 || !/\bapplication\/json\b/i.test(response.headers()['content-type'] || '')) return;
+            if (response?.status() !== 200) return;
+            const contentType = response.headers()['content-type'] || '';
+            if (Object.hasOwn(read, 'workspaceHeaderPresent')) read.mediaType = contentType.split(';', 1)[0].trim().toLowerCase();
+            if (!/\bapplication\/json\b/i.test(contentType)) return;
             read.payload = await response.json();
             read.jsonParsed = true;
             read.parsedSequence = record({ type: 'poll-json-consumed', requestId: read.id,
@@ -331,7 +343,7 @@ export function createNavigationPollEvidence({ browserName, baseUrl }) {
       });
     },
     async begin(locale, kind = 'locale', declaration) {
-      if (browserName !== 'webkit') return;
+      if (browserName !== 'webkit' || (kind === 'integrations-entry' && navigations.some(item => item.kind === kind))) return;
       const oldDocument = await page.evaluate(documentIdentity);
       currentDocument = oldDocument;
       activeNavigation = { kind, locale, oldDocument, completed: false };
@@ -353,6 +365,20 @@ export function createNavigationPollEvidence({ browserName, baseUrl }) {
               warnings: card?.querySelectorAll('.text-warning').length } };
         }, declaration);
       }
+      if (kind === 'integrations-entry') {
+        await Promise.all([...bodyTasks]);
+        activeNavigation.declaration = structuredClone(declaration);
+        const source = await page.evaluate(() => {
+          const architecture = window.TaxonomyArchitectureWorkspace;
+          const t = window.TaxonomyI18n?.t;
+          return { documentEpoch: performance.timeOrigin, url: location.href,
+            workingArchitecture: architecture?.isActive?.() === true && architecture?.getSource?.()?.kind === 'working',
+            startup: { text: document.getElementById('systemStatusBar')?.textContent,
+              writeCount: window.__taxonomyPollEvidence?.startupWrites,
+              ready: t?.('startup.ui.ready'), threads: t?.('startup.ui.threads') } };
+        });
+        activeNavigation.sourceObservation = record({ type: 'integrations-source-observed', ...source });
+      }
       activeNavigation.startSequence = record({ type: `${kind}-navigation-start`, locale, ...oldDocument }).sequence;
       navigations.push(activeNavigation);
     },
@@ -371,21 +397,41 @@ export function createNavigationPollEvidence({ browserName, baseUrl }) {
     },
     recordError(error, errorId, pageUrl = page?.url()) {
       if (browserName !== 'webkit') return;
+      // Playwright's pageerror has no frame attribution. A child frame makes
+      // an otherwise matching integrations error ambiguous.
+      const onlyMainFrame = activeNavigation?.kind === 'integrations-entry'
+        ? { onlyMainFrame: page?.frames().length === 1 } : {};
       const raw = record({ type: 'poll-page-error', kind: 'page-error', name: error.name,
         message: error.message, stack: error.stack, pageUrl,
-        documentEpoch: currentDocument?.epoch });
+        documentEpoch: currentDocument?.epoch, ...onlyMainFrame });
       errors.push({ error: raw, errorId, navigation: activeNavigation });
     },
     async verifyDestination(locale, kind = 'locale') {
       if (browserName !== 'webkit') return;
       const navigation = navigations.findLast(item => item.locale === locale && item.kind === kind);
-      if (!navigation?.completed) return;
+      if (!navigation?.completed || (kind === 'integrations-entry' && navigation.observation)) return;
       if (kind === 'reload') await page.waitForFunction(() =>
         window.__taxonomyPollEvidence?.gitWrites > 0 && window.__taxonomyPollEvidence?.contextWrites > 0
           && window.TaxonomyContextBar?.getCurrentContext?.(), null, { timeout: 15000 });
       // Only already finished original requests can contribute proof. An open
       // response/body is never turned into a successful read by a new GET.
       await Promise.all([...bodyTasks]);
+      if (kind === 'integrations-entry') {
+        const destination = await page.evaluate(() => {
+          const profile = document.getElementById('connectionProfile');
+          return { documentEpoch: performance.timeOrigin, url: location.href,
+            profiles: {
+              options: Array.from(profile?.options || [], option => ({ value: option.value, text: option.textContent })),
+              profileEnabled: profile?.disabled === false,
+              connectionEnabled: document.getElementById('integrationConnection')?.disabled === false,
+              refreshEnabled: document.getElementById('integrationRefresh')?.disabled === false,
+              createEnabled: document.querySelector('#integrationCreate button[type=submit]')?.disabled === false,
+              errorHidden: document.getElementById('integrationError')?.hidden === true
+            } };
+        });
+        navigation.observation = record({ type: 'integrations-destination-observed', ...destination });
+        return;
+      }
       if (kind === 'portfolio-snapshot') {
         navigation.observation = await page.evaluate(() => {
           const workspace = window.TaxonomyArchitectureWorkspace;
@@ -450,8 +496,9 @@ export function createNavigationPollEvidence({ browserName, baseUrl }) {
     },
     reconciliations() {
       return errors.flatMap(item => {
-        const classify = item.navigation?.kind === 'portfolio-snapshot'
-          ? classifyPortfolioSnapshotPollCancellation : classifyWebKitPollCancellation;
+        let classify = classifyWebKitPollCancellation;
+        if (item.navigation?.kind === 'portfolio-snapshot') classify = classifyPortfolioSnapshotPollCancellation;
+        if (item.navigation?.kind === 'integrations-entry') classify = classifyIntegrationNavigationCancellation;
         const proof = classify({ browserName, baseUrl, error: item.error,
           navigation: item.navigation, events, reads, observation: item.navigation?.observation });
         return proof ? [{ ...proof, errorId: item.errorId, message: item.error.message }] : [];
