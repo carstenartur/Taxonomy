@@ -576,7 +576,7 @@ public class CopilotAutomationService {
             String operationId,
             String username,
             WorkspaceContext context) {
-        return analysisService.listJobs(projectId, username, context).stream()
+        return analysisService.listJobsForOperation(projectId, operationId, username, context).stream()
                 .map(job -> CopilotOperationKey.parse(job.idempotencyKey())
                         .map(key -> new JobWithKey(job, key)))
                 .flatMap(Optional::stream)

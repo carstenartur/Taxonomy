@@ -2,6 +2,8 @@ package com.taxonomy.portfolio.service;
 
 import com.taxonomy.portfolio.model.AnalysisAutomationProfile;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.regex.Matcher;
@@ -17,12 +19,15 @@ public record CopilotOperationKey(
         boolean proposeSolutions,
         boolean proposeProducts) {
 
+    private static final Pattern OPERATION_ID = Pattern.compile("[0-9a-f]{64}");
+    private static final List<AnalysisAutomationProfile> V1_PROFILES = List.of(
+            AnalysisAutomationProfile.STANDARD, AnalysisAutomationProfile.FULL, AnalysisAutomationProfile.EXHAUSTIVE);
     private static final Pattern FORMAT = Pattern.compile(
-            "^(copilot|autopilot):v1:([0-9a-f]{64}):([1-3])/([1-3]):"
+            "^(copilot|autopilot):v1:(" + OPERATION_ID.pattern() + "):([1-3])/([1-3]):"
                     + "(STANDARD|FULL|EXHAUSTIVE):([01])([01])$");
 
     public CopilotOperationKey {
-        if (operationId == null || !operationId.matches("[0-9a-f]{64}")) {
+        if (operationId == null || !OPERATION_ID.matcher(operationId).matches()) {
             throw new IllegalArgumentException("operationId must be a lowercase SHA-256 value");
         }
         if (pass < 1 || totalPasses < 1 || pass > totalPasses || totalPasses > 3) {
@@ -51,6 +56,29 @@ public record CopilotOperationKey(
                 profile,
                 proposeSolutions,
                 proposeProducts);
+    }
+
+    /** All persisted v1 key variants that may identify a pass of this operation. */
+    public static List<String> candidatesForOperation(String operationId) {
+        if (operationId == null || !OPERATION_ID.matcher(operationId).matches()) return List.of();
+
+        List<String> candidates = new ArrayList<>(144);
+        boolean[] flags = {false, true};
+        for (boolean autopilot : flags) {
+            for (int total = 1; total <= 3; total++) {
+                for (int pass = 1; pass <= total; pass++) {
+                    for (AnalysisAutomationProfile profile : V1_PROFILES) {
+                        for (boolean proposeSolutions : flags) {
+                            for (boolean proposeProducts : flags) {
+                                candidates.add(new CopilotOperationKey(autopilot, operationId, pass, total,
+                                        profile, proposeSolutions, proposeProducts).value());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return List.copyOf(candidates);
     }
 
     public static Optional<CopilotOperationKey> parse(String value) {

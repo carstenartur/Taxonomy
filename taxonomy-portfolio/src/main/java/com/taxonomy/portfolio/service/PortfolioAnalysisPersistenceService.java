@@ -46,6 +46,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -55,12 +56,14 @@ import java.util.Set;
 import java.util.TreeSet;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /** Transactional exact-tenant persistence boundary for long-running project analysis. */
 @Service
 public class PortfolioAnalysisPersistenceService {
 
     private static final String AUTOMATIC_IDEMPOTENCY_PREFIX = "auto:";
+    private static final int MAX_OPERATION_JOB_IDS_PER_READ = 256;
 
     private com.taxonomy.analysis.service.LlmProviderConfig providerConfiguration;
     @org.springframework.beans.factory.annotation.Autowired
@@ -502,10 +505,49 @@ public class PortfolioAnalysisPersistenceService {
                                          WorkspaceContext context) {
         String scopeKey = PortfolioScope.key(username, context);
         requireScopedProject(projectId, username, context);
+        return toJobViews(jobRepository.findReadRowsByProjectIdAndScopeKey(projectId, scopeKey), scopeKey);
+    }
+
+    @Transactional(readOnly = true)
+    public List<AnalysisJobView> listJobsForOperation(Long projectId, String operationId,
+                                                      String username, WorkspaceContext context) {
+        String scopeKey = PortfolioScope.key(username, context);
+        requireScopedProject(projectId, username, context);
+        List<String> keys = CopilotOperationKey.candidatesForOperation(operationId);
+        if (keys.isEmpty()) return List.of();
+
+        var canonical = jobRepository.findCanonicalOperationKeyCandidates(projectId, scopeKey, keys);
+        // Directly imported keys may have leading or trailing whitespace recognized by Java's strip().
+        var legacy = jobRepository.findLiteralOperationKeyCandidates(projectId, scopeKey, operationId);
+        // Database collation can broaden either lookup. Verify the persisted key before reading any items.
+        var ids = Stream.concat(canonical.stream(), legacy.stream())
+                .filter(candidate -> CopilotOperationKey.parse(candidate.idempotencyKey())
+                        .filter(key -> key.operationId().equals(operationId)).isPresent())
+                .map(RequirementAnalysisJobRepository.OperationKeyCandidate::id)
+                .distinct()
+                .toList();
+        if (ids.isEmpty()) return List.of();
+        if (ids.size() <= MAX_OPERATION_JOB_IDS_PER_READ) {
+            return toJobViews(jobRepository.findReadRowsByIdsAndProjectIdAndScopeKey(ids, projectId, scopeKey), scopeKey);
+        }
+
+        // A direct import can contain many distinct keys that strip to the same pass.
+        // Partition their reads to stay under database statement bind limits.
+        List<AnalysisJobReadRow> rows = new ArrayList<>();
+        for (int start = 0; start < ids.size(); start += MAX_OPERATION_JOB_IDS_PER_READ) {
+            int end = Math.min(start + MAX_OPERATION_JOB_IDS_PER_READ, ids.size());
+            rows.addAll(jobRepository.findReadRowsByIdsAndProjectIdAndScopeKey(ids.subList(start, end), projectId, scopeKey));
+        }
+        // The stable sort restores newest-job ordering and preserves SQL item ordering within each job.
+        rows.sort(Comparator.comparing(AnalysisJobReadRow::createdAt).reversed());
+        return toJobViews(rows, scopeKey);
+    }
+
+    private List<AnalysisJobView> toJobViews(List<AnalysisJobReadRow> rows, String scopeKey) {
         var tenant = PortfolioTenantIdentity.parse(scopeKey);
-        return jobRepository.findReadRowsByProjectIdAndScopeKey(projectId, scopeKey).stream()
+        return rows.stream()
                 .collect(Collectors.groupingBy(AnalysisJobReadRow::id, LinkedHashMap::new, Collectors.toList()))
-                .values().stream().map(rows -> toJobView(rows, tenant)).toList();
+                .values().stream().map(jobRows -> toJobView(jobRows, tenant)).toList();
     }
 
     @Transactional(readOnly = true)

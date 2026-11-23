@@ -337,8 +337,9 @@ class RelationBudgetLegacyContinuationTest {
             assertThat(question).isEqualTo(retainedQuestion);
             return accepted == null ? new AnalysisCheckpointSession.Checkpoint(question, "ATTEMPT", null) : accepted;
         }
-        @Override public void finish(Claim claim, AnalysisCheckpointSession.Question question, String state, LlmCallDetail detail) {
+        @Override public CheckpointCompletion finish(Claim claim, AnalysisCheckpointSession.Question question, String state, LlmCallDetail detail) {
             accepted = new AnalysisCheckpointSession.Checkpoint(question, state, detail);
+            return CheckpointCompletion.ACCEPTED;
         }
         @Override public int freezeRelationSourceCohort(Claim claim, int proposed) {
             if (persistedSourceCohort == 0) persistedSourceCohort = proposed;

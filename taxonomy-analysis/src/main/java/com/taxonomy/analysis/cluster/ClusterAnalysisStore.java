@@ -426,7 +426,7 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
                 || task.taskId().relationWorkOrdinal().orElse(-1) != result.work().ordinal())
             throw new IllegalArgumentException("Relation result does not match admitted grant");
         var results = new ArrayList<>(relationResults(run.id)); results.add(result);
-        RelationSearchDistribution.combine(read(run.relationPlanJson, RelationSearchDistribution.Plan.class), results);
+        RelationSearchDistribution.validateResults(read(run.relationPlanJson, RelationSearchDistribution.Plan.class), results);
         work.resultJson = json(result);
         work.state = result.stopReason().isEmpty() && result.result().searchExhausted() ? "COMPLETED" : "PARTIAL";
         work.finishedAt = System.currentTimeMillis();
@@ -449,7 +449,7 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
             var grant = read(work.inputJson, RelationSearchDistribution.Work.class);
             var failed = RelationSearchDistribution.failed(plan, grant, reason);
             var results = new ArrayList<>(relationResults(run.id)); results.add(failed);
-            RelationSearchDistribution.combine(plan, results);
+            RelationSearchDistribution.validateResults(plan, results);
             work.resultJson = json(failed);
         }
         work.failureReason = reason; work.state = "FAILED"; work.finishedAt = System.currentTimeMillis();

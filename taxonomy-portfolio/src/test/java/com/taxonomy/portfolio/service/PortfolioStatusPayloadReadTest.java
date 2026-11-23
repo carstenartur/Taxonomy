@@ -26,6 +26,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
@@ -299,6 +300,165 @@ class PortfolioStatusPayloadReadTest {
             assertThat(operation.selectedSnapshotId()).isEqualTo(f.oldSnapshotId);
             assertThat(operation.jobs()).singleElement().satisfies(job -> assertThat(job.id()).isEqualTo(f.jobId));
             f.assertNoSnapshotPayloadRead();
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {4, 96})
+    void operationStatusMaterializesOnlyMatchingPassRows(int unrelatedJobs) {
+        try (var f = new Fixture()) {
+            var branch = new WorkspaceContext("owner", f.scope.workspaceId(), "other-branch", f.scope.repositoryId());
+            String operation = "b".repeat(64);
+            String firstKey = "autopilot:v1:" + operation + ":1/3:EXHAUSTIVE:11";
+            String secondKey = "autopilot:v1:" + operation + ":2/3:EXHAUSTIVE:11";
+            String thirdKey = "autopilot:v1:" + operation + ":3/3:EXHAUSTIVE:11";
+            List<String> passes = new ArrayList<>();
+            f.transaction(em -> {
+                var admitted = em.find(ProjectRequirementVersion.class, f.oldVersionId);
+                var additional = f.addRequirement(em, f.projectId, "REQ-2", RequirementStatus.APPROVED);
+                var sameProject = em.find(ArchitectureProject.class, f.projectId);
+                var otherProject = em.find(ArchitectureProject.class, f.otherProjectId);
+                var otherRequirement = f.addRequirement(em, f.otherProjectId, "REQ-X", RequirementStatus.APPROVED);
+                var foreignProject = new ArchitectureProject(PortfolioScope.key("owner", branch), branch.workspaceId(),
+                        "owner", "FOREIGN", "Other branch", "", ProjectStatus.PLANNING, Fixture.TIME);
+                em.persist(foreignProject);
+                em.flush();
+                var foreignRequirement = f.addRequirement(em, foreignProject.getId(), "REQ-Y", RequirementStatus.APPROVED);
+                f.addJob(em, otherProject, firstKey, otherRequirement);
+                f.addJob(em, foreignProject, firstKey, foreignRequirement);
+                passes.add(f.addJob(em, sameProject, firstKey, admitted));
+                passes.add(f.addJob(em, sameProject, "\u2003" + secondKey + "\u2003", admitted));
+                passes.add(f.addJob(em, sameProject, thirdKey, admitted));
+                f.addJob(em, sameProject, "AUTOPILOT" + firstKey.substring("autopilot".length()), admitted, additional);
+                f.addJob(em, sameProject, "copilot:v1:" + operation + ":3/2:FULL:10", admitted, additional);
+                for (int i = 0; i < unrelatedJobs; i++) {
+                    String key = "copilot:v1:" + "%064x".formatted(i) + ":1/1:FULL:10";
+                    f.addJob(em, sameProject, key, admitted, additional);
+                }
+            });
+
+            f.resetReads();
+            var status = f.copilot.getOperation(f.projectId, operation, "owner", f.scope);
+
+            assertThat(status.autopilot()).isTrue();
+            assertThat(status.profile()).isEqualTo(AnalysisAutomationProfile.EXHAUSTIVE);
+            assertThat(status.verificationPasses()).isEqualTo(3);
+            assertThat(status.status()).isEqualTo(AnalysisStatus.PENDING);
+            assertThat(status.proposeSolutions()).isTrue();
+            assertThat(status.proposeProducts()).isTrue();
+            assertThat(status.jobs()).extracting(AnalysisJobView::id).containsExactlyElementsOf(passes);
+            assertThat(status.jobs().get(1).idempotencyKey()).isEqualTo("\u2003" + secondKey + "\u2003");
+            assertThat(status.jobs()).allSatisfy(job -> {
+                assertThat(job.branch()).isEqualTo(f.scope.currentBranch());
+                assertThat(job.items()).singleElement().satisfies(item -> {
+                    assertThat(item.requirementId()).isEqualTo(f.requirementId);
+                    assertThat(item.requirementVersionId()).isEqualTo(f.oldVersionId);
+                    assertThat(item.requirementVersionNumber()).isEqualTo(1);
+                });
+            });
+            assertThat(f.jobReadRows()).as("job/item rows with %s unrelated two-item jobs", unrelatedJobs)
+                    .isEqualTo(3);
+            var stats = f.factory.getStatistics();
+            assertThat(Arrays.stream(stats.getQueries())
+                    .filter(query -> query.contains("$OperationKeyCandidate("))
+                    .map(query -> stats.getQueryStatistics(query).getExecutionRowCount()))
+                    .as("canonical and literal scalar candidate rows")
+                    .containsExactlyInAnyOrder(2L, 5L);
+            f.assertNoSnapshotPayloadRead();
+        }
+    }
+
+    @Test
+    void oversizedImportedOperationKeepsEveryMatchingJobInBoundedReads() {
+        try (var f = new Fixture()) {
+            String key = "copilot:v1:" + Fixture.OPERATION + ":1/1:STANDARD:00";
+            List<String> oldestFirst = new ArrayList<>(List.of(f.jobId));
+            f.transaction(em -> {
+                var project = em.find(ArchitectureProject.class, f.projectId);
+                var admitted = em.find(ProjectRequirementVersion.class, f.oldVersionId);
+                for (int i = 1; i <= 260; i++) {
+                    String padding = "\u2003".repeat(i / 30 + 1) + "\u2002".repeat(i % 30 + 1);
+                    oldestFirst.add(f.addJob(em, project, padding + key, Fixture.TIME.plusSeconds(i), admitted));
+                }
+                em.find(RequirementAnalysisJob.class, oldestFirst.get(1)).cancel(Fixture.TIME.plusSeconds(300));
+            });
+            f.resetReads();
+
+            var jobs = f.persistence.listJobsForOperation(f.projectId, Fixture.OPERATION, "owner", f.scope);
+
+            assertThat(jobs).extracting(AnalysisJobView::id).containsExactlyElementsOf(oldestFirst.reversed());
+            assertThat(jobs.get(jobs.size() - 2).status()).isEqualTo(AnalysisStatus.CANCELLED);
+            assertThat(jobs).allSatisfy(job -> assertThat(job.items()).singleElement()
+                    .satisfies(item -> assertThat(item.requirementVersionId()).isEqualTo(f.oldVersionId)));
+            assertThat(f.jobReadRows()).isEqualTo(261);
+            assertThat(f.sql).filteredOn(statement -> statement.contains("join req_analysis_item"))
+                    .as("job hydration statement bind count, including project and scope")
+                    .hasSizeGreaterThan(1)
+                    .allSatisfy(statement -> assertThat(statement.chars().filter(c -> c == '?').count())
+                            .isLessThanOrEqualTo(258));
+            assertThatThrownBy(() -> f.copilot.getOperation(f.projectId, Fixture.OPERATION, "owner", f.scope))
+                    .isInstanceOfSatisfying(PortfolioException.class,
+                            failure -> assertThat(failure.getKind()).isEqualTo(PortfolioException.Kind.CONFLICT))
+                    .hasMessageContaining("duplicate pass 1");
+            f.assertNoSnapshotPayloadRead();
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"inconsistent", "duplicate", "extra-item", "missing-item"})
+    void operationLookupRetainsPersistedContradictions(String contradiction) {
+        try (var f = new Fixture()) {
+            f.transaction(em -> {
+                var project = em.find(ArchitectureProject.class, f.projectId);
+                var admitted = em.find(ProjectRequirementVersion.class, f.oldVersionId);
+                String originalKey = "copilot:v1:" + Fixture.OPERATION + ":1/1:STANDARD:00";
+                switch (contradiction) {
+                    case "inconsistent" -> f.addJob(em, project,
+                            "autopilot:v1:" + Fixture.OPERATION + ":2/3:FULL:01", admitted);
+                    case "duplicate" -> f.addJob(em, project, "\u2003" + originalKey + "\t", admitted);
+                    case "extra-item" -> {
+                        var additional = f.addRequirement(em, f.projectId, "REQ-2", RequirementStatus.APPROVED);
+                        em.persist(new RequirementAnalysisJobItem(em.find(RequirementAnalysisJob.class, f.jobId),
+                                additional.getRequirement(), additional));
+                    }
+                    case "missing-item" -> em.createQuery("delete RequirementAnalysisJobItem where jobId = :id")
+                            .setParameter("id", f.jobId).executeUpdate();
+                    default -> throw new AssertionError(contradiction);
+                }
+            });
+            f.resetReads();
+
+            assertThatThrownBy(() -> f.copilot.getOperation(f.projectId, Fixture.OPERATION, "owner", f.scope))
+                    .isInstanceOfSatisfying(PortfolioException.class,
+                            failure -> assertThat(failure.getKind()).isEqualTo(PortfolioException.Kind.CONFLICT))
+                    .hasMessageContaining(switch (contradiction) {
+                        case "inconsistent" -> "metadata is inconsistent";
+                        case "duplicate" -> "duplicate pass";
+                        default -> "exactly one requirement item";
+                    });
+            assertThat(f.jobReadRows()).isEqualTo(contradiction.equals("missing-item") ? 1 : 2);
+            f.assertNoSnapshotPayloadRead();
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"not-a-sha256", "a%_", "01234567-89ab-cdef-0123-456789abcdef"})
+    void invalidOperationIdStillRequiresExactProjectAuthority(String invalidOperation) {
+        try (var f = new Fixture()) {
+            var branch = new WorkspaceContext("owner", f.scope.workspaceId(), "other-branch", f.scope.repositoryId());
+            assertThatThrownBy(() -> f.copilot.getOperation(f.projectId, invalidOperation, "owner", branch))
+                    .isInstanceOfSatisfying(PortfolioException.class,
+                            failure -> assertThat(failure.getKind()).isEqualTo(PortfolioException.Kind.NOT_FOUND))
+                    .hasMessageContaining("Project not found");
+            assertThatThrownBy(() -> f.copilot.getOperation(Long.MAX_VALUE, invalidOperation, "owner", f.scope))
+                    .isInstanceOfSatisfying(PortfolioException.class,
+                            failure -> assertThat(failure.getKind()).isEqualTo(PortfolioException.Kind.NOT_FOUND))
+                    .hasMessageContaining("Project not found");
+            assertThatThrownBy(() -> f.copilot.getOperation(f.projectId, invalidOperation, "owner", f.scope))
+                    .isInstanceOfSatisfying(PortfolioException.class,
+                            failure -> assertThat(failure.getKind()).isEqualTo(PortfolioException.Kind.NOT_FOUND))
+                    .hasMessageContaining("Copilot operation not found");
+            assertThat(f.sql).noneMatch(statement -> statement.contains("req_analysis_job"));
         }
     }
 
@@ -779,7 +939,31 @@ class PortfolioStatusPayloadReadTest {
 
         void resetReads() { sql.clear(); factory.getStatistics().clear(); }
 
-        void addRequirement(EntityManager em, Long ownerProjectId, String key, RequirementStatus status) {
+        long jobReadRows() {
+            var stats = factory.getStatistics();
+            return Arrays.stream(stats.getQueries())
+                    .filter(query -> query.contains("new com.taxonomy.portfolio.repository.AnalysisJobReadRow("))
+                    .mapToLong(query -> stats.getQueryStatistics(query).getExecutionRowCount())
+                    .sum();
+        }
+
+        String addJob(EntityManager em, ArchitectureProject project, String key,
+                      ProjectRequirementVersion... admittedVersions) {
+            return addJob(em, project, key, TIME, admittedVersions);
+        }
+
+        String addJob(EntityManager em, ArchitectureProject project, String key, Instant createdAt,
+                      ProjectRequirementVersion... admittedVersions) {
+            var job = new RequirementAnalysisJob(UUID.randomUUID().toString(), project, key,
+                    "CUSTOM_OPENAI", 50, "owner", scope.workspaceId(), admittedVersions.length, createdAt);
+            em.persist(job);
+            for (var version : admittedVersions) {
+                em.persist(new RequirementAnalysisJobItem(job, version.getRequirement(), version));
+            }
+            return job.getId();
+        }
+
+        ProjectRequirementVersion addRequirement(EntityManager em, Long ownerProjectId, String key, RequirementStatus status) {
             var project = em.find(ArchitectureProject.class, ownerProjectId);
             var requirement = new ProjectRequirement(project, key, key, status, 50, Criticality.MEDIUM,
                     RequirementType.FUNCTIONAL, ReviewStatus.PROPOSED, "owner", TIME);
@@ -788,6 +972,7 @@ class PortfolioStatusPayloadReadTest {
                     null, "owner", TIME, null, null, null, null, null, null);
             em.persist(version); em.flush();
             requirement.pointToVersion(version.getId(), TIME);
+            return version;
         }
 
         void assertNoSnapshotPayloadRead() {

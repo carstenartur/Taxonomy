@@ -76,7 +76,7 @@ class CopilotOperationConsistencyTest {
                 "job-1", operationId, 1, 2, 7L, AnalysisStatus.RUNNING);
         AnalysisJobView passTwo = job(
                 "job-2", operationId, 2, 2, 8L, AnalysisStatus.RUNNING);
-        when(analysisService.listJobs(41L, context.username(), context))
+        when(analysisService.listJobsForOperation(41L, operationId, context.username(), context))
                 .thenReturn(List.of(passOne, passTwo));
 
         assertThatThrownBy(() -> service.cancelOperation(
@@ -94,7 +94,7 @@ class CopilotOperationConsistencyTest {
                 "job-1", operationId, 1, 2, 7L, AnalysisStatus.SUCCESS);
         AnalysisJobView duplicate = job(
                 "job-2", operationId, 1, 2, 7L, AnalysisStatus.SUCCESS);
-        when(analysisService.listJobs(41L, context.username(), context))
+        when(analysisService.listJobsForOperation(41L, operationId, context.username(), context))
                 .thenReturn(List.of(first, duplicate));
 
         assertThatThrownBy(() -> service.getOperation(
@@ -132,6 +132,8 @@ class CopilotOperationConsistencyTest {
         RequirementView requirement = mock(RequirementView.class);
         when(analysisService.listJobs(41L, context.username(), context))
                 .thenReturn(jobs);
+        when(analysisService.listJobsForOperation(41L, newerOperation, context.username(), context))
+                .thenReturn(List.of(newerPassOne, newerPassTwo));
         when(projectService.getRequirement(41L, 7L, context.username(), context))
                 .thenReturn(requirement);
         when(policy.costPolicy()).thenReturn(AiCostPolicy.METERED);
@@ -223,7 +225,7 @@ class CopilotOperationConsistencyTest {
                 "job-2", operationId, 2, 2, 7L, AnalysisStatus.CANCELLED);
         RequirementView requirement = mock(RequirementView.class);
 
-        when(analysisService.listJobs(41L, context.username(), context))
+        when(analysisService.listJobsForOperation(41L, operationId, context.username(), context))
                 .thenReturn(
                         List.of(completedPass),
                         List.of(completedPass),
@@ -259,7 +261,7 @@ class CopilotOperationConsistencyTest {
                 "job-2", operationId, 2, 2, 7L, AnalysisStatus.CANCELLED);
         RequirementView requirement = mock(RequirementView.class);
 
-        when(analysisService.listJobs(41L, context.username(), context))
+        when(analysisService.listJobsForOperation(41L, operationId, context.username(), context))
                 .thenReturn(
                         List.of(cancelledPass, runningPass),
                         List.of(cancelledPass, runningPass),
@@ -288,7 +290,7 @@ class CopilotOperationConsistencyTest {
         var running = job("job-2", operationId, 2, 2, 7L, AnalysisStatus.RUNNING);
         var second = job("job-2", operationId, 2, 2, 7L, AnalysisStatus.SUCCESS);
         arrangeWinningSnapshot();
-        when(analysisService.listJobs(41L, context.username(), context))
+        when(analysisService.listJobsForOperation(41L, operationId, context.username(), context))
                 .thenReturn(List.of(first, initiallyRunning ? running : second), List.of(first, second));
 
         var result = service.resumeOperation(41L, operationId, context.username(), context);
@@ -318,7 +320,7 @@ class CopilotOperationConsistencyTest {
                     operationId.set(CopilotOperationKey.parse(invocation.getArgument(4)).orElseThrow().operationId());
                     return job("job-1", operationId.get(), 1, 2, 7L, AnalysisStatus.SUCCESS);
                 });
-        when(analysisService.listJobs(41L, context.username(), context)).thenAnswer(invocation -> List.of(
+        when(analysisService.listJobsForOperation(eq(41L), anyString(), eq(context.username()), eq(context))).thenAnswer(invocation -> List.of(
                 job("job-1", operationId.get(), 1, 2, 7L, AnalysisStatus.SUCCESS),
                 job("job-2", operationId.get(), 2, 2, 7L, AnalysisStatus.SUCCESS)));
 

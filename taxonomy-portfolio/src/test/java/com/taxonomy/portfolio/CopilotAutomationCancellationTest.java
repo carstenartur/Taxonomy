@@ -116,7 +116,7 @@ class CopilotAutomationCancellationTest {
                 Instant.now(),
                 null);
 
-        when(analysisService.listJobs(projectId, context.username(), context))
+        when(analysisService.listJobsForOperation(projectId, operationId, context.username(), context))
                 .thenReturn(List.of(job));
         when(projectService.getRequirement(
                 projectId, requirementId, context.username(), context))

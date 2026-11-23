@@ -122,8 +122,8 @@ class CopilotAutomationServiceCoverageTest {
                     persisted.set(job);
                     return job;
                 });
-        when(fixture.analysisService.listJobs(
-                PROJECT_ID, context.username(), context))
+        when(fixture.analysisService.listJobsForOperation(
+                eq(PROJECT_ID), anyString(), eq(context.username()), eq(context)))
                 .thenAnswer(ignored -> persisted.get() == null
                         ? List.of() : List.of(persisted.get()));
 
@@ -161,6 +161,8 @@ class CopilotAutomationServiceCoverageTest {
         when(fixture.analysisService.listJobs(
                 PROJECT_ID, context.username(), context))
                 .thenReturn(List.of(nullItems, malformed, wrongRequirement, old, newest));
+        when(fixture.analysisService.listJobsForOperation(PROJECT_ID, newOperation, context.username(), context))
+                .thenReturn(List.of(newest));
         when(fixture.projectService.getRequirement(
                 PROJECT_ID, REQUIREMENT_ID, context.username(), context))
                 .thenReturn(requirement(version(), null));
@@ -189,8 +191,8 @@ class CopilotAutomationServiceCoverageTest {
         AnalysisJobView cancelled = job(
                 "job-1", operation, 1, 2, REQUIREMENT_ID,
                 AnalysisStatus.CANCELLED, null, now.plusMillis(2));
-        when(fixture.analysisService.listJobs(
-                PROJECT_ID, context.username(), context))
+        when(fixture.analysisService.listJobsForOperation(
+                PROJECT_ID, operation, context.username(), context))
                 .thenReturn(List.of(running, success), List.of(cancelled, success));
         when(fixture.projectService.getRequirement(
                 PROJECT_ID, REQUIREMENT_ID, context.username(), context))
@@ -211,8 +213,8 @@ class CopilotAutomationServiceCoverageTest {
     @Test
     void missingOperationAndMalformedItemsFailClosedWithoutDisclosure() {
         Fixture fixture = new Fixture();
-        when(fixture.analysisService.listJobs(
-                PROJECT_ID, context.username(), context)).thenReturn(List.of());
+        when(fixture.analysisService.listJobsForOperation(
+                PROJECT_ID, "missing", context.username(), context)).thenReturn(List.of());
 
         assertThatThrownBy(() -> fixture.service.getOperation(
                 PROJECT_ID, "missing", context.username(), context))
@@ -232,8 +234,8 @@ class CopilotAutomationServiceCoverageTest {
                 false, operation, 1, 1, AnalysisAutomationProfile.FULL, false, false);
         AnalysisJobView noItem = rawJob(
                 "job-empty", key.value(), AnalysisStatus.SUCCESS, List.of(), Instant.now());
-        when(fixture.analysisService.listJobs(
-                PROJECT_ID, context.username(), context)).thenReturn(List.of(noItem));
+        when(fixture.analysisService.listJobsForOperation(
+                PROJECT_ID, operation, context.username(), context)).thenReturn(List.of(noItem));
         assertThatThrownBy(() -> fixture.service.getOperation(
                 PROJECT_ID, operation, context.username(), context))
                 .isInstanceOf(PortfolioException.class)
@@ -245,8 +247,8 @@ class CopilotAutomationServiceCoverageTest {
         AnalysisJobView nullRequirement = rawJob(
                 "job-null", key.value(), AnalysisStatus.SUCCESS,
                 List.of(missingIdentity), Instant.now());
-        when(fixture.analysisService.listJobs(
-                PROJECT_ID, context.username(), context)).thenReturn(List.of(nullRequirement));
+        when(fixture.analysisService.listJobsForOperation(
+                PROJECT_ID, operation, context.username(), context)).thenReturn(List.of(nullRequirement));
         assertThatThrownBy(() -> fixture.service.getOperation(
                 PROJECT_ID, operation, context.username(), context))
                 .isInstanceOf(PortfolioException.class)
@@ -261,8 +263,11 @@ class CopilotAutomationServiceCoverageTest {
         AnalysisJobView firstPass = job(
                 "job-1", operation, 1, 2, REQUIREMENT_ID,
                 AnalysisStatus.SUCCESS, "snapshot-1", Instant.now());
-        when(fixture.analysisService.listJobs(
-                PROJECT_ID, context.username(), context)).thenReturn(List.of(firstPass));
+        if (latest) {
+            when(fixture.analysisService.listJobs(PROJECT_ID, context.username(), context)).thenReturn(List.of(firstPass));
+        }
+        when(fixture.analysisService.listJobsForOperation(
+                PROJECT_ID, operation, context.username(), context)).thenReturn(List.of(firstPass));
         when(fixture.projectService.getRequirement(
                 PROJECT_ID, REQUIREMENT_ID, context.username(), context))
                 .thenReturn(requirement(version(), "snapshot-1"));
@@ -293,8 +298,11 @@ class CopilotAutomationServiceCoverageTest {
                 AnalysisStatus.SUCCESS, "snapshot-1", Instant.now());
         SnapshotSelection best = mock(SnapshotSelection.class);
         when(best.id()).thenReturn("snapshot-1");
-        when(fixture.analysisService.listJobs(
-                PROJECT_ID, context.username(), context)).thenReturn(List.of(success));
+        if (latest) {
+            when(fixture.analysisService.listJobs(PROJECT_ID, context.username(), context)).thenReturn(List.of(success));
+        }
+        when(fixture.analysisService.listJobsForOperation(
+                PROJECT_ID, operation, context.username(), context)).thenReturn(List.of(success));
         when(fixture.analysisService.getSnapshotSelection(
                 PROJECT_ID, "snapshot-1", context.username(), context)).thenReturn(best);
         when(fixture.resultSelector.selectForOperation(anyList())).thenReturn(Optional.of(best));
@@ -332,6 +340,9 @@ class CopilotAutomationServiceCoverageTest {
                 AnalysisStatus.SUCCESS, "snapshot-1", now);
         AtomicReference<AnalysisJobView> persisted = new AtomicReference<>(pending);
         when(fixture.analysisService.listJobs(PROJECT_ID, context.username(), context))
+                .thenAnswer(ignored -> List.of(persisted.get()));
+        when(fixture.analysisService.listJobsForOperation(
+                PROJECT_ID, operation, context.username(), context))
                 .thenAnswer(ignored -> List.of(persisted.get()));
         when(fixture.projectService.getRequirement(PROJECT_ID, REQUIREMENT_ID, context.username(), context))
                 .thenReturn(requirement(version(), "snapshot-1"));
@@ -385,6 +396,9 @@ class CopilotAutomationServiceCoverageTest {
                 "job-1", operation, 1, 1, REQUIREMENT_ID, AnalysisStatus.PENDING, null, now));
         when(fixture.analysisService.listJobs(PROJECT_ID, context.username(), context))
                 .thenAnswer(ignored -> List.of(persisted.get()));
+        when(fixture.analysisService.listJobsForOperation(
+                PROJECT_ID, operation, context.username(), context))
+                .thenAnswer(ignored -> List.of(persisted.get()));
         when(fixture.projectService.getRequirement(PROJECT_ID, REQUIREMENT_ID, context.username(), context))
                 .thenReturn(requirement(version(), null));
         when(fixture.policy.costPolicy()).thenReturn(AiCostPolicy.METERED);
@@ -409,7 +423,8 @@ class CopilotAutomationServiceCoverageTest {
         AnalysisJobView success = job("job-1", operation, 1, 1, REQUIREMENT_ID, AnalysisStatus.SUCCESS, null, now);
         AtomicReference<AnalysisJobView> persisted = new AtomicReference<>(pending);
         AtomicReference<AnalysisStatus> observedDuringFinalization = new AtomicReference<>();
-        when(fixture.analysisService.listJobs(PROJECT_ID, context.username(), context))
+        when(fixture.analysisService.listJobsForOperation(
+                PROJECT_ID, operation, context.username(), context))
                 .thenAnswer(ignored -> List.of(persisted.get()));
         when(fixture.projectService.getRequirement(PROJECT_ID, REQUIREMENT_ID, context.username(), context))
                 .thenReturn(requirement(version(), null));
@@ -448,7 +463,8 @@ class CopilotAutomationServiceCoverageTest {
         String operation = "a".repeat(64);
         AnalysisJobView pending = job("job-1", operation, 1, 1, REQUIREMENT_ID,
                 AnalysisStatus.PENDING, null, Instant.now());
-        when(fixture.analysisService.listJobs(PROJECT_ID, context.username(), context)).thenReturn(List.of(pending));
+        when(fixture.analysisService.listJobsForOperation(
+                PROJECT_ID, operation, context.username(), context)).thenReturn(List.of(pending));
         when(fixture.projectService.getRequirement(PROJECT_ID, REQUIREMENT_ID, context.username(), context))
                 .thenReturn(requirement(version(), null));
         when(fixture.policy.costPolicy()).thenReturn(AiCostPolicy.METERED);
@@ -472,7 +488,8 @@ class CopilotAutomationServiceCoverageTest {
         String operation = "b".repeat(64);
         AnalysisJobView pending = job("job-1", operation, 1, 1, REQUIREMENT_ID,
                 AnalysisStatus.PENDING, null, Instant.now());
-        when(fixture.analysisService.listJobs(PROJECT_ID, context.username(), context)).thenReturn(List.of(pending));
+        when(fixture.analysisService.listJobsForOperation(
+                PROJECT_ID, operation, context.username(), context)).thenReturn(List.of(pending));
         when(fixture.projectService.getRequirement(PROJECT_ID, REQUIREMENT_ID, context.username(), context))
                 .thenReturn(requirement(version(), null));
         when(fixture.policy.costPolicy()).thenReturn(AiCostPolicy.METERED);
@@ -520,8 +537,8 @@ class CopilotAutomationServiceCoverageTest {
                 AnalysisStatus.SUCCESS, "snapshot-1", Instant.now());
         SnapshotSelection best = mock(SnapshotSelection.class);
         when(best.id()).thenReturn("snapshot-1");
-        when(fixture.analysisService.listJobs(
-                PROJECT_ID, context.username(), context)).thenReturn(List.of(success));
+        when(fixture.analysisService.listJobsForOperation(
+                PROJECT_ID, operation, context.username(), context)).thenReturn(List.of(success));
         when(fixture.analysisService.getSnapshotSelection(
                 PROJECT_ID, "snapshot-1", context.username(), context)).thenReturn(best);
         when(fixture.resultSelector.selectForOperation(anyList())).thenReturn(Optional.of(best));
@@ -553,8 +570,8 @@ class CopilotAutomationServiceCoverageTest {
             AnalysisJobView job = job(
                     "job-1", operation, 1, 1, REQUIREMENT_ID,
                     status, null, Instant.now());
-            when(fixture.analysisService.listJobs(
-                    PROJECT_ID, context.username(), context)).thenReturn(List.of(job));
+            when(fixture.analysisService.listJobsForOperation(
+                    PROJECT_ID, operation, context.username(), context)).thenReturn(List.of(job));
             when(fixture.projectService.getRequirement(
                     PROJECT_ID, REQUIREMENT_ID, context.username(), context))
                     .thenReturn(requirement(version(), null));
@@ -580,8 +597,8 @@ class CopilotAutomationServiceCoverageTest {
         AnalysisJobView running = job(
                 "job-1", runningOperation, 1, 1, REQUIREMENT_ID,
                 AnalysisStatus.RUNNING, null, Instant.now());
-        when(runningFixture.analysisService.listJobs(
-                PROJECT_ID, context.username(), context)).thenReturn(List.of(running));
+        when(runningFixture.analysisService.listJobsForOperation(
+                PROJECT_ID, runningOperation, context.username(), context)).thenReturn(List.of(running));
         when(runningFixture.projectService.getRequirement(
                 PROJECT_ID, REQUIREMENT_ID, context.username(), context))
                 .thenReturn(requirement(version(), null));
@@ -598,8 +615,8 @@ class CopilotAutomationServiceCoverageTest {
         AnalysisJobView incomplete = job(
                 "job-1", incompleteOperation, 1, 2, REQUIREMENT_ID,
                 AnalysisStatus.SUCCESS, null, Instant.now());
-        when(incompleteFixture.analysisService.listJobs(
-                PROJECT_ID, context.username(), context)).thenReturn(List.of(incomplete));
+        when(incompleteFixture.analysisService.listJobsForOperation(
+                PROJECT_ID, incompleteOperation, context.username(), context)).thenReturn(List.of(incomplete));
         when(incompleteFixture.projectService.getRequirement(
                 PROJECT_ID, REQUIREMENT_ID, context.username(), context))
                 .thenReturn(requirement(version(), null));
@@ -639,8 +656,8 @@ class CopilotAutomationServiceCoverageTest {
                 "job-1", PROJECT_ID, context.username(), context))
                 .thenAnswer(ignored -> jobWithKey(
                         "job-1", key.get(), AnalysisStatus.SUCCESS, null, Instant.now()));
-        when(fixture.analysisService.listJobs(
-                PROJECT_ID, context.username(), context))
+        when(fixture.analysisService.listJobsForOperation(
+                eq(PROJECT_ID), anyString(), eq(context.username()), eq(context)))
                 .thenAnswer(ignored -> key.get() == null ? List.of() : List.of(jobWithKey(
                         "job-1",
                         key.get(),
@@ -745,8 +762,8 @@ class CopilotAutomationServiceCoverageTest {
                             null,
                             Instant.now());
                 });
-        when(fixture.analysisService.listJobs(
-                PROJECT_ID, context.username(), context))
+        when(fixture.analysisService.listJobsForOperation(
+                eq(PROJECT_ID), anyString(), eq(context.username()), eq(context)))
                 .thenAnswer(ignored -> fixture.persistedKey.get() == null
                         ? List.of() : List.of(jobWithKey(
                                 "job-1",
@@ -960,8 +977,11 @@ class CopilotAutomationServiceCoverageTest {
                     AnalysisStatus.SUCCESS, null, Instant.now()), expectedLanguage.get()));
         });
         stubVerificationPass(fixture, persisted);
-        when(fixture.analysisService.listJobs(PROJECT_ID, context.username(), context))
-                .thenAnswer(ignored -> List.copyOf(persisted.values()));
+        when(fixture.analysisService.listJobsForOperation(
+                eq(PROJECT_ID), anyString(), eq(context.username()), eq(context)))
+                .thenAnswer(call -> persisted.values().stream()
+                        .filter(job -> job.idempotencyKey().contains(":" + call.getArgument(1, String.class) + ":"))
+                        .toList());
         when(fixture.analysisService.getJob(anyString(), eq(PROJECT_ID), eq(context.username()), eq(context)))
                 .thenAnswer(call -> persisted.values().stream().filter(job -> job.id().equals(call.getArgument(0))).findFirst().orElseThrow());
         when(fixture.policy.maximumRuntime()).thenReturn(Duration.ofSeconds(5));
@@ -1000,7 +1020,8 @@ class CopilotAutomationServiceCoverageTest {
         when(fixture.policy.maximumRuntime()).thenReturn(Duration.ofSeconds(5));
         when(fixture.projectService.getRequirement(PROJECT_ID, REQUIREMENT_ID, context.username(), context))
                 .thenReturn(requirement(version(), null));
-        when(fixture.analysisService.listJobs(PROJECT_ID, context.username(), context))
+        when(fixture.analysisService.listJobsForOperation(
+                PROJECT_ID, operation, context.username(), context))
                 .thenAnswer(ignored -> List.copyOf(persisted.values()));
         when(fixture.analysisService.enqueueRequirement(eq(PROJECT_ID), eq(REQUIREMENT_ID), eq("CUSTOM_OPENAI"), eq(50),
                 anyString(), eq(context.username()), eq(context))).thenAnswer(call -> {

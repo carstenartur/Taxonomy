@@ -15,6 +15,8 @@ import static com.taxonomy.dto.RelationSearchModel.*;
  * assessments and original requirement text belong in the authoritative store.
  */
 public final class RelationSearchDistribution {
+    private static final Set<String> BUDGET_REASONS = Set.of("CALL_BUDGET", "TOTAL_CALL_BUDGET", "WORK_LIMIT");
+
     private RelationSearchDistribution() { }
 
     public record Plan(int schemaVersion, String preparationId, String originalSha256,
@@ -244,6 +246,12 @@ public final class RelationSearchDistribution {
         return schedule(plan, persisted).ready();
     }
 
+    /** Verify persisted evidence and exact grants against the deterministic schedule. */
+    public static void validateResults(Plan plan, List<WorkResult> persisted) {
+        Schedule schedule = schedule(plan, persisted);
+        if (plan.inlineReport() == null) validateReportInputs(plan, schedule);
+    }
+
     /** Aggregate in original intent order, irrespective of broker completion order. */
     public static RelationSearchReport combine(Plan plan, List<WorkResult> persisted) {
         return combine(plan, persisted, null);
@@ -255,6 +263,7 @@ public final class RelationSearchDistribution {
         if (plan.inlineReport() != null) return retainAcceptedRelations(plan.inlineReport(), previous);
         if (previous != null && !plan.originalSha256().equals(previous.originalSha256()))
             throw new IllegalArgumentException("Saved relation evidence belongs to another requirement");
+        boolean deniedFrontier = validateReportInputs(plan, schedule);
         var progress = new RelationWorkPlan(plan.sourceNodes(), plan.targetRoots(),
                 plan.definition(), plan.options().limits().maxCalls(), false);
         progress.restore(previous);
@@ -270,15 +279,9 @@ public final class RelationSearchDistribution {
         Set<Edge> edges = new LinkedHashSet<>();
         List<Trace> trace = new ArrayList<>();
         List<Unfinished> unfinished = new ArrayList<>();
-        int calls = plan.sourceCalls(), engineCalls = 0, visited = 0;
+        int calls = schedule.totalCalls(), engineCalls = 0, visited = 0;
         long duration = plan.durationMillis();
         String stop = plan.stopReason();
-        // The sequential engine records the first denied frontier query as an
-        // attempted batch, then drains later intents. Preserve that diagnostic
-        // and task state without dispatching a zero-allowance provider request.
-        boolean deniedFrontier = Set.of("CALL_BUDGET", "TOTAL_CALL_BUDGET", "WORK_LIMIT").contains(schedule.pendingReason())
-                && schedule.results().values().stream().flatMap(r -> r.result().unfinished().stream())
-                .noneMatch(u -> Set.of("CALL_BUDGET", "TOTAL_CALL_BUDGET", "WORK_LIMIT").contains(u.reason()));
         for (Item item : plan.items()) {
             WorkResult completed = schedule.results().get(item.ordinal());
             Intent intent = intent(plan, item);
@@ -294,7 +297,7 @@ public final class RelationSearchDistribution {
             }
             Result result = completed.result();
             edges.addAll(result.edges()); trace.addAll(result.trace()); unfinished.addAll(result.unfinished());
-            calls += completed.calls(); engineCalls += result.calls(); visited += result.visitedBatches();
+            engineCalls += result.calls(); visited += result.visitedBatches();
             duration += result.durationMillis();
             progress.finished(intent, completed.stopReason().isEmpty() && result.searchExhausted());
             result.edges().forEach(progress::verified);
@@ -364,13 +367,30 @@ public final class RelationSearchDistribution {
         return !reason.isEmpty() && !reason.equals("RELATION_EVALUATION_FAILED");
     }
 
-    private record Schedule(List<Work> ready, Map<Integer, WorkResult> results, String pendingReason) { }
+    /** Check report prerequisites and return whether aggregation should record a denied frontier. */
+    private static boolean validateReportInputs(Plan plan, Schedule schedule) {
+        for (SourceAssessment source : plan.sources()) {
+            Objects.requireNonNull(source.node());
+            Objects.requireNonNull(source.question());
+        }
+        // The sequential engine records the first denied frontier query as an
+        // attempted batch. Keep the short-circuit order when consulting saved reasons.
+        boolean deniedFrontier = BUDGET_REASONS.contains(schedule.pendingReason())
+                && schedule.results().values().stream().flatMap(r -> r.result().unfinished().stream())
+                .noneMatch(u -> BUDGET_REASONS.contains(u.reason()));
+        var budget = plan.options().budget();
+        if (budget != null && (long) budget.callsBeforeExecution() + schedule.totalCalls() > Integer.MAX_VALUE)
+            throw new IllegalArgumentException("Invalid relation execution budget");
+        return deniedFrontier;
+    }
+
+    private record Schedule(List<Work> ready, Map<Integer, WorkResult> results, String pendingReason, int totalCalls) { }
 
     private static Schedule schedule(Plan plan, List<WorkResult> persisted) {
         Objects.requireNonNull(plan); Objects.requireNonNull(persisted);
         if (plan.inlineReport() != null) {
             if (!persisted.isEmpty()) throw new IllegalArgumentException("Inline relations cannot also contain worker results");
-            return new Schedule(List.of(), Map.of(), "");
+            return new Schedule(List.of(), Map.of(), "", plan.sourceCalls());
         }
         Map<Integer, WorkResult> byOrdinal = new TreeMap<>();
         for (WorkResult result : persisted) {
@@ -382,6 +402,7 @@ public final class RelationSearchDistribution {
         }
         Map<Integer, WorkResult> checked = new TreeMap<>();
         int calls = plan.options().limits().maxCalls() - plan.sourceCalls();
+        int totalCalls = plan.sourceCalls();
         int workItems = plan.options().limits().maxWorkItems();
         // Ordinals identify all intents, including free accepted replay. The
         // configured work allowance is debited below by actual grant charges.
@@ -411,6 +432,7 @@ public final class RelationSearchDistribution {
                 if (!grant.equals(result.work())) throw new IllegalArgumentException("Result does not match its deterministic grant");
                 validateEvidence(plan, result);
                 checked.put(grant.ordinal(), result);
+                totalCalls += result.calls();
                 // A settled branch failure consumes its allowance, not the right of
                 // independently admitted branches to finish. Unknown stop kinds remain conservative.
                 stopped |= blocksFurtherWork(result.stopReason());
@@ -424,7 +446,7 @@ public final class RelationSearchDistribution {
         if (ready.isEmpty() && next == taskLimit && taskLimit < plan.items().size() && reason.equals("PENDING"))
             reason = "WORK_LIMIT";
         if (checked.size() != byOrdinal.size()) throw new IllegalArgumentException("Result precedes its admitted work wave");
-        return new Schedule(ready, Map.copyOf(checked), reason);
+        return new Schedule(ready, Map.copyOf(checked), reason, totalCalls);
     }
 
     private static void validateEvidence(Plan plan, WorkResult result) {
