@@ -15,6 +15,7 @@ import com.taxonomy.portfolio.service.PortfolioException;
 import com.taxonomy.portfolio.service.ProjectPortfolioService;
 import com.taxonomy.workspace.service.SystemRepositoryService;
 import com.taxonomy.workspace.service.WorkspaceContext;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -28,6 +29,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @SpringBootTest
+@Tag("ci-app-shard-spring-context-a")
 class ProjectPortfolioServiceTest {
 
     @Autowired

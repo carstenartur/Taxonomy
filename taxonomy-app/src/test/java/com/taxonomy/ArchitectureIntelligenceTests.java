@@ -16,6 +16,7 @@ import com.taxonomy.workspace.model.RepositoryVisibility;
 import com.taxonomy.workspace.service.ArchitectureRepositoryProvisioningService;
 import com.taxonomy.workspace.service.RepositoryWorkspaceService;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationContext;
@@ -44,6 +45,7 @@ import org.springframework.security.test.context.support.WithMockUser;
 @SpringBootTest
 @AutoConfigureMockMvc
 @WithMockUser(roles = {"USER", "ARCHITECT", "ADMIN"})
+@Tag("ci-app-shard-spring-context-b")
 class ArchitectureIntelligenceTests extends GraphSnapshotFixtureSupport {
     @Autowired private ApplicationContext applicationContext;
 

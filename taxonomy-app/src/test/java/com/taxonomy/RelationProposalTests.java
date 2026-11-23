@@ -16,6 +16,7 @@ import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.RepositoryScope;
 import com.taxonomy.workspace.service.SystemRepositoryService;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -38,6 +39,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @WithMockUser(username = "proposal-admin", roles = {"USER", "ARCHITECT", "ADMIN"})
+@Tag("ci-app-shard-spring-context-a")
 class RelationProposalTests {
 
     @Autowired private MockMvc mockMvc;

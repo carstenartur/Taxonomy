@@ -22,6 +22,7 @@ import com.taxonomy.workspace.service.SystemRepositoryService;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import jakarta.persistence.EntityManagerFactory;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -41,6 +42,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /** Actual editor, portfolio transaction and JGit publication boundary, reconstructed after checkout loss. */
 @SpringBootTest
 @WithMockUser(username = "alice", roles = {"USER", "ARCHITECT", "ADMIN"})
+@Tag("ci-app-shard-spring-context-b")
 class ArchitecturePortfolioReconciliationTest {
     private static final String MODEL = """
             element recorder type Component {

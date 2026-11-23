@@ -1,5 +1,6 @@
 package com.taxonomy.security.config;
 
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -37,6 +38,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "llama.api.key=",
         "mistral.api.key="
 })
+@Tag("ci-app-shard-spring-context-a")
 class ActuatorAdminTokenSecurityTests {
 
     private static final String ADMIN_TOKEN = "metrics-admin-token-1234567890";

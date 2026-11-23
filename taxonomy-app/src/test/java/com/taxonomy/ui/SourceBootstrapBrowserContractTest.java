@@ -41,6 +41,17 @@ class SourceBootstrapBrowserContractTest {
         run("portfolio-page-exit");
     }
 
+    @Test
+    void followingTheKeyboardSkipLinkDoesNotDiscardSourcePreparationOrTheQueuedSubmit() throws Exception {
+        run("portfolio-skip-link-submit");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"failure", "history", "history-roundtrip"})
+    void aRejectedInitialSourceDiscardsItsQueuedSubmitAndRequiresExplicitRecovery(String transition) throws Exception {
+        run("portfolio-rejected-source-" + transition);
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {"own-publication", "branch", "history", "pagehide", "authentication", "foreign-publication",
             "pending", "reconciliation", "failed-confirmation", "superseded-confirmation"})

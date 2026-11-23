@@ -9,6 +9,7 @@ import com.taxonomy.relations.service.HybridSearchService;
 import com.taxonomy.catalog.service.LocalEmbeddingService;
 import com.taxonomy.relations.service.RankFusionUtil;
 import com.taxonomy.catalog.service.SearchService;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -37,6 +38,7 @@ import com.taxonomy.model.RelationType;
 @SpringBootTest(properties = "embedding.enabled=false")
 @AutoConfigureMockMvc
 @WithMockUser(roles = "ADMIN")
+@Tag("ci-app-shard-spring-context-a")
 class SemanticSearchTests {
 
     @Autowired

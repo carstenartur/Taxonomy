@@ -101,6 +101,36 @@ class ApplicationTestShardRepositoryTest {
             assertEquals("false", XmlSupport.childText(XmlSupport.child(profile, "properties"), "maven.build.cache.enabled"), module + " " + id);
         }
     }
+    @Test void measuredSpringContextShardsKeepFreshForksAndTheCoreEnvironment() throws Exception {
+        var plan = object(read(root.resolve(".mvn/verification-suites.json")).get("applicationTestShards"));
+        var groups = object(plan.get("groups"));
+        var project = pom("");
+        var app = pom("taxonomy-app");
+        for (String name : List.of("spring-context-a", "spring-context-b")) {
+            var group = object(groups.get(name));
+            assertFalse(strings(group.get("tests")).isEmpty(), name);
+            assertEquals(true, group.get("requiresEmbeddingModel"), name);
+            String id = "ci-app-test-shard-" + name;
+            assertEquals(id, group.get("profile"), name);
+            var properties = XmlSupport.child(profile(project, id), "properties");
+            assertEquals(group.get("tag"), XmlSupport.childText(properties, "groups"));
+            assertEquals(new HashSet<>(strings(plan.get("excludedTags"))),
+                    Set.of(XmlSupport.childText(properties, "excludedGroups").split(",")));
+            assertEquals("false", XmlSupport.childText(properties, "taxonomy.model.download.skip"));
+            assertEquals("none", XmlSupport.childText(properties, "taxonomy.productDemo.testPhase"));
+            assertEquals("none", XmlSupport.childText(properties, "taxonomy.app.architectureAnchorPhase"));
+            var appShard = profile(app, id);
+            for (String pluginId : List.of("maven-surefire-plugin", "maven-failsafe-plugin")) {
+                var plugin = XmlSupport.descendants(appShard, "plugin").stream()
+                        .filter(element -> pluginId.equals(XmlSupport.childText(element, "artifactId")))
+                        .findFirst().orElseThrow();
+                var configuration = XmlSupport.child(plugin, "configuration");
+                assertEquals("1", XmlSupport.childText(configuration, "forkCount"), id + " " + pluginId);
+                assertEquals("false", XmlSupport.childText(configuration, "reuseForks"), id + " " + pluginId);
+            }
+        }
+    }
+
     @Test void aggregateFailsafeExecutionReceivesRequiredShardCoverageFlag() throws Exception {
         Element build = pom("taxonomy-build");
         Element plugin = XmlSupport.descendants(XmlSupport.child(build, "build"), "plugin").stream()

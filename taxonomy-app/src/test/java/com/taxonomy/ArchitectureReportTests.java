@@ -15,6 +15,7 @@ import com.taxonomy.extension.api.report.ReportRenderContext;
 import com.taxonomy.extension.api.report.ReportRenderResult;
 import com.taxonomy.extension.api.report.ReportRendererExtension;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -36,6 +37,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @WithLocalTestUser(username = "report-admin", roles = {"USER", "ARCHITECT", "ADMIN"})
+@Tag("ci-app-shard-spring-context-b")
 class ArchitectureReportTests {
 
     @Autowired

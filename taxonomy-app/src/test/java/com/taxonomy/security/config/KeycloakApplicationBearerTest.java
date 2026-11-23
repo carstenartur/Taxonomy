@@ -8,6 +8,7 @@ import com.nimbusds.jwt.*;
 import com.taxonomy.security.controller.AccountContextController;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.DisabledIfSystemProperty;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -43,6 +44,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {"taxonomy.keycloak.principal-mode=STABLE", "embedding.enabled=false", "llm.mock=true", "taxonomy.security.swagger-public=false",
         "taxonomy.security.audit-logging=true", "spring.datasource.url=jdbc:hsqldb:mem:real-keycloak-bearer", "spring.jpa.hibernate.ddl-auto=create"})
 @ActiveProfiles("keycloak") @DirtiesContext
+@Tag("ci-app-shard-spring-context-a")
 class KeycloakApplicationBearerTest {
     private static final KeycloakJwtTestIssuer ISSUER = KeycloakJwtTestIssuer.start();
     @LocalServerPort int port;

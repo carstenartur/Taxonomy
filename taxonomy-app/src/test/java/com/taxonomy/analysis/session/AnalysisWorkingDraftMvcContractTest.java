@@ -10,6 +10,7 @@ import com.taxonomy.workspace.service.SystemRepositoryService;
 import com.taxonomy.workspace.service.WorkspaceContextResolver;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -64,6 +65,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "llama.api.key=",
         "mistral.api.key="
 })
+@Tag("ci-app-shard-spring-context-b")
 class AnalysisWorkingDraftMvcContractTest {
 
     private static final String VALID_SAVE_REQUEST = """

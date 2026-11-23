@@ -7,6 +7,7 @@ import com.taxonomy.dto.ArchiMateImportResult;
 import com.taxonomy.model.RelationType;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -30,6 +31,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 @Transactional
 @WithMockUser(username = "qa-architect", roles = {"USER", "ARCHITECT"})
+@Tag("ci-app-shard-spring-context-a")
 class ArchiMateWorkspaceImportTests {
 
     @Autowired

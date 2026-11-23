@@ -3,6 +3,7 @@ package com.taxonomy.templates;
 import com.taxonomy.reporting.templates.DecisionRationaleTemplateContract;
 
 import com.taxonomy.templates.api.TemplateFile;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -10,6 +11,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest
+@Tag("ci-app-shard-spring-context-a")
 class DefaultDocumentTemplateBootstrapIntegrationTest {
 
     @Autowired

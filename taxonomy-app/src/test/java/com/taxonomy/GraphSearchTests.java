@@ -4,6 +4,7 @@ import com.taxonomy.dto.GraphSearchResult;
 import com.taxonomy.relations.service.GraphSearchService;
 import com.taxonomy.catalog.service.LocalEmbeddingService;
 import com.taxonomy.workspace.service.RepositoryContext;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.AfterEach;
 import com.taxonomy.workspace.model.RepositoryVisibility;
@@ -44,6 +45,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest(properties = "embedding.enabled=false")
 @AutoConfigureMockMvc
 @WithMockUser(roles = "ADMIN")
+@Tag("ci-app-shard-spring-context-a")
 class GraphSearchTests {
 
     @Autowired

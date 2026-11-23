@@ -303,21 +303,36 @@
         return initializeSource();
     }
 
-    function initializeSource() {
+    function initializeSource(options) {
         if (initialSourceReady) return initialSourceReady;
         // Lifecycle hydration can intentionally publish a new source. Every network
         // read retains its own selection fence while that publication is in progress.
         const activePage = window.TaxonomyApiClient.captureContext({contextSensitive: false});
+        const sourceUrl = function () { return window.location.pathname + window.location.search; };
+        const selectedUrl = sourceUrl();
+        let departed = false;
         const scope = window.TaxonomyArchitectureWorkflow?.getScope?.();
         const workspace = window.TaxonomyWorkspaceApi;
         const lifecycle = window.TaxonomyArchitectureLifecycle;
+        const needsWorkspaceConfirmation = workspace
+            && scope?.workspaceId === undefined && scope?.workspaceScopeKey === undefined;
         const retry = document.getElementById('portfolioSourceRetry');
+        const observeSelection = function () { departed ||= sourceUrl() !== selectedUrl; };
+        window.addEventListener('popstate', observeSelection);
+        const stopObservingStand = lifecycle?.onStandChange?.(observeSelection);
+        const isSelected = function () {
+            observeSelection();
+            if (activePage() && !departed) return true;
+            if (activePage() && retry) retry.hidden = false;
+            return false;
+        };
         if (retry) retry.hidden = true;
         state.busyCount += 1;
         updateBusyState();
-        initialSourceReady = Promise.resolve(lifecycle?.ready?.()).then(async function () {
-            if (!activePage()) return false;
-            if (workspace && scope?.workspaceId === undefined && scope?.workspaceScopeKey === undefined) {
+        initialSourceReady = Promise.resolve(options?.refresh && !needsWorkspaceConfirmation
+            ? lifecycle?.refresh?.(scope) : lifecycle?.ready?.()).then(async function (overview) {
+            if (!isSelected()) return false;
+            if (needsWorkspaceConfirmation) {
                 const currentSource = window.TaxonomyApiClient.captureContext();
                 const confirmed = await workspace.waitForCurrent(workspace.current);
                 if (!currentSource()) {
@@ -325,13 +340,14 @@
                     return false;
                 }
                 const selected = confirmed?.workspaceId ? {...scope, workspaceId: confirmed.workspaceId} : scope;
-                if (lifecycle && !await lifecycle.refresh(selected)) {
-                    throw new Error(window.TaxonomyI18n.t('lifecycle.intake.contextUnavailable'));
-                }
+                if (lifecycle) overview = await lifecycle.refresh(selected);
             }
-            if (!activePage()) return false;
+            if (!isSelected()) return false;
+            if (lifecycle && !overview) {
+                throw new Error(window.TaxonomyI18n.t('lifecycle.intake.contextUnavailable'));
+            }
             await loadProjects(undefined, {sourceBootstrap: true});
-            if (!activePage()) return false;
+            if (!isSelected()) return false;
             sourceInitialized = true;
             return true;
         }).catch(function (error) {
@@ -339,6 +355,8 @@
             if (activePage() && retry) retry.hidden = false;
             return false;
         }).finally(function () {
+            window.removeEventListener('popstate', observeSelection);
+            stopObservingStand?.();
             initialSourceReady = null;
             state.busyCount = Math.max(0, state.busyCount - 1);
             updateBusyState();
@@ -377,7 +395,9 @@
         document.getElementById('projectFilter').addEventListener('input', renderProjectList);
         document.getElementById('projectList').addEventListener('click', onProjectListClick);
         document.getElementById('projectForm').addEventListener('submit', createProject);
-        document.getElementById('portfolioSourceRetry')?.addEventListener('click', initializeSource);
+        document.getElementById('portfolioSourceRetry')?.addEventListener('click', function () {
+            return initializeSource({refresh: true});
+        });
         document.getElementById('requirementForm').addEventListener('submit', createRequirement);
         window.TaxonomyRequirementIntake?.attach(document.getElementById('requirementForm'), {textElement:document.querySelector('#requirementForm [name="text"]'), projectId:function () { return state.selectedProjectId; }});
         document.getElementById('solutionForm').addEventListener('submit', createSolution);
@@ -773,7 +793,9 @@
 
     async function createProject(event) {
         event.preventDefault();
-        if (!sourceInitialized) return;
+        // withBusy retains a submit while the current source is being prepared.
+        // A failed preparation still requires the explicit source retry.
+        if (!sourceInitialized && !initialSourceReady) return;
         const form = event.currentTarget;
         const payload = formDataObject(form);
         payload.status = 'PLANNING';

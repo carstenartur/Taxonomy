@@ -7,6 +7,7 @@ import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.SystemRepositoryService;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -22,6 +23,7 @@ import static org.mockito.Mockito.when;
 @SpringBootTest
 @AutoConfigureMockMvc
 @WithLocalTestUser(roles = {"USER", "ARCHITECT", "ADMIN"})
+@Tag("ci-app-shard-spring-context-a")
 class DslMaterializeServiceTest {
 
     @Autowired

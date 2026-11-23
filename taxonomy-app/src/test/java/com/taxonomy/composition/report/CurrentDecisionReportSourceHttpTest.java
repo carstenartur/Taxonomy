@@ -6,6 +6,7 @@ import com.taxonomy.workspace.model.SystemRepository;
 import com.taxonomy.workspace.repository.SystemRepositoryRepository;
 import com.taxonomy.workspace.repository.UserWorkspaceRepository;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -29,6 +30,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 @Transactional
 @WithMockUser(username = "decision-source-reader", roles = {"USER", "ARCHITECT"})
+@Tag("ci-app-shard-spring-context-b")
 class CurrentDecisionReportSourceHttpTest {
     @Autowired MockMvc mvc;
     @Autowired SystemRepositoryRepository repositories;

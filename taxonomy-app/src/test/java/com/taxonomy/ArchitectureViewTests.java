@@ -13,6 +13,7 @@ import com.taxonomy.catalog.service.RelevancePropagationService;
 import com.taxonomy.architecture.service.RequirementArchitectureViewService;
 import com.taxonomy.catalog.service.TaxonomyRelationService;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -40,6 +41,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "llm.mock=true", "taxonomy.analysis.relations.hierarchical.enabled=false"})
 @AutoConfigureMockMvc
 @WithLocalTestUser(username = "architecture-view-actor", roles = {"USER", "ARCHITECT", "ADMIN"})
+@Tag("ci-app-shard-spring-context-a")
 class ArchitectureViewTests {
 
     @Autowired

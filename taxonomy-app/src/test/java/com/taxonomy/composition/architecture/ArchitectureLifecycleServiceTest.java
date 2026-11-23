@@ -11,6 +11,7 @@ import com.taxonomy.portfolio.service.PortfolioException;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import com.taxonomy.workspace.storage.DslGitRepository;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -36,6 +37,7 @@ import static org.springframework.test.web.servlet.setup.MockMvcBuilders.standal
 /** Persistent application contracts; no remote analysis, shell Git, or container prerequisites. */
 @SpringBootTest
 @WithMockUser(username = "alice", roles = {"USER", "ARCHITECT", "ADMIN"})
+@Tag("ci-app-shard-spring-context-b")
 class ArchitectureLifecycleServiceTest extends LifecycleTestSupport {
     @Autowired ObjectMapper json;
 

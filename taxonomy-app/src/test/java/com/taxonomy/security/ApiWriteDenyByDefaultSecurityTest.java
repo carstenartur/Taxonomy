@@ -1,6 +1,7 @@
 package com.taxonomy.security;
 
 import com.taxonomy.testsupport.LocalTestLogin;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationContext;
@@ -29,6 +30,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "llama.api.key=",
         "mistral.api.key="
 })
+@Tag("ci-app-shard-spring-context-b")
 class ApiWriteDenyByDefaultSecurityTest {
     @Autowired private ApplicationContext applicationContext;
 

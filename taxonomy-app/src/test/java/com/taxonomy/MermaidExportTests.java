@@ -5,6 +5,7 @@ import com.taxonomy.diagram.DiagramLayout;
 import com.taxonomy.diagram.DiagramModel;
 import com.taxonomy.diagram.DiagramNode;
 import com.taxonomy.export.MermaidExportService;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -22,6 +23,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @WithMockUser(roles = {"USER", "ARCHITECT", "ADMIN"})
+@Tag("ci-app-shard-spring-context-a")
 class MermaidExportTests {
 
     @Autowired

@@ -22,6 +22,7 @@ import com.taxonomy.workspace.storage.DslGitRepository;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -45,6 +46,7 @@ import static org.assertj.core.api.Assertions.catchThrowable;
 
 /** Real Hibernate Git refs and portfolio transactions expose failures that ORM rollback cannot repair. */
 @SpringBootTest
+@Tag("ci-app-shard-spring-context-a")
 class GitNativeSyncPortfolioAtomicityTest {
     private static final String MODEL = """
             element recorder type Component {

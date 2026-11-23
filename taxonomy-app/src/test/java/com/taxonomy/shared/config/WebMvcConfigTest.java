@@ -3,6 +3,7 @@ package com.taxonomy.shared.config;
 import com.taxonomy.testsupport.WithLocalTestUser;
 import com.taxonomy.workspace.repository.UserWorkspaceRepository;
 import com.taxonomy.workspace.service.WorkspaceContextResolver;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -27,6 +28,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @WithLocalTestUser(username = "webmvc-user")
+@Tag("ci-app-shard-spring-context-b")
 class WebMvcConfigTest {
 
     @Autowired

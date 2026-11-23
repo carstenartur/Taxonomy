@@ -1,5 +1,6 @@
 package com.taxonomy.shared.controller;
 
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -48,6 +49,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
     "spring.ai.mistral.api-key="
 })
 @WithMockUser
+@Tag("ci-app-shard-spring-context-a")
 class HelpControllerTest {
 
     @Autowired

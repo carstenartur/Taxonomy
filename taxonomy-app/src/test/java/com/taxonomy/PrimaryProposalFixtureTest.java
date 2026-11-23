@@ -8,6 +8,7 @@ import com.taxonomy.workspace.model.RepositoryVisibility;
 import com.taxonomy.workspace.service.ArchitectureRepositoryProvisioningService;
 import com.taxonomy.workspace.service.RepositoryWorkspaceService;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -48,6 +49,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 @AutoConfigureMockMvc
 @ActiveProfiles("hsqldb")
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
+@Tag("ci-app-shard-spring-context-b")
 class PrimaryProposalFixtureTest {
     private static final ObjectMapper JSON = new ObjectMapper();
     @Autowired private MockMvc mvc;

@@ -9,6 +9,7 @@ import com.taxonomy.workspace.service.RepositoryMembershipService;
 import com.taxonomy.workspace.service.SystemRepositoryService;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityManagerFactory;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -26,6 +27,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /** Retained first-level caches must not supply the final policy decision or overwrite newer catalogue data. */
 @SpringBootTest
+@Tag("ci-app-shard-spring-context-a")
 class RepositoryAuthorizationFreshnessTest {
     @Autowired SystemRepositoryService repositories;
     @Autowired RepositoryMembershipService memberships;

@@ -1,6 +1,7 @@
 package com.taxonomy.provenance;
 
 import jakarta.servlet.MultipartConfigElement;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -21,6 +22,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 })
 @AutoConfigureMockMvc
 @WithMockUser(roles = "ARCHITECT")
+@Tag("ci-app-shard-spring-context-b")
 class DocumentImportControllerLimitTest {
 
     @Autowired private MockMvc mockMvc;

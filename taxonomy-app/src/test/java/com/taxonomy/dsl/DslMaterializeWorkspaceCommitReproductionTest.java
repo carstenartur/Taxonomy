@@ -7,6 +7,7 @@ import com.taxonomy.testsupport.LocalTestLogin;
 import com.taxonomy.workspace.service.SystemRepositoryService;
 import com.taxonomy.workspace.service.WorkspaceContextResolver;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.slf4j.Logger;
@@ -47,6 +48,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 })
 @AutoConfigureMockMvc
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
+@Tag("ci-app-shard-spring-context-a")
 class DslMaterializeWorkspaceCommitReproductionTest {
 
     private static final Logger log = LoggerFactory.getLogger(DslMaterializeWorkspaceCommitReproductionTest.class);

@@ -1,5 +1,6 @@
 package com.taxonomy.workspace.controller;
 
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -21,6 +22,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @WithMockUser(username = "testuser", roles = "ADMIN")
+@Tag("ci-app-shard-spring-context-a")
 class ExternalSyncControllerTest {
 
     private static final String BASE = "/api/workspace/external";

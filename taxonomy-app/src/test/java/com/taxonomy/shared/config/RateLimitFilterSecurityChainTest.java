@@ -7,6 +7,7 @@ import com.taxonomy.security.service.UserManagementService;
 import com.taxonomy.preferences.PreferencesService;
 import jakarta.servlet.Filter;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -44,6 +45,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
     "taxonomy.init.async=false",
     "taxonomy.git.bootstrap=false"
 })
+@Tag("ci-app-shard-spring-context-b")
 class RateLimitFilterSecurityChainTest implements AnalysisCatalogueSourceFixture {
 
     @Autowired

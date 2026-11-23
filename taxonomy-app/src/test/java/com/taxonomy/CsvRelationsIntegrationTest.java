@@ -5,6 +5,7 @@ import com.taxonomy.catalog.service.PropagationResult;
 import com.taxonomy.catalog.service.RelevancePropagationService;
 import com.taxonomy.architecture.service.RequirementArchitectureViewService;
 import com.taxonomy.catalog.service.TaxonomyRelationService;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -21,6 +22,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @SpringBootTest
 @DirtiesContext(classMode = DirtiesContext.ClassMode.BEFORE_CLASS)
+@Tag("ci-app-shard-spring-context-a")
 class CsvRelationsIntegrationTest {
 
     @Autowired

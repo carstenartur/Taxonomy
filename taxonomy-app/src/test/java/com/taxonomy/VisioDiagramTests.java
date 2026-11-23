@@ -13,6 +13,7 @@ import com.taxonomy.export.DiagramProjectionService;
 import com.taxonomy.export.VisioDiagramService;
 import com.taxonomy.export.VisioPackageBuilder;
 import com.taxonomy.visio.VisioDocument;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -34,6 +35,7 @@ import com.taxonomy.diagram.DiagramLayout;
 @SpringBootTest(properties = {"spring.datasource.url=jdbc:hsqldb:mem:visio-analysis-contract", "llm.mock=true"})
 @AutoConfigureMockMvc
 @WithLocalTestUser(roles = {"USER", "ARCHITECT", "ADMIN"})
+@Tag("ci-app-shard-spring-context-a")
 class VisioDiagramTests implements AnalysisCatalogueSourceFixture {
 
     @Autowired

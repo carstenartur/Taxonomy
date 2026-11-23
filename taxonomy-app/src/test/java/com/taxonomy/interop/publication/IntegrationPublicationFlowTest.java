@@ -17,6 +17,7 @@ import java.nio.file.Path;
 import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
 
+@Tag("ci-app-shard-spring-context-b")
 class IntegrationPublicationFlowTest extends PublicationIntegrationFixture {
 
     @Test

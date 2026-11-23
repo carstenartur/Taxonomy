@@ -14,6 +14,7 @@ import com.taxonomy.workspace.service.WorkspaceContext;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import org.hibernate.Hibernate;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -43,6 +44,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 @AutoConfigureMockMvc
 @WithMockUser(username = "decision-auditor", roles = "ADMIN")
 @Transactional
+@Tag("ci-app-shard-spring-context-b")
 class TaxonomyFingerprintProjectionTests {
 
     @Autowired private TaxonomyService taxonomyService;

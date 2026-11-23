@@ -13,6 +13,7 @@ import com.taxonomy.workspace.service.WorkspaceContext;
 import jakarta.persistence.EntityManager;
 import org.hibernate.SessionFactory;
 import org.hibernate.stat.Statistics;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -24,6 +25,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest(properties = "spring.jpa.properties.hibernate.generate_statistics=true")
 @Transactional
+@Tag("ci-app-shard-spring-context-b")
 class ProjectRequirementListQueryCountTest {
 
     @Autowired

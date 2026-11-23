@@ -266,7 +266,7 @@ async function standaloneVersioning(transition) {
     assert.equal(app.requests.filter(request => request.options.method !== 'GET').length, 0, 'Bootstrap never publishes a mutation');
 }
 
-async function portfolio(early, leavePage = false, selectionPending = false, inspectStartup = false) {
+async function portfolio(early, leavePage = false, selectionPending = false, inspectStartup = false, skipLink = false) {
     const hydration = deferred(), initialList = deferred(), creation = deferred(), translations = deferred();
     const project = {id: 7, projectKey: 'P-CREATED', title: 'Created from the visible form',
         description: 'A project created while metadata is loading', status: 'PLANNING'};
@@ -352,6 +352,7 @@ async function portfolio(early, leavePage = false, selectionPending = false, ins
     await settle();
     const earlyWrites = app.requests.filter(request => request.options.method === 'POST').length;
     if (leavePage) app.context.dispatchEvent({type: 'pagehide'});
+    if (skipLink) app.context.location.hash = '#portfolioMain';
     if (early && !selectionPending) hydrate();
     await settle();
     const writesBeforeInitialSelection = app.requests.filter(request => request.options.method === 'POST').length;
@@ -383,6 +384,94 @@ async function portfolio(early, leavePage = false, selectionPending = false, ins
     assert.equal(app.nodes.get('projectWorkspace').classList.contains('d-none'), false);
     assert.equal(app.nodes.get('projectModal').hidden, true);
     assert.equal(app.nodes.get('portfolioError').textContent, '');
+}
+
+async function portfolioRejectedSource(transition) {
+    const held = deferred(), intermediate = deferred();
+    const history = transition.startsWith('history');
+    const roundtrip = transition === 'history-roundtrip';
+    const scope = {repositoryId: 'repository-A', workspaceId: 'workspace-A', workspaceScopeKey: 'workspace-A',
+        branch: 'draft', actor: 'fixture-user', writeMode: 'PRIVATE_WORKSPACE'};
+    const project = {id: 7, projectKey: 'P-RETRY', title: 'Explicitly resubmitted project', status: 'PLANNING'};
+    const overview = revision => ({context: {...scope, revision, commit: String(revision).repeat(40)},
+        source: 'WORKSPACE_REVISION', projectionState: 'READY', mayEdit: true,
+        architectureTitle: 'Selected architecture', projects: [], requirements: [], dependencies: []});
+    let lifecycleReads = 0, created = false;
+    const app = fixture('portfolio', request => {
+        const route = request.url.pathname;
+        if (route === '/taxonomy/api/architecture/lifecycle') {
+            lifecycleReads++;
+            if (lifecycleReads === 1) return held.promise;
+            if (roundtrip && lifecycleReads === 2) return intermediate.promise;
+            return Response.json(overview(roundtrip ? 1 : 2));
+        }
+        if (route === '/taxonomy/api/account/me') return Response.json({username: 'fixture-user'});
+        if (route === '/taxonomy/api/projects') {
+            if (request.options.method === 'POST') {created = true; return Response.json(project, {status: 201});}
+            return Response.json(created ? [project] : []);
+        }
+        if (route === '/taxonomy/api/projects/7/portfolio') return Response.json({project,
+            metrics: {totalRequirements: 0, analyzedRequirements: 0, requirementsWithoutConfirmedSolution: 0,
+                totalSolutions: 0, selectedProducts: 0, openConflicts: 0}, requirements: [], taxonomyNodes: [],
+            solutions: [], conflicts: [], requirementTaxonomyMatrix: null, requirementSolutionMatrix: null,
+            solutionProductMatrix: null});
+        if (route === '/taxonomy/api/products') return Response.json([]);
+        throw new Error('Unexpected source rejection request ' + route);
+    }, {lifecycle: true});
+    app.context.TaxonomyArchitectureWorkflow.setScope(scope);
+    if (history) app.context.history.replaceState(null, '', '?revision=1');
+    app.load('api/workspace-api.js');
+    app.load('api/architecture-lifecycle-api.js');
+    app.load('shared/architecture-lifecycle.js');
+    app.load('api/portfolio-api.js');
+    app.load('portfolio/taxonomy-portfolio.js');
+    const start = {type: 'DOMContentLoaded'};
+    app.document.dispatchEvent(start);
+    const form = app.nodes.get('projectForm');
+    form.fields = {projectKey: 'P-PENDING', title: 'Retain the rejected draft'};
+    form.reset = () => {form.fields = {};};
+    const submit = {type: 'submit'};
+    form.dispatchEvent(submit);
+    await settle();
+    if (history) {
+        app.context.history.pushState(null, '', '?revision=2');
+        app.context.dispatchEvent({type: 'popstate'});
+        await settle();
+        if (roundtrip) {
+            app.context.history.pushState(null, '', '?revision=1');
+            app.context.dispatchEvent({type: 'popstate'});
+            await settle();
+            intermediate.resolve(Response.json(overview(2)));
+        }
+        held.resolve(Response.json(overview(1)));
+    } else {
+        held.resolve(Response.json({message: 'Selected source is unavailable'}, {status: 500}));
+    }
+    await Promise.all([...start.results, ...submit.results]);
+    const writes = () => app.requests.filter(request => request.options.method === 'POST');
+    assert.equal(writes().length, 0, 'A rejected or superseded initial source must never admit a project write');
+    assert.equal(app.requests.filter(request => request.url.pathname === '/taxonomy/api/projects').length, 0,
+        'Portfolio selection must not proceed from a rejected or superseded lifecycle overview');
+    assert.equal(form.fields.title, 'Retain the rejected draft');
+    assert.equal(app.nodes.get('portfolioSourceRetry').hidden, false, 'Source preparation remains explicitly retryable');
+    const stillBlocked = {type: 'submit'};
+    form.dispatchEvent(stillBlocked);
+    await Promise.all(stillBlocked.results);
+    assert.equal(writes().length, 0, 'Submitting again before source recovery stays blocked');
+    const retry = {type: 'click'};
+    app.nodes.get('portfolioSourceRetry').dispatchEvent(retry);
+    await Promise.all(retry.results);
+    await settle();
+    assert.equal(lifecycleReads, roundtrip ? 4 : history ? 3 : 2, 'An explicit retry must actually refresh the lifecycle');
+    assert.equal(writes().length, 0, 'Recovery does not replay a previously rejected form submission');
+    assert.equal(app.nodes.get('portfolioSourceRetry').hidden, true);
+    form.fields = {projectKey: project.projectKey, title: project.title};
+    const resubmit = {type: 'submit'};
+    form.dispatchEvent(resubmit);
+    await Promise.all(resubmit.results);
+    assert.equal(writes().length, 1, 'The user can explicitly submit once the current source is confirmed');
+    assert.equal(JSON.parse(writes()[0].options.body).title, project.title);
+    assert.equal(app.nodes.get('selectedProjectKey').textContent, project.projectKey);
 }
 
 async function portfolioRequirements(transition) {
@@ -719,6 +808,8 @@ async function snapshot(mode) {
     else if (scenario === 'portfolio-selection-pending-submit') await portfolio(true, false, true);
     else if (scenario === 'portfolio-startup-busy') await portfolio(true, false, false, true);
     else if (scenario === 'portfolio-page-exit') await portfolio(true, true);
+    else if (scenario === 'portfolio-skip-link-submit') await portfolio(true, false, false, false, true);
+    else if (scenario.startsWith('portfolio-rejected-source-')) await portfolioRejectedSource(scenario.slice('portfolio-rejected-source-'.length));
     else if (scenario.startsWith('portfolio-requirement-')) await portfolioRequirements(scenario.slice('portfolio-requirement-'.length));
     else if (scenario === 'snapshot-startup') await snapshot('startup');
     else if (scenario === 'snapshot-delayed-loader') await snapshot('delayed-loader');

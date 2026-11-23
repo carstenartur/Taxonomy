@@ -2,11 +2,13 @@ package com.taxonomy.interop.publication;
 
 import com.taxonomy.dsl.command.ArchitectureCommand.*;
 import com.taxonomy.extension.api.integration.PublicationContracts.*;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import java.util.Map;
 import java.util.concurrent.*;
 import static org.junit.jupiter.api.Assertions.*;
 
+@Tag("ci-app-shard-spring-context-a")
 class IntegrationPublicationConcurrencyTest extends PublicationIntegrationFixture {
 
     @Test

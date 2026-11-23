@@ -2,6 +2,7 @@ package com.taxonomy;
 
 import com.taxonomy.analysis.service.PromptTemplateService;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -19,6 +20,7 @@ import org.springframework.security.test.context.support.WithMockUser;
 @SpringBootTest
 @AutoConfigureMockMvc
 @WithMockUser(roles = "ADMIN")
+@Tag("ci-app-shard-spring-context-a")
 class PromptTemplateTests {
 
     @Autowired
