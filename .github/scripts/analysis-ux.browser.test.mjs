@@ -1211,7 +1211,7 @@ test('portable Copilot import renders and re-exports retained evidence without g
         });
         await page.waitForFunction(() => window.portableExport);
         const exported=await page.evaluate(() => window.portableExport);
-        assert.equal(exported.url,'/api/scores/export');
+        assert.equal(exported.url,'/api/scores/export?workspaceId=draft-workspace');
         assert.deepEqual(exported.body.copilot,copilot);assert.equal(exported.body.analysisReference,undefined);
     } finally { await finish(page); }
 });
