@@ -1,5 +1,10 @@
 package com.taxonomy.workspace.service;
 
+import com.taxonomy.dto.WorkspaceInfo;
+import com.taxonomy.versioning.service.ContextCompareService;
+import com.taxonomy.versioning.service.ContextHistoryService;
+import com.taxonomy.versioning.service.ContextNavigationService;
+import com.taxonomy.workspace.controller.WorkspaceController;
 import com.taxonomy.workspace.model.RepositoryTopologyMode;
 import com.taxonomy.workspace.model.SystemRepository;
 import com.taxonomy.workspace.model.UserWorkspace;
@@ -13,6 +18,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -37,6 +44,7 @@ class WorkspaceDefaultBootstrapReadinessTest {
     @AfterEach
     void clearRequest() {
         RequestContextHolder.resetRequestAttributes();
+        SecurityContextHolder.clearContext();
     }
 
     @Test
@@ -83,6 +91,32 @@ class WorkspaceDefaultBootstrapReadinessTest {
             assertEquals("draft", ready.getSourceBranch());
             verify(fixture.rows, times(1)).claimProvisioning(eq(workspaceId), eq(USER),
                     eq(WorkspaceProvisioningStatus.PROVISIONING), anyCollection(), anyString(), any(), any());
+        }
+    }
+
+    @Test
+    void currentWorkspaceReportsPendingUntilItsActualSourceCheckpointExists() throws Exception {
+        try (var fixture = new Fixture()) {
+            var security = SecurityContextHolder.createEmptyContext();
+            security.setAuthentication(new UsernamePasswordAuthenticationToken(USER, "unused", List.of()));
+            SecurityContextHolder.setContext(security);
+            var controller = new WorkspaceController(fixture.manager, new WorkspaceResolver(fixture.resolver),
+                    mock(ContextCompareService.class), mock(ContextHistoryService.class), mock(ContextNavigationService.class),
+                    mock(SyncIntegrationService.class), mock(WorkspaceProjectionService.class), fixture.catalog);
+
+            var pending = controller.getCurrentWorkspace();
+            assertEquals(202, pending.getStatusCode().value());
+            assertEquals("1", pending.getHeaders().getFirst("Retry-After"));
+            assertEquals("no-store", pending.getHeaders().getCacheControl());
+            assertEquals("INITIAL_SOURCE_PENDING", assertInstanceOf(java.util.Map.class, pending.getBody()).get("state"));
+            assertEquals(WorkspaceProvisioningStatus.NOT_PROVISIONED, fixture.saved.get().getProvisioningStatus());
+            verify(fixture.rows, never()).claimProvisioning(anyString(), anyString(), any(), anyCollection(), anyString(), any(), any());
+
+            fixture.factory.getSystemRepository().commitDsl("draft", SOURCE, "system", "Initial source");
+            var ready = controller.getCurrentWorkspace();
+            assertEquals(200, ready.getStatusCode().value());
+            assertEquals(fixture.saved.get().getWorkspaceId(), assertInstanceOf(WorkspaceInfo.class, ready.getBody()).workspaceId());
+            assertEquals("READY", assertInstanceOf(WorkspaceInfo.class, ready.getBody()).provisioningStatus());
         }
     }
 

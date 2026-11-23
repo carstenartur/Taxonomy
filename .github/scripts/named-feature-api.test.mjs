@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
 import {readFile} from 'node:fs/promises';
 import test from 'node:test';
 import vm from 'node:vm';
@@ -6,7 +7,8 @@ import vm from 'node:vm';
 const root = new URL('../../taxonomy-app/src/main/resources/static/js/', import.meta.url);
 const sources = new Map();
 for (const path of ['api/taxonomy-api-client.js', 'api/analysis-adapter-api.js', 'api/analysis-api.js', 'api/portfolio-api.js',
-  'api/workspace-api.js', 'api/search-api.js', 'versioning/taxonomy-context-bar.js',
+  'api/workspace-api.js', 'api/architecture-lifecycle-api.js', 'shared/architecture-lifecycle.js',
+  'shared/requirement-intake.js', 'api/search-api.js', 'versioning/taxonomy-context-bar.js',
   'api/import-api.js', 'api/analysis-session-api.js', 'core/taxonomy-analysis-session-core.js',
   'core/taxonomy-analysis-session-transport.js', 'portfolio/taxonomy-portfolio-async.js',
   'core/taxonomy-analysis.js', 'shared/taxonomy-document-import.js', 'shared/taxonomy-import.js', 'api/export-api.js',
@@ -32,6 +34,7 @@ function boot(fetchImpl, {analysis = false, portfolio = false, beforeCanonical =
     localStorage: {getItem: key => stored.get(key) || null, setItem: (key, value) => stored.set(key, value), removeItem: key => stored.delete(key)},
     sessionStorage: {getItem: () => null, setItem() {}, removeItem() {}},
     addEventListener(type, listener) {if (!windowListeners.has(type)) windowListeners.set(type, []); windowListeners.get(type).push(listener);},
+    removeEventListener(type, listener) {windowListeners.set(type, (windowListeners.get(type) || []).filter(value => value !== listener));},
     dispatchEvent(event) {for (const listener of windowListeners.get(event.type) || []) listener(event); return true;},
     setTimeout: (callback, delay) => {timers.set(++timerId, {callback, delay}); return timerId;},
     clearTimeout: id => timers.delete(id),
@@ -265,6 +268,125 @@ test('portfolio startup reads the selected source only after lifecycle initializ
   assert.equal(request.searchParams.get('repositoryId'),'resolved-repository');
   assert.equal(new Headers(requests[0].init.headers).get('X-Taxonomy-Workspace-Id'),'resolved-workspace');
 });
+
+for (const [description, search, usesDefault] of [
+  ['no pins', '', true],
+  ['only repository and branch pins', '?repositoryId=ready-repository&branch=draft', true],
+  ['an exact private source', '?repositoryId=ready-repository&branch=draft&workspaceScopeKey=ready-workspace', false]
+]) {
+test(`an early portfolio with ${description} enables intake and creation for its confirmed source`, async () => {
+  const requests = [], nodes = new Map();
+  const submit = {disabled: false};
+  const stand = {workspaceId: 'ready-workspace', workspaceScopeKey: 'ready-workspace',
+    repositoryId: 'ready-repository', branch: 'draft', revision: 1, commit: 'a'.repeat(40)};
+  function element() {
+    const listeners = new Map();
+    return {value: '', textContent: '', children: [], dataset: {}, classList: {add() {}, remove() {}, toggle() {}},
+      addEventListener(type, listener) {listeners.set(type, listener);}, setAttribute() {}, removeAttribute() {}, scrollIntoView() {},
+      fire(type) {return listeners.get(type)?.({currentTarget: this, target: this, preventDefault() {}});},
+      append(...values) {this.children.push(...values);}, replaceChildren(...values) {this.children = values;},
+      reset() {}};
+  }
+  const template = await readFile(new URL('../../taxonomy-app/src/main/resources/templates/projects.html', import.meta.url), 'utf8');
+  for (const match of template.matchAll(/\bid="([^"]+)"/g)) nodes.set(match[1], element());
+  nodes.set('architectureLifecycle', element());
+  const requirement = element();
+  let sourcePending = true, projectCreated = false;
+  const app = boot(async (url, init) => {
+    const {pathname, searchParams} = new URL(url, 'https://taxonomy.example');
+    const method = init.method || 'GET';
+    requests.push({path: pathname.replace('/taxonomy', ''), method, searchParams});
+    if (pathname.endsWith('/api/workspace/current')) {
+      return sourcePending ? Response.json({state: 'INITIAL_SOURCE_PENDING'}, {status: 202})
+        : Response.json({workspaceId: stand.workspaceId, provisioningStatus: 'READY'});
+    }
+    if (pathname.endsWith('/api/architecture/lifecycle')) {
+      if (sourcePending && searchParams.get('workspaceId') !== stand.workspaceId) {
+        return Response.json({detail: 'The first checkpoint is pending'}, {status: 409});
+      }
+      return Response.json({context: stand, projectionState: 'READY', source: 'WORKSPACE_REVISION', mayEdit: true});
+    }
+    if (pathname.endsWith('/intake-review')) {
+      const {text} = JSON.parse(init.body);
+      return Response.json({status: 'COMPLETE', scope: stand, candidates: [],
+        inputHash: createHash('sha256').update(text).digest('hex')});
+    }
+    if (method === 'POST' && pathname.endsWith('/api/projects')) {
+      projectCreated = true;
+      return Response.json({id: 7, projectKey: 'FIRST', title: 'First project'});
+    }
+    return Response.json([]);
+  }, {nodes, search, workflow: true});
+  app.runtime.workspaceId = null;
+  app.context.location = app.window.location;
+  app.context.TextEncoder = TextEncoder;
+  app.context.FormData = class {
+    forEach(callback) {callback('FIRST', 'projectKey'); callback('First project', 'title');}
+  };
+  app.load('api/workspace-api.js');
+  app.window.TaxonomyI18n.ready = () => Promise.resolve();
+  app.window.TaxonomyUtils = {hideModal() {}};
+  const query = app.document.querySelector;
+  app.document.querySelector = selector => selector === '#requirementForm [name="text"]' ? requirement
+    : query(selector) || element();
+  app.document.querySelectorAll = selector => selector.startsWith('button[type') ? [submit] : [];
+  app.document.createElement = element;
+  app.load('api/architecture-lifecycle-api.js');
+  app.load('shared/architecture-lifecycle.js');
+  app.load('shared/requirement-intake.js');
+  vm.runInContext(sources.get('portfolio/taxonomy-portfolio.js').replace(/\}\)\(\);\s*$/,
+    'window.portfolioStartupFixture = {initialize};})();'), app.context);
+  const started = app.window.portfolioStartupFixture.initialize();
+  let earlySubmission;
+  await flush();
+  const calls = () => requests.map(({path, method}) => `${method} ${path}`);
+  if (usesDefault) {
+    assert.deepEqual(calls(), ['GET /api/workspace/current'], 'The first overview must wait for a confirmed source');
+    assert.equal(submit.disabled, true);
+    earlySubmission = nodes.get('projectForm').fire('submit');
+    await flush();
+    assert.equal(projectCreated, false);
+
+    sourcePending = false;
+    const retry = [...app.timers.values()].find(timer => timer.delay === 1000);
+    assert.ok(retry, 'The pending observation has a bounded read-only retry');
+    retry.callback();
+  }
+  assert.equal(await started, true, nodes.get('portfolioError').textContent);
+  if (earlySubmission) await earlySubmission;
+  assert.deepEqual(calls(), [
+    ...(usesDefault ? ['GET /api/workspace/current', 'GET /api/workspace/current'] : []),
+    'GET /api/architecture/lifecycle',
+    'GET /api/projects',
+    ...(usesDefault ? ['POST /api/projects', 'GET /api/projects'] : [])
+  ]);
+  assert.equal(projectCreated, usesDefault, 'A queued submission completes exactly once after source confirmation');
+  assert.equal(submit.disabled, false);
+  assert.deepEqual(JSON.parse(JSON.stringify(app.window.TaxonomyArchitectureLifecycle.selectedContext())), stand);
+  requirement.value = 'The earliest selectable requirement.';
+  requirement.fire('input');
+  const intake = [...app.timers.values()].find(timer => timer.delay === 650);
+  assert.ok(intake);
+  intake.callback();
+  await flush();
+  const form = nodes.get('requirementForm');
+  const choice = form.children.at(-1).children.find(child => child.dataset.intakeChoice === 'NEW');
+  assert.ok(choice, 'The confirmed stand must expose a usable intake choice');
+  await choice.fire('click');
+  const command = await app.window.TaxonomyRequirementIntake.prepare(form, {text: requirement.value});
+  assert.equal(command.choice, 'NEW');
+  assert.equal(command.requirement.text, requirement.value);
+  if (!usesDefault) await nodes.get('projectForm').fire('submit');
+  assert.equal(projectCreated, true);
+  for (const path of ['/api/architecture/lifecycle/intake-review', '/api/projects']) {
+    const writes = requests.filter(request => request.path === path && request.method === 'POST');
+    assert.equal(writes.length, 1, `One ${path} submission uses the confirmed source`);
+    assert.equal(writes[0].searchParams.get('workspaceId'), stand.workspaceId);
+    assert.equal(writes[0].searchParams.get('repositoryId'), stand.repositoryId);
+    assert.equal(writes[0].searchParams.get('branch'), stand.branch);
+  }
+});
+}
 
 function selectedAnalysisSource(app) {
   return {repositoryId: 'selected-model', workspaceScopeKey: app.runtime.workspaceId || '__shared__',

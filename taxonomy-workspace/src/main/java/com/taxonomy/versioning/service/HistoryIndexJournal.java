@@ -282,9 +282,11 @@ public class HistoryIndexJournal {
         }
     }
 
-    List<String> due() {
-        return bounded().queryForList("select operation_id from history_index_operation where phase in ('ADMITTED','RETRYABLE','RUNNING') and due_at<=? order by due_at,operation_id",
-                String.class, clock.millis());
+    List<String> due(boolean includeHistory) {
+        String eligibleKind = includeHistory ? "" : " and command_kind in ('RELATION','VECTOR_BUILD','VECTOR_PURGE')";
+        return bounded().queryForList("select operation_id from history_index_operation"
+                        + " where phase in ('ADMITTED','RETRYABLE','RUNNING') and due_at<=?"
+                        + eligibleKind + " order by due_at,operation_id", String.class, clock.millis());
     }
 
     private JdbcTemplate bounded() {

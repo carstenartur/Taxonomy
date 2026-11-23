@@ -1,6 +1,8 @@
 package com.taxonomy.versioning.model;
 
 import com.taxonomy.model.WorkspaceOverlayScope;
+import com.taxonomy.identity.StableIdentityHash;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -10,13 +12,18 @@ import jakarta.persistence.Index;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 import jakarta.persistence.UniqueConstraint;
 import org.hibernate.annotations.Nationalized;
 import org.hibernate.search.engine.backend.types.Sortable;
+import org.hibernate.search.engine.backend.types.Projectable;
 import org.hibernate.search.mapper.pojo.mapping.definition.annotation.FullTextField;
 import org.hibernate.search.mapper.pojo.mapping.definition.annotation.GenericField;
 import org.hibernate.search.mapper.pojo.mapping.definition.annotation.Indexed;
+import org.hibernate.search.mapper.pojo.mapping.definition.annotation.IndexingDependency;
 import org.hibernate.search.mapper.pojo.mapping.definition.annotation.KeywordField;
+import org.hibernate.search.mapper.pojo.mapping.definition.annotation.ObjectPath;
+import org.hibernate.search.mapper.pojo.mapping.definition.annotation.PropertyValue;
 
 import java.time.Instant;
 
@@ -202,6 +209,35 @@ public class ArchitectureCommitIndex {
 
     public Instant getIndexedAt() { return indexedAt; }
     public void setIndexedAt(Instant indexedAt) { this.indexedAt = indexedAt; }
+
+    /** Binds a retained search document to its exact scope, searchable text and chronology. */
+    @Transient
+    @JsonIgnore
+    @KeywordField(projectable = Projectable.YES)
+    @IndexingDependency(derivedFrom = {
+            @ObjectPath(@PropertyValue(propertyName = "repositoryId")),
+            @ObjectPath(@PropertyValue(propertyName = "workspaceId")),
+            @ObjectPath(@PropertyValue(propertyName = "workspaceScopeKey")),
+            @ObjectPath(@PropertyValue(propertyName = "branch")),
+            @ObjectPath(@PropertyValue(propertyName = "commitId")),
+            @ObjectPath(@PropertyValue(propertyName = "commitTimestamp")),
+            @ObjectPath(@PropertyValue(propertyName = "author")),
+            @ObjectPath(@PropertyValue(propertyName = "message")),
+            @ObjectPath(@PropertyValue(propertyName = "tokenizedChangeText")),
+            @ObjectPath(@PropertyValue(propertyName = "affectedElementIds")),
+            @ObjectPath(@PropertyValue(propertyName = "affectedRelationIds"))
+    })
+    public String getSearchFingerprint() {
+        var framed = new StringBuilder("architecture-commit-search:v1|");
+        // Lucene's Instant sort codec uses epoch milliseconds; preserve exactly that precision.
+        String indexedTimestamp = commitTimestamp == null ? null : Long.toString(commitTimestamp.toEpochMilli());
+        for (String value : new String[] {repositoryId, workspaceId, workspaceScopeKey, branch, commitId,
+                indexedTimestamp, author, message, tokenizedChangeText, affectedElementIds, affectedRelationIds}) {
+            if (value == null) framed.append("-1:");
+            else framed.append(value.length()).append(':').append(value);
+        }
+        return StableIdentityHash.sha256(framed.toString());
+    }
 
     private static String normalizeOptional(String value) {
         return value == null || value.isBlank() ? null : value.strip();

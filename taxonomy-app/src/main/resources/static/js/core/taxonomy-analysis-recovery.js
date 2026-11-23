@@ -124,7 +124,10 @@
         if (!value) liveWork = '';
         ['copilotBtn', 'analyzeBtn'].forEach(function (id) {
             var b = document.getElementById(id);
-            if (b) { b.disabled = value; b.setAttribute('aria-busy', String(value)); }
+            if (b) {
+                b.disabled = value || (id === 'analyzeBtn' && window.TaxonomyStartupProgress?.analysisReady() === false);
+                b.setAttribute('aria-busy', String(value));
+            }
         });
         var spinner = document.getElementById('copilotSpinner');
         if (spinner) spinner.classList.toggle('d-none', !value);

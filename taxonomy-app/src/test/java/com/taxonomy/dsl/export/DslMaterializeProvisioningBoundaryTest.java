@@ -9,6 +9,7 @@ import com.taxonomy.workspace.repository.UserWorkspaceRepository;
 import com.taxonomy.workspace.service.SystemRepositoryService;
 import com.taxonomy.workspace.service.WorkspaceManager;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationContext;
@@ -24,6 +25,7 @@ import static org.junit.jupiter.api.Assertions.*;
         "taxonomy.git.bootstrap=false", "embedding.enabled=false", "embedding.allow-download=false",
         "gemini.api.key=", "openai.api.key=", "deepseek.api.key=", "qwen.api.key=", "llama.api.key=", "mistral.api.key="})
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
+@Tag("ci-app-shard-spring-context-a")
 class DslMaterializeProvisioningBoundaryTest {
     @Autowired private ApplicationContext applicationContext;
     private static final String ACTOR = "materialize-provision-owner";

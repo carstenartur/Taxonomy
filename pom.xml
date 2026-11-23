@@ -1002,7 +1002,7 @@
                 <taxonomy.interoperability.skip>true</taxonomy.interoperability.skip>
                 <taxonomy.production.image.skip>true</taxonomy.production.image.skip>
                 <maven.build.cache.enabled>false</maven.build.cache.enabled>
-                <excludedGroups>real-llm,db-mssql,db-oracle,ci-app-shard-recovery,ci-app-shard-browser,ci-app-shard-scenario,ci-app-shard-runtime,ci-app-shard-domain-integration</excludedGroups>
+                <excludedGroups>real-llm,db-mssql,db-oracle,ci-app-shard-recovery,ci-app-shard-browser,ci-app-shard-scenario,ci-app-shard-runtime,ci-app-shard-domain-integration,ci-app-shard-spring-context-a,ci-app-shard-spring-context-b</excludedGroups>
                 <taxonomy.app.shard.coverageAggregateSkip>true</taxonomy.app.shard.coverageAggregateSkip>
                 <taxonomy.coverage.policy.exclude>**/ReactorCoveragePolicyIT.java</taxonomy.coverage.policy.exclude>
             </properties>
@@ -1079,6 +1079,38 @@
                 <maven.build.cache.enabled>false</maven.build.cache.enabled>
                 <groups>ci-app-shard-domain-integration</groups>
                 <!-- PostgreSQL and ONNX remain required in this owner. -->
+                <excludedGroups>real-llm,db-mssql,db-oracle</excludedGroups>
+                <taxonomy.productDemo.testPhase>none</taxonomy.productDemo.testPhase>
+                <taxonomy.app.architectureAnchorPhase>none</taxonomy.app.architectureAnchorPhase>
+                <taxonomy.quality.skip>true</taxonomy.quality.skip>
+                <taxonomy.model.download.skip>false</taxonomy.model.download.skip>
+                <taxonomy.ui.skip>true</taxonomy.ui.skip>
+            </properties>
+        </profile>
+        <profile>
+            <id>ci-app-test-shard-spring-context-a</id>
+            <properties>
+                <taxonomy.observability.performance.enabled>false</taxonomy.observability.performance.enabled>
+                <taxonomy.interoperability.skip>true</taxonomy.interoperability.skip>
+                <taxonomy.production.image.skip>true</taxonomy.production.image.skip>
+                <maven.build.cache.enabled>false</maven.build.cache.enabled>
+                <groups>ci-app-shard-spring-context-a</groups>
+                <excludedGroups>real-llm,db-mssql,db-oracle</excludedGroups>
+                <taxonomy.productDemo.testPhase>none</taxonomy.productDemo.testPhase>
+                <taxonomy.app.architectureAnchorPhase>none</taxonomy.app.architectureAnchorPhase>
+                <taxonomy.quality.skip>true</taxonomy.quality.skip>
+                <taxonomy.model.download.skip>false</taxonomy.model.download.skip>
+                <taxonomy.ui.skip>true</taxonomy.ui.skip>
+            </properties>
+        </profile>
+        <profile>
+            <id>ci-app-test-shard-spring-context-b</id>
+            <properties>
+                <taxonomy.observability.performance.enabled>false</taxonomy.observability.performance.enabled>
+                <taxonomy.interoperability.skip>true</taxonomy.interoperability.skip>
+                <taxonomy.production.image.skip>true</taxonomy.production.image.skip>
+                <maven.build.cache.enabled>false</maven.build.cache.enabled>
+                <groups>ci-app-shard-spring-context-b</groups>
                 <excludedGroups>real-llm,db-mssql,db-oracle</excludedGroups>
                 <taxonomy.productDemo.testPhase>none</taxonomy.productDemo.testPhase>
                 <taxonomy.app.architectureAnchorPhase>none</taxonomy.app.architectureAnchorPhase>

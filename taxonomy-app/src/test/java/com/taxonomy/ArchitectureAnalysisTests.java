@@ -6,6 +6,7 @@ import com.taxonomy.relations.repository.RequirementCoverageRepository;
 import com.taxonomy.catalog.repository.TaxonomyRelationRepository;
 import com.taxonomy.relations.service.RequirementCoverageService;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -44,6 +45,7 @@ import com.taxonomy.relations.service.RequirementCoverageService;
 @SpringBootTest
 @AutoConfigureMockMvc
 @WithMockUser(roles = {"USER", "ARCHITECT", "ADMIN"})
+@Tag("ci-app-shard-spring-context-b")
 class ArchitectureAnalysisTests extends GraphSnapshotFixtureSupport {
 
     @Autowired private MockMvc mockMvc;

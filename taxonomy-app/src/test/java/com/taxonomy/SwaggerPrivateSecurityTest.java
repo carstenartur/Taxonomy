@@ -1,5 +1,6 @@
 package com.taxonomy;
 
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -23,6 +24,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "mistral.api.key=",
         "taxonomy.security.swagger-public=false"
 })
+@Tag("ci-app-shard-spring-context-a")
 class SwaggerPrivateSecurityTest {
 
     @Autowired

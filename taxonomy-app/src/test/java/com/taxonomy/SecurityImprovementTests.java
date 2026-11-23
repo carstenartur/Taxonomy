@@ -4,6 +4,7 @@ import com.taxonomy.security.config.LoginRateLimitFilter;
 import com.taxonomy.security.model.AppUser;
 import com.taxonomy.security.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -42,6 +43,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
     "taxonomy.security.login-rate-limit.max-attempts=3",
     "taxonomy.security.login-rate-limit.lockout-seconds=60"
 })
+@Tag("ci-app-shard-spring-context-b")
 class SecurityImprovementTests {
 
     @Autowired

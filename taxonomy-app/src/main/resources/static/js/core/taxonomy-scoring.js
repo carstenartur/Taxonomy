@@ -278,7 +278,7 @@
             spinner.setAttribute('aria-hidden', 'true');
         }
 
-        btn.disabled = on;
+        btn.disabled = on || window.TaxonomyStartupProgress?.analysisReady() === false;
         spinner.classList.toggle('d-none', !on);
         const label = on ? t('scoring.analyzing') : t('scoring.analyze.btn');
         btn.replaceChildren(spinner, document.createTextNode(' ' + label));

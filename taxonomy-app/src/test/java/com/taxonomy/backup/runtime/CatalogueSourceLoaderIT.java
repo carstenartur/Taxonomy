@@ -8,6 +8,7 @@ import com.taxonomy.catalog.provenance.*;
 import com.taxonomy.catalog.provenance.CatalogueSourceJournal.*;
 import com.taxonomy.catalog.repository.*;
 import com.taxonomy.catalog.service.*;
+import com.taxonomy.search.LocalEmbeddingIndexRebuilder;
 import com.taxonomy.workspace.model.SystemRepository;
 import com.taxonomy.workspace.repository.SystemRepositoryRepository;
 import com.taxonomy.workspace.service.SystemRepositoryService;
@@ -30,6 +31,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.*;
 import static org.assertj.core.api.Assertions.*;
+import static org.mockito.Mockito.mock;
 
 class CatalogueSourceLoaderIT {
     private static final String WORKBOOK = "memory:base.xlsx", OVERLAY = "memory:overlay.json", CSV = "classpath:data/relations.csv";
@@ -275,6 +277,8 @@ class CatalogueSourceLoaderIT {
             ReflectionTestUtils.setField(loader, "resourceLoader", resourceLoader); ReflectionTestUtils.setField(loader, "catalogueResource", workbook);
             ReflectionTestUtils.setField(loader, "catalogueSourceJournal", journal); ReflectionTestUtils.setField(loader, "reloadExisting", reload);
             ReflectionTestUtils.setField(loader, "catalogueOverlayService", new CatalogueOverlayService(new ObjectMapper(), resourceLoader, overlayEnabled, overlay));
+            // This source-loading fixture opens Hibernate with Search disabled.
+            ReflectionTestUtils.setField(loader, "searchIndexRebuilder", mock(LocalEmbeddingIndexRebuilder.class));
             loader.initOnStartup(); return state;
         }
         void load(boolean overlayEnabled, boolean reload) { var state = start(overlayEnabled, reload); assertThat(state.getState()).as("initialization error: %s", state.getError()).isEqualTo(AppInitializationStateService.State.READY); }

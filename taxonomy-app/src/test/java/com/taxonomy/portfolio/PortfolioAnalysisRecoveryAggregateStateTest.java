@@ -15,6 +15,7 @@ import com.taxonomy.portfolio.service.PortfolioScope;
 import com.taxonomy.portfolio.service.ProjectPortfolioService;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import com.taxonomy.workspace.service.WorkspaceContext;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -26,6 +27,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /** Regression coverage for aggregate status reconciliation around prepared retries. */
 @SpringBootTest
+@Tag("ci-app-shard-spring-context-b")
 class PortfolioAnalysisRecoveryAggregateStateTest extends RetainedPortfolioCatalogue {
 
     @Autowired

@@ -4,6 +4,7 @@ import com.taxonomy.dsl.command.ArchitectureSemanticPatch;
 import com.taxonomy.dsl.requirements.RequirementRealization;
 import com.taxonomy.dsl.requirements.RequirementTrace;
 import com.taxonomy.portfolio.dto.PortfolioDtos.RequirementVersionView;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.security.test.context.support.WithMockUser;
@@ -16,6 +17,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 /** The complete later-project lifecycle runs against the real portfolio, editor journal and native JGit storage. */
 @SpringBootTest
 @WithMockUser(username = "alice", roles = {"USER", "ARCHITECT", "ADMIN"})
+@Tag("ci-app-shard-spring-context-a")
 class RequirementLifecycleIntegrationTest extends LifecycleTestSupport {
     @Test
     void nineRequirementsRemainInOneArchitectureThroughLaterProjectsAndAnExactNinthVersionChange() throws Exception {

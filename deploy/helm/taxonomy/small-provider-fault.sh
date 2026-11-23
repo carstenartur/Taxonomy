@@ -31,6 +31,7 @@ exercise_small_provider_fault() (
   private=$(mktemp -d)
   http_pid=""
   trap 'if [[ -n "${http_pid}" ]]; then kill "${http_pid}" 2>/dev/null || true; wait "${http_pid}" 2>/dev/null || true; fi; rm -rf -- "${private}"' EXIT
+  rm -f -- "${directory}/analysis-http-status.txt"
   app_request() {
     kubectl exec --namespace "${NAMESPACE}" "${pod}" -- sh -c '
       exec curl --silent --show-error --max-time 120 --connect-timeout 3 \
@@ -38,6 +39,14 @@ exercise_small_provider_fault() (
     ' sh "$@"
   }
   local api=http://127.0.0.1:8080/api
+  # Helm/probe readiness permits HTTP while a replacement web pod is still
+  # validating its catalogue. Admission needs this pod's actual catalogue READY.
+  local catalogue_deadline=$((SECONDS + 900))
+  until app_request --fail --max-time 5 "${api}/status/startup" >"${directory}/catalogue-readiness.json" &&
+      jq -e '.initialized == true' "${directory}/catalogue-readiness.json" >/dev/null; do
+    (( SECONDS < catalogue_deadline )) || fail "Timed out: catalogue readiness before controlled provider analysis"
+    sleep 2
+  done
   workspace=$(app_request --fail -H 'Content-Type: application/json' --data '{"displayName":"Small profile fault"}' \
     "${api}/workspace/create" | jq -er '.workspaceId | select(test("^[A-Za-z0-9_-]+$"))')
   app_request --fail -H 'Content-Type: application/json' --data '{}' "${api}/workspace/provision?workspaceId=${workspace}" |
@@ -55,7 +64,15 @@ exercise_small_provider_fault() (
     [[ "${attempts}" == 1 ]] && break
     sleep 1
   done
-  [[ "${attempts}" == 1 ]] || fail "No real provider request arrived on the controlled TLS listener"
+  if [[ "${attempts}" != 1 ]]; then
+    local analysis_http_code
+    analysis_http_code=$(cat "${private}/analysis-http")
+    if [[ "${analysis_http_code}" =~ ^[0-9]{3}$ ]]; then
+      printf '%s\n' "${analysis_http_code}" >"${directory}/analysis-http-status.txt"
+      printf 'Analysis HTTP status before provider observation: %s\n' "${analysis_http_code}" >&2
+    fi
+    fail "No real provider request arrived on the controlled TLS listener"
+  fi
   "${observe_started}"
   app_request --fail -X POST "${api}/analysis-runs/${operation}/cancel?workspaceId=${workspace}" |
     jq -e --arg op "${operation}" '.operationId == $op and (.status == "CANCELLING" or .status == "CANCELLED")' >/dev/null

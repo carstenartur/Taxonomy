@@ -10,6 +10,7 @@ import com.taxonomy.versioning.service.RepositoryStateService;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -28,6 +29,7 @@ import com.taxonomy.dto.ViewContext;
 @SpringBootTest(properties = "spring.datasource.url=jdbc:hsqldb:mem:dsl-api-controller")
 @AutoConfigureMockMvc
 @WithLocalTestUser(roles = {"USER", "ARCHITECT", "ADMIN"})
+@Tag("ci-app-shard-spring-context-b")
 class DslApiControllerTest implements AnalysisCatalogueSourceFixture {
 
     @Autowired

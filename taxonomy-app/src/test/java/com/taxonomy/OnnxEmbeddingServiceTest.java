@@ -21,6 +21,7 @@ import static org.assertj.core.api.Assertions.assertThat;
         "embedding.enabled=true",
         "embedding.allow-download=false"
 })
+@Tag("ci-app-shard-spring-context-a")
 class OnnxEmbeddingServiceTest {
 
     @Autowired

@@ -575,8 +575,7 @@ public class WorkspaceManager {
                 && defaultSourceHeadIsMissing(workspace)) {
             // Bootstrap publishes the initial source checkpoint after application
             // readiness. No allocation has started, so keep this UUID retryable.
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Source repository is still initializing; retry when its initial checkpoint is available");
+            throw new InitialWorkspaceSourcePending();
         }
         return provisionWorkspaceRepository(username, workspace, branch);
     }

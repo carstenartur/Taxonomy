@@ -7,6 +7,7 @@ import com.taxonomy.security.model.AppUser;
 import com.taxonomy.security.repository.RoleRepository;
 import com.taxonomy.security.repository.UserRepository;
 import com.taxonomy.security.service.DatabaseUserDetailsService;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -41,6 +42,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
     "llama.api.key=",
     "mistral.api.key="
 })
+@Tag("ci-app-shard-spring-context-b")
 class SecurityTests {
 
     @Autowired

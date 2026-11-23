@@ -345,6 +345,9 @@ class CatalogueSnapshotConsistencyTest {
             ReflectionTestUtils.setField(importer, "transactionManager", transactions);
             ReflectionTestUtils.setField(importer, "catalogueOverlayService", overlay);
             ReflectionTestUtils.setField(importer, "catalogueSourceJournal", journal);
+            // This persistence-only fixture explicitly disables Hibernate Search.
+            ReflectionTestUtils.setField(importer, "searchIndexRebuilder",
+                    mock(com.taxonomy.search.LocalEmbeddingIndexRebuilder.class));
             ReflectionTestUtils.setField(importer, "catalogueResource", "fixture");
             return importer;
         }

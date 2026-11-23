@@ -6,6 +6,7 @@ import com.taxonomy.catalog.repository.TaxonomyRelationRepository;
 import com.taxonomy.architecture.service.ArchitectureGraphQueryService;
 import com.taxonomy.catalog.service.TaxonomyRelationService;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -29,6 +30,7 @@ import com.taxonomy.dto.RequirementImpactView;
 @SpringBootTest
 @AutoConfigureMockMvc
 @WithMockUser(roles = "ADMIN")
+@Tag("ci-app-shard-spring-context-a")
 class GraphQueryTests extends GraphSnapshotFixtureSupport {
 
     @Autowired

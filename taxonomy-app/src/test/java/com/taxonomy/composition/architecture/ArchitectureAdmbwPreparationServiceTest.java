@@ -12,6 +12,7 @@ import com.taxonomy.extension.api.plugin.ExtensionUnavailableException;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -36,6 +37,7 @@ import static org.springframework.test.web.servlet.setup.MockMvcBuilders.standal
 /** Real workspace journal/transaction/checkpoint; native SQLite validation is owned by plugin tests. */
 @SpringBootTest
 @WithMockUser(username = "alice", roles = {"USER", "ARCHITECT", "ADMIN"})
+@Tag("ci-app-shard-spring-context-a")
 class ArchitectureAdmbwPreparationServiceTest extends LifecycleTestSupport {
     private static final String ROOT = "{10000000-0000-0000-0000-000000000001}";
     private static final String CAPABILITY = "{10000000-0000-0000-0000-000000000002}";

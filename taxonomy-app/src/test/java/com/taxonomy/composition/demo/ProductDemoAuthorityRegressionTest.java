@@ -26,6 +26,7 @@ import com.taxonomy.testsupport.LocalTestLogin;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import com.taxonomy.workspace.service.WorkspaceManager;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -51,6 +52,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 
 /** Durable authority regressions; no analysis worker or external provider is executed. */
 @SpringBootTest(properties = "llm.mock=true")
+@Tag("ci-app-shard-spring-context-a")
 class ProductDemoAuthorityRegressionTest extends RetainedPortfolioCatalogue {
     @Autowired private ApplicationContext applicationContext;
     private static final String USER = "architect";

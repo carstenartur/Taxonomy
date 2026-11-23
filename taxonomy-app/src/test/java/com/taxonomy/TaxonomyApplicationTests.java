@@ -7,6 +7,7 @@ import com.taxonomy.dto.TaxonomyNodeDto;
 import com.taxonomy.catalog.service.SearchService;
 import com.taxonomy.catalog.service.TaxonomyService;
 import org.mockito.MockedStatic;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -39,6 +40,7 @@ import org.springframework.security.test.context.support.WithUserDetails;
     "embedding.enabled=false"
 })
 @WithLocalTestUser(roles = {"USER", "ARCHITECT", "ADMIN"})
+@Tag("ci-app-shard-spring-context-b")
 class TaxonomyApplicationTests implements AnalysisCatalogueSourceFixture {
 
     @Autowired

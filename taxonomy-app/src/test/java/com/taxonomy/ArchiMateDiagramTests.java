@@ -11,6 +11,7 @@ import com.taxonomy.diagram.DiagramNode;
 import com.taxonomy.export.ArchiMateDiagramService;
 import com.taxonomy.archimate.exchange.ArchiMateIds;
 import com.taxonomy.archimate.exchange.ArchiMateXmlExporter;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -29,6 +30,7 @@ import org.springframework.security.test.context.support.WithMockUser;
 @SpringBootTest
 @AutoConfigureMockMvc
 @WithMockUser(roles = "USER")
+@Tag("ci-app-shard-spring-context-b")
 class ArchiMateDiagramTests {
 
     @Autowired

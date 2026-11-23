@@ -3,6 +3,7 @@ package com.taxonomy.analysis.controller;
 import com.taxonomy.dto.AnalysisResult;
 import com.taxonomy.dto.TaxonomyNodeDto;
 import com.taxonomy.catalog.service.TaxonomyService;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -17,6 +18,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** Exercises actual JSON binding, not only direct calls to the compatibility setters. */
 @SpringBootTest
+@Tag("ci-app-shard-spring-context-b")
 class AnalysisResultJsonTest {
     @Autowired
     private TaxonomyService taxonomyService;

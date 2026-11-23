@@ -594,7 +594,7 @@
             }).catch(function(error){showActionAlert('danger',text('createFailed'),error.message,[],'version-error');return false;});
     }
 
-    var sourceRead = null, sourceNotice = null;
+    var sourceRead = null, sourceNotice = null, workspaceResolution = 0, manualWorkspaceRetry = null;
     function notifySourceReady() {
         if (!sourceNotice || sourceNotice.workspace !== runtime.workspaceId
                 || !window.TaxonomyAnalysisSession?.state?.().ready) return;
@@ -639,6 +639,7 @@
     }
 
     function beginDraftResolution() {
+        workspaceResolution++;
         runtime.workspaceResolved = false;
         sourceNotice = null;
         runtime.sourceReady = !(window.TaxonomyArchitectureLifecycle?.ready
@@ -672,6 +673,15 @@
         return {workspaceId:id, repositoryId:query.get('repositoryId'), branch:query.get('branch')};
     }
 
+    function hasIndependentArchitectureSelection() {
+        if (!window.location?.href) return false;
+        var url = new URL(window.location.href);
+        if (url.hash !== '#architecture') return false;
+        var query = url.searchParams;
+        return ['working', 'snapshot'].includes(query.get('architectureSource'))
+            && window.TaxonomyArchitectureWorkflow?.hasExactWorkspaceSource?.(query) === true;
+    }
+
     function resolveWorkspaceAndLoad(options) {
         beginDraftResolution();
         var remembered = rememberedWorkspaceId();
@@ -702,19 +712,29 @@
 
     function resolveActiveWorkspaceAndLoad(options, historySource) {
         beginDraftResolution();
+        var resolution = workspaceResolution;
         historySource = historySource || historyAnalysisSource();
         // A previous entry may have a different workspace than this tab's most recent switch.
         // Confirm that exact private source before assigning the draft or enabling its actions.
+        function current() { return jsonRequest('/api/workspace/current', {method: 'GET', cache: 'no-store'}); }
+        var workspaceApi = window.TaxonomyWorkspaceApi;
+        var waitForDefault = workspaceApi?.waitForCurrent && !hasIndependentArchitectureSelection();
         var lookup = historySource
-            ? window.TaxonomyWorkspaceApi.current({pinnedWorkspaceId:historySource.workspaceId})
-            : jsonRequest('/api/workspace/current', { method: 'GET' });
+            ? workspaceApi.current({pinnedWorkspaceId:historySource.workspaceId})
+            : waitForDefault ? workspaceApi.waitForCurrent(current) : current();
         return lookup.then(function (workspace) {
+                if (resolution !== workspaceResolution) return null;
                 if (historySource && (workspace?.workspaceId !== historySource.workspaceId
                         || workspace.sourceRepositoryId !== historySource.repositoryId
                         || workspace.currentBranch !== historySource.branch
                         || workspace.archived !== false || workspace.shared !== false
                         || workspace.provisioningStatus !== 'READY')) {
                     throw new Error(text('serverWorkspaceMissingTitle'));
+                }
+                if (workspace?.state === 'INITIAL_SOURCE_PENDING') {
+                    // This document can still confirm an explicitly selected Editor or Snapshot.
+                    finishDraftResolution();
+                    return null;
                 }
                 runtime.workspaceResolved = true;
                 if (!workspace || !workspace.workspaceId) {
@@ -739,10 +759,11 @@
             }).then(function (view) {
                 // Do not await this here: architecture source initialization
                 // itself awaits the draft-only whenInitialized() promise.
-                confirmInitialSource();
+                if (resolution === workspaceResolution) confirmInitialSource();
                 return view;
             })
             .catch(function (error) {
+                if (resolution !== workspaceResolution) return null;
                 runtime.workspaceResolved = false;
                 finishDraftResolution();
                 if (historySource) {
@@ -751,13 +772,21 @@
                     C.serverUnavailable(error);
                 }
                 if (options?.probe) throw error;
-                if (!historySource && options?.reconcile) C.serverUnavailable(error);
+                if (error?.code === 'ABORTED') return null;
+                if (!historySource) {
+                    if (error?.status === 409 || error?.code === 'INITIAL_SOURCE_PENDING') {
+                        manualWorkspaceRetry = window.TaxonomyApiClient?.captureContext();
+                    }
+                    C.serverUnavailable(error);
+                }
                 if (window.console) window.console.warn('[Taxonomy] Workspace draft unavailable', error);
                 return null;
             });
     }
 
-    function retryServerState() {
+    function retryServerState(automatic) {
+        if (automatic === true && manualWorkspaceRetry?.()) return Promise.resolve(false);
+        manualWorkspaceRetry = null;
         // A retained source can lose confirmation after startup and become usable again.
         if (runtime.workspaceResolved && !window.TaxonomyAnalysisSession.state().ready) {
             sourceNotice = {workspace:runtime.workspaceId};
@@ -829,7 +858,7 @@
 
         document.addEventListener('visibilitychange', function () {
             if (document.visibilityState === 'hidden') saveLocalDraft();
-            else retryServerState();
+            else retryServerState(true);
         });
         document.addEventListener('taxonomy:server-contact', function (event) {
             if (document.visibilityState === 'hidden') return;
@@ -838,15 +867,15 @@
                 // An unavailable pin can mean that the server restarted with an
                 // empty database. A scoped draft read distinguishes that from
                 // a temporary transport failure without submitting any work.
-                if (event.detail.status === 403 || event.detail.status === 404) retryServerState();
-            } else retryServerState();
+                if (event.detail.status === 403 || event.detail.status === 404) retryServerState(true);
+            } else retryServerState(true);
         });
-        window.addEventListener('online', retryServerState);
+        window.addEventListener('online', function () { return retryServerState(true); });
         window.addEventListener('pageshow', function (event) {
             if (!event.persisted) return;
             restoredFromCache = true;
             var source = historyAnalysisSource();
-            if (!source) return retryServerState();
+            if (!source) return retryServerState(true);
             if (runtime.workspaceResolved) {
                 retainedDraft = {workspaceId:runtime.workspaceId, restoring:runtime.restoring,
                     decisionPending:runtime.draftDecisionPending};

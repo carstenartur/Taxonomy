@@ -39,6 +39,26 @@
         return method === 'GET' ? request(url,{method:'GET',cache:'no-store'},policy) : json(url,body,method,policy);
     }
 
+    function current(options) {
+        return request('/api/workspace/current', {method: 'GET', cache: 'no-store'}, options);
+    }
+
+    async function waitForCurrent(read) {
+        // Retry only the server's explicit bootstrap observation, with a finite wait.
+        var ownsSelection = window.TaxonomyApiClient.captureContext();
+        for (var attempt = 0; attempt <= 120 && ownsSelection(); attempt++) {
+            var workspace = await read();
+            if (!ownsSelection()) break;
+            if (workspace?.state !== 'INITIAL_SOURCE_PENDING') return workspace;
+            if (attempt === 120) {
+                throw new window.TaxonomyApiClient.ApiError(window.TaxonomyI18n.t('startup.ui.sourcePending'),
+                    202, '/api/workspace/current', null, {code: 'INITIAL_SOURCE_PENDING'});
+            }
+            await new Promise(function (resolve) { window.setTimeout(resolve, 1000); });
+        }
+        throw new window.TaxonomyApiClient.ApiError('Workspace observation was superseded', 0, null, null, {code: 'ABORTED'});
+    }
+
     var switchGeneration = 0;
 
     function beginSwitch(id) {
@@ -89,7 +109,8 @@
 
     window.TaxonomyWorkspaceApi = Object.freeze({
         beginSwitch: beginSwitch,
-        current: function (options) { return get('/api/workspace/current', options); },
+        current: current,
+        waitForCurrent: waitForCurrent,
         list: function (options) { return get('/api/workspace/list', options); },
         history: function (options) { return get('/api/workspace/history', options); },
         create: function (displayName, options) { return json('/api/workspace/create', { displayName: displayName }, 'POST', options); },

@@ -3,6 +3,7 @@ package com.taxonomy.security.controller;
 import com.taxonomy.security.model.AppUser;
 import com.taxonomy.security.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -22,6 +23,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @WithMockUser(username = "testuser", roles = "USER")
+@Tag("ci-app-shard-spring-context-a")
 class ChangePasswordControllerTest {
 
     private static final String CURRENT_PASSWORD = "OldPassword1";

@@ -2,6 +2,7 @@ package com.taxonomy;
 
 import com.taxonomy.dto.TaxonomyRelationDto;
 import com.taxonomy.catalog.service.TaxonomyRelationService;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -20,6 +21,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @SpringBootTest
 @DirtiesContext(classMode = DirtiesContext.ClassMode.BEFORE_CLASS)
+@Tag("ci-app-shard-spring-context-b")
 class TaxonomyCsvFallbackTests {
 
     @Autowired

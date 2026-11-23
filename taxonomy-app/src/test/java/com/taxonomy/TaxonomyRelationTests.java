@@ -10,6 +10,7 @@ import com.taxonomy.relations.repository.RelationDecisionProjectionCheckpointRep
 import com.taxonomy.relations.repository.RelationDecisionProjectionRepository;
 import com.taxonomy.relations.repository.RelationProjectionRecoveryRepository;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -32,6 +33,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @WithMockUser(username = "relation-read-contract-admin", roles = {"USER", "ARCHITECT", "ADMIN"})
+@Tag("ci-app-shard-spring-context-a")
 class TaxonomyRelationTests {
 
     @Autowired

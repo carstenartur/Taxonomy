@@ -939,6 +939,12 @@ class SharedApplicationChromeBrowserIT {
                 "currentVersion", Map.of("id", 33, "versionNumber", 3, "text", "Separate current requirement"));
         var summary = Map.of("id", "frozen-7", "projectId", 42, "requirementId", 7, "requirementVersionId", 11,
                 "requirementVersionNumber", 1, "status", "SUCCESS", "workspaceId", "private-a", "branchName", "review/current");
+        page.route("GET", "/taxonomy/api/architecture/lifecycle", request -> json(200, Map.of(
+                "context", Map.of("repositoryId", "architecture-a", "workspaceScopeKey", "private-a",
+                        "branch", "review/current", "actor", "qa-client", "commit", "a".repeat(40), "revision", 1),
+                "architectureTitle", "Snapshot selection fixture", "source", "WORKSPACE_REVISION",
+                "projectionState", "READY", "publicationState", "CHECKPOINTED", "mayEdit", false,
+                "projects", List.of(first, later), "requirements", List.of(), "dependencies", List.of())));
         page.route("GET", "/taxonomy/api/projects", request -> json(200, List.of(first, later)));
         page.route("GET", "/taxonomy/api/products", request -> json(200, List.of()));
         page.route("GET", "/taxonomy/api/projects/42/portfolio", request -> json(200,

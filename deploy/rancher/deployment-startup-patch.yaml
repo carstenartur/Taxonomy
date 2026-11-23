@@ -1,0 +1,87 @@
+# Strategic-merge patch for an EXISTING Deployment, not an install manifest.
+# Read README.md first. Match the container/volume/claim names to the workload.
+# This variant uses a real servlet context path /taxonomy and container port 8080.
+# Preserve an existing /app/data mount and its contents when adapting the patch.
+spec:
+  replicas: 1
+  progressDeadlineSeconds: 900
+  strategy:
+    type: Recreate
+    rollingUpdate: null
+  template:
+    spec:
+      terminationGracePeriodSeconds: 45
+      securityContext:
+        fsGroup: 10001
+        fsGroupChangePolicy: OnRootMismatch
+      containers:
+        - name: taxonomy
+          env:
+            - name: SERVER_SERVLET_CONTEXT_PATH
+              value: /taxonomy
+              valueFrom: null
+            - name: TAXONOMY_INIT_ASYNC
+              value: "true"
+              valueFrom: null
+            - name: TAXONOMY_INIT_RELOAD_EXISTING
+              value: "false"
+              valueFrom: null
+            - name: TAXONOMY_SEARCH_DIRECTORY_TYPE
+              value: local-filesystem
+              valueFrom: null
+            - name: TAXONOMY_SEARCH_DIRECTORY_ROOT
+              value: /app/data/lucene-index
+              valueFrom: null
+            - name: TAXONOMY_SEARCH_SYNC_STRATEGY
+              value: write-sync
+              valueFrom: null
+            - name: MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED
+              value: "true"
+              valueFrom: null
+            - name: MANAGEMENT_ENDPOINT_HEALTH_GROUP_LIVENESS_INCLUDE
+              value: livenessState
+              valueFrom: null
+            - name: MANAGEMENT_ENDPOINT_HEALTH_GROUP_READINESS_INCLUDE
+              value: readinessState
+              valueFrom: null
+          # Replace the complete probe so an old exec/tcpSocket handler is removed.
+          startupProbe:
+            $patch: replace
+            httpGet:
+              path: /taxonomy/actuator/health/liveness
+              port: 8080
+              scheme: HTTP
+            failureThreshold: 60
+            periodSeconds: 5
+            timeoutSeconds: 3
+          livenessProbe:
+            $patch: replace
+            httpGet:
+              path: /taxonomy/actuator/health/liveness
+              port: 8080
+              scheme: HTTP
+            failureThreshold: 3
+            periodSeconds: 20
+            timeoutSeconds: 3
+          readinessProbe:
+            $patch: replace
+            httpGet:
+              path: /taxonomy/actuator/health/readiness
+              port: 8080
+              scheme: HTTP
+            failureThreshold: 6
+            periodSeconds: 10
+            timeoutSeconds: 3
+          volumeMounts:
+            - mountPath: /app/data
+              name: taxonomy-data
+              readOnly: false
+      volumes:
+        - name: taxonomy-data
+          # Remove common ephemeral/host-local sources when reusing this name.
+          # If another volume source exists, remove it in the reviewed patch too.
+          emptyDir: null
+          hostPath: null
+          persistentVolumeClaim:
+            claimName: taxonomy-data
+            readOnly: false

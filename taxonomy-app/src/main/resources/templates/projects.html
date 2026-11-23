@@ -28,6 +28,8 @@
 <main id="portfolioMain" class="container-fluid py-3 px-lg-4">
     <div id="portfolioError" class="alert alert-danger d-none" role="alert"></div>
     <div id="portfolioInfo" class="alert alert-info d-none" role="status"></div>
+    <button id="portfolioSourceRetry" class="btn btn-sm btn-outline-primary mb-3" type="button" hidden
+            th:text="#{startup.ui.sourceRetry}">Check the server again</button>
 
     <div class="row g-3">
         <aside class="col-12 col-xl-3" aria-labelledby="projectListHeading">
@@ -481,6 +483,7 @@
 <script th:src="@{/js/shared/content-language.js}" src="/js/shared/content-language.js"></script>
 <script th:src="@{/js/shared/taxonomy-utils.js}"></script>
 <th:block th:replace="~{fragments/application-chrome :: scripts}"></th:block>
+<script th:src="@{/js/api/workspace-api.js}"></script>
 <script th:src="@{/js/api/portfolio-api.js}"></script>
 <script th:src="@{/js/portfolio/inventory-comparison.js}"></script>
 <script th:src="@{/js/portfolio/portfolio-guided-decisions.js}"></script>

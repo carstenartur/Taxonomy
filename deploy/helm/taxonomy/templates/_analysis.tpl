@@ -53,7 +53,7 @@
 - name: TAXONOMY_ANALYSIS_ARTEMIS_DESTINATION_PREFIX
   value: {{ .Values.analysis.artemis.destinationPrefix | quote }}
 - name: MANAGEMENT_ENDPOINT_HEALTH_GROUP_READINESS_INCLUDE
-  value: {{ ternary "readinessState,analysisBroker" "readinessState,taxonomy" (eq $role "worker") | quote }}
+  value: {{ ternary "readinessState,analysisBroker" "readinessState" (eq $role "worker") | quote }}
 - name: MANAGEMENT_ENDPOINT_HEALTH_GROUP_BROKER_INCLUDE
   value: "analysisBroker"
 {{- end }}

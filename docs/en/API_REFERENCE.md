@@ -666,7 +666,7 @@ All workspace endpoints require authentication. An automatic default workspace i
 curl -u alice:password http://localhost:8080/api/workspace/current
 ```
 
-**Response:**
+**Response (200):**
 ```json
 {
   "workspaceId": "a1b2c3d4-...",
@@ -680,6 +680,21 @@ curl -u alice:password http://localhost:8080/api/workspace/current
   "lastAccessedAt": "2026-03-15T12:00:00Z"
 }
 ```
+
+During initial startup, the automatic default workspace may still be waiting for
+its source repository's first checkpoint. That specific waiting state returns
+**202 Accepted**, `Retry-After: 1`, and `Cache-Control: no-store`:
+
+```json
+{ "state": "INITIAL_SOURCE_PENDING" }
+```
+
+Treat this as pending, not as workspace metadata. Repeat this GET after the stated
+delay and enable workspace-dependent operations only after the selected source is
+confirmed. A 202 response does not authorize automatic retries of project or
+analysis writes. Explicitly selected workspaces retain their metadata and recovery
+paths; the central read-only context still returns 204. Other provisioning or
+source-selection conflicts continue to return 409.
 
 ### List Active Workspaces (Admin)
 

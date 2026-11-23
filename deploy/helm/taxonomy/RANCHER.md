@@ -1,5 +1,10 @@
 # Rancher / RKE2 deployment
 
+**Already managing the workload directly in Rancher?** Follow the
+[existing-workload guide and non-Helm patch](../../rancher/README.md) for environment
+variables, `/taxonomy` probe paths and persistent indexes. Updating only the image
+does not apply `templates/resources.yaml` or any other Helm configuration.
+
 `values-rancher-rke2.yaml` is the supported starting point for a Rancher-managed RKE2 cluster with ingress-nginx. `values-small.yaml` is the generic quota-compatible evaluation profile for clusters that do not need Rancher-specific ingress annotations. Both use a 500-mCPU ceiling; the Rancher profile additionally publishes the application below `/taxonomy/`.
 
 The profile addresses two common deployment failures:
@@ -235,7 +240,12 @@ kubectl rollout status deployment/taxonomy-taxonomy -n taxonomy --timeout=15m
 curl -fsS https://taxonomy.example.com/taxonomy/actuator/health/readiness
 ```
 
-The readiness response must report `UP`. The application remains behind a `ClusterIP` service; external traffic enters through the Ingress.
+The readiness response must report `UP` once the web application accepts traffic.
+Catalogue/search may still initialize in the background; verify their state in the
+authenticated `/api/status/startup` response and perform a representative search
+before accepting search readiness. The application remains behind a `ClusterIP`
+service; external traffic enters through the Ingress. This profile strips the
+public `/taxonomy` prefix, so direct pod probes use `/actuator/...`.
 
 For a fresh installation, additionally inspect startup logs to confirm that both schema streams installed cleanly. For an upgrade, confirm that Flyway completed and Hibernate validation succeeded before declaring the release healthy.
 

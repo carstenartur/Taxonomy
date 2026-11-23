@@ -2,6 +2,7 @@ package com.taxonomy.security.config;
 
 import jakarta.servlet.Filter;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -53,6 +54,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
     "taxonomy.security.login-rate-limit.max-attempts=2",
     "taxonomy.security.login-rate-limit.lockout-seconds=60"
 })
+@Tag("ci-app-shard-spring-context-b")
 class LoginRateLimitFilterSecurityChainTest {
 
     private static final String ADMIN_PASSWORD =

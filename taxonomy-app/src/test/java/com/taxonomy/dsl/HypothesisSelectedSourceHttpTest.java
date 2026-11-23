@@ -10,6 +10,7 @@ import com.taxonomy.workspace.model.SystemRepository;
 import com.taxonomy.workspace.repository.SystemRepositoryRepository;
 import com.taxonomy.workspace.repository.UserWorkspaceRepository;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -30,6 +31,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 @Transactional
 @WithMockUser(username = "hypothesis-source-reader", roles = {"USER", "ARCHITECT"})
+@Tag("ci-app-shard-spring-context-a")
 class HypothesisSelectedSourceHttpTest {
     private static final String URL = "/api/dsl/hypotheses";
     private static final String COMMIT = "X-Taxonomy-Commit";

@@ -163,6 +163,39 @@ for required in \
   fi
 done
 
+assert_readiness_group() {
+  local rendered=$1
+  local expected=$2
+  local actual
+  actual=$(sed -n '/name: MANAGEMENT_ENDPOINT_HEALTH_GROUP_READINESS_INCLUDE$/{n;s/^[[:space:]]*value: "\([^"]*\)"$/\1/p;}' "${rendered}")
+  if [[ "${actual}" != "${expected}" ]]; then
+    echo "Rendered readiness group must be ${expected}; got ${actual}" >&2
+    exit 1
+  fi
+}
+
+# Web routing must remain available while the catalogue/search initializes.
+# Verify both supported web roles from rendered manifests, independently of the
+# worker role that still requires a live broker before receiving traffic.
+for role in all coordinator; do
+  ARTEMIS_WEB_OUTPUT="${TMP_DIR}/artemis-web-${role}.yaml"
+  helm template taxonomy "${CHART_DIR}" \
+    "${COMMON_VALUES[@]}" \
+    --values "${CHART_DIR}/values-artemis-single-worker.yaml" \
+    --set "analysis.runtimeRole=${role}" \
+    --set-json 'analysis.workerSets=[]' \
+    --show-only templates/resources.yaml \
+    >"${ARTEMIS_WEB_OUTPUT}"
+  assert_readiness_group "${ARTEMIS_WEB_OUTPUT}" readinessState
+done
+ARTEMIS_WORKER_OUTPUT="${TMP_DIR}/artemis-worker-readiness.yaml"
+helm template taxonomy "${CHART_DIR}" \
+  "${COMMON_VALUES[@]}" \
+  --values "${CHART_DIR}/values-artemis-single-worker.yaml" \
+  --show-only templates/workers.yaml \
+  >"${ARTEMIS_WORKER_OUTPUT}"
+assert_readiness_group "${ARTEMIS_WORKER_OUTPUT}" readinessState,analysisBroker
+
 PERSISTENCE_OUTPUT="${TMP_DIR}/persistence.yaml"
 helm template taxonomy "${CHART_DIR}" \
   "${COMMON_VALUES[@]}" \

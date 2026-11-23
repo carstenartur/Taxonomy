@@ -18,6 +18,7 @@ import com.taxonomy.workspace.model.RepositoryVisibility;
 import com.taxonomy.workspace.service.ArchitectureRepositoryProvisioningService;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -35,6 +36,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /** End-to-end evidence that asynchronous analysis identities cannot cross tenants. */
 @SpringBootTest
+@Tag("ci-app-shard-spring-context-b")
 class AnalysisArtifactTenantIsolationTest extends RetainedPortfolioCatalogue {
 
     @Autowired

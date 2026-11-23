@@ -5,6 +5,7 @@ import com.taxonomy.support.AnalysisCatalogueSourceFixture;
 import com.taxonomy.preferences.PreferencesService;
 import com.taxonomy.shared.config.RateLimitFilter;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -43,6 +44,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
     "taxonomy.rate-limit.per-minute=3"
 })
 @WithLocalTestUser(roles = {"USER", "ARCHITECT", "ADMIN"})
+@Tag("ci-app-shard-spring-context-b")
 class ProductionHardeningTests implements AnalysisCatalogueSourceFixture {
 
     @Autowired

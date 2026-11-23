@@ -6,6 +6,7 @@ import com.taxonomy.versioning.service.DslOperationsFacade;
 import com.taxonomy.versioning.service.RepositoryStateService;
 import com.taxonomy.workspace.service.RepositoryStateGuard;
 import com.taxonomy.workspace.service.WorkspaceResolver;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -18,6 +19,7 @@ import static org.mockito.Mockito.when;
 /** A durable command receipt proves its original publication only while Git retains that version. */
 @SpringBootTest
 @WithMockUser(username = "alice", roles = {"USER", "ARCHITECT", "ADMIN"})
+@Tag("ci-app-shard-spring-context-a")
 class ArchitectureLifecyclePublicationProofTest extends LifecycleTestSupport {
     @ParameterizedTest
     @ValueSource(booleans = {false, true})

@@ -19,6 +19,7 @@ import com.taxonomy.extension.api.report.ReportRendererExtension;
 import com.taxonomy.portfolio.service.PortfolioFingerprintService;
 import com.taxonomy.reporting.templates.DecisionRationaleTemplateContract;
 import com.taxonomy.workspace.service.WorkspaceContext;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -52,6 +53,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @WithMockUser(username = "decision-auditor", roles = "ADMIN")
+@Tag("ci-app-shard-spring-context-a")
 class DecisionRationaleReportTests {
 
     @Autowired

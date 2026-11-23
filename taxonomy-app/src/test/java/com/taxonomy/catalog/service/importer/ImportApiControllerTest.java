@@ -3,6 +3,7 @@ package com.taxonomy.catalog.service.importer;
 import com.taxonomy.dto.FrameworkImportResult;
 import com.taxonomy.dto.ProfileInfo;
 import com.taxonomy.testsupport.LocalTestLogin;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -33,6 +34,7 @@ import com.taxonomy.catalog.controller.ImportApiController;
     "spring.ai.mistral.api-key="
 })
 @WithMockUser(roles = {"USER", "ARCHITECT", "ADMIN"})
+@Tag("ci-app-shard-spring-context-a")
 class ImportApiControllerTest {
 
     @Autowired

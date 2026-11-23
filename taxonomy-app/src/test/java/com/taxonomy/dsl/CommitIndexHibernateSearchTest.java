@@ -17,6 +17,7 @@ import com.taxonomy.workspace.storage.DslWorkspaceReadAdapter;
 import jakarta.persistence.EntityManagerFactory;
 import org.hibernate.search.mapper.orm.Search;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -40,6 +41,7 @@ import static org.springframework.test.web.servlet.setup.MockMvcBuilders.standal
 @SpringBootTest
 @AutoConfigureMockMvc
 @WithMockUser(roles = "ADMIN")
+@Tag("ci-app-shard-spring-context-a")
 class CommitIndexHibernateSearchTest {
 
     private static final String SECONDARY_REPOSITORY_ID = "commit-search-repo-b";

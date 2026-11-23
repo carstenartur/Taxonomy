@@ -14,6 +14,7 @@ import com.taxonomy.export.MermaidExportService;
 import com.taxonomy.export.MermaidLabels;
 import com.taxonomy.model.RelationType;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -43,6 +44,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @SpringBootTest
 @WithMockUser(roles = "ADMIN")
+@Tag("ci-app-shard-spring-context-b")
 class ReadmeShowcaseTest {
 
     @Autowired

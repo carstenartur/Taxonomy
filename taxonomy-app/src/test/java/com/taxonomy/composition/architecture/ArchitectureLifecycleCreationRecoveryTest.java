@@ -7,6 +7,7 @@ import com.taxonomy.workspace.repository.UserWorkspaceRepository;
 import com.taxonomy.workspace.service.*;
 import com.taxonomy.workspace.storage.DslGitRepository;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -40,6 +41,7 @@ import static org.springframework.test.web.servlet.setup.MockMvcBuilders.standal
 
 /** Separate provisioner instances share only the real database claim and logical Git storage. */
 @SpringBootTest
+@Tag("ci-app-shard-spring-context-a")
 class ArchitectureLifecycleCreationRecoveryTest {
     private static final String PATH = "/api/architecture/lifecycle/architectures";
     private static final String USER = "creation-recovery-owner";

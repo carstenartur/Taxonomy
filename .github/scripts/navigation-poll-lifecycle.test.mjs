@@ -35,7 +35,7 @@ function harness(kind, { translationsPending = false, proposals = false, forms =
     class Element extends EventTarget {
         constructor() {
             super(); this.textContent = ''; this.innerHTML = ''; this.children = [];
-            this.dataset = {}; this.style = {}; this.disabled = false;
+            this.dataset = {}; this.style = {}; this.disabled = false; this.attributes = new Map();
             const classes = new Set();
             this.classList = {
                 contains: name => classes.has(name), add: name => classes.add(name),
@@ -47,6 +47,9 @@ function harness(kind, { translationsPending = false, proposals = false, forms =
                 }
             };
         }
+        setAttribute(name, value) { this.attributes.set(name, String(value)); }
+        getAttribute(name) { return this.attributes.get(name) ?? null; }
+        removeAttribute(name) { this.attributes.delete(name); }
         querySelectorAll(selector) {
             return this.children.flatMap(child => [
                 ...(child.classList.contains(selector.slice(1)) ? [child] : []),
@@ -60,7 +63,9 @@ function harness(kind, { translationsPending = false, proposals = false, forms =
         }
     }
     for (const id of ['systemStatusBar', 'gitStatusBar', 'syncStatePanel', 'analyzeBtn',
-        'startupBanner', 'startupBannerStatus', 'taxonomyTree', 'expandAll', 'collapseAll',
+        'aiProviderInfo', 'aiStatusBadge', 'aiUnavailableWarning', 'aiConnectionWarning', 'statusArea',
+        'startupBanner', 'startupBannerTitle', 'startupBannerHelp', 'startupBannerStatus', 'startupHistoryStatus',
+        'startupProgress', 'startupProgressCount', 'taxonomyTree', 'expandAll', 'collapseAll',
         ...(forms ? ['testLlmConnection', 'proposeRelationsSubmit', 'proposeSpinner', 'proposeRelationType'] : []),
         ...(proposals ? ['proposalsTableContainer', 'proposalPendingBadge', 'proposalAdoptionSection', 'proposalAdoptionTable'] : [])]) {
         const node = new Element(); node.id = id; nodes.set(id, node);
@@ -105,10 +110,12 @@ function harness(kind, { translationsPending = false, proposals = false, forms =
         TaxonomyI18n: { t: (key, ...values) => [key, ...values].join(' '), ready: () => translations.promise },
         TaxonomyUtils: { escapeHtml: String }, console: { ...console, error: (...values) => errors.push(values) } };
     canonicalFixture.install(scope, ['api/analysis-api.js', 'api/workspace-api.js', 'api/reference-api.js', 'api/search-api.js', 'api/proposals-api.js']);
+    if (kind === 'browse') vm.runInNewContext(readFileSync(new URL('static/js/shared/taxonomy-startup-progress.js', resources), 'utf8'), scope);
     vm.runInNewContext(sources[kind], scope, { filename: `production-${kind}-poll.js` });
     if (!translationsPending) translations.resolve();
     return { window, nodes, reads, state, timers, translations, errors,
         sourceChanged() { dom.dispatchEvent(new Event('taxonomy:entity-context-changed')); },
+        sourceReady() { dom.dispatchEvent(new Event('taxonomy:analysis-source-ready')); },
         start() { dom.dispatchEvent(new Event('DOMContentLoaded')); },
         hide() { lifecycle.dispatchEvent(Object.assign(new Event('pagehide'), { persisted: true })); },
         beforeUnload() { lifecycle.dispatchEvent(new Event('beforeunload')); },
@@ -204,6 +211,77 @@ async function loadingTaxonomy() {
     return h;
 }
 
+test('catalogue and provider readiness never enable Analyze before the selected source is confirmed', async () => {
+    const h = harness('browse');
+    let confirmed = false;
+    h.window.TaxonomyAnalysisSession = {state: () => ({ready: confirmed})};
+    h.start();
+    await settle();
+    h.requests('/api/taxonomy')[0].answer([]);
+    h.requests('/api/ai-status')[0].answer({available: true, connectionStatus: 'REACHABLE'});
+    await settle();
+    assert.equal(h.nodes.get('analyzeBtn').disabled, true);
+    confirmed = true;
+    h.sourceReady();
+    assert.equal(h.nodes.get('analyzeBtn').disabled, false);
+});
+
+test('startup shows measured phase progress and keeps analysis blocked until the catalogue is ready', async () => {
+    const h = await loadingTaxonomy(); h.tick(5000);
+    h.requests('/api/status/startup').at(-1).answer({ initialized: false, phase: 'BUILDING_INDEX',
+        progress: { phase: 'INDEXING_NODES', processed: 20, total: 100 } }); await settle();
+    assert.equal(h.nodes.get('startupProgress').getAttribute('value'), '20');
+    assert.equal(h.nodes.get('startupProgress').getAttribute('max'), '100');
+    assert.match(h.nodes.get('startupProgressCount').textContent, /20.*100/);
+    assert.equal(h.nodes.get('analyzeBtn').disabled, true);
+    h.tick(5000);
+    h.requests('/api/status/startup').at(-1).answer({ initialized: false, phase: 'BUILDING_INDEX',
+        progress: { phase: 'CHECKING_RELATION_INDEX', processed: 0, total: -1 } }); await settle();
+    assert.equal(h.nodes.get('startupProgress').getAttribute('value'), null, 'unknown totals use native indeterminate progress');
+    assert.equal(h.nodes.get('startupProgressCount').textContent, '');
+});
+
+test('initialization failure stays visible without polling forever or inserting server text as HTML', async () => {
+    const h = await loadingTaxonomy(); h.tick(5000);
+    h.requests('/api/status/startup').at(-1).answer({ initialized: false, phase: 'FAILED',
+        phaseMessage: '<img src=x onerror=alert(1)>', errorCode: 'INITIALIZATION_FAILED' }); await settle();
+    assert.equal(h.nodes.get('startupBanner').classList.contains('alert-danger'), true);
+    assert.equal(h.nodes.get('analyzeBtn').disabled, true);
+    assert.equal(h.timerCount(5000), 0, 'a terminal failure must not masquerade as ongoing work');
+    assert.ok(!h.nodes.get('taxonomyTree').innerHTML.includes('<img'), 'status text is never an HTML fragment');
+    assert.match(h.nodes.get('startupBannerStatus').textContent, /INITIALIZATION_FAILED/);
+});
+
+for (const phase of ['LOADING_TAXONOMY', 'FAILED']) for (const outcome of ['available', 'unreachable', 'unavailable', 'network-error']) {
+    test(`late AI status ${outcome} cannot release the catalogue gate in ${phase}`, async () => {
+        const h = await loadingTaxonomy(); h.tick(5000);
+        h.requests('/api/status/startup').at(-1).answer({initialized:false, phase}); await settle();
+        const ai = h.requests('/api/ai-status').at(-1);
+        assert.ok(ai, 'The real independent AI status request is pending');
+        if (outcome === 'network-error') ai.reject(new TypeError('offline'));
+        else ai.answer({available:outcome === 'available', provider:'LOCAL_ONNX',
+            connectionStatus:outcome === 'unreachable' ? 'UNREACHABLE' : 'REACHABLE'});
+        await settle();
+        assert.equal(h.nodes.get('analyzeBtn').disabled, true);
+        assert.equal(h.nodes.get('startupBanner').classList.contains('d-none'), false);
+        assert.match(h.nodes.get('aiStatusBadge').textContent, outcome === 'available' ? /connection\.reachable/
+            : outcome === 'unreachable' ? /connection\.unreachable/
+            : outcome === 'unavailable' ? /badge\.unavailable/ : /badge\.unknown/);
+        if (phase === 'FAILED') assert.equal(h.timerCount(5000), 0, 'Terminal failure does not need another poll to restore its gate');
+    });
+}
+
+test('a periodic AI status refresh cannot release a running analysis after catalogue startup', async () => {
+    const h = harness('browse'); h.start();
+    h.requests('/api/taxonomy')[0].answer([]); await settle();
+    assert.equal(h.nodes.get('analyzeBtn').disabled, false);
+    h.nodes.get('analyzeBtn').disabled = true;
+    h.tick(30000);
+    h.requests('/api/ai-status').at(-1).answer({available:true, provider:'LOCAL_ONNX', connectionStatus:'REACHABLE'});
+    await settle();
+    assert.equal(h.nodes.get('analyzeBtn').disabled, true);
+});
+
 test('catalogue startup cancels a scheduled retry when the page is hidden', async () => {
     const h = await loadingTaxonomy(); h.hide(); h.tick(5000); await settle();
     assert.equal(h.requests('/api/status/startup').length, 0);
@@ -230,6 +308,7 @@ test('a rejected pre-navigation startup read cannot rearm a retry after BFCache 
     const obsolete = h.requests('/api/status/startup')[0];
     h.hide(); h.show(); await settle();
     h.requests('/api/taxonomy').at(-1).answer([]); await settle();
+    h.tick(5000); h.requests('/api/status/startup').at(-1).answer({initialized: true}); await settle();
     obsolete.reject(new TypeError('departed request failed')); await settle();
     assert.equal(h.timerCount(5000), 0);
     assert.equal(h.nodes.get('startupBanner').classList.contains('d-none'), true);
@@ -243,14 +322,13 @@ test('a taxonomy body pending at pagehide cannot replace the accepted catalogue'
     assert.equal(read.init.signal?.aborted, true);
 });
 
-test('an ordinary taxonomy load failure still displays its error and enables analysis', async () => {
+test('an ordinary taxonomy load failure retries without prematurely enabling analysis', async () => {
     const h = harness('browse'); h.start();
     h.requests('/api/taxonomy')[0].reject(new TypeError('catalogue unavailable')); await settle();
-    assert.match(h.nodes.get('taxonomyTree').innerHTML, /alert-danger/);
-    assert.match(h.nodes.get('taxonomyTree').innerHTML, /browse.load.failed/);
-    assert.equal(h.nodes.get('startupBanner').classList.contains('d-none'), true);
-    assert.equal(h.nodes.get('analyzeBtn').disabled, false);
-    assert.equal(h.timerCount(5000), 0);
+    assert.match(h.nodes.get('taxonomyTree').textContent, /startup.ui.connectionRetry/);
+    assert.equal(h.nodes.get('startupBanner').classList.contains('d-none'), false);
+    assert.equal(h.nodes.get('analyzeBtn').disabled, true);
+    assert.equal(h.timerCount(5000), 1);
 });
 
 test('catalogue startup resumes after BFCache and retains its network retry until ready', async () => {
@@ -265,12 +343,47 @@ test('catalogue startup resumes after BFCache and retains its network retry unti
     assert.equal(h.timerCount(5000), 1);
     h.tick(5000); h.requests('/api/status/startup').at(-1).answer({ initialized: true }); await settle();
     h.requests('/api/taxonomy').at(-1).answer([]); await settle();
+    h.tick(5000); h.requests('/api/status/startup').at(-1).answer({initialized: true}); await settle();
     assert.equal(h.nodes.get('startupBanner').classList.contains('d-none'), true);
     assert.equal(h.nodes.get('analyzeBtn').disabled, false);
     assert.equal(h.timerCount(5000), 0);
     const count = h.requests('/api/taxonomy').length;
     h.hide(); h.show(); await settle();
     assert.equal(h.requests('/api/taxonomy').length, count, 'An already loaded retained catalogue is not discarded or fetched again');
+});
+
+test('optional vector progress keeps catalogue analysis usable and preserves another operation busy state', async () => {
+    const h = await loadingTaxonomy(); h.tick(5000);
+    const vectors = {initialized: true, phase: 'READY', embedding: {state: 'INDEXING_RELATIONS', processed: 3, total: 10}};
+    h.requests('/api/status/startup').at(-1).answer(vectors); await settle();
+    h.requests('/api/taxonomy').at(-1).answer([]); await settle();
+    h.tick(5000); h.requests('/api/status/startup').at(-1).answer(vectors); await settle();
+    assert.equal(h.nodes.get('analyzeBtn').disabled, false);
+    assert.equal(h.nodes.get('startupBanner').classList.contains('d-none'), false);
+    assert.equal(h.nodes.get('startupProgress').getAttribute('value'), '3');
+    h.nodes.get('analyzeBtn').disabled = true;
+    h.tick(5000); h.requests('/api/status/startup').at(-1).answer(vectors); await settle();
+    assert.equal(h.nodes.get('analyzeBtn').disabled, true, 'background progress must not release a running analysis');
+    h.hide(); assert.equal(h.timerCount(5000), 0);
+    h.show(); h.tick(5000); h.requests('/api/status/startup').at(-1).answer({initialized: true, phase: 'READY', embedding: {state: 'READY'}}); await settle();
+    assert.equal(h.nodes.get('startupBanner').classList.contains('d-none'), true);
+    assert.equal(h.timerCount(5000), 0);
+});
+
+test('history recovery remains visible independently of catalogue and optional vector readiness', async () => {
+    const h = harness('browse'); h.start();
+    h.requests('/api/taxonomy').at(-1).answer([]); await settle();
+    h.tick(5000); h.requests('/api/status/startup').at(-1).answer({initialized: true, phase: 'READY',
+        embedding: {state: 'DISABLED'}, history: {state: 'REBUILDING'}}); await settle();
+    assert.equal(h.nodes.get('analyzeBtn').disabled, false);
+    assert.equal(h.nodes.get('startupBanner').classList.contains('d-none'), false);
+    assert.match(h.nodes.get('startupHistoryStatus').textContent, /REBUILDING/);
+    assert.equal(h.nodes.get('startupProgress').getAttribute('value'), null);
+    h.tick(5000); h.requests('/api/status/startup').at(-1).answer({initialized: true, phase: 'READY',
+        embedding: {state: 'DISABLED'}, history: {state: 'FAILED'}}); await settle();
+    assert.equal(h.nodes.get('startupBanner').classList.contains('alert-warning'), true);
+    assert.match(h.nodes.get('startupHistoryStatus').textContent, /FAILED/);
+    assert.equal(h.timerCount(5000), 0);
 });
 
 // A proposal list is now the *only* authoritative request. The badge consumes

@@ -1,5 +1,6 @@
 package com.taxonomy.provenance;
 
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -29,6 +30,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "taxonomy.limits.document.max-upload-bytes=10240"
 })
 @WithMockUser(roles = "ARCHITECT")
+@Tag("ci-app-shard-spring-context-a")
 class DocumentImportControllerTest {
 
     private static final byte[] OVERSIZED_PAYLOAD = new byte[10 * 1024 + 1];

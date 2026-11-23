@@ -79,6 +79,9 @@ public class TaxonomyService {
     private CatalogueSourceJournal catalogueSourceJournal;
 
     @Autowired
+    private CatalogueIndexInitializer searchIndexRebuilder;
+
+    @Autowired
     private CatalogueRuntimePolicy catalogueRuntimePolicy = CatalogueRuntimePolicy.fullCatalogue();
 
     /** Exact catalogue resource used both for loading and report provenance. */
@@ -284,12 +287,16 @@ public class TaxonomyService {
                     throw new RuntimeException(e);
                 }
             });
-            stateService.update(AppInitializationStateService.State.BUILDING_INDEX, "Building search index\u2026");
+            searchIndexRebuilder.ensureCatalogueIndexes(stateService);
             initialized.set(true);
             stateService.update(AppInitializationStateService.State.READY, "Application is ready");
             if (async) {
                 log.info("Async taxonomy initialization complete.");
             }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            stateService.fail("Catalogue search indexing was interrupted", e);
+            log.warn("Catalogue search indexing was interrupted (code=INITIALIZATION_INTERRUPTED)");
         } catch (RuntimeException e) {
             Throwable cause = e.getCause() != null ? e.getCause() : e;
             String msg = async ? "Async taxonomy initialization failed" : "Failed to load taxonomy catalogue";
@@ -321,7 +328,7 @@ public class TaxonomyService {
             entityManager.flush();
             entityManager.clear();
             log.info("Reconciled {} persisted taxonomy nodes with catalogue overlay {}; "
-                            + "reusing existing relations and search index.",
+                            + "existing search indexes will be validated before reuse.",
                     persistedNodeCount, overlayResult.mappingVersion());
             return;
         }
@@ -394,10 +401,7 @@ public class TaxonomyService {
         log.info("Cleared in-memory node maps to free heap.");
 
         // 5. Hibernate Search auto-indexes nodes on JPA persist; log the count.
-        log.info("Full-text and vector index will be populated automatically by Hibernate Search.");
-
-        // 6. No explicit KNN index invalidation needed – Hibernate Search manages the index.
-        log.debug("Hibernate Search manages the vector index; no manual invalidation required.");
+        log.info("Catalogue import committed; validating the full-text indexes before catalogue readiness.");
     }
 
     /**

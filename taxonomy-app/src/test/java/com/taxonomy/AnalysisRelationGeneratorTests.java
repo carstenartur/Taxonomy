@@ -10,6 +10,7 @@ import com.taxonomy.catalog.repository.TaxonomyRelationRepository;
 import com.taxonomy.analysis.service.AnalysisRelationGenerator;
 import com.taxonomy.architecture.service.RequirementArchitectureViewService;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -39,6 +40,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "llm.mock=true", "taxonomy.analysis.relations.hierarchical.enabled=false"})
 @AutoConfigureMockMvc
 @WithLocalTestUser(roles = {"USER", "ARCHITECT", "ADMIN"})
+@Tag("ci-app-shard-spring-context-a")
 class AnalysisRelationGeneratorTests implements AnalysisCatalogueSourceFixture {
 
     @Autowired

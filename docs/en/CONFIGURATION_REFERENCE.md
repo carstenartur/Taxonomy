@@ -23,7 +23,7 @@ Several preferences (`taxonomy.llm.*`, `taxonomy.analysis.min-score`, `taxonomy.
 |---|---|---|---|
 | `PORT` | `server.port` | `8080` | HTTP listener port. |
 | `SPRING_PROFILES_ACTIVE` | Spring profile selection | default profile `hsqldb` | Comma-separated profiles, for example `production,postgres` or `postgres,kubernetes`. |
-| `TAXONOMY_INIT_ASYNC` | `taxonomy.init.async` | `false` | Opens the HTTP port before loading the catalogue. Useful on PaaS platforms; readiness remains false until loading completes. |
+| `TAXONOMY_INIT_ASYNC` | `taxonomy.init.async` | `false`; `true` in the `kubernetes` profile | Makes login and the application shell available while catalogue and search recovery run in the background. HTTP readiness admits traffic; catalogue-dependent APIs remain guarded until their data/index preparation succeeds. `/api/status/startup` reports each feature and its progress. |
 | `TAXONOMY_INIT_RELOAD_EXISTING` | `taxonomy.init.reload-existing` | `false` | Destructively reloads the configured catalogue even when persisted nodes already exist. Use only after a restorable backup. |
 | `TAXONOMY_LAZY_INIT` | `spring.main.lazy-initialization` | `true` | Defers most Spring beans. `TaxonomyService` remains eager so catalogue readiness is authoritative. |
 | `TAXONOMY_THYMELEAF_CACHE` | `spring.thymeleaf.cache` | `true` | Caches compiled templates; normally disable only during local UI development. |
@@ -40,7 +40,7 @@ Several preferences (`taxonomy.llm.*`, `taxonomy.analysis.min-score`, `taxonomy.
 | `GIT_COMMIT` | `git.commit.id` | unset | Preferred build/source commit recorded in decision-report provenance. |
 | `GITHUB_SHA` | fallback for `git.commit.id` | `unknown` | Used only when `GIT_COMMIT` is absent. |
 | `TAXONOMY_SCHEMA_MIGRATION_ENABLED` | `taxonomy.schema-migration.enabled` | `true` | Runs idempotent portable schema-contract migrations. Disable only for controlled diagnostics. |
-| `TAXONOMY_COMMIT_INDEX_SEARCH_REBUILD_EMPTY` | `taxonomy.commit-index.search-rebuild-empty` | `true` | Rebuilds/purges the commit search index when the relational projection is empty. |
+| `TAXONOMY_COMMIT_INDEX_SEARCH_REBUILD_EMPTY` | `taxonomy.commit-index.search-rebuild-empty` | `true` | Verifies complete commit-search content and scope at startup and repairs missing/stale indexes. `false` bypasses all startup verification and recovery; use only for a controlled diagnostic start. |
 | `TAXONOMY_JGIT_STORAGE_LEGACY_ADOPTION` | `taxonomy.jgit-storage.legacy-adoption` | `false` | One-start opt-in for the fail-closed legacy JGit schema adoption path. Requires backup and preflight; reset to `false` afterwards. |
 | `TAXONOMY_GIT_BOOTSTRAP` | `taxonomy.git.bootstrap` | `true` | Creates the initial `draft` commit after catalogue readiness when the system repository is empty. |
 | `TAXONOMY_FEATURES_MULTI_REPOSITORY_API_ENABLED` | `taxonomy.features.multi-repository-api.enabled` | `false` | Enables the currently opt-in `/api/repositories` management surface. It does not weaken repository membership checks. |

@@ -5,6 +5,7 @@ import com.taxonomy.provenance.repository.RequirementSourceLinkRepository;
 import com.taxonomy.provenance.repository.SourceFragmentRepository;
 import com.taxonomy.provenance.service.DocumentLimitException;
 import com.taxonomy.provenance.service.DocumentProvenanceCommandService;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -27,6 +28,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
         "spring.ai.llama.api-key=",
         "spring.ai.mistral.api-key="
 })
+@Tag("ci-app-shard-spring-context-b")
 class DocumentProvenanceCommandServiceTest {
 
     @Autowired

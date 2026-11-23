@@ -1,5 +1,6 @@
 package com.taxonomy.composition.plugins;
 
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -12,6 +13,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest(properties = {"taxonomy.plugins.dynamic.enabled=true", "llm.mock=true"})
 @AutoConfigureMockMvc
+@Tag("ci-app-shard-spring-context-b")
 class PluginAdministrationSecurityTest {
     @Autowired org.springframework.web.context.WebApplicationContext context;
     MockMvc mvc;

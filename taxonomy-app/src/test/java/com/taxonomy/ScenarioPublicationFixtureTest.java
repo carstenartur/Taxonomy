@@ -1,6 +1,7 @@
 package com.taxonomy;
 
 import com.taxonomy.interop.publication.*;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -18,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
         "taxonomy.admin-password=Scenario-Acceptance-2026!", "taxonomy.security.require-password-change=false" })
 @Import(PublicationScenarioConfiguration.class)
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
+@Tag("ci-app-shard-spring-context-a")
 class ScenarioPublicationFixtureTest {
     @LocalServerPort int port;
     @Autowired PublicationContractProvider provider;
