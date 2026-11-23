@@ -1,8 +1,11 @@
 package com.taxonomy;
 
 import com.sun.net.httpserver.HttpServer;
+import com.taxonomy.composition.architecture.ArchitectureLifecycleService;
 import com.taxonomy.dto.ContextMode;
 import com.taxonomy.dto.ContextRef;
+import com.taxonomy.dto.WorkspaceInfo;
+import com.taxonomy.editor.ArchitectureCommandPort.Context;
 import com.taxonomy.portfolio.dto.PortfolioDtos;
 import com.taxonomy.portfolio.model.PortfolioTypes;
 import com.taxonomy.shared.config.I18nConfig;
@@ -125,6 +128,8 @@ class PortfolioClientRoutingIT {
     private static final String JOB_STORAGE = "taxonomy.portfolio.analysisJobs.v2";
     private static final Instant LABEL_TIME = Instant.parse("2026-10-07T09:00:00Z");
     private static final String LABEL_TITLE = "ACTIVE <pump> & \"Planning\"";
+    private static final String PORTFOLIO_REPOSITORY = "portfolio-architecture";
+    private static final String PORTFOLIO_WORKSPACE = "portfolio-workspace";
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final Map<String, Object> JOB = Map.of("id", "job-7", "status", "SUCCESS", "items", List.of());
     private static final String OBSERVE_FETCH = """
@@ -435,21 +440,29 @@ class PortfolioClientRoutingIT {
     void selectedProjectToolsAndRequirementLinksKeepContext(String prefix) {
         installRoutes(prefix);
         page.route("GET", prefix + "/api/projects", request -> PortfolioClientTestPage.json(200, List.of()));
-        open("projects", prefix, "/projects", "");
+        openPortfolio(prefix, "de", "");
         wait.until(ignored -> hidden("portfolioBusy"));
         assertThat(hidden("projectTools")).isTrue();
+        assertThat(page.requests()).filteredOn(request -> List.of(prefix + "/api/workspace/current",
+                        prefix + "/api/architecture/lifecycle", prefix + "/api/projects").contains(request.path()))
+                .extracting(PortfolioClientTestPage.Request::path)
+                .containsExactly(prefix + "/api/workspace/current", prefix + "/api/architecture/lifecycle", prefix + "/api/projects");
+        assertThat(requests("GET", prefix + "/api/architecture/lifecycle")).singleElement().satisfies(request -> {
+            assertThat(request.query()).isEqualTo("workspaceId=" + PORTFOLIO_WORKSPACE);
+            assertThat(request.header("X-Taxonomy-Workspace-Id")).isEqualTo(PORTFOLIO_WORKSPACE);
+        });
         page.route("GET", prefix + "/api/projects", request -> PortfolioClientTestPage.json(200, List.of(project(42), project(63))));
-        open("projects", prefix, "/projects", "");
+        openPortfolio(prefix, "de", "");
         for (int id : List.of(42, 63)) {
             if (id == 63) click(By.cssSelector(".project-select[data-project-id='63']"));
             wait.until(ignored -> text("selectedProjectKey").equals("P-" + id) && hidden("portfolioBusy"));
             assertThat(hidden("projectTools")).isFalse();
             Map.of("Import", "import", "Matrices", "matrices", "Reports", "reports", "Versioning", "versioning")
-                    .forEach((name, path) -> assertThat(href("project" + name + "Link"))
-                            .isEqualTo(prefix + "/projects/" + id + "/" + path + "?lang=de"));
+                    .forEach((name, path) -> assertPortfolioLink(href("project" + name + "Link"),
+                            prefix + "/projects/" + id + "/" + path));
             WebElement row = driver.findElement(By.cssSelector("#requirementsTable tbody tr"));
             WebElement link = row.findElement(By.tagName("a"));
-            assertThat(link.getDomAttribute("href")).isEqualTo(prefix + "/projects/" + id + "/requirements/7?lang=de");
+            assertPortfolioLink(link.getDomAttribute("href"), prefix + "/projects/" + id + "/requirements/7");
             assertThat(link.getText()).isEqualTo("Stop <pump> & \"verify\"");
             assertThat(link.getDomAttribute("aria-label")).contains("REQ-7");
             assertThat(link.findElements(By.tagName("pump"))).isEmpty();
@@ -647,7 +660,7 @@ class PortfolioClientRoutingIT {
     @Test void projectNavigationUsesOneCompactLabelledToolbarDisclosure() {
         installRoutes("");
         page.route("GET", "/api/projects", request -> PortfolioClientTestPage.json(200, List.of()));
-        open("projects", "", "/projects", "");
+        openPortfolio("", "de", "");
         wait.until(ignored -> hidden("portfolioBusy"));
         assertThat(hidden("projectTools")).isTrue();
         assertThat(element("projectTools").getDomAttribute("class")).contains("dropdown");
@@ -676,7 +689,7 @@ class PortfolioClientRoutingIT {
             page.route("GET", prefix + "/api/projects/" + project.id() + "/analysis-jobs", request ->
                     PortfolioClientTestPage.json(200, List.of()));
         }
-        page.open("projects", prefix, "/projects", locale, "localStorage.clear();\n" + OBSERVE_FETCH);
+        openPortfolio(prefix, locale, "");
         wait.until(ignored -> text("selectedProjectKey").equals("P-40") && hidden("portfolioBusy"));
         assertThat(driver.findElements(By.cssSelector("#projectList .project-select > .small.opacity-75")))
                 .extracting(WebElement::getText)
@@ -712,7 +725,7 @@ class PortfolioClientRoutingIT {
                 PortfolioClientTestPage.json(200, List.of()));
         page.route("GET", prefix + "/api/projects", request -> PortfolioClientTestPage.json(200, projects));
 
-        page.open("projects", prefix, "/projects", locale, "localStorage.clear();\n" + OBSERVE_FETCH);
+        openPortfolio(prefix, locale, "");
         wait.until(ignored -> text("selectedProjectKey").equals("P-40") && hidden("portfolioBusy"));
         assertThat(driver.findElements(By.cssSelector("#projectList .project-select .taxonomy-status[data-state][data-tone]")))
                 .extracting(WebElement::getText).containsExactlyElementsOf(expected);
@@ -753,7 +766,7 @@ class PortfolioClientRoutingIT {
         page.route("GET", prefix + "/api/projects/42/portfolio", request ->
                 PortfolioClientTestPage.json(200, labelPortfolio(project, requirements, List.of(solution), List.of(conflict))));
         page.route("GET", prefix + "/api/products", request -> PortfolioClientTestPage.json(200, List.of(product)));
-        page.open("projects", prefix, "/projects", locale, "localStorage.clear();\n" + OBSERVE_FETCH);
+        openPortfolio(prefix, locale, "");
         wait.until(ignored -> text("selectedProjectKey").equals("P-42") && hidden("portfolioBusy"));
 
         assertThat(driver.findElements(By.cssSelector("#requirementsTable tbody td:nth-child(5) .taxonomy-status[data-state][data-tone]")))
@@ -838,7 +851,6 @@ class PortfolioClientRoutingIT {
         // Trusted fixture input after HTTP decoding also exercises JS-only NaN/Infinity.
         // The template, feature scripts, DOM, modal and browser remain unchanged.
         String fixtureInput = """
-                localStorage.clear();
                 const fixtureJson = Response.prototype.json;
                 Response.prototype.json = async function () {
                     const payload = await fixtureJson.call(this);
@@ -848,7 +860,7 @@ class PortfolioClientRoutingIT {
                     return payload;
                 };
                 """.formatted(mutation);
-        page.open("projects", "", "/projects", "en", fixtureInput);
+        openPortfolio("", "en", fixtureInput);
         wait.until(ignored -> text("selectedProjectKey").equals("P-42") && hidden("portfolioBusy"));
         click(By.id("conflicts-tab"));
         wait.until(ignored -> driver.findElement(By.cssSelector("#conflictsList .conflict-assessment")).isDisplayed());
@@ -874,7 +886,7 @@ class PortfolioClientRoutingIT {
         });
 
         try {
-            open("projects", prefix, "/projects", "");
+            openPortfolio(prefix, "de", "");
             wait.until(ignored -> !requests("GET", prefix + "/api/i18n/de").isEmpty());
             double domReady = ((Number) driver.executeScript(
                     "return performance.getEntriesByType('navigation')[0].domContentLoadedEventEnd;")).doubleValue();
@@ -933,7 +945,7 @@ class PortfolioClientRoutingIT {
             page.route("GET", prefix + "/api/projects/" + projectId + "/analysis-jobs", request ->
                     PortfolioClientTestPage.json(200, List.of(persistedJob(projectId))));
         }
-        open("projects", prefix, "/projects", "");
+        openPortfolio(prefix, "de", "");
         wait.until(ignored -> text("selectedProjectKey").equals("P-42") && hidden("portfolioBusy"));
         awaitPersistedJob(prefix, 42, "stored-42");
         double firstSelection = ((Number) driver.executeScript("return performance.now();")).doubleValue();
@@ -959,7 +971,7 @@ class PortfolioClientRoutingIT {
         });
         page.route("GET", "/api/projects/99/portfolio", request -> PortfolioClientTestPage.json(200, portfolio(99)));
         page.route("GET", "/api/projects/99/analysis-jobs", request -> PortfolioClientTestPage.json(200, List.of()));
-        open("projects", "", "/projects", """
+        openPortfolio("", "de", """
                 const timing = document.createElement('style');
                 timing.textContent = '#projectModal.fade .modal-dialog { transition-duration: 5s !important; }';
                 document.head.append(timing);
@@ -1118,7 +1130,7 @@ class PortfolioClientRoutingIT {
                 LABEL_TIME, LABEL_TIME, null);
         return new PortfolioDtos.AnalysisJobView("stored-" + projectId, (long) projectId,
                 PortfolioTypes.AnalysisStatus.SUCCESS, "persisted-" + projectId, null, 25,
-                "qa-reviewer", "shared", LABEL_TIME, LABEL_TIME, LABEL_TIME,
+                "qa-reviewer", PORTFOLIO_WORKSPACE, LABEL_TIME, LABEL_TIME, LABEL_TIME,
                 1, 1, 0, 0, null, List.of(item));
     }
 
@@ -1139,6 +1151,19 @@ class PortfolioClientRoutingIT {
 
     private static void open(String template, String prefix, String path, String setup) {
         page.open(template, prefix, path, "de", "localStorage.clear();\n" + OBSERVE_FETCH + setup);
+    }
+
+    private static void openPortfolio(String prefix, String locale, String setup) {
+        var workspace = new WorkspaceInfo(PORTFOLIO_WORKSPACE, "qa-reviewer", "Portfolio workspace",
+                "main", "main", false, null, LABEL_TIME, LABEL_TIME,
+                "READY", "INTERNAL_SHARED", PORTFOLIO_REPOSITORY, null, false, true);
+        var context = new Context(PORTFOLIO_REPOSITORY, PORTFOLIO_WORKSPACE, "main",
+                (String) repository().get("headCommit"), 1, "qa-reviewer", "PRIVATE_WORKSPACE");
+        page.route("GET", prefix + "/api/workspace/current", request -> PortfolioClientTestPage.json(200, workspace));
+        page.route("GET", prefix + "/api/architecture/lifecycle", request -> PortfolioClientTestPage.json(200,
+                new ArchitectureLifecycleService.Overview(context, "Portfolio architecture", "WORKSPACE_REVISION",
+                        "READY", "CHECKPOINTED", true, List.of(), List.of(), List.of())));
+        page.open("projects", prefix, "/projects", locale, "localStorage.clear();\n" + OBSERVE_FETCH + setup);
     }
 
     private static void openJobPage(String prefix, String setup) {
@@ -1295,6 +1320,15 @@ class PortfolioClientRoutingIT {
     private static WebElement element(String id) { return driver.findElement(By.id(id)); }
     private static String text(String id) { return element(id).getDomProperty("textContent"); }
     private static String href(String id) { return element(id).getDomAttribute("href"); }
+    private static void assertPortfolioLink(String href, String path) {
+        var target = URI.create(href);
+        assertThat(href).as("The link keeps its exact application-relative path without an authority or fragment")
+                .isEqualTo(path + "?" + target.getRawQuery());
+        assertThat(queryPairs(target.getRawQuery())).containsExactlyInAnyOrder("lang=de",
+                "repositoryId=" + PORTFOLIO_REPOSITORY, "workspaceId=" + PORTFOLIO_WORKSPACE,
+                "workspaceScopeKey=" + PORTFOLIO_WORKSPACE, "branch=main");
+    }
+
     private static void assertProjectReturn(String prefix, String workspaceId) {
         var target = org.springframework.web.util.UriComponentsBuilder.fromUriString(href("applicationProjectsLink")).build();
         assertThat(target.getPath()).isEqualTo(prefix + "/projects");

@@ -1,5 +1,6 @@
 package com.taxonomy;
 
+import com.taxonomy.dto.WorkspaceInfo;
 import com.taxonomy.versioning.service.RequirementHistoryService;
 import com.taxonomy.workspace.signing.CommitSignature;
 import org.junit.jupiter.api.AfterAll;
@@ -72,6 +73,7 @@ class RequirementLifecycleBrowserIT {
         prepareProjects(1366);
         var seen = new CountDownLatch(1);
         var release = new CountDownLatch(1);
+        var workspaceReads = new AtomicInteger();
         var overviewReads = new AtomicInteger();
         var accepted = new AtomicBoolean();
         String text = "Keep the same explicit requirement submission while its architecture context loads.";
@@ -79,6 +81,14 @@ class RequirementLifecycleBrowserIT {
         var requirement = Map.of("id", 21, "projectId", 1, "requirementKey", "REQ-NEW", "title", "New scoped requirement",
                 "status", "DRAFT", "reviewStatus", "PROPOSED", "currentVersion",
                 Map.of("id", 121, "versionNumber", 1, "text", text, "contentHash", hash));
+        page.route("GET", "/api/workspace/current", request -> {
+            if (workspaceReads.incrementAndGet() == 1) {
+                return json(202, Map.of("state", "INITIAL_SOURCE_PENDING")).withHeader("Retry-After", "1");
+            }
+            return json(200, new WorkspaceInfo("control-workspace", "qa-client", "Control workspace",
+                    "review/current", "main", false, null, null, null,
+                    "READY", "INTERNAL_SHARED", "control-architecture", null, false, true));
+        });
         page.route("GET", "/api/architecture/lifecycle", request -> {
             if (overviewReads.incrementAndGet() == 1) {
                 seen.countDown();
@@ -106,6 +116,13 @@ class RequirementLifecycleBrowserIT {
             page.open("projects", "", "/projects", locale,
                     "localStorage.clear();sessionStorage.clear();history.replaceState(null,'','?lang=" + locale + "&projectId=1');");
             assertThat(seen.await(5, TimeUnit.SECONDS)).isTrue();
+            assertThat(page.requests()).filteredOn(request -> List.of("/api/workspace/current",
+                            "/api/architecture/lifecycle", "/api/projects").contains(request.path()))
+                    .extracting(PortfolioClientTestPage.Request::path)
+                    .containsExactly("/api/workspace/current", "/api/workspace/current", "/api/architecture/lifecycle");
+            assertThat(page.requests()).filteredOn(request -> request.path().equals("/api/architecture/lifecycle"))
+                    .singleElement().satisfies(request ->
+                            assertThat(request.header("X-Taxonomy-Workspace-Id")).isEqualTo("control-workspace"));
             wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("portfolioBusy")));
             page.driver().executeScript("""
                     Object.entries(arguments[0]).forEach(([id,value])=>{document.getElementById(id).value=value;});

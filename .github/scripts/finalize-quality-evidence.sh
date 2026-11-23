@@ -31,6 +31,17 @@ for suite in ExternalPluginPackagedIT OptionalFeaturePackagedIT; do
 done
 cp target/plugin-profile-evidence/manifest.json target/quality-reports/evidence/plugin-profile/
 
+# Pages stores each published file as a Git blob. Pack the original probe
+# streams after aggregation and keep the producer digests over the raw bytes.
+for coverage in target/quality-reports/evidence/application-test-shards/*/coverage.exec; do
+  [[ -f "$coverage" ]] || continue
+  if [[ -e "$coverage.gz" ]]; then
+    echo "::error::Multiple application shard coverage files: $coverage"
+    exit 1
+  fi
+  gzip -n -- "$coverage"
+done
+
 source_tree=$(git rev-parse "${GITHUB_SHA}^{tree}")
 build_id="${GITHUB_RUN_ID}.${GITHUB_RUN_ATTEMPT}"
 # The action pin is configuration, not evidence of a completed independent scan.
@@ -48,3 +59,9 @@ bash "$(dirname -- "${BASH_SOURCE[0]}")/taxonomy-tooling.sh" write-quality-manif
   --root target/quality-reports --expected-commit "$GITHUB_SHA" --expected-tree "$source_tree"
 printf 'Verified commit: %s\nSource tree: %s\nBuild ID: %s\n' \
   "$GITHUB_SHA" "$source_tree" "$build_id" > target/quality-reports/README.txt
+
+oversize=$(find target/quality-reports -type f -size +100M -print -quit)
+if [[ -n "$oversize" ]]; then
+  echo "::error::GitHub Pages report file exceeds 100 MiB: $oversize"
+  exit 1
+fi

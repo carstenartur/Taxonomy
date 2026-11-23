@@ -9,6 +9,8 @@ import java.security.MessageDigest;
 import java.time.*;
 import java.util.*;
 import java.util.regex.Pattern;
+import java.util.zip.GZIPInputStream;
+import java.util.zip.ZipException;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 
@@ -374,8 +376,7 @@ final class QualitySite {
       var coverage = object(manifest.get("coverage"));
       if (!"coverage.exec".equals(coverage.get("path")))
         throw new IllegalArgumentException("application shard coverage metadata is invalid");
-      digest(
-          evidence.resolve(shard + "/coverage.exec"), coverage.get("sha256"), "application shard");
+      verifyApplicationCoverage(evidence.resolve(shard), coverage.get("sha256"));
       var entries = list(manifest.get("reports"));
       if (entries.isEmpty())
         throw new IllegalArgumentException("application shard report inventory is empty");
@@ -399,6 +400,51 @@ final class QualitySite {
       }
       if (!originals.equals(new HashSet<>(reports(destination))))
         throw new IllegalArgumentException("application shard original report inventory differs");
+    }
+  }
+
+  private static void verifyApplicationCoverage(Path shard, Object expected) throws Exception {
+    Path original = shard.resolve("coverage.exec");
+    Path compressed = shard.resolve("coverage.exec.gz");
+    if (!Files.exists(compressed)) {
+      digest(original, expected, "application shard");
+      return;
+    }
+    if (Files.exists(original))
+      throw new IllegalArgumentException("Multiple application shard coverage files: " + shard);
+    try (var file = Files.newInputStream(compressed);
+        var input = new CoverageGzipInputStream(file)) {
+      String actual = sha256(input);
+      if (input.memberSize() != Files.size(compressed))
+        throw new ZipException("Expected exactly one gzip member");
+      if (!actual.equals(expected))
+        throw new IllegalArgumentException(
+            "application shard original digest differs: " + compressed);
+    } catch (IOException ex) {
+      throw new IllegalArgumentException(
+          "Cannot read application shard coverage gzip: " + compressed + " (" + ex.getMessage() + ")",
+          ex);
+    }
+  }
+
+  private static final class CoverageGzipInputStream extends GZIPInputStream {
+    CoverageGzipInputStream(InputStream input) throws IOException {
+      super(requireFixedHeader(input), 65536);
+    }
+
+    private static InputStream requireFixedHeader(InputStream input) throws IOException {
+      var stream = new PushbackInputStream(input, 4);
+      byte[] prefix = stream.readNBytes(4);
+      if (prefix.length != 4 || prefix[3] != 0)
+        throw new ZipException("Expected a gzip header without flags");
+      stream.unread(prefix);
+      return stream;
+    }
+
+    long memberSize() {
+      // At EOF the inflater counts only the final member's compressed payload.
+      // The gzip -n producer uses a 10-byte header and an 8-byte trailer.
+      return 10L + inf.getBytesRead() + 8L;
     }
   }
 
@@ -541,11 +587,15 @@ final class QualitySite {
   }
 
   static String sha256(Path path) throws Exception {
-    var digest = MessageDigest.getInstance("SHA-256");
     try (var input = Files.newInputStream(path)) {
-      byte[] buffer = new byte[65536];
-      for (int n; (n = input.read(buffer)) != -1; ) digest.update(buffer, 0, n);
+      return sha256(input);
     }
+  }
+
+  private static String sha256(InputStream input) throws Exception {
+    var digest = MessageDigest.getInstance("SHA-256");
+    byte[] buffer = new byte[65536];
+    for (int n; (n = input.read(buffer)) != -1; ) digest.update(buffer, 0, n);
     return HexFormat.of().formatHex(digest.digest());
   }
 
