@@ -10,6 +10,10 @@ import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.font.PDFont;
+import org.apache.pdfbox.pdmodel.interactive.action.PDActionGoTo;
+import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotationLink;
+import org.apache.pdfbox.pdmodel.interactive.annotation.PDBorderStyleDictionary;
+import org.apache.pdfbox.pdmodel.interactive.documentnavigation.destination.PDPageFitDestination;
 
 import java.awt.Color;
 import java.awt.geom.Rectangle2D;
@@ -22,6 +26,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.Consumer;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /** Draws a vector PDF directly from the same deterministic scene returned to other export adapters. */
 public final class ArchitecturePdfRenderer {
@@ -36,6 +42,8 @@ public final class ArchitecturePdfRenderer {
 
     private static final float PAGE_MARGIN = PdfDiagramPages.PAGE_MARGIN;
     private static final float HEADER_HEIGHT = PdfDiagramPages.HEADER_HEIGHT;
+    private static final int MAX_PAGE_REFERENCES = 3;
+    private static final float REFERENCE_ROW_HEIGHT = 32;
 
     private record Fonts(PDFont regular, PDFont bold) { }
 
@@ -155,6 +163,19 @@ public final class ArchitecturePdfRenderer {
                         List.of(), null), nodeReasons, relationReasons, language);
     }
 
+    /** A server-run assessment may be exported before it has been adopted as a project snapshot. */
+    public byte[] renderAnalysis(DiagramScene scene, AnalysisDiagramSource source, Map<String, String> reasons, Locale locale) {
+        requireScene(scene);
+        var language = DiagramLanguage.from(locale);
+        String origin = language.text("Server-side requirement analysis", "Serverseitige Anforderungsanalyse");
+        var header = new ArrayList<String>();
+        header.add(language.text("Analysis status: ", "Analysestatus: ") + safe(source.status()));
+        if (source.provider() != null) header.add(language.text("Provider: ", "Anbieter: ") + source.provider());
+        if (source.branch() != null) header.add("Branch: " + source.branch() + " · Commit: " + abbreviated(source.commit()));
+        return renderScene(scene, document -> configureSource(document, scene, origin),
+                new Decoration(scene.title(), header, List.of(origin), List.of(), null), reasons, Map.of(), language);
+    }
+
     private static void requireScene(DiagramScene scene) {
         if (scene == null || scene.isEmpty()) throw new IllegalArgumentException("Architecture scene must not be empty");
     }
@@ -179,14 +200,21 @@ public final class ArchitecturePdfRenderer {
             document.getDocumentCatalog().setLanguage(language.tag());
             float width = PdfDiagramPages.PAGE_WIDTH;
             float height = PdfDiagramPages.PAGE_HEIGHT;
+            var diagramPages = plan.panels().stream().map(panel -> new PDPage(new PDRectangle(width, height))).toList();
+            diagramPages.forEach(document::addPage);
+            PDPage relationInventory = drawInventory(document, scene, plan.nodePages(), nodeReasons == null ? Map.of() : nodeReasons,
+                    relationReasons == null ? Map.of() : relationReasons, theme, language, fonts, decoration);
+            var nodes = scene.nodes().stream().collect(Collectors.toMap(DiagramSceneNode::id, Function.identity()));
             for (int index = 0; index < plan.panels().size(); index++) {
                 var panel = plan.panels().get(index);
                 DiagramScene part = panel.scene();
-                PDPage page = new PDPage(new PDRectangle(width, height));
-                document.addPage(page);
+                PDPage page = diagramPages.get(index);
+                int referenceCount = panel.crossPageRelationships().size();
+                float referenceHeight = referenceCount == 0 ? 0
+                        : 42 + REFERENCE_ROW_HEIGHT * Math.min(referenceCount, MAX_PAGE_REFERENCES);
                 float scale = (float) Math.min(1.0, Math.min(
                         (width - 2 * PAGE_MARGIN) / Math.max(1.0, part.width()),
-                        (height - 2 * PAGE_MARGIN - HEADER_HEIGHT) / Math.max(1.0, part.height())));
+                        (height - 2 * PAGE_MARGIN - HEADER_HEIGHT - referenceHeight) / Math.max(1.0, part.height())));
                 if (scale < 0.8f) throw new IllegalArgumentException("PDF panel is not readable");
                 float diagramTop = height - PAGE_MARGIN - HEADER_HEIGHT;
                 try (PDPageContentStream stream = new PDPageContentStream(document, page)) {
@@ -194,7 +222,8 @@ public final class ArchitecturePdfRenderer {
                     drawHeader(stream, decoration, width, height, theme, fonts);
                     drawEdges(stream, part, PAGE_MARGIN, diagramTop, scale, theme, language, fonts, decoration.canonical());
                     drawNodes(stream, part, PAGE_MARGIN, diagramTop, scale, theme, language, fonts, decoration.canonical() != null);
-                    drawPageReferences(stream, panel, plan.nodePages(), diagramTop, scale, width, theme, fonts, language);
+                    drawPageReferences(stream, page, panel, plan.nodePages(), diagramPages, relationInventory,
+                            nodes, diagramTop - (float) part.height() * scale, width, theme, fonts, language, decoration.canonical());
                     drawFooter(stream, decoration, width, theme, language, fonts.regular());
                     if (plan.panels().size() > 1) {
                         text(stream, theme, fonts.regular(), 8, PAGE_MARGIN, 30,
@@ -204,8 +233,6 @@ public final class ArchitecturePdfRenderer {
                     }
                 }
             }
-            drawInventory(document, scene, plan.nodePages(), nodeReasons == null ? Map.of() : nodeReasons,
-                    relationReasons == null ? Map.of() : relationReasons, theme, language, fonts, decoration);
             document.save(output);
             return output.toByteArray();
         } catch (IOException error) {
@@ -213,22 +240,90 @@ public final class ArchitecturePdfRenderer {
         }
     }
 
-    private static void drawPageReferences(PDPageContentStream stream, PdfDiagramPages.Panel panel,
-            Map<String, Integer> pages, float diagramTop, float scale, float width, ExportTheme theme, Fonts fonts,
-            DiagramLanguage language) throws IOException {
+    private static void drawPageReferences(PDPageContentStream stream, PDPage page, PdfDiagramPages.Panel panel,
+            Map<String, Integer> nodePages, List<PDPage> pages, PDPage relationInventory,
+            Map<String, DiagramSceneNode> nodes, float diagramBottom, float width, ExportTheme theme, Fonts fonts,
+            DiagramLanguage language, DiagramCanonicalEvidence canonical) throws IOException {
         if (panel.crossPageRelationships().isEmpty()) return;
-        // Allow for connectors routed around the nodes; never draw over the panel or the footer.
-        float y = diagramTop - (float) panel.scene().height() * scale - 16;
-        if (y < 70) return;
-        text(stream, theme, fonts.bold(), 10, PAGE_MARGIN, y, language.text("Connections to other pages", "Verbindungen zu anderen Seiten"));
-        for (var edge : panel.crossPageRelationships()) {
-            y -= 14;
-            if (y < 46) break;
-            String reference = "D" + pages.get(edge.sourceId()) + " · " + edge.sourceId() + "  →  " + edge.relationType()
-                    + "  →  D" + pages.get(edge.targetId()) + " · " + edge.targetId();
-            text(stream, theme, fonts.regular(), 9, PAGE_MARGIN, y,
-                    PdfDiagramText.wrap(reference, fonts.regular(), 9, width - 2 * PAGE_MARGIN, 1).getFirst());
+        float y = diagramBottom - 13;
+        text(stream, theme, fonts.bold(), 12, PAGE_MARGIN, y,
+                language.text("Connections to other pages", "Verbindungen zu anderen Seiten"));
+        String inventoryLabel = language.text("Open relationship inventory", "Beziehungsinventar öffnen");
+        int overflow = panel.crossPageRelationships().size() - MAX_PAGE_REFERENCES;
+        if (overflow > 0) inventoryLabel += " (+" + overflow + ")";
+        float inventoryLabelWidth = PdfDiagramText.width(fonts.bold(), 10, inventoryLabel);
+        float inventoryX = width - PAGE_MARGIN - inventoryLabelWidth;
+        drawLinkText(stream, page, relationInventory, List.of(inventoryLabel), theme, fonts.bold(), 10, inventoryX, y);
+
+        float center = width / 2;
+        float arrowHalfWidth = 90;
+        float endpointWidth = center - arrowHalfWidth - PAGE_MARGIN - 14;
+        for (var edge : panel.crossPageRelationships().stream().limit(MAX_PAGE_REFERENCES).toList()) {
+            y -= REFERENCE_ROW_HEIGHT;
+            int source = nodePages.get(edge.sourceId());
+            int target = nodePages.get(edge.targetId());
+            drawEndpointReference(stream, page, pages.get(source - 1), source, nodes.get(edge.sourceId()), theme,
+                    fonts, PAGE_MARGIN, y, endpointWidth);
+            drawEndpointReference(stream, page, pages.get(target - 1), target, nodes.get(edge.targetId()), theme,
+                    fonts, center + arrowHalfWidth + 14, y, endpointWidth);
+            String status = canonical == null ? DiagramPresentation.relationshipStatus(edge.metadata(), language.german())
+                    : DiagramPresentation.canonicalRelationshipStatus(canonical, edge.id(), language);
+            String type = PdfDiagramText.wrap(edge.relationType() + " · " + status,
+                    fonts.bold(), 10, 2 * arrowHalfWidth, 1).getFirst();
+            float typeWidth = PdfDiagramText.width(fonts.bold(), 10, type);
+            text(stream, theme, fonts.bold(), 10, center - typeWidth / 2, y + 4, type);
+            boolean proposed = canonical == null ? edge.metadata() != null && edge.metadata().proposed()
+                    : DiagramPresentation.canonicalRelationshipProposed(canonical, edge.id());
+            stream.setStrokingColor(Color.decode(theme.relationshipStroke(edge.relationType(), proposed)));
+            stream.setLineDashPattern(proposed ? new float[]{5, 3} : new float[]{}, 0);
+            stream.setLineWidth(1);
+            stream.moveTo(center - arrowHalfWidth, y - 4);
+            stream.lineTo(center + arrowHalfWidth, y - 4);
+            stream.stroke();
+            stream.setLineDashPattern(new float[]{}, 0);
+            drawArrow(stream, center - arrowHalfWidth, y - 4, center + arrowHalfWidth, y - 4, 6);
         }
+    }
+
+    private static void drawEndpointReference(PDPageContentStream stream, PDPage page, PDPage destination, int panel,
+            DiagramSceneNode node, ExportTheme theme, Fonts fonts, float x, float y, float maxWidth) throws IOException {
+        var labels = PdfDiagramText.wrap(node.label(), fonts.bold(), 10, maxWidth, 2);
+        drawLinkText(stream, page, destination, labels, theme, fonts.bold(), 10, x, y);
+        String identity = PdfDiagramText.wrap("D" + panel + " · " + node.id(), fonts.regular(), 8, maxWidth, 1).getFirst();
+        text(stream, theme, fonts.regular(), 8, x, y - labels.size() * 11, identity);
+    }
+
+    private static void drawLinkText(PDPageContentStream stream, PDPage page, PDPage destination, List<String> lines,
+            ExportTheme theme, PDFont font, float size, float x, float y) throws IOException {
+        boolean linked = page != destination;
+        float width = 0;
+        for (int index = 0; index < lines.size(); index++) {
+            String value = lines.get(index);
+            float baseline = y - index * 11;
+            text(stream, theme, font, size, x, baseline, value);
+            if (linked) {
+                float lineWidth = PdfDiagramText.width(font, size, PdfDiagramText.printable(value, font));
+                width = Math.max(width, lineWidth);
+                stream.setStrokingColor(Color.decode(theme.canvasText("#394150")));
+                stream.setLineWidth(.5f);
+                stream.moveTo(x, baseline - 2);
+                stream.lineTo(x + lineWidth, baseline - 2);
+                stream.stroke();
+            }
+        }
+        if (!linked) return;
+        var target = new PDPageFitDestination();
+        target.setPage(destination);
+        var action = new PDActionGoTo();
+        action.setDestination(target);
+        var link = new PDAnnotationLink();
+        var border = new PDBorderStyleDictionary();
+        border.setWidth(0);
+        link.setBorderStyle(border);
+        float extraHeight = (lines.size() - 1) * 11;
+        link.setRectangle(new PDRectangle(x, y - 3 - extraHeight, width, size + 4 + extraHeight));
+        link.setAction(action);
+        page.getAnnotations().add(link);
     }
 
     private static void background(PDPageContentStream stream, ExportTheme theme, float width, float height)
@@ -358,7 +453,8 @@ public final class ArchitecturePdfRenderer {
             stream.addRect(x, y, width, height);
             stream.stroke();
 
-            float inset = 8 * scale, small = 8 * scale;
+            float inset = 8 * scale;
+            float small = Math.max(7, 8 * scale);
             String score = canonical ? "" : language.score(node);
             float scoreWidth = PdfDiagramText.width(fonts.regular(), small, score);
             String id = PdfDiagramText.wrap(node.id(), fonts.bold(), small,
@@ -366,11 +462,14 @@ public final class ArchitecturePdfRenderer {
             text(stream, theme.nodeText(node.type(), "#0f172a"), fonts.bold(), small, x + inset, top - 15 * scale, id);
             text(stream, theme.nodeText(node.type(), "#0f172a"), fonts.regular(), small, x + width - inset - scoreWidth, top - 15 * scale, score);
             var assignment = node.responsibility();
+            int lines = assignment == null ? 2 : 1;
+            if (canonical && node.height() >= LayeredDiagramLayoutService.NODE_HEIGHT) lines++;
             List<String> labelLines = PdfDiagramText.wrap(node.label(), fonts.regular(), 10 * scale,
-                    width - 2 * inset, assignment == null ? 2 : 1);
+                    width - 2 * inset, lines);
+            float labelTop = canonical ? 27 : 34;
             for (int index = 0; index < labelLines.size(); index++) {
                 text(stream, theme.nodeText(node.type(), "#0f172a"), fonts.regular(), 10 * scale, x + inset,
-                        top - (34 + index * 13) * scale, labelLines.get(index));
+                        top - (labelTop + index * 13) * scale, labelLines.get(index));
             }
             if (assignment != null) {
                 stream.setNonStrokingColor(Color.decode(assignment.color()));
@@ -381,7 +480,8 @@ public final class ArchitecturePdfRenderer {
             }
             // Two separate footer lines leave the complete taxonomy name room to wrap safely.
             String type = PdfDiagramText.wrap(node.type(), fonts.regular(), small, width - 2 * inset, 1).getFirst();
-            text(stream, theme.nodeText(node.type(), "#0f172a"), fonts.regular(), small, x + inset, y + 21 * scale, type);
+            float typeBaseline = canonical && labelLines.size() == 3 && !node.container() ? 16 : 21;
+            text(stream, theme.nodeText(node.type(), "#0f172a"), fonts.regular(), small, x + inset, y + typeBaseline * scale, type);
             if (!canonical || node.container()) {
                 String depth = canonical ? "Container" : language.depth(node)
                         + (node.container() ? " | Container" : "");
@@ -446,7 +546,7 @@ public final class ArchitecturePdfRenderer {
     private record Entry(String identity, List<String> lines) { }
 
     /** The vector pages are followed by a complete, paginated inventory of the exported evidence. */
-    private static void drawInventory(PDDocument document, DiagramScene scene, Map<String, Integer> nodePages,
+    private static PDPage drawInventory(PDDocument document, DiagramScene scene, Map<String, Integer> nodePages,
                                       Map<String, String> nodeReasons, Map<String, Map<String, String>> relationReasons,
                                       ExportTheme theme, DiagramLanguage language, Fonts fonts, Decoration decoration) throws IOException {
         var canonical = decoration.canonical();
@@ -493,6 +593,7 @@ public final class ArchitecturePdfRenderer {
         float width = PDRectangle.A4.getWidth() - 2 * PAGE_MARGIN;
         int capacity = (int) ((PDRectangle.A4.getHeight() - 2 * PAGE_MARGIN - 36) / 13);
         var pages = inventoryPages(entries, fonts.regular(), width, capacity, language);
+        PDPage relationshipInventory = null;
         for (int index = 0; index < pages.size(); index++) {
             var page = new PDPage(PDRectangle.A4);
             document.addPage(page);
@@ -502,10 +603,13 @@ public final class ArchitecturePdfRenderer {
                 text(stream, theme, fonts.bold(), 13, PAGE_MARGIN, top - 13,
                         language.text("Export inventory - ", "Exportinventar - ") + (index + 1));
                 var lines = pages.get(index);
+                if (lines.contains(language.text("Relationship inventory", "Beziehungsinventar")))
+                    relationshipInventory = page;
                 for (int row = 0; row < lines.size(); row++)
                     text(stream, theme, fonts.regular(), 9, PAGE_MARGIN, top - 36 - row * 13, lines.get(row));
             }
         }
+        return relationshipInventory;
     }
 
     /** A short entry moves with its complete evidence. A very long entry repeats its ID on later pages. */

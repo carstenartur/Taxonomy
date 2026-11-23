@@ -61,6 +61,7 @@ class RelationsExtensionHttpTest {
             var child = new TaxonomyNode(); child.setCode("CP-1"); child.setTaxonomyRoot("CP"); child.setNameEn("Evidence capability");
             child.setParentCode("CP"); child.setLevel(1); root.getChildren().add(child);
             when(nodes.findByParentIsNullOrderByCodeAsc()).thenReturn(List.of(root));
+            CatalogueTreeFixture.stub(nodes, List.of(root));
             when(nodes.findByParentCodeOrderByNameEnAsc("CP")).thenReturn(List.of(child));
             when(nodes.findByParentCodeOrderByNameEnAsc("CP-1")).thenReturn(List.of());
             when(nodes.findByTaxonomyRootOrderByLevelAscNameEnAsc("CP")).thenReturn(List.of(root, child));

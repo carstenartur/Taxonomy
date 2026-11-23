@@ -73,7 +73,7 @@ public final class EmbeddingBridgeSupport {
             value = refresh.get(contentKey(entity));
             if (value == null) throw new IllegalStateException("Embedding refresh source changed before indexing");
         } else {
-            value = compute(entity, textBuilder);
+            value = compute(entity, textBuilder, null);
         }
         if (value.vector() != null) {
             try {
@@ -87,8 +87,13 @@ public final class EmbeddingBridgeSupport {
 
     /** Inference runs before acquiring any database write locks. */
     static PreparedEmbedding prepare(Object entity) {
-        if (entity instanceof TaxonomyNode node) return compute(node, NodeEmbeddingBinder.Bridge::buildEnrichedText);
-        if (entity instanceof TaxonomyRelation relation) return compute(relation, RelationEmbeddingBinder.Bridge::buildEnrichedText);
+        if (entity instanceof TaxonomyNode node) {
+            return compute(node, NodeEmbeddingBinder.Bridge::buildEnrichedText, CatalogueIndexFingerprint.node(node));
+        }
+        if (entity instanceof TaxonomyRelation relation) {
+            return compute(relation, RelationEmbeddingBinder.Bridge::buildEnrichedText,
+                    CatalogueIndexFingerprint.relation(relation));
+        }
         throw new IllegalArgumentException("Unsupported catalogue index entity");
     }
 
@@ -110,8 +115,7 @@ public final class EmbeddingBridgeSupport {
         }
     }
 
-    private static <T> PreparedEmbedding compute(T entity, Function<T, String> textBuilder) {
-        String key = contentKey(entity);
+    private static <T> PreparedEmbedding compute(T entity, Function<T, String> textBuilder, String key) {
         try {
             var startup = SpringContextHolder.getBean(AppInitializationStateService.class);
             if (startup != null && !startup.isReady()) return new PreparedEmbedding(key, null, null);

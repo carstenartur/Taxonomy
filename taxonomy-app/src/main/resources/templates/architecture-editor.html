@@ -20,7 +20,7 @@
         <a th:href="@{/integrations(lang=${#locale.language})}" href="/integrations" data-i18n="integration.title">Tool integrations</a></th:block>
 </header>
 <section th:replace="~{fragments/architecture-workflow :: context}"></section>
-<section th:fragment="surface" class="architecture-editor-surface">
+<section th:fragment="surface(integrated)" class="architecture-editor-surface">
 <main id="architectureEditor">
     <p id="editorContext" class="editor-context"></p>
     <p id="editorStatus" role="status" aria-live="polite" data-i18n="editor.loading">Loading architecture…</p>
@@ -101,7 +101,7 @@
                 <textarea id="prepConstraint" rows="3" maxlength="8000" required></textarea>
                 <label for="prepSubject" data-i18n="editor.prep.subject">Native subject of the constraint</label>
                 <select id="prepSubject" required></select>
-                <label for="prepRationale" data-i18n="editor.rationale">Reason for the command</label>
+                <label for="prepRationale" data-i18n="editor.prep.rationale">Reason for the delivery proposal</label>
                 <textarea id="prepRationale" rows="2" maxlength="1000" required></textarea>
                 <button id="prepPreview" type="submit" data-i18n="editor.preview">Preview change</button>
             </fieldset>
@@ -110,14 +110,27 @@
         <section id="prepResult" aria-labelledby="prepResultTitle" hidden></section>
         <fieldset id="prepReview" hidden>
             <legend data-i18n="editor.prep.review">Review before saving</legend>
-            <div><input id="prepRelationshipReviewed" type="checkbox" />
-                <label for="prepRelationshipReviewed" data-i18n="editor.prep.relationshipReviewed">I reviewed the service-to-capability relationship.</label></div>
-            <div><input id="prepDerivationReviewed" type="checkbox" />
-                <label for="prepDerivationReviewed" data-i18n="editor.prep.derivationReviewed">I reviewed the R7 derivation against the quoted requirement and its native subject.</label></div>
+            <div class="prep-review-decision">
+                <h4 data-i18n="editor.prep.relationshipDecision">Service and capability</h4>
+                <p id="prepRelationshipSummary"></p>
+                <label class="editor-check"><input id="prepRelationshipReviewed" type="checkbox" />
+                    <span data-i18n="editor.prep.relationshipReviewed">I reviewed the service-to-capability relationship.</span></label>
+            </div>
+            <div class="prep-review-decision">
+                <h4 data-i18n="editor.prep.derivationDecision">R7 requirement derivation</h4>
+                <p id="prepDerivationSummary"></p>
+                <p><strong data-i18n="editor.prep.constraint">Proposed operational constraint</strong></p>
+                <p id="prepConstraintSummary" class="prep-review-source-text"></p>
+                <p><strong id="prepEvidenceQuoteLabel" data-i18n="editor.prep.quote">Verbatim evidence from this requirement</strong></p>
+                <blockquote id="prepEvidenceQuote" class="prep-review-source-text" aria-labelledby="prepEvidenceQuoteLabel"></blockquote>
+                <label class="editor-check"><input id="prepDerivationReviewed" type="checkbox" />
+                    <span data-i18n="editor.prep.derivationReviewed">I reviewed the R7 derivation against the quoted requirement and its native subject.</span></label>
+            </div>
             <button id="prepAccept" type="button" disabled data-i18n="editor.prep.accept">Save reviewed changes and checkpoint</button>
         </fieldset>
         <p id="prepReceipt" role="status" aria-live="polite"></p>
         <button id="prepRetry" type="button" hidden data-i18n="editor.prep.retry">Retry the same operation</button>
+        <a id="prepAssessment" aria-describedby="prepReceipt" hidden data-i18n="editor.admbw.download">Download ADMBw assessment (JSON)</a>
         <button id="prepDownload" type="button" aria-describedby="prepReceipt" hidden data-i18n="editor.admbw.qeaDownload">Download ADMBw QEA copy</button>
     </details>
     <p id="editorMode"></p>
@@ -130,21 +143,26 @@
         <input id="editorCollaborationLink" type="text" readonly hidden/>
     </section>
     <section id="snapshotAdoption" aria-labelledby="adoptionHeading" hidden>
-        <h2 id="adoptionHeading" data-i18n="adoption.title">Adopt a frozen analysis snapshot</h2>
+        <h2 id="adoptionHeading" tabindex="-1" data-i18n="adoption.title">Adopt a saved analysis</h2>
         <p id="adoptionHelp"></p>
         <p><strong data-i18n="adoption.source">Frozen source</strong>: <span id="adoptionSource"></span></p>
         <p><strong data-i18n="adoption.target">Editable target</strong>: <span id="adoptionTarget"></span></p>
         <a id="adoptionSourceLink" data-i18n="workflow.backSnapshot" hidden>Return to source analysis</a>
+        <p id="adoptionSummary" role="status" aria-live="polite" tabindex="-1" hidden></p>
+        <details id="adoptionDifferenceDetails" hidden>
+            <summary data-i18n="adoption.differences">Review the differing values</summary>
+            <pre id="adoptionDifferences"></pre>
+        </details>
         <div class="editor-toolbar">
             <button id="adoptionPreview" type="button" data-i18n="adoption.preview">Preview snapshot adoption</button>
             <button id="adoptionAccept" type="button" data-i18n="adoption.accept" hidden>Adopt this frozen snapshot</button>
             <button id="adoptionCancel" type="button" data-i18n="editor.cancel" hidden>Cancel</button>
         </div>
-        <pre id="adoptionSummary" role="status" aria-live="polite" tabindex="0" hidden></pre>
         <label for="adoptionView" data-i18n="adoption.view">Canonical architecture view</label>
         <select id="adoptionView"></select>
         <details>
             <summary id="adoptionProvenanceTitle" data-i18n="adoption.provenance">Recorded source provenance</summary>
+            <pre id="adoptionIdentity"></pre>
             <pre id="adoptionProvenance" tabindex="0" role="region" aria-labelledby="adoptionProvenanceTitle"></pre>
         </details>
     </section>
@@ -163,6 +181,7 @@
                 <button id="editorFit" type="button" data-i18n="editor.fit">Fit model</button>
                 <button id="editorFocus" type="button" aria-controls="editorGraph" data-i18n="editor.focus" disabled>Focus selection</button>
                 <button id="editorUnfocus" type="button" aria-controls="editorGraph" data-i18n="editor.unfocus" disabled>Unfocus</button>
+                <div th:replace="~{fragments/architecture-diagram-controls :: lens('editorArchitectureLensAction', 'editorLensEnabled', 'editorLens')}"></div>
             </div>
             <p id="editorGraphSummary"></p>
             <svg id="editorGraph" viewBox="0 0 1000 420" role="group" tabindex="0" aria-labelledby="editorGraphTitle" aria-describedby="editorGraphHelp"></svg>
@@ -173,25 +192,10 @@
                 <select id="editorLayout"><option value="stable" data-i18n="editor.layoutStable">Stable order</option><option value="reduce-crossings" data-i18n="editor.layoutCrossings">Reduce crossings</option></select>
                 <button id="editorArrange" type="button" data-i18n="editor.arrange">Rearrange explicitly</button>
             </div>
-            <section class="editor-lens-panel" aria-labelledby="editorLensTitle">
-                <h2 id="editorLensTitle" tabindex="-1" data-i18n="editor.lens.title">Architecture focus lens</h2>
-                <label class="editor-check"><input id="editorLensEnabled" type="checkbox" disabled/><span data-i18n="editor.lens.enable">Enable focus lens</span></label>
-                <p data-i18n="editor.lens.help">Move slowly over elements to investigate connections across the model. For keyboard or touch, select an element and investigate the selection. Results remain hypotheses until reviewed.</p>
-                <div class="editor-toolbar">
-                    <button id="editorLensInspect" type="button" disabled data-i18n="editor.lens.inspect">Investigate selection</button>
-                    <button id="editorLensPause" type="button" disabled data-i18n="editor.lens.pause">Pause new investigations</button>
-                    <label for="editorLensBudget" data-i18n="editor.lens.budget">Investigation limit</label>
-                    <input id="editorLensBudget" type="number" min="1" max="128" value="16"/>
-                </div>
-                <label class="editor-check"><input id="editorLensUseAi" type="checkbox" checked/><span data-i18n="editor.lens.useAi">Ask the configured AI provider when available</span></label>
-                <p data-i18n="editor.lens.cost">Each investigation may send one request to the configured provider. Pausing lets an active request finish. Local text candidates remain unassessed.</p>
-                <p id="editorLensSummary" role="status" aria-live="polite"></p>
-                <ul id="editorLensStates" class="editor-lens-states"></ul>
-                <h3 id="editorLensCount"></h3>
-                <ul id="editorLensSuggestions" class="editor-lens-suggestions"></ul>
-                <section id="editorLensReview" aria-label="Suggestion review" th:aria-label="#{editor.lens.review}"></section>
-                <p id="editorLensError" role="alert" hidden></p>
-            </section>
+            <div th:if="${integrated}" id="workingProposalInbox"></div>
+            <th:block th:unless="${integrated}">
+                <section th:replace="~{fragments/relationship-review :: inbox(false)}"></section>
+            </th:block>
         </section>
         <section aria-labelledby="editorPropertiesTitle">
             <h2 id="editorPropertiesTitle" data-i18n="editor.properties">Element properties</h2>
@@ -346,6 +350,7 @@
 <th:block th:replace="~{fragments/application-chrome :: scripts}"></th:block>
 <script th:src="@{/js/api/analysis-adapter-api.js}" src="/js/api/analysis-adapter-api.js"></script>
 <script th:src="@{/js/api/architecture-editor-api.js}" src="/js/api/architecture-editor-api.js"></script>
+<script th:src="@{/js/shared/relationship-review.js}" src="/js/shared/relationship-review.js"></script>
 <script th:src="@{/js/architecture-focus.js}" src="/js/architecture-focus.js"></script>
 <script th:src="@{/js/architecture-brief.js}" src="/js/architecture-brief.js"></script>
 <script th:src="@{/js/architecture-planning.js}" src="/js/architecture-planning.js"></script>

@@ -178,8 +178,12 @@ public class SvgDiagramRenderer {
                 drawCaption(svg, scene, anchors, kind, captionFont, captionContext, theme, captions, above, below);
                 drawCaption(svg, scene, anchors, status, captionFont, captionContext, theme, captions, below, above);
             } else {
-                drawCaption(svg, scene, anchors, edge.relationType() + " · " + status,
-                        captionFont, captionContext, theme, captions, -6, 16);
+                if (!drawCaption(svg, scene, anchors, edge.relationType() + " · " + status,
+                        captionFont, captionContext, theme, captions, -6, 16, -18, 28)) {
+                    drawCaption(svg, scene, anchors, edge.relationType(), captionFont, captionContext,
+                            theme, captions, -6, 16, -18, 28);
+                    drawCaption(svg, scene, anchors, status, captionFont, captionContext, theme, captions, 16, -6, 28, -18);
+                }
             }
             svg.append("</g></a>\n");
         }
@@ -197,9 +201,14 @@ public class SvgDiagramRenderer {
                 .append("\" rx=\"10\" fill=\"").append(theme.nodeFill(node.type())).append("\" stroke=\"")
                 .append(theme.nodeBorder(node.type(), node.anchor())).append("\" stroke-width=\"").append(node.anchor() ? "3" : "1.3").append("\"/>\n");
             text(svg, 14, 17, "start", 10, true, theme.nodeText(node.type(), "#334155"), DiagramTextWrapper.wrapMeasured(node.id(), font(10, true), nodeTextWidth, 1, language.text("ID unrecorded", "Kennung nicht aufgezeichnet")).getFirst());
-            var labels = DiagramTextWrapper.wrapMeasured(node.label(), font(13, false), nodeTextWidth, assignment == null ? 2 : 1,
+            int labelLines = assignment == null ? 2 : 1;
+            if (canonical != null && node.height() >= LayeredDiagramLayoutService.NODE_HEIGHT) labelLines++;
+            var labels = DiagramTextWrapper.wrapMeasured(node.label(), font(13, false), nodeTextWidth, labelLines,
                     language.text("Unnamed architecture element", "Unbenanntes Architekturelement"));
-            for (int i = 0; i < labels.size(); i++) text(svg, 14, 36 + i * 17, "start", 13, false, theme.nodeText(node.type(), "#0f172a"), labels.get(i));
+            double labelTop = canonical == null ? 36 : 30;
+            double labelLeading = canonical == null ? 17 : 13;
+            for (int i = 0; i < labels.size(); i++) text(svg, 14, labelTop + i * labelLeading,
+                    "start", 13, false, theme.nodeText(node.type(), "#0f172a"), labels.get(i));
             if (assignment != null) {
                 svg.append("<circle cx=\"18\" cy=\"52\" r=\"4\" fill=\"").append(assignment.color()).append("\"/>\n");
                 text(svg, 26, 56, "start", 11, false, theme.nodeText(node.type(), "#0f172a"),
@@ -237,7 +246,7 @@ public class SvgDiagramRenderer {
         return svg.append("</svg>\n").toString();
     }
 
-    private static void drawCaption(StringBuilder svg, DiagramScene scene, List<DiagramEdgeRouting.Point> anchors,
+    private static boolean drawCaption(StringBuilder svg, DiagramScene scene, List<DiagramEdgeRouting.Point> anchors,
             String label, Font font, FontRenderContext context, ExportTheme theme, List<Rectangle2D> occupied, double... offsets) {
         String caption = DiagramTextWrapper.wrapMeasured(label, font, 210, 1, "").getFirst();
         var glyphs = font.getStringBounds(caption, context);
@@ -252,10 +261,11 @@ public class SvgDiagramRenderer {
                     continue;
                 text(svg, anchor.x(), baseline, "middle", 11, false, theme.canvasText("#394150"), caption);
                 occupied.add(box);
-                return;
+                return true;
             }
         }
         // The hyperlink still points to the full relationship label and status in the inventory.
+        return false;
     }
 
     private static boolean proposed(com.taxonomy.diagram.DiagramSceneEdge edge, DiagramCanonicalEvidence canonical) {

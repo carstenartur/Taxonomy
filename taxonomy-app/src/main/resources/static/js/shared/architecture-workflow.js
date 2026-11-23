@@ -77,6 +77,10 @@
         return (workspace === null || workspace === '' || workspace.trim() === workspace)
             && (workspace === null || scope === null || (workspace || '__shared__') === scope);
     }
+    function hasExactWorkspaceSource(query) {
+        return unambiguousStatusScope(query) && query.has('repositoryId') && query.has('branch')
+            && (query.has('workspaceId') || query.has('workspaceScopeKey'));
+    }
     function statusOptions(target, input, options) {
         var request = typeof Request === 'function' && input instanceof Request;
         var method = String(options?.method || (request ? input.method : 'GET')).toUpperCase();
@@ -290,7 +294,8 @@
     }
     decorateLinks();
     window.TaxonomyArchitectureWorkflow = {
-        getScope: getScope, setScope: setScope, replaceScope:replaceScope, adoptionSource: adoptionSource, scopeUrl: scopeUrl, snapshotLinks: snapshotLinks, editorSourceLinks: editorSourceLinks,
+        getScope: getScope, setScope: setScope, replaceScope:replaceScope, hasExactWorkspaceSource:hasExactWorkspaceSource,
+        adoptionSource: adoptionSource, scopeUrl: scopeUrl, snapshotLinks: snapshotLinks, editorSourceLinks: editorSourceLinks,
         showSnapshot: showSnapshot, showEditor: showEditor, preferredProject: preferredProject,
         portfolioUrl: portfolioUrl, workbenchUrl: workbenchUrl, checkpointUrl: checkpointUrl, modelRevisionUrl: modelRevisionUrl
     };

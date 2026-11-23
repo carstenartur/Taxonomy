@@ -244,6 +244,7 @@ async function customAiBadge(status) {
     'aiUnavailableWarning', 'aiConnectionWarning'].map(id => [id, {
       classList: mutableClassList(), className: '', textContent: '', title: '', hidden: true
     }]));
+  elements.analyzeBtn.disabled = false; // Startup already released the analysis control.
   const document = { addEventListener() {}, getElementById: id => elements[id] || null };
   const window = { TaxonomyState: {}, addEventListener() {} };
   const module = browseSource.replace('window.TaxonomyBrowse = {',

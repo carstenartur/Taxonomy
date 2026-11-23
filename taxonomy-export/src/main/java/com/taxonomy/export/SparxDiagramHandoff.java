@@ -33,6 +33,10 @@ public final class SparxDiagramHandoff {
 
     /** A namespace identifies this delivery, not a persisted repository or bidirectional connection. */
     public static byte[] build(DiagramModel graph, UUID namespace) throws IOException {
+        return build(graph, namespace, null);
+    }
+
+    public static byte[] build(DiagramModel graph, UUID namespace, AnalysisDiagramSource source) throws IOException {
         Objects.requireNonNull(namespace, "Delivery namespace");
         Map<String, DiagramNode> nodes = validate(graph);
         List<Artifact> artifacts = new ArrayList<>();
@@ -107,7 +111,8 @@ public final class SparxDiagramHandoff {
         Map<String, Object> manifest = new TreeMap<>();
         manifest.put("profile", PROFILE); manifest.put("exchangeProfile", SparxMappingProfile.PROFILE + "@3");
         manifest.put("relationSemantics", "Exact Taxonomy type and direction are carried by profile 3 metadata and visible stereotype; the transport table does not claim native UML equivalence.");
-        manifest.put("mode", "fresh-copy"); manifest.put("sourceAuthority", "client-provided-working-view");
+        manifest.put("mode", "fresh-copy"); manifest.put("sourceAuthority", source == null ? "client-provided-working-view" : "server-side-analysis");
+        if (source != null) manifest.put("analysis", source);
         manifest.put("productCompatibility", "not-certified"); manifest.put("syncCheckpointChanged", false);
         manifest.put("deliveryNamespace", namespace.toString()); manifest.put("elements", nodeEvidence); manifest.put("relations", relationEvidence);
         manifest.put("losses", losses); manifest.put("sha256", digest(xmi));

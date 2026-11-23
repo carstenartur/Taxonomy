@@ -108,7 +108,7 @@ class VisioDecisionDrawingContentTest {
                 .filter(shape -> shape.getText().equals("Anforderung")).findFirst().orElseThrow();
         var target = source.getProperties().get("taxonomy.evidencePage").value();
         assertTrue(document.getPages().stream().anyMatch(page -> page.isEvidencePage() && page.getName().equals(target)));
-        assertTrue(document.getPages().stream().anyMatch(page -> page.getName().startsWith("Evidence ")));
+        assertTrue(document.getPages().stream().anyMatch(page -> page.getName().startsWith("Nachweise ")));
     }
 
     @Test

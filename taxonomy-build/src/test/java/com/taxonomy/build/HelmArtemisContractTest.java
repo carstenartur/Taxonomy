@@ -63,7 +63,7 @@ class HelmArtemisContractTest {
         Map<String, Object> general = named(deployments, "taxonomy-taxonomy-worker-general");
         assertThat(environment(web)).containsEntry("TAXONOMY_ANALYSIS_RUNTIME_ROLE", "coordinator")
                 .containsEntry("TAXONOMY_ANALYSIS_WORKER_ENABLED", "false")
-                .containsEntry("MANAGEMENT_ENDPOINT_HEALTH_GROUP_READINESS_INCLUDE", "readinessState,taxonomy");
+                .containsEntry("MANAGEMENT_ENDPOINT_HEALTH_GROUP_READINESS_INCLUDE", "readinessState");
         assertThat(environment(cp)).containsEntry("TAXONOMY_ANALYSIS_RUNTIME_ROLE", "worker")
                 .containsEntry("TAXONOMY_ANALYSIS_WORKER_SHARDS", "CP")
                 .containsEntry("MANAGEMENT_ENDPOINT_HEALTH_GROUP_READINESS_INCLUDE", "readinessState,analysisBroker");

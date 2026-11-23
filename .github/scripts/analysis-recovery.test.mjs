@@ -86,7 +86,7 @@ function harness(language = 'en') {
     for(const id of ['analysisRelationsExtension','extendAnalysisRelationsBtn','analysisRelationsExtensionHint'])fields[id]=node();
     vm.runInNewContext(readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/core/taxonomy-relations-extension.js',import.meta.url),'utf8'),context);
   }
-  return {S,runtime,ui,analyses,requests,saved,panels,fields,timers,window,document,complete,loadAnalysis,loadRelationsExtension,derivedRequests,derivedBodies,readResponses,
+  return {S,runtime,ui,analyses,requests,saved,panels,fields,timers,storage,window,document,complete,loadAnalysis,loadRelationsExtension,derivedRequests,derivedBodies,readResponses,
     snapshot:()=>snapshot,
     followups:()=>followups,renderedReports,options:()=>openOptions,
     act:id=>openOptions.find(o=>o.id===id).handler(),emit:(name,detail={})=>(listeners.get(name)||[]).forEach(fn=>fn({detail})),
@@ -94,7 +94,56 @@ function harness(language = 'en') {
 }
 async function settle(){for(let i=0;i<8;i++)await new Promise(resolve=>setImmediate(resolve));}
 
-for (const schedule of ['immediate rejection', 'background read in flight', 'background read already finished']) {
+test('a delayed successful START does not read the journal before server confirmation', async () => {
+  const h = harness();
+  const pending = h.recovery.startManagedAnalysis();
+  const id = h.analyses[0].continuationId;
+  h.readResponses.push({ ok: false, status: 404, json: async () => ({ detail: 'Unknown continuation' }) });
+  try {
+    for (const [timerId, callback] of h.timers) {
+      h.timers.delete(timerId);
+      callback();
+    }
+    await settle();
+    assert.deepEqual(h.requests, [], 'A slow admission must not issue a speculative continuation GET');
+    h.emit('taxonomy:analysis-progress', { status: 'RUNNING', node: 'CP' });
+    assert.equal(h.S.analysisRecovery.currentNode, 'CP', 'The live progress monitor still updates Recovery');
+  } finally {
+    h.complete('COMPLETED');
+    await pending;
+  }
+  assert.equal(h.S.analysisRecovery.id, id);
+  assert.equal(h.S.analysisRecovery.state, 'COMPLETED');
+  assert.equal(h.S.recoveryContext.confirmed, true);
+  assert.equal(h.analyses.length, 1);
+});
+
+test('a running journal restored from a saved pointer keeps its scoped polling', async () => {
+  const h = harness();
+  const id = webcrypto.randomUUID();
+  const pointer = { id, workspaceId: h.runtime.workspaceId };
+  const status = { recovery: { id, version: 7, state: 'RUNNING' },
+    request: { businessText: h.fields.businessText.value } };
+  const response = () => ({ ok: true, json: async () => status });
+  h.storage.set('taxonomy.recovery.active.v1', JSON.stringify(pointer));
+  h.readResponses.push(response(), response());
+  h.emit('taxonomy:analysis-source-ready');
+  await settle();
+
+  assert.equal(h.S.recoveryContext.confirmed, true);
+  assert.equal(h.S.analysisRecovery.state, 'RUNNING');
+  assert.equal(h.timers.size, 1, 'An authorized running journal schedules its next observation');
+  const [timerId, callback] = h.timers.entries().next().value;
+  h.timers.delete(timerId);
+  callback();
+  await settle();
+  const read = { url: '/api/analysis-continuations/' + id, method: 'GET', workspace: pointer.workspaceId };
+  assert.deepEqual(h.requests, [read, read]);
+  assert.equal(h.timers.size, 1);
+  assert.equal(h.analyses.length, 0, 'Observing a running journal never submits a START');
+});
+
+for (const schedule of ['immediate rejection', 'explicit read in flight', 'explicit read already finished']) {
  test(`rejected START fixture audits real recovery with ${schedule}`, async () => {
   const h = harness(), fixture = createRejectedAnalysisFixture(), failures = [];
   let releasePost, releaseRead;
@@ -119,15 +168,13 @@ for (const schedule of ['immediate rejection', 'background read in flight', 'bac
    h.reject(Object.assign(new Error('QA provider is temporarily unavailable'), { httpStatus: response.status }));
   } });
   try {
-   assert.equal(h.timers.size, 1, 'The real run schedules an observation before its START outcome');
+   assert.equal(h.timers.size, 0, 'START does not poll an unconfirmed journal');
    if (schedule !== 'immediate rejection') {
     h.readResponses.push(readPending, missing());
-    const [timerId, callback] = h.timers.entries().next().value;
-    h.timers.delete(timerId);
-    callback();
+    h.recovery.refresh();
     await settle();
     assert.equal(h.requests.length, 1);
-    if (schedule === 'background read already finished') {
+    if (schedule === 'explicit read already finished') {
      releaseRead(missing());
      await settle();
      assert.equal(h.S.recoveryContext.syncState, 'UNAVAILABLE');
@@ -136,7 +183,7 @@ for (const schedule of ['immediate rejection', 'background read in flight', 'bac
    releasePost();
    await rejection;
    await settle();
-   if (schedule === 'background read in flight') {
+   if (schedule === 'explicit read in flight') {
     assert.equal(h.requests.length, 1, 'afterDecision waits for the earlier in-flight read');
     releaseRead(missing());
     await settle();
@@ -499,6 +546,7 @@ test('rendered Retry continues the same operation and exact failed question revi
  const h=harness();h.recovery.startCopilot();h.complete();await settle();const id=h.analyses[0].continuationId;
  h.act('analysisRecoveryRetry');assert.equal(h.analyses.length,2);assert.equal(h.analyses[1].continuationId,id);
  assert.equal(h.analyses[1].continuationVersion,7);assert.equal(h.analyses[1].continuationQuestion,'question-a');
+ assert.equal(h.timers.size,1,'A running retry of a confirmed local journal keeps observing');
  assert.equal(h.analyses[1].continuationAction,'RETRY');h.complete('COMPLETED');await settle();
  assert.equal(h.followups(),0);assert.equal(h.renderedReports.length,1);
  assert.equal(h.S.recoveryContext.followupState,'HISTORICAL');
@@ -1004,7 +1052,7 @@ for (const language of ['de', 'en']) {
  });
 }
 test('durable Artemis question recovery uses progress events and explicit decisions without a fixed observation timer',async()=>{
- const h=harness();h.recovery.startCopilot();assert.equal(h.analyses.length,1);assert.equal(h.timers.size,1);
+ const h=harness();h.recovery.startCopilot();assert.equal(h.analyses.length,1);assert.equal(h.timers.size,0);
  h.emit('taxonomy:analysis-progress',{transport:'artemis',operationId:'durable-operation',status:'RUNNING',node:'CP'});
  assert.equal(h.timers.size,0);assert.equal(h.S.recoveryContext.distributed,true);
  assert.equal(h.S.recoveryContext.operationId,'durable-operation');

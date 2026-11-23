@@ -282,6 +282,21 @@ Wirksame Richtlinie: `GET /api/ai-automation`. Verbindliche Zuordnungen, Zustän
 | `TAXONOMY_PORTFOLIO_ANALYSIS_WORKER_SHUTDOWN_SECONDS` | `taxonomy.portfolio.analysis-worker-shutdown-seconds` | `30`, mindestens `0` | Worker-Auslaufzeit. |
 | `TAXONOMY_PORTFOLIO_SNAPSHOT_STALE_AFTER_DAYS` | `taxonomy.portfolio.snapshot-stale-after-days` | `30`, mindestens `1` | Altersgrenze der Stale-Snapshot-Metrik. |
 
+## Analyse per E-Mail
+
+Die [Einrichtung des E-Mail-Eingangs](MAIL_ANALYSIS.md) enthält die Postfach-, SMTP- und Versandkonfiguration.
+
+| Variable | Property / Gültigkeit | Standard | Bedeutung |
+|---|---|---|---|
+| `TAXONOMY_MAIL_ENABLED` | `taxonomy.mail.enabled` | `false` | Aktiviert E-Mail-Eingang, Auftragsverarbeitung und Live-Status. |
+| `TAXONOMY_MAIL_IMAP_POLL_ENABLED` | `taxonomy.mail.imap.poll-enabled` | `true` | Aktiviert den Postfacheingang. Er nutzt IMAP IDLE bei verfügbaren Serverbenachrichtigungen und andernfalls das Abfrageintervall. |
+| `TAXONOMY_MAIL_QUEUE_DIRECTORY` | `taxonomy.mail.queue.directory` | `./data/mail-analysis` | Dauerhaftes Verzeichnis eines einzelnen Koordinators. |
+| `TAXONOMY_MAIL_QUEUE_CAPACITY` | `taxonomy.mail.queue.capacity` | `16` | Höchstzahl wartender Aufträge. Für den Versand gilt eine eigene Obergrenze in gleicher Höhe, mindestens eins. Ist sie erreicht, behalten bestätigte Aufträge ihren Warteplatz, bis Ergebnisse versandt wurden oder ablaufen. |
+| `TAXONOMY_MAIL_QUEUE_RETENTION` | `taxonomy.mail.queue.retention` | `PT48H` | Aufbewahrung abgeschlossener Statusinformationen und maximale Dauer erneuter Versandversuche. |
+| `TAXONOMY_MAIL_QUEUE_LANGUAGE` | `taxonomy.mail.queue.language` | `de` | Sprache der Analyse und Dokumente. |
+| `TAXONOMY_MAIL_QUEUE_MAX_RESULT_BYTES` | `taxonomy.mail.queue.max-result-bytes` | `15000000` | Grenze für die Gesamtgröße exportierter Rohdateien pro Auftrag. |
+| `TAXONOMY_REPORTING_VISIO_PDF_ENABLED` | `taxonomy.reporting.visio-pdf.enabled` | `false` | Entscheidungsbaum-PDF über LibreOffice aktivieren. |
+
 ## Sicherheit und Keycloak
 
 `ADMIN_PASSWORD` schützt zusätzliche Actuator-/Legacy-Token-Prüfungen. `TAXONOMY_ADMIN_PASSWORD` initialisiert das lokale Konto `admin`. Ohne diesen Wert schreibt ein Nicht-Produktionsstart ein einmaliges zufälliges Startpasswort in eine eigentümergeschützte temporäre Datei und protokolliert nur deren Pfad; Produktion verlangt mindestens 16 nicht triviale Zeichen.

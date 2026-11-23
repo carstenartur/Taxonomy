@@ -629,7 +629,7 @@ Alle Workspace-Endpunkte erfordern Authentifizierung. Beim ersten Zugriff entste
 curl -u alice:password http://localhost:8080/api/workspace/current
 ```
 
-**Antwort:**
+**Antwort (200):**
 ```json
 {
   "workspaceId": "a1b2c3d4-...",
@@ -643,6 +643,22 @@ curl -u alice:password http://localhost:8080/api/workspace/current
   "lastAccessedAt": "2026-03-15T12:00:00Z"
 }
 ```
+
+Beim ersten Start kann der automatische Standard-Workspace noch auf den ersten
+Checkpoint seines Quell-Repositorys warten. Genau dieser Wartezustand liefert
+**202 Accepted**, `Retry-After: 1` und `Cache-Control: no-store`:
+
+```json
+{ "state": "INITIAL_SOURCE_PENDING" }
+```
+
+Diese Antwort enthält einen Wartezustand, keine Workspace-Metadaten. Wiederholen
+Sie diesen GET nach der angegebenen Wartezeit und geben Sie Workspace-abhängige
+Operationen erst nach bestätigter Quelle frei. Eine 202-Antwort erlaubt keine
+automatische Wiederholung von Projekt- oder Analyse-Schreibzugriffen. Explizit
+gewählte Workspaces behalten ihre Metadaten- und Wiederherstellungspfade; der
+zentrale Lesekontext liefert weiterhin 204. Andere Bereitstellungs- oder
+Quellauswahlkonflikte liefern weiterhin 409.
 
 ### Aktive Workspaces auflisten (Admin)
 

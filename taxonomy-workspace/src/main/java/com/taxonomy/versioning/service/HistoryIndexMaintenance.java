@@ -12,6 +12,7 @@ import com.taxonomy.workspace.service.WorkspaceFetchAuthority;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import jakarta.persistence.EntityManager;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.NestedExceptionUtils;
 import org.springframework.dao.TransientDataAccessException;
 import org.springframework.http.HttpStatus;
@@ -29,6 +30,9 @@ import static com.taxonomy.versioning.service.HistoryIndexJournal.Receipt;
 @Service
 public class HistoryIndexMaintenance {
     private DerivedProjection derived;
+
+    @Value("${taxonomy.analysis.runtime-role:all}")
+    private String runtimeRole = "all";
 
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     void configureDerivedProjection(DerivedProjection derived) { this.derived = derived; }
@@ -150,15 +154,22 @@ public class HistoryIndexMaintenance {
     }
 
     private Receipt resume(HistoryIndexJournal.Operation row, RepositoryContext context, String actor, boolean explicit) {
-        var token = journal.claim(row.receipt().operationId(), actor, explicit);
+        var operationId = row.receipt().operationId();
+        if (!row.receipt().kind().relationProjection() && !ownsHistoryIndex()) {
+            return journal.inspect(context, actor, operationId, this::verifyTarget);
+        }
+        var token = journal.claim(operationId, actor, explicit);
         return token == null
-                ? journal.inspect(context, actor, row.receipt().operationId(), this::verifyTarget)
+                ? journal.inspect(context, actor, operationId, this::verifyTarget)
                 : run(token, false);
     }
 
     @Scheduled(fixedDelayString = "${taxonomy.history-index.recovery-delay-ms:60000}")
     public void recover() {
-        for (String id : journal.due()) {
+        // Only a runtime that maintains a history index may claim a history command.
+        // Leave its original due time and attempt budget intact while startup verifies it.
+        boolean recoverHistory = ownsHistoryIndex() && projections.canRecoverHistory();
+        for (String id : journal.due(recoverHistory)) {
             var token = journal.claim(id, WORKER, false);
             if (token != null) {
                 try {
@@ -169,6 +180,10 @@ public class HistoryIndexMaintenance {
             }
         }
         journal.expire();
+    }
+
+    private boolean ownsHistoryIndex() {
+        return !"worker".equalsIgnoreCase(runtimeRole.trim());
     }
 
     private Receipt run(HistoryIndexJournal.Claim token, boolean background) {

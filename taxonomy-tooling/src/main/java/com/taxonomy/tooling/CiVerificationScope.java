@@ -16,6 +16,8 @@ final class CiVerificationScope {
     static final List<String> FULL_LANES = List.of("application", "production-image", "app-test-shards",
             "core", "coverage-aggregate", "observability", "ui-contracts", "ui-shards",
             "interoperability-products", "plugin-profile");
+    private static final String QUICK_START_HEADING = "\n## Quick start\n";
+    private static final String DEPLOYMENT_HEADING = "\n## Production deployment\n";
 
     private CiVerificationScope() { }
 
@@ -45,16 +47,18 @@ final class CiVerificationScope {
             String status = tokens[i];
             String path = tokens[i + 1];
             paths.add(path);
-            if (!(status.equals("A") || status.equals("M")) || !allowedProse(path)) {
+            boolean readme = path.equals("README.md");
+            if (!(status.equals("A") || status.equals("M")) || !(readme || allowedProse(path))) {
                 prose = false;
                 continue;
             }
             String entry = GitSupport.require(root, "ls-tree", commit, "--", path);
-            if (!entry.startsWith("100644 blob ")) prose = false;
+            if (!entry.startsWith("100644 blob ")
+                    || (readme && !(status.equals("M") && onlyQuickStartChanged(root, base, commit)))) prose = false;
         }
         paths.sort(String::compareTo);
         return decision(prose ? "documentation" : "full",
-                prose ? "Only allowlisted internal/developer prose changed" : "Change requires complete product verification",
+                prose ? "Only allowlisted documentation changed" : "Change requires complete product verification",
                 event, false, base, commit, tree, paths);
     }
 
@@ -65,11 +69,32 @@ final class CiVerificationScope {
 
     private static boolean allowedProse(String path) {
         if (!path.matches("[A-Za-z0-9_./-]+") || path.contains("..") || path.startsWith("/")) return false;
-        // These documents carry executable architecture/performance contracts.
-        if (path.equals("README.md") || path.equals("docs/dev/OBSERVABILITY_PERFORMANCE.md")) return false;
+        if (path.equals("docs/dev/OBSERVABILITY_PERFORMANCE.md")) return false;
         return path.matches("(?:README_DE|release_notes)\\.md")
+                || path.equals("docs/research/reproducibility.md")
                 || path.matches("docs/(?:internal|dev|superpowers)/.+\\.md")
                 || path.matches("plugins/[A-Za-z0-9_-]+/README(?:_DE)?\\.md");
+    }
+
+    private static boolean onlyQuickStartChanged(Path root, String base, String commit) {
+        var before = GitSupport.run(root, "show", "--no-textconv", base + ":README.md");
+        var after = GitSupport.run(root, "show", "--no-textconv", commit + ":README.md");
+        if (before.exitCode() != 0 || after.exitCode() != 0) return false;
+        String original = quickStartExcluded(before.stdout());
+        return original != null && original.equals(quickStartExcluded(after.stdout()));
+    }
+
+    private static String quickStartExcluded(String readme) {
+        int heading = readme.indexOf(QUICK_START_HEADING);
+        if (heading < 0) return null;
+        int start = heading + QUICK_START_HEADING.length() - 1;
+        int end = readme.indexOf("\n## ", start);
+        if (end < 0 || !readme.startsWith(DEPLOYMENT_HEADING, end)) return null;
+        // The full suite reads module inventory rows across the README and the Mermaid showcase.
+        // Preserve both inputs and every other section before allowing the lighter documentation lane.
+        if (readme.substring(start, end).lines().map(String::stripLeading).anyMatch(line -> line.startsWith("|")
+                || line.startsWith("```mermaid") || line.contains("Architecture Impact Showcase"))) return null;
+        return readme.substring(0, start) + readme.substring(end);
     }
 
     static void write(Path file, Decision decision) throws IOException {

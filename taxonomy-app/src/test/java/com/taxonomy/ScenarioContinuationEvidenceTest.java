@@ -26,6 +26,10 @@ class ScenarioContinuationEvidenceTest {
                 .isEqualTo(2);
         assertThat(app.reads.get("/api/projects/1/snapshots/second-0")).isEqualTo(2);
         assertThat(app.reads.get("/api/projects/1/snapshots/first-0")).isEqualTo(2);
+        assertThat(app.reads.get("/api/projects/1/analysis-jobs/first/items/1/continuation"))
+                .as("Query the least-advanced eligible pass first, including a final eligibility check")
+                .isEqualTo(3);
+        assertThat(app.reads.get("/api/projects/1/analysis-jobs/second/items/2/continuation")).isEqualTo(3);
         assertThat(app.attempts).containsEntry("first", 1).containsEntry("second", 2);
         assertThat(app.continuedPasses)
                 .as("Both original passes advance before another continuation of the same pass")
@@ -37,7 +41,7 @@ class ScenarioContinuationEvidenceTest {
         var app = new Application(true);
         assertThatThrownBy(() -> ScenarioContinuationWalkthrough.finishIndependentBudgetWork(app, 1, "/operation", null))
                 .isInstanceOf(AssertionError.class)
-                .hasMessageContaining("Continuation must preserve its immutable input snapshot");
+                .hasMessageContaining("Repeated snapshot reads preserve the checked immutable source");
         assertThat(app.mutated).isTrue();
     }
 
@@ -172,7 +176,7 @@ class ScenarioContinuationEvidenceTest {
             }
         }
 
-        @Override synchronized JsonNode get(String path) {
+        @Override synchronized JsonNode getJson(String path) {
             reads.merge(path, 1, Integer::sum);
             if (path.equals("/operation")) return operation();
             if (path.contains("/snapshots/")) return snapshots.get(path.substring(path.lastIndexOf('/') + 1)).deepCopy();
@@ -228,6 +232,9 @@ class ScenarioContinuationEvidenceTest {
                     "summary", Map.of("id", job + "-" + cycle, "projectId", 1, "requirementId", 1),
                     "analysis", Map.of("recovery", Map.of("id", "journal-" + job, "version", cycle + 10, "state", "STOPPED"),
                             "relationSearchReport", Map.of("maxCalls", 24, "totalCalls", 0,
+                                    "budget", Map.of("callsPerSlice", 24, "maxTotalCalls", 3096, "sourcesPerSlice", 32,
+                                            "workItemsPerSlice", 512, "sourceCohortSize", 32, "automatic", false,
+                                            "spentCalls", 0, "newCalls", 0),
                                     "progress", Map.of("assessedSources", 1, "completedSearches", cycle)))));
         }
     }

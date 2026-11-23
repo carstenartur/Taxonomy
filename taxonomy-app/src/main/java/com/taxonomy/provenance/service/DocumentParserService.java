@@ -92,49 +92,63 @@ public class DocumentParserService {
     public DocumentParseResult parse(MultipartFile file) throws IOException {
         validateUpload(file);
         String contentType = detectMimeType(file);
+        ParsedContent parsed = parseContent(file, contentType);
+
+        CandidateExtraction candidateExtraction = extractCandidatesBounded(
+                parsed.text(), limits.getMaxCandidates());
+
+        DocumentParseResult result = new DocumentParseResult();
+        result.setFileName(file.getOriginalFilename());
+        result.setMimeType(contentType);
+        result.setTotalPages(parsed.pageCount());
+        result.setRawTextPreview(parsed.text().length() > RAW_TEXT_PREVIEW_LENGTH
+                ? parsed.text().substring(0, RAW_TEXT_PREVIEW_LENGTH) + "…"
+                : parsed.text());
+        result.setCandidates(candidateExtraction.candidates());
+        result.setWarnings(new ArrayList<>());
+
+        if (parsed.truncated()) {
+            result.getWarnings().add("Extracted document text was truncated at "
+                    + limits.getMaxExtractedCharacters() + " characters.");
+        }
+        if (candidateExtraction.truncated()) {
+            result.getWarnings().add("Requirement candidates were truncated at "
+                    + limits.getMaxCandidates() + " entries.");
+        }
+        if (candidateExtraction.candidates().isEmpty()) {
+            result.getWarnings().add("No requirement candidates were extracted from this document.");
+        }
+
+        log.info("Parsed document: pages={}, candidates={}, textTruncated={}, candidatesTruncated={}",
+                parsed.pageCount(),
+                candidateExtraction.candidates().size(), parsed.truncated(),
+                candidateExtraction.truncated());
+        return result;
+    }
+
+    /** Reads a complete PDF or DOCX as text using the same document limits as the upload path. */
+    public String extractCompleteText(MultipartFile file) throws IOException {
+        validateUpload(file);
+        ParsedContent parsed = parseContent(file, detectMimeType(file));
+        if (parsed.truncated()) {
+            throw new DocumentLimitException("DOCUMENT_TEXT_LIMIT_EXCEEDED",
+                    "Document text exceeds the configured extraction limit");
+        }
+        return parsed.text();
+    }
+
+    private ParsedContent parseContent(MultipartFile file, String contentType) throws IOException {
         Path temporaryFile = Files.createTempFile("taxonomy-document-", suffixFor(contentType));
         try {
             try (InputStream input = file.getInputStream()) {
                 Files.copy(input, temporaryFile, StandardCopyOption.REPLACE_EXISTING);
             }
-
-            ParsedContent parsed = switch (contentType) {
+            return switch (contentType) {
                 case MIME_PDF -> parsePdf(temporaryFile);
                 case MIME_DOCX -> parseDocx(temporaryFile);
                 default -> throw new IOException("Unsupported file type: " + contentType
                         + ". Only PDF and DOCX files are supported.");
             };
-
-            CandidateExtraction candidateExtraction = extractCandidatesBounded(
-                    parsed.text(), limits.getMaxCandidates());
-
-            DocumentParseResult result = new DocumentParseResult();
-            result.setFileName(file.getOriginalFilename());
-            result.setMimeType(contentType);
-            result.setTotalPages(parsed.pageCount());
-            result.setRawTextPreview(parsed.text().length() > RAW_TEXT_PREVIEW_LENGTH
-                    ? parsed.text().substring(0, RAW_TEXT_PREVIEW_LENGTH) + "…"
-                    : parsed.text());
-            result.setCandidates(candidateExtraction.candidates());
-            result.setWarnings(new ArrayList<>());
-
-            if (parsed.truncated()) {
-                result.getWarnings().add("Extracted document text was truncated at "
-                        + limits.getMaxExtractedCharacters() + " characters.");
-            }
-            if (candidateExtraction.truncated()) {
-                result.getWarnings().add("Requirement candidates were truncated at "
-                        + limits.getMaxCandidates() + " entries.");
-            }
-            if (candidateExtraction.candidates().isEmpty()) {
-                result.getWarnings().add("No requirement candidates were extracted from this document.");
-            }
-
-            log.info("Parsed document: pages={}, candidates={}, textTruncated={}, candidatesTruncated={}",
-                    parsed.pageCount(),
-                    candidateExtraction.candidates().size(), parsed.truncated(),
-                    candidateExtraction.truncated());
-            return result;
         } finally {
             Files.deleteIfExists(temporaryFile);
         }

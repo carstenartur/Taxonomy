@@ -61,7 +61,9 @@ class CustomOpenAiConnectivityTest {
 
     @Test
     void realTransportDoesNotReportAClosedLocalPortAsReachable() {
-        assertThat(new CustomOpenAiConnectivity().check("http://127.0.0.1:1/v1/chat/completions", null))
-                .isEqualTo(CustomOpenAiConnectivity.Result.UNREACHABLE);
+        try (var probe = new CustomOpenAiConnectivity()) {
+            assertThat(probe.check("http://127.0.0.1:1/v1/chat/completions", null))
+                    .isEqualTo(CustomOpenAiConnectivity.Result.UNREACHABLE);
+        }
     }
 }

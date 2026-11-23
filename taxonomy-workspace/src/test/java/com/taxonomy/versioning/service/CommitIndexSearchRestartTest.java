@@ -8,16 +8,24 @@ import org.hibernate.cfg.Configuration;
 import org.hibernate.search.backend.lucene.analysis.LuceneAnalysisConfigurationContext;
 import org.hibernate.search.backend.lucene.analysis.LuceneAnalysisConfigurer;
 import org.hibernate.search.mapper.orm.Search;
+import org.hibernate.search.mapper.pojo.massindexing.MassIndexingMonitor;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.boot.DefaultApplicationArguments;
+import org.springframework.dao.TransientDataAccessException;
 import org.springframework.data.jpa.repository.support.JpaRepositoryFactory;
 import org.springframework.orm.jpa.SharedEntityManagerCreator;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.nio.file.Path;
+import java.time.Duration;
 import java.time.Instant;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.catchThrowable;
+import static org.awaitility.Awaitility.await;
 
 /** Real database and Lucene restarts; equal document counts alone must not authorize reuse. */
 class CommitIndexSearchRestartTest {
@@ -168,10 +176,55 @@ class CommitIndexSearchRestartTest {
         }
     }
 
+    @Test
+    void capturedPurgeIsRetryableDuringStartupAndPreservesTheOtherTenantsHistory() throws Exception {
+        long aliceRow;
+        String operation = "captured-alice-purge";
+        try (var first = open("create", "local-heap")) {
+            aliceRow = first.insert(ALICE, "a".repeat(40), "medical");
+            first.insert(BOB, "b".repeat(40), "logistics");
+            first.factory.runInTransaction(manager -> {
+                var target = new HistoryIndexPurgeTarget();
+                target.operationId = operation;
+                target.projectionId = aliceRow;
+                manager.persist(target);
+            });
+        }
+        try (var restarted = open("validate", "local-heap")) {
+            var rebuilder = new PausedRebuilder(restarted.factory);
+            var lifecycle = new CommitIndexSearchLifecycle(restarted.repository, rebuilder);
+            ReflectionTestUtils.setField(lifecycle, "asyncInitialization", true);
+            assertThat(restarted.count()).isZero();
+            try {
+                lifecycle.run(new DefaultApplicationArguments());
+                assertThat(rebuilder.loaded.await(5, TimeUnit.SECONDS)).isTrue();
+                var attempt = catchThrowable(() -> restarted.purge(lifecycle, operation));
+
+                rebuilder.release.countDown();
+                await().atMost(Duration.ofSeconds(5)).until(() -> switch (lifecycle.getState()) {
+                    case READY, FAILED -> true;
+                    default -> false;
+                });
+                assertThat(lifecycle.getState()).as("recovery while the captured purge is attempted")
+                        .isEqualTo(CommitIndexSearchLifecycle.State.READY);
+                assertThat(attempt).isInstanceOf(TransientDataAccessException.class);
+                assertThat(restarted.repository.count()).isEqualTo(2);
+                assertThat(restarted.purge(lifecycle, operation)).isOne();
+                assertThat(rebuilder.hasCompleteCoverage(1)).isTrue();
+                assertThat(restarted.search(ALICE, "medical")).isZero();
+                assertThat(restarted.search(BOB, "logistics")).isOne();
+            } finally {
+                rebuilder.release.countDown();
+                lifecycle.stop();
+            }
+        }
+    }
+
     private Database open(String ddl, String directoryType) {
         var configuration = new Configuration().addAnnotatedClass(ArchitectureCommitIndex.class)
+                .addAnnotatedClass(HistoryIndexPurgeTarget.class)
                 .setProperty("hibernate.connection.driver_class", "org.hsqldb.jdbc.JDBCDriver")
-                .setProperty("hibernate.connection.url", "jdbc:hsqldb:file:" + directory.resolve("history") + ";shutdown=true")
+                .setProperty("hibernate.connection.url", "jdbc:hsqldb:file:" + directory.resolve("history") + ";shutdown=true;hsqldb.tx=mvcc")
                 .setProperty("hibernate.connection.username", "sa")
                 .setProperty("hibernate.connection.password", "")
                 .setProperty("hibernate.hbm2ddl.auto", ddl)
@@ -202,18 +255,59 @@ class CommitIndexSearchRestartTest {
         }
     }
 
+    private static final class PausedRebuilder extends CommitIndexSearchRebuilder {
+        final CountDownLatch loaded = new CountDownLatch(1);
+        final CountDownLatch release = new CountDownLatch(1);
+        private final EntityManagerFactory factory;
+
+        PausedRebuilder(EntityManagerFactory factory) {
+            super(factory);
+            this.factory = factory;
+        }
+
+        @Override public void rebuildAll() throws InterruptedException {
+            Search.mapping(factory).scope(ArchitectureCommitIndex.class).massIndexer()
+                    .purgeAllOnStart(true).typesToIndexInParallel(1).threadsToLoadObjects(1).batchSizeToLoadObjects(25)
+                    .monitor(new MassIndexingMonitor() {
+                        @Override public void entitiesLoaded(long count) {
+                            loaded.countDown();
+                            try {
+                                if (!release.await(5, TimeUnit.SECONDS)) {
+                                    throw new IllegalStateException("Test did not release the history loader");
+                                }
+                            } catch (InterruptedException interrupted) {
+                                Thread.currentThread().interrupt();
+                                throw new IllegalStateException(interrupted);
+                            }
+                        }
+                        @Override public void documentsBuilt(long count) { }
+                        @Override public void documentsAdded(long count) { }
+                        @Override public void indexingCompleted() { }
+                    }).startAndWait();
+        }
+    }
+
     private static final class Database implements AutoCloseable {
         final EntityManagerFactory factory;
         final TrackingRebuilder rebuilder;
+        final ArchitectureCommitIndexRepository repository;
         final CommitIndexSearchLifecycle lifecycle;
         Database(EntityManagerFactory factory) {
             this.factory = factory;
             this.rebuilder = new TrackingRebuilder(factory);
-            var repository = new JpaRepositoryFactory(SharedEntityManagerCreator.createSharedEntityManager(factory))
+            this.repository = new JpaRepositoryFactory(SharedEntityManagerCreator.createSharedEntityManager(factory))
                     .getRepository(ArchitectureCommitIndexRepository.class);
             this.lifecycle = new CommitIndexSearchLifecycle(repository, rebuilder);
         }
         void initialize() { lifecycle.run(new DefaultApplicationArguments()); }
+        int purge(CommitIndexSearchLifecycle activeLifecycle, String operation) {
+            return factory.callInTransaction(manager -> {
+                var service = new CommitIndexService(null, repository);
+                ReflectionTestUtils.setField(service, "entityManager", manager);
+                ReflectionTestUtils.setField(service, "searchLifecycle", activeLifecycle);
+                return service.purgeCaptured(ALICE, operation);
+            });
+        }
         long insert(RepositoryContext context, String commit, String text) {
             return insert(context, commit, text, Instant.parse("2026-11-22T10:00:00Z"));
         }

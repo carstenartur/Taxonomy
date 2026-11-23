@@ -182,6 +182,7 @@ function createStartupHarness(workspaceResponse, loadDraft = async () => null, m
     observe() {}
   }
 
+  metadata.beforeMount?.(window, document);
   vm.runInNewContext(projectsSource, {
     CustomEvent: class {constructor(type, options) {this.type = type; this.detail = options?.detail;}},
     URL,
@@ -368,6 +369,117 @@ test('an initial workspace outage is retried when server observation reconnects'
   assert.equal(h.session.state().ready, true);
   assert.equal(h.runtime.workspaceId, 'reconnected-workspace');
 });
+
+test('early login automatically waits for its initial checkpoint and confirms the selected source', async () => {
+  const h = earlyWorkspaceStartup();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.session.state().ready, false);
+  assert.equal(h.runtime.workspaceId, null, 'A pending observation never installs a workspace pin');
+  assert.equal(h.attempts(), 1);
+
+  await h.retryTick();
+  assert.equal(h.attempts(), 2, 'Initial checkpoint readiness is checked again without a reload or Git-status event');
+  assert.equal(await h.session.whenInitialized(), true);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.session.state().ready, true);
+  assert.equal(h.session.state().workspaceId, 'bootstrapped-workspace');
+  assert.deepEqual(h.observations, []);
+});
+
+for (const pin of ['workspaceId=copy&workspaceScopeKey=copy', 'workspaceId=copy', 'workspaceScopeKey=copy']) {
+test(`an independently selected editor with ${pin} does not wait for the default checkpoint`, async () => {
+  const h = earlyWorkspaceStartup(undefined, {
+    location: new URL(`https://example.test/?architectureSource=working&repositoryId=other&${pin}&branch=design#architecture`)
+  });
+  let sessionSettled;
+  h.session.whenInitialized().then(ready => { sessionSettled = ready; });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(sessionSettled, false, 'The separately selected editor may continue its own source check');
+  assert.equal(h.session.state().ready, false, 'A pending default still cannot start an analysis');
+  assert.equal(h.attempts(), 1);
+  assert.equal(h.hasRetry(), false);
+});
+}
+for (const pin of ['workspaceId=copy&workspaceId=copy', 'workspaceId=copy&workspaceScopeKey=other']) {
+test(`an ambiguous editor route with ${pin} waits for the default checkpoint`, async () => {
+  const h = earlyWorkspaceStartup(undefined, {
+    location: new URL(`https://example.test/?architectureSource=working&repositoryId=other&${pin}&branch=design#architecture`)
+  });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.attempts(), 1);
+  assert.equal(h.hasRetry(), true);
+});
+}
+
+test('a retry for the original workspace is abandoned after source selection changes', async () => {
+  const h = earlyWorkspaceStartup();
+  await new Promise(resolve => setImmediate(resolve));
+  h.scope.branch = 'selected-by-user';
+  await h.retryTick();
+  assert.equal(h.attempts(), 1);
+  assert.equal(h.session.state().ready, false);
+  assert.equal(h.runtime.workspaceId, null);
+  assert.deepEqual(h.observations, [], 'An abandoned read cannot publish a failure for the replacement source');
+});
+
+test('a late workspace confirmation cannot publish a pin after the selected source changed', async () => {
+  const reply = deferred();
+  const h = earlyWorkspaceStartup(reply.promise);
+  await new Promise(resolve => setImmediate(resolve));
+  await h.retryTick();
+  assert.equal(h.attempts(), 2);
+  h.scope.branch = 'different-source';
+  reply.resolve(Response.json({workspaceId: 'obsolete-workspace', provisioningStatus: 'READY'}));
+  assert.equal(await h.session.whenInitialized(), false);
+  assert.equal(h.runtime.workspaceId, null);
+  assert.deepEqual(h.observations, []);
+});
+
+test('a real workspace conflict ends startup observation and offers the existing server check', async () => {
+  const h = earlyWorkspaceStartup(Response.json({message: 'The selected source is obsolete'}, {status: 409}));
+  await new Promise(resolve => setImmediate(resolve));
+  await h.retryTick();
+  assert.equal(h.attempts(), 2);
+  assert.equal(await h.session.whenInitialized(), false);
+  assert.equal(h.session.state().ready, false);
+  assert.deepEqual(h.observations, ['unavailable']);
+  assert.equal(h.hasRetry(), false);
+  await h.emit('taxonomy:server-contact', {available: true});
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.attempts(), 2, 'The periodic Git status must not retry a real conflict');
+});
+
+function earlyWorkspaceStartup(next = Response.json({workspaceId: 'bootstrapped-workspace', provisioningStatus: 'READY'}), metadata = {}) {
+  const timers = [], scope = {branch: 'draft'};
+  let attempts = 0;
+  let api;
+  const h = createStartupHarness(async () => {
+    const response = await api.request('/api/workspace/current', {method: 'GET'});
+    return response.json();
+  }, async () => null, {
+    ...metadata,
+    TaxonomyArchitectureWorkspace: {ready: async () => true},
+    TaxonomyContextBar: {fetchAndRender: async () => ({contextId: 'confirmed', branch: 'draft', commitId: 'a'.repeat(40)})},
+    setTimeout(callback) { timers.push(callback); return timers.length; },
+    beforeMount(window, document) {
+      document.querySelectorAll = () => [];
+      canonicalFixture.install({window, document, fetch: async (url, options) => {
+        assert.equal(url, '/api/workspace/current');
+        assert.equal(options.method, 'GET');
+        return ++attempts === 1 ? Response.json({state: 'INITIAL_SOURCE_PENDING'}, {status: 202}) : next;
+      }}, ['api/analysis-session-api.js', 'api/workspace-api.js', 'shared/architecture-workflow.js']);
+      window.TaxonomyArchitectureWorkflow.getScope = () => scope;
+      api = window.TaxonomyAnalysisSessionApi;
+    }
+  });
+  return Object.assign(h, {
+    scope, attempts: () => attempts, hasRetry: () => timers.length > 0,
+    async retryTick() {
+      timers.shift()?.();
+      await new Promise(resolve => setImmediate(resolve));
+    }
+  });
+}
 
 const gitStatusSource = await readFile(new URL(
   '../../taxonomy-app/src/main/resources/static/js/workspace/taxonomy-git-status.js', import.meta.url), 'utf8');

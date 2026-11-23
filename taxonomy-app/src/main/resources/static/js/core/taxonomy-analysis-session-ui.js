@@ -57,6 +57,8 @@
 
         var suggestedPanel = document.getElementById('suggestedRelationsPanel');
         if (suggestedPanel) suggestedPanel.style.display = 'none';
+        var reviewEmpty = document.getElementById('relationshipReviewAnalysisEmpty');
+        if (reviewEmpty) reviewEmpty.hidden = false;
         var suggestedBadge = document.getElementById('suggestedRelationsBadge');
         if (suggestedBadge) suggestedBadge.textContent = '0';
         resetPanel('suggestedRelationsContent', language() === 'de'

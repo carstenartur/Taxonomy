@@ -115,6 +115,7 @@ function harness(kind, { translationsPending = false, proposals = false, forms =
     if (!translationsPending) translations.resolve();
     return { window, nodes, reads, state, timers, translations, errors,
         sourceChanged() { dom.dispatchEvent(new Event('taxonomy:entity-context-changed')); },
+        sourceReady() { dom.dispatchEvent(new Event('taxonomy:analysis-source-ready')); },
         start() { dom.dispatchEvent(new Event('DOMContentLoaded')); },
         hide() { lifecycle.dispatchEvent(Object.assign(new Event('pagehide'), { persisted: true })); },
         beforeUnload() { lifecycle.dispatchEvent(new Event('beforeunload')); },
@@ -209,6 +210,21 @@ async function loadingTaxonomy() {
     assert.equal(h.timerCount(5000), 1, 'An unavailable catalogue must schedule startup retry');
     return h;
 }
+
+test('catalogue and provider readiness never enable Analyze before the selected source is confirmed', async () => {
+    const h = harness('browse');
+    let confirmed = false;
+    h.window.TaxonomyAnalysisSession = {state: () => ({ready: confirmed})};
+    h.start();
+    await settle();
+    h.requests('/api/taxonomy')[0].answer([]);
+    h.requests('/api/ai-status')[0].answer({available: true, connectionStatus: 'REACHABLE'});
+    await settle();
+    assert.equal(h.nodes.get('analyzeBtn').disabled, true);
+    confirmed = true;
+    h.sourceReady();
+    assert.equal(h.nodes.get('analyzeBtn').disabled, false);
+});
 
 test('startup shows measured phase progress and keeps analysis blocked until the catalogue is ready', async () => {
     const h = await loadingTaxonomy(); h.tick(5000);

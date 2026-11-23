@@ -102,6 +102,31 @@ already strips the prefix, keep the root servlet context: set the patch's
 probe paths. Keep forwarded-header handling configured for the trusted ingress;
 the `kubernetes` profile uses `TAXONOMY_FORWARD_HEADERS_STRATEGY=framework`.
 
+## Namespace resource policies
+
+Before creating a claim or updating the workload, inspect the selected namespace's
+[LimitRanges](https://kubernetes.io/docs/concepts/policy/limit-range/) and
+[ResourceQuotas](https://kubernetes.io/docs/concepts/policy/resource-quotas/):
+
+```bash
+kubectl -n "$TAXONOMY_NAMESPACE" get resourcequotas,limitranges
+kubectl -n "$TAXONOMY_NAMESPACE" describe resourcequotas
+kubectl -n "$TAXONOMY_NAMESPACE" describe limitranges
+```
+
+Set `TAXONOMY_NAMESPACE` to the workload's existing namespace first. Its operator
+owns these policies. For a new namespace, have the operator configure the CPU and
+memory defaults and limits and the namespace resource budget before deployment.
+For an existing namespace, check the policies and remaining budget before applying
+this patch. Keep the workload's explicit CPU/memory requests and limits compatible
+with the LimitRange and available quota.
+
+A new example claim also needs room for one PVC and its `10Gi` storage request,
+including any storage-class quota and PVC minimum/maximum size. Reusing the
+existing claim does not allocate an additional claim. The supplied PVC and
+Deployment patch leave namespace-wide policies under operator control, since
+those policies also affect other workloads in the namespace.
+
 ## Persistent storage and one writer
 
 Use an existing application-data PVC where one already exists. Only create
@@ -155,8 +180,9 @@ patch is **not** a complete Deployment for **Import YAML** or `kubectl apply`.
    volume name, claim name and subpath that contain retained data.
 2. Check the context-path arrangement above and the actual application port.
    Change all three `httpGet.port` values if it is not `8080`.
-3. Prepare the existing/new PVC and its permissions. Keep database/authentication
-   Secret references and current resource requests/limits.
+3. Check the namespace policies and remaining budget above, then prepare the
+   existing/new PVC and its permissions. Keep database/authentication Secret
+   references and current resource requests/limits.
 4. Review the resulting Deployment with the server dry run, then apply the patch.
    The template change restarts the workload with `Recreate` and causes a brief
    maintenance window.
@@ -176,6 +202,8 @@ TAXONOMY_DEPLOYMENT=taxonomy
 
 kubectl -n "$TAXONOMY_NAMESPACE" get deployment "$TAXONOMY_DEPLOYMENT" -o yaml
 kubectl -n "$TAXONOMY_NAMESPACE" get pvc
+kubectl -n "$TAXONOMY_NAMESPACE" describe resourcequotas
+kubectl -n "$TAXONOMY_NAMESPACE" describe limitranges
 
 # Only when a new claim is needed; adapt its name/class/capacity first.
 kubectl -n "$TAXONOMY_NAMESPACE" apply -f deploy/rancher/persistent-volume-claim.yaml

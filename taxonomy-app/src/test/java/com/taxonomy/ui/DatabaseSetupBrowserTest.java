@@ -38,7 +38,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /** Exercises the real login, template, CSRF transport and persisted dismissal. */
 @Tag("browser")
-@Tag("ci-app-shard-browser")
+@Tag("ci-app-shard-runtime")
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
         "taxonomy.admin-password=Database-Setup-Browser-2026!",
         "taxonomy.security.require-password-change=false",

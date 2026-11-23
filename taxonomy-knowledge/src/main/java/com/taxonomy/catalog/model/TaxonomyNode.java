@@ -120,7 +120,7 @@ public class TaxonomyNode {
     private TaxonomyNode parent;
 
     @OneToMany(mappedBy = "parent", cascade = CascadeType.ALL)
-    @OrderBy("nameEn ASC")
+    @OrderBy("nameEn ASC, code ASC")
     @BatchSize(size = 50)
     private List<TaxonomyNode> children = new ArrayList<>();
 

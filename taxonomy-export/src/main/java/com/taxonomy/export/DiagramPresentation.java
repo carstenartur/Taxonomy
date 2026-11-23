@@ -2,7 +2,12 @@ package com.taxonomy.export;
 
 import com.taxonomy.diagram.DiagramScene;
 import com.taxonomy.diagram.DiagramCanonicalEvidence;
+import com.taxonomy.diagram.DiagramRelationMetadata;
+import com.taxonomy.dto.RelationSearchModel.Direction;
 import com.taxonomy.dto.RelationSearchModel.Edge;
+import com.taxonomy.dto.RelationSearchModel.Necessity;
+import com.taxonomy.dto.RelationSearchModel.Outcome;
+import com.taxonomy.dto.RequirementRelationshipView;
 import com.taxonomy.dto.TaxonomyResponsibilityLookup.Assignment;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -11,7 +16,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.TreeMap;
+import java.util.stream.Collectors;
 
 /** Presentation only: colors and counts never imply model acceptance or change graph evidence. */
 public final class DiagramPresentation {
@@ -128,18 +135,7 @@ public final class DiagramPresentation {
                 if (decision.necessity() != null) heading += (german ? " | Notwendigkeit: " : " | Necessity: ") + decision.necessity();
             }
             lines.add(heading);
-            var contribution = scope.contribution();
-            String prefix = number + " · ";
-            recordField(fieldsByValue, prefix + (german ? "Beitrag" : "Contribution"), contribution.text());
-            recordField(fieldsByValue, prefix + (german ? "Originalzitat" : "Original quote"), contribution.quote());
-            recordField(fieldsByValue, prefix + (german ? "Bedingung des Beitrags" : "Contribution condition"), contribution.condition());
-            if (decision == null) continue;
-            recordField(fieldsByValue, prefix + (german ? "Evidenzbeitrag" : "Evidence contribution"), decision.contribution());
-            recordField(fieldsByValue, prefix + (german ? "Zitat" : "Quote"), decision.quote());
-            recordField(fieldsByValue, prefix + (german ? "Bedingung" : "Condition"), decision.condition());
-            recordField(fieldsByValue, prefix + (german ? "Alternativgruppe" : "Alternative group"), decision.alternativeGroup());
-            recordField(fieldsByValue, prefix + (german ? "Begründung" : "Rationale"), decision.rationale());
-            recordField(fieldsByValue, prefix + (german ? "Frage" : "Question"), decision.question());
+            recordScopeFields(fieldsByValue, number + " · ", scope, german);
         }
         fieldsByValue.forEach((value, fields) -> lines.add(String.join(", ", fields) + ": " + value));
     }
@@ -148,6 +144,117 @@ public final class DiagramPresentation {
         if (value != null && !value.isBlank()) {
             fieldsByValue.computeIfAbsent(value, ignored -> new ArrayList<>()).add(label);
         }
+    }
+
+    /** Render each distinct recorded value once, with its roles and assessment number. */
+    public static List<String> relationshipReportDetails(DiagramRelationMetadata metadata,
+            Map<String, String> supplemental, boolean german) {
+        var lines = new ArrayList<String>();
+        var fieldsByValue = new LinkedHashMap<String, List<String>>();
+        lines.add("Status: " + relationshipStatus(metadata, german));
+        Set<String> generatedSummaries = Set.of();
+        if (metadata != null) {
+            if (metadata.relationId() != null) lines.add((german ? "Beziehungskennung: " : "Relation ID: ") + metadata.relationId());
+            String origin = metadata.origin() == null ? (german ? "nicht aufgezeichnet" : "unrecorded")
+                    : german ? switch (metadata.origin()) {
+                        case TAXONOMY_SEED -> "Katalogbeziehung";
+                        case PROPAGATED_TRACE -> "Fortgeführte Herleitung";
+                        case IMPACT_DERIVED -> "Abgeleitete Auswirkung";
+                        case LLM_SUPPORTED -> "Durch KI gestützt";
+                        case SUGGESTED_CANDIDATE -> "Vorgeschlagener Kandidat";
+                    } : metadata.origin().name();
+            lines.add((german ? "Herkunft: " : "Origin: ") + origin);
+            if (metadata.confidence() != null) lines.add((german ? "Konfidenz: " : "Confidence: ") + metadata.confidence());
+            if (metadata.seedType() != null) {
+                String seed = german ? switch (metadata.seedType()) {
+                    case TYPE_DEFAULT -> "Standardbeziehung zwischen Typen";
+                    case FRAMEWORK_SEED -> "Aus Architekturrahmenwerk";
+                    case SOURCE_DERIVED -> "Aus Quelldokument";
+                } : metadata.seedType().name();
+                lines.add((german ? "Ausgangstyp: " : "Seed type: ") + seed);
+            }
+            var scopes = metadata.requirementEvidence();
+            generatedSummaries = scopes.stream().filter(edge -> edge.evidence() != null
+                            && edge.evidence().outcome() == Outcome.VERIFIED
+                            && edge.evidence().necessity() == Necessity.REQUIRED)
+                    .map(edge -> RequirementRelationshipView.projectedEvidenceSummary(edge, scopes.size() > 1))
+                    .collect(Collectors.toUnmodifiableSet());
+            recordReportField(fieldsByValue, german ? "Aufgenommen weil" : "Included because",
+                    metadata.includedBecause(), generatedSummaries);
+            recordReportField(fieldsByValue, german ? "Herleitungsbegründung" : "Derivation reason",
+                    metadata.derivationReason(), generatedSummaries);
+            recordReportField(fieldsByValue, german ? "Begründung der Aufnahme" : "Presence reason",
+                    metadata.presenceReason(), generatedSummaries);
+            for (int i = 0; i < scopes.size(); i++) {
+                addReportScope(lines, fieldsByValue, scopes.get(i), i + 1, scopes.size() > 1, german);
+            }
+        }
+        if (supplemental != null) {
+            recordReportField(fieldsByValue, german ? "Gespeicherte Auswahlbegründung" : "Recorded selection reason",
+                    supplemental.get("presenceReason"), generatedSummaries);
+            recordField(fieldsByValue, german ? "Gespeicherter Prüfkommentar" : "Recorded review comment",
+                    supplemental.get("decisionComment"));
+        }
+        fieldsByValue.forEach((value, fields) -> lines.add(String.join(", ", fields) + ": " + value));
+        return List.copyOf(lines);
+    }
+
+    private static void recordReportField(Map<String, List<String>> fields, String label, String value, Set<String> generated) {
+        // Only omit a byte-for-byte match for the legacy projection of the structured evidence.
+        if (value != null && !generated.contains(value)) recordField(fields, label, value);
+    }
+
+    private static void addReportScope(List<String> lines, Map<String, List<String>> fields, Edge edge,
+            int number, boolean multiple, boolean german) {
+        String title = multiple ? (german ? "Nachweis " : "Evidence ") + number
+                : (german ? "Anforderungsbezogene Evidenz" : "Scoped evidence");
+        String direction = german ? (edge.direction() == Direction.OUTGOING ? "Ausgehend" : "Eingehend")
+                : edge.direction().name();
+        String separator = german ? " · " : " | ";
+        String heading = title + ": " + edge.sourceId() + (german ? " → " : " -> ") + edge.targetId()
+                + separator + edge.type() + separator + direction;
+        var decision = edge.evidence();
+        if (decision != null) {
+            if (decision.outcome() != null) heading += separator + (german ? "Ergebnis: " : "Outcome: ") + reportOutcome(decision.outcome(), german);
+            if (decision.necessity() != null) heading += separator + (german ? "Notwendigkeit: " : "Necessity: ") + reportNecessity(decision.necessity(), german);
+        }
+        lines.add(heading);
+        recordScopeFields(fields, multiple ? number + " · " : "", edge, german);
+    }
+
+    private static void recordScopeFields(Map<String, List<String>> fields, String prefix, Edge edge, boolean german) {
+        var contribution = edge.contribution();
+        recordField(fields, prefix + (german ? "Beitrag" : "Contribution"), contribution.text());
+        recordField(fields, prefix + (german ? "Originalzitat" : "Original quote"), contribution.quote());
+        recordField(fields, prefix + (german ? "Bedingung des Beitrags" : "Contribution condition"), contribution.condition());
+        var decision = edge.evidence();
+        if (decision == null) return;
+        recordField(fields, prefix + (german ? "Evidenzbeitrag" : "Evidence contribution"), decision.contribution());
+        recordField(fields, prefix + (german ? "Zitat" : "Quote"), decision.quote());
+        recordField(fields, prefix + (german ? "Bedingung" : "Condition"), decision.condition());
+        recordField(fields, prefix + (german ? "Alternativgruppe" : "Alternative group"), decision.alternativeGroup());
+        recordField(fields, prefix + (german ? "Begründung" : "Rationale"), decision.rationale());
+        recordField(fields, prefix + (german ? "Frage" : "Question"), decision.question());
+    }
+
+    private static String reportOutcome(Outcome outcome, boolean german) {
+        if (!german) return outcome.name();
+        return switch (outcome) {
+            case DESCEND -> "Unterknoten prüfen";
+            case MATCH -> "Treffer";
+            case REJECT -> "Verworfen";
+            case UNRESOLVED -> "Offen";
+            case VERIFIED -> "Verifiziert";
+        };
+    }
+
+    private static String reportNecessity(Necessity necessity, boolean german) {
+        if (!german) return necessity.name();
+        return switch (necessity) {
+            case REQUIRED -> "Erforderlich";
+            case OPTIONAL -> "Optional";
+            case ALTERNATIVE -> "Alternative";
+        };
     }
 
     /** Original mapping/review evidence stored separately from the frozen graph provenance. */

@@ -9,6 +9,28 @@ public class RequirementRelationshipView {
     public java.util.List<RelationSearchModel.Edge> getRequirementEvidence() { return requirementEvidence; }
     public void setRequirementEvidence(java.util.List<RelationSearchModel.Edge> evidence) { this.requirementEvidence = java.util.List.copyOf(evidence); }
 
+    /** Summary retained in the queryable view fields alongside the original structured evidence. */
+    public static String projectedEvidenceSummary(RelationSearchModel.Edge edge, boolean additionalScopes) {
+        var contribution = edge.contribution();
+        var decision = edge.evidence();
+        boolean outgoing = edge.direction() == RelationSearchModel.Direction.OUTGOING;
+        String sourceContribution = outgoing ? contribution.text() : decision.contribution();
+        String targetContribution = outgoing ? decision.contribution() : contribution.text();
+        String sourceQuote = outgoing ? contribution.quote() : decision.quote();
+        String targetQuote = outgoing ? decision.quote() : contribution.quote();
+        String sourceCondition = outgoing ? contribution.condition() : decision.condition();
+        String targetCondition = outgoing ? decision.condition() : contribution.condition();
+        String text = "Proposed, separately checked against requirement: " + decision.rationale()
+                + " | Source contribution: " + sourceContribution + " | Target contribution: " + targetContribution
+                + " | Evidence: " + sourceQuote + " / " + targetQuote
+                + " | Conditions: " + sourceCondition + " / " + targetCondition;
+        if (additionalScopes) text += " | Additional requirement scopes and choices retained in structured evidence.";
+        if (text.length() <= 1800) return text;
+        int end = 1760;
+        if (Character.isHighSurrogate(text.charAt(end - 1)) && Character.isLowSurrogate(text.charAt(end))) end--;
+        return text.substring(0, end) + " [full evidence in analysis report]";
+    }
+
 
     /** Relation is included for scoring traceability (typically root-level propagation). */
     public static final String CATEGORY_TRACE = "trace";

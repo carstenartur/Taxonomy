@@ -526,6 +526,7 @@ class TaxonomyExtensionHttpTest {
               when(nodes.findByParentCodeOrderByNameEnAsc("BP")).thenReturn(children);
             }
             when(nodes.findByParentIsNullOrderByCodeAsc()).thenReturn(roots);
+            CatalogueTreeFixture.stub(nodes, roots);
             var overlay = spy(new CatalogueOverlayService(mapper, new DefaultResourceLoader(), false, "unused"));
             if (products) for (String code : List.of("accepted-item", "open-item"))
                 doReturn(new CatalogueOverlayService.NodeMetadata("PRODUCT", List.of(), 1, false, null)).when(overlay).getNodeMetadata(code);

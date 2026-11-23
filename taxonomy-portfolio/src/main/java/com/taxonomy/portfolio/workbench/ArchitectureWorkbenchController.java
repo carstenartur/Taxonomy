@@ -226,13 +226,14 @@ public class ArchitectureWorkbenchController {
             description = "Exports the authorized saved architecture snapshot as a Visio attachment with source and artifact provenance headers. This uses frozen analysis evidence rather than the current mutable editor graph.")
     public ResponseEntity<byte[]> visio(
             @PathVariable Long projectId,
-            @PathVariable String snapshotId) {
+            @PathVariable String snapshotId,
+            @RequestParam(name = "language", required = false) String language) {
         RequestScope scope = scope();
         Artifact artifact = snapshotExportService.exportVisio(
                 projectId,
                 snapshotId,
                 scope.username(),
-                scope.context());
+                scope.context(), DocumentLanguage.optionalOverride(language));
         return artifactResponse(artifact);
     }
 
@@ -241,9 +242,11 @@ public class ArchitectureWorkbenchController {
     @ResponseBody
     @Operation(summary = "Export the exact persisted snapshot as a ZIP bundle containing experimental VSDX, mapping profile and loss manifest",
             description = "Exports a Visio bundle for the authorized saved snapshot, retaining its source identity and artifact metadata. The download does not modify the snapshot or publish it to a remote application.")
-    public ResponseEntity<byte[]> visioBundle(@PathVariable Long projectId, @PathVariable String snapshotId) {
+    public ResponseEntity<byte[]> visioBundle(@PathVariable Long projectId, @PathVariable String snapshotId,
+                                            @RequestParam(name = "language", required = false) String language) {
         RequestScope scope = scope();
-        return artifactResponse(snapshotExportService.exportVisioBundle(projectId, snapshotId, scope.username(), scope.context()));
+        return artifactResponse(snapshotExportService.exportVisioBundle(projectId, snapshotId, scope.username(), scope.context(),
+                DocumentLanguage.optionalOverride(language)));
     }
 
     private RequestScope scope() {

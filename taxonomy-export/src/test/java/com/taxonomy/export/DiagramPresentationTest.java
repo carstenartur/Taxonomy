@@ -3,6 +3,7 @@ package com.taxonomy.export;
 import com.taxonomy.diagram.DiagramRelationMetadata;
 import com.taxonomy.dto.RelationOrigin;
 import com.taxonomy.dto.RelationSearchModel.*;
+import com.taxonomy.dto.RequirementRelationshipView;
 import com.taxonomy.model.SeedType;
 import org.junit.jupiter.api.Test;
 
@@ -12,6 +13,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.assertj.core.api.Assertions.assertThat;
 
 class DiagramPresentationTest {
     private static final String ORIGINAL = "Original wording, including ä and →. ".repeat(80)
@@ -117,6 +119,44 @@ class DiagramPresentationTest {
                     "1 · " + quote + ", 1 · " + decisionQuote + ", 2 · " + quote + ": scoped quote",
                     "1 · " + (german ? "Begründung" : "Rationale") + ": Different wording ");
         }
+    }
+
+    @Test
+    void reportUsesOriginalStructuredEvidenceInsteadOfItsRepeatedLegacyProjection() {
+        var decision = new Decision("target", Outcome.VERIFIED, "target contribution", "scoped quote",
+                Necessity.REQUIRED, "target condition", "", ORIGINAL, "");
+        var edge = edge(Direction.OUTGOING, decision);
+        String repeated = RequirementRelationshipView.projectedEvidenceSummary(edge, false);
+        var metadata = new DiagramRelationMetadata(42L, RelationOrigin.LLM_SUPPORTED, null,
+                repeated, repeated, repeated, null, List.of(edge));
+        var lines = DiagramPresentation.relationshipReportDetails(metadata,
+                Map.of("presenceReason", repeated, "decisionComment", "Distinct saved review comment."), true);
+
+        assertThat(lines).contains("Herkunft: Durch KI gestützt",
+                "Anforderungsbezogene Evidenz: source → target · SUPPORTS · Ausgehend · Ergebnis: Verifiziert · Notwendigkeit: Erforderlich",
+                "Originalzitat, Zitat: scoped quote", "Begründung: " + ORIGINAL,
+                "Gespeicherter Prüfkommentar: Distinct saved review comment.");
+        assertThat(lines).noneMatch(line -> line.contains("Proposed, separately checked"));
+        assertThat(lines.stream().filter(line -> line.contains("scoped quote"))).hasSize(1);
+        assertThat(metadata.presenceReason()).isEqualTo(repeated);
+    }
+
+    @Test
+    void reportGroupsExactlyEqualLegacyReasonsButDoesNotDiscardAnAmendedReason() {
+        var decision = new Decision("target", Outcome.VERIFIED, "target contribution", "scoped quote",
+                Necessity.REQUIRED, "target condition", "", "Recorded rationale", "");
+        var edge = edge(Direction.INCOMING, decision);
+        String repeated = RequirementRelationshipView.projectedEvidenceSummary(edge, false);
+        String amended = repeated + " Earlier human annotation.";
+        var metadata = new DiagramRelationMetadata(null, RelationOrigin.LLM_SUPPORTED, null,
+                amended, repeated, amended, null, List.of(edge));
+        var lines = DiagramPresentation.relationshipReportDetails(metadata, Map.of("presenceReason", amended), false);
+
+        assertThat(lines).contains("Included because, Presence reason, Recorded selection reason: " + amended,
+                "Scoped evidence: target -> source | SUPPORTS | INCOMING | Outcome: VERIFIED | Necessity: REQUIRED",
+                "Rationale: Recorded rationale");
+        assertThat(lines).noneMatch(line -> line.startsWith("Derivation reason:"));
+        assertThat(lines.stream().filter(line -> line.contains(amended))).hasSize(1);
     }
 
     @Test

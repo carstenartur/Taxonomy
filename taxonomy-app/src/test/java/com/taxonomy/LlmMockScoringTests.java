@@ -1,5 +1,6 @@
 package com.taxonomy;
 
+import org.junit.jupiter.api.Tag;
 import com.taxonomy.analysis.service.LlmService;
 import com.taxonomy.catalog.model.TaxonomyNode;
 import com.taxonomy.catalog.service.CatalogueOverlayService;
@@ -22,6 +23,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @SpringBootTest
 @TestPropertySource(properties = {"llm.mock=true"})
+@Tag("ci-app-shard-runtime")
 class LlmMockScoringTests {
 
     @Autowired

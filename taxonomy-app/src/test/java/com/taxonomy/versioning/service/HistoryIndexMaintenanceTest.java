@@ -12,12 +12,17 @@ import com.taxonomy.workspace.storage.DslGitRepository;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.DefaultApplicationArguments;
+import org.springframework.context.annotation.AnnotationConfigApplicationContext;
+import org.springframework.core.env.MapPropertySource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.Clock;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -84,6 +89,69 @@ class HistoryIndexMaintenanceTest {
             assertThat(row.phase()).isEqualTo("DENIED");
             assertThat(row.actor()).isEqualTo("stable-owner");
             assertThat(row.executor()).isEqualTo("system:history-index");
+            verifyNoInteractions(f.indexRows);
+        }
+    }
+
+    @Test
+    void scheduledRecoveryResumesTheOriginalHistoryCommandAfterStartupVerification() throws Exception {
+        try (var f = new Fixture()) {
+            var rebuilder = mock(CommitIndexSearchRebuilder.class);
+            when(rebuilder.hasCompleteCoverage(0)).thenReturn(true);
+            var lifecycle = new CommitIndexSearchLifecycle(f.indexRows, rebuilder);
+            ReflectionTestUtils.setField(f.projections, "searchLifecycle", lifecycle);
+            try {
+                String head = f.git.commitDsl("draft", "model", "owner", "first");
+                var pending = f.service.submit(REBUILD, "draft", "startup", null);
+                assertThat(pending.phase()).isEqualTo("RETRYABLE");
+                assertThat(pending.sourceCommit()).isEqualTo(head);
+                verifyNoInteractions(f.indexRows);
+
+                f.jdbc.update("update history_index_operation set due_at=0 where operation_id=?", pending.operationId());
+                f.service.recover();
+                assertThat(f.service.get(pending.operationId()).attempts()).isEqualTo(pending.attempts());
+                verifyNoInteractions(f.indexRows);
+
+                lifecycle.run(new DefaultApplicationArguments());
+                assertThat(lifecycle.isReady()).isTrue();
+                f.jdbc.update("update history_index_operation set due_at=0 where operation_id=?", pending.operationId());
+                f.service.recover();
+                var completed = f.service.get(pending.operationId());
+                assertThat(completed.phase()).isEqualTo("COMPLETED");
+                assertThat(completed.sourceCommit()).isEqualTo(head);
+                assertThat(completed.count()).isEqualTo(1);
+                assertThat(completed.executor()).isEqualTo("system:history-index");
+            } finally {
+                lifecycle.stop();
+            }
+        }
+    }
+
+    @Test
+    void aNonIndexingWorkerLeavesHistoryForTheCoordinatorAndStillRecoversDerivedProjections() throws Exception {
+        try (var f = new Fixture(); var worker = new AnnotationConfigApplicationContext()) {
+            worker.getEnvironment().getPropertySources().addFirst(new MapPropertySource("worker",
+                    Map.of("taxonomy.analysis.runtime-role", "worker")));
+            worker.registerBean(HistoryIndexMaintenance.class, () -> f.service);
+            worker.refresh();
+
+            String head = f.git.commitDsl("draft", "model", "owner", "first");
+            var history = f.admit("history", head).receipt();
+            var port = mock(DerivedProjection.class);
+            var source = new DerivedProjection.Source("source", "generation");
+            var result = new DerivedProjection.Result("generation", null, 2, 1, null, null, null);
+            f.service.configureDerivedProjection(port);
+            when(f.members.canMaintain(f.catalogueRow, "owner")).thenReturn(true);
+            when(port.apply(eq(f.scope), eq(DerivedProjection.Kind.RELATION), eq(head), eq(source), anyString(), any()))
+                    .thenReturn(result);
+            when(port.describe(result)).thenReturn("result");
+            var derived = f.journal.admit(f.scope, "draft", HistoryIndexJournal.Kind.RELATION, f.grant, "derived", null,
+                    () -> new HistoryIndexJournal.Capture(head, null, source.key(), source.generation())).receipt();
+
+            f.service.recover();
+            assertThat(f.service.get(history.operationId())).isEqualTo(history);
+            assertThat(f.service.get(derived.operationId()).phase()).isEqualTo("COMPLETED");
+            assertThat(f.service.retry(history.operationId())).isEqualTo(history);
             verifyNoInteractions(f.indexRows);
         }
     }
@@ -311,6 +379,7 @@ class HistoryIndexMaintenanceTest {
         final com.taxonomy.versioning.repository.ArchitectureCommitIndexRepository indexRows =
                 mock(com.taxonomy.versioning.repository.ArchitectureCommitIndexRepository.class);
         final HistoryIndexJournal journal;
+        final CommitIndexService projections;
         final HistoryIndexMaintenance service;
 
         Fixture() throws Exception { this(RepositoryContext.centralRead("repo", "draft", "owner")); }
@@ -336,8 +405,9 @@ class HistoryIndexMaintenanceTest {
             when(catalogue.lockForMutation("repo")).thenReturn(1);
             when(catalogue.findByRepositoryId("repo")).thenReturn(Optional.of(catalogueRow));
             when(members.canContribute(catalogueRow, "owner")).thenReturn(true);
+            projections = new CommitIndexService(factory, indexRows);
             service = new HistoryIndexMaintenance(journal, principals, resolver, factory, catalogue, members,
-                    entities, new CommitIndexService(factory, indexRows));
+                    entities, projections);
         }
         HistoryIndexJournal.Operation admit(String key, String captured) {
             return journal.admit(scope, "draft", REBUILD, grant, key, null, () -> new HistoryIndexJournal.Capture(captured, null));

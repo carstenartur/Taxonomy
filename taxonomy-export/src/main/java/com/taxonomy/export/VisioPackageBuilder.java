@@ -3,7 +3,6 @@ package com.taxonomy.export;
 import com.taxonomy.visio.VisioDocument;
 import com.taxonomy.visio.VisioPage;
 import com.taxonomy.visio.VisioPageLayout;
-import com.taxonomy.diagram.VisioDrawingOptions;
 import com.taxonomy.visio.VisioNativeShape;
 import com.taxonomy.visio.converter.VisioDocumentConverter;
 import com.taxonomy.visio.converter.VisioPageContentsConverter;
@@ -64,7 +63,8 @@ public class VisioPackageBuilder {
         // Reserve evidence capacity during conversion, but do not put dozens of
         // text pages between the overview and its editable relationship drawings.
         doc.getPages().sort(java.util.Comparator.comparing(VisioPage::isEvidencePage));
-        Map<String, String> parts = buildParts(doc, Map.of(), theme);
+        var layouts = VisioPageLayout.documentLayouts(doc);
+        Map<String, String> parts = buildParts(doc, Map.of(), theme, layouts);
         long bytes = partBytes(parts);
         boolean trimmed = false;
         // Appendices now follow drawings. Optional relationship pages may be
@@ -83,7 +83,7 @@ public class VisioPackageBuilder {
         }
         if (trimmed) {
             VisioPresentation.updateDetailCoverage(doc, "byte capacity");
-            parts = buildParts(doc, pageContents, theme);
+            parts = buildParts(doc, pageContents, theme, layouts);
         }
         VisioOpcValidator.validate(parts);
 
@@ -118,7 +118,8 @@ public class VisioPackageBuilder {
         return parts.values().stream().mapToLong(value -> value.getBytes(StandardCharsets.UTF_8).length).sum();
     }
 
-    private Map<String, String> buildParts(VisioDocument doc, Map<String, String> previousParts, ExportTheme theme) {
+    private Map<String, String> buildParts(VisioDocument doc, Map<String, String> previousParts, ExportTheme theme,
+                                           Map<String, VisioPageLayout> layouts) {
         Map<String, String> parts = new LinkedHashMap<>();
         parts.put("[Content_Types].xml", buildContentTypes(doc));
         parts.put("_rels/.rels", buildRootRelationships());
@@ -130,7 +131,7 @@ public class VisioPackageBuilder {
         parts.put("visio/document.xml", buildDocumentXml(doc));
         parts.put("visio/windows.xml", VisioDrawingView.windowsXml(doc));
         parts.put("visio/_rels/document.xml.rels", buildDocumentRelationships());
-        parts.put("visio/pages/pages.xml", buildPagesXml(doc));
+        parts.put("visio/pages/pages.xml", buildPagesXml(doc, layouts));
         parts.put("visio/pages/_rels/pages.xml.rels", buildPagesRelationships(doc));
         parts.put("visio/masters/masters.xml", buildMastersXml());
         parts.put("visio/masters/_rels/masters.xml.rels", buildMastersRelationships());
@@ -140,7 +141,8 @@ public class VisioPackageBuilder {
         for (int index = 0; index < doc.getPages().size(); index++) {
             VisioPage page = doc.getPages().get(index);
             String name = "visio/pages/page" + (index + 1) + ".xml";
-            parts.put(name, previousParts.containsKey(page.getId()) ? previousParts.get(page.getId()) : buildPageXml(page, theme, doc.getDrawingOptions()));
+            parts.put(name, previousParts.containsKey(page.getId()) ? previousParts.get(page.getId())
+                    : buildPageXml(page, theme, layouts.get(page.getId()), doc));
             if (!VisioNativeShape.usedOn(page).isEmpty())
                 parts.put("visio/pages/_rels/page" + (index + 1) + ".xml.rels", buildPageMasterRelationships(page));
         }
@@ -296,11 +298,11 @@ public class VisioPackageBuilder {
         return xml.append("</Relationships>").toString();
     }
 
-    private String buildPagesXml(VisioDocument doc) {
+    private String buildPagesXml(VisioDocument doc, Map<String, VisioPageLayout> layouts) {
         XStream xstream = new XStream(new XppDriver());
         xstream.setMode(XStream.NO_REFERENCES);
         xstream.alias("Pages", VisioDocument.class);
-        xstream.registerConverter(new VisioPagesConverter());
+        xstream.registerConverter(new VisioPagesConverter(layouts));
         return XML_DECLARATION + xstream.toXML(doc);
     }
 
@@ -319,11 +321,11 @@ public class VisioPackageBuilder {
         return xml.toString();
     }
 
-    private String buildPageXml(VisioPage page, ExportTheme theme, VisioDrawingOptions options) {
+    private String buildPageXml(VisioPage page, ExportTheme theme, VisioPageLayout layout, VisioDocument document) {
         XStream xstream = new XStream(new XppDriver());
         xstream.setMode(XStream.NO_REFERENCES);
         xstream.alias("PageContents", VisioPage.class);
-        xstream.registerConverter(new VisioPageContentsConverter(theme, VisioPageLayout.of(page, options), options));
+        xstream.registerConverter(new VisioPageContentsConverter(theme, layout, document.getDrawingOptions(), document.isGerman()));
         return XML_DECLARATION + xstream.toXML(page);
     }
 

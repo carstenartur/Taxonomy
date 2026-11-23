@@ -157,6 +157,8 @@ class SharedApplicationChromeBrowserIT {
     void scoreLegendStaysVisibleAndCompactAfterTaskInitialization(String locale) {
         open(new View("index", "/", "analysis", "fileMenuButton"), locale, 1440);
         var legend = page.driver().findElement(By.id("analysisScoreLegend"));
+        assertThat(page.driver().findElement(By.cssSelector("#leftPanel .card-body:has(> #taxonomyTree) > #analysisScoreLegend")))
+                .isEqualTo(legend);
         var swatches = legend.findElements(By.className("legend-box"));
         assertThat(legend.getAriaRole()).isEqualTo("group");
         assertThat(legend.getAccessibleName()).isNotBlank();

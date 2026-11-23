@@ -4,6 +4,7 @@ import com.taxonomy.catalog.model.TaxonomyNode;
 import com.taxonomy.catalog.model.TaxonomyRelation;
 import com.taxonomy.catalog.service.AppInitializationStateService;
 import com.taxonomy.catalog.snapshot.CatalogueRuntimePolicy;
+import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityManagerFactory;
 import jakarta.persistence.LockModeType;
 import org.hibernate.search.mapper.orm.Search;
@@ -116,12 +117,12 @@ public class LocalEmbeddingIndexRebuilder {
                     while (!Thread.currentThread().isInterrupted()
                             && (offset = nextBatch.getAndAdd(batchSize)) < identifiers.size()) {
                         var batchIds = identifiers.subList(offset, Math.min(offset + batchSize, identifiers.size()));
-                        List<?> snapshots;
-                        try (var manager = entityManagerFactory.createEntityManager()) {
-                            snapshots = manager.createQuery(entityQuery, type)
-                                    .setParameter("ids", batchIds)
-                                    .getResultList();
-                        }
+                        // PostgreSQL needs a transaction to materialize the catalogue LOBs.
+                        // Close it before inference so the worker releases its JDBC connection.
+                        var snapshots = entityManagerFactory.callInTransaction(manager ->
+                                manager.createQuery(entityQuery, type)
+                                        .setParameter("ids", batchIds)
+                                        .getResultList());
                         var vectors = new HashMap<String, EmbeddingBridgeSupport.PreparedEmbedding>();
                         var endpointIds = new TreeSet<Long>();
                         for (Object snapshot : snapshots) {
@@ -284,7 +285,8 @@ public class LocalEmbeddingIndexRebuilder {
             Function<Object[], String> fingerprint, String modelKey) {
         catalogueRuntimePolicy.requireGlobalIndexAllowed();
         try (var manager = entityManagerFactory.createEntityManager()) {
-            Set<String> expected = databaseFingerprints(manager, rowQuery, fingerprint);
+            Set<String> expected = entityManagerFactory.callInTransaction(
+                    rows -> databaseFingerprints(rows, rowQuery, fingerprint));
             if (type == TaxonomyNode.class && expected.isEmpty()) return false;
             var search = Search.session(manager).search(type);
             long documentCount = search.where(f -> f.matchAll()).fetchTotalHitCount();
@@ -302,7 +304,8 @@ public class LocalEmbeddingIndexRebuilder {
             return remaining.isEmpty()
                     // A concurrent catalogue/tenant mutation must not validate an older
                     // projection merely because its row count happens to be unchanged.
-                    && expected.equals(databaseFingerprints(manager, rowQuery, fingerprint));
+                    && expected.equals(entityManagerFactory.callInTransaction(
+                            rows -> databaseFingerprints(rows, rowQuery, fingerprint)));
         } catch (SearchException failure) {
             log.warn("Catalogue search validation requires rebuilding {} (code=INDEX_VALIDATION_FAILED)",
                     type.getSimpleName());
@@ -310,7 +313,7 @@ public class LocalEmbeddingIndexRebuilder {
         }
     }
 
-    private Set<String> databaseFingerprints(jakarta.persistence.EntityManager manager, String query,
+    private Set<String> databaseFingerprints(EntityManager manager, String query,
             Function<Object[], String> fingerprint) {
         Set<String> values = new HashSet<>();
         long after = 0;

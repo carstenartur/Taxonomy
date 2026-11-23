@@ -277,6 +277,21 @@ Effective policy and readiness can be inspected at `GET /api/ai-automation`. Gen
 | `TAXONOMY_PORTFOLIO_ANALYSIS_WORKER_SHUTDOWN_SECONDS` | `taxonomy.portfolio.analysis-worker-shutdown-seconds` | `30`, minimum effective `0` | Grace period for worker termination. |
 | `TAXONOMY_PORTFOLIO_SNAPSHOT_STALE_AFTER_DAYS` | `taxonomy.portfolio.snapshot-stale-after-days` | `30`, minimum effective `1` | Age threshold used by portfolio stale-snapshot metrics; a snapshot for an old requirement version is stale regardless of age. |
 
+## Email analysis
+
+See the [email intake setup guide](../de/MAIL_ANALYSIS.md) for the mailbox, SMTP and delivery configuration.
+
+| Variable | Spring property / scope | Default | Meaning |
+|---|---|---|---|
+| `TAXONOMY_MAIL_ENABLED` | `taxonomy.mail.enabled` | `false` | Enables email intake, job processing and live status. |
+| `TAXONOMY_MAIL_IMAP_POLL_ENABLED` | `taxonomy.mail.imap.poll-enabled` | `true` | Starts the mailbox listener. It uses IMAP IDLE when supported and otherwise checks the inbox at the configured poll interval. |
+| `TAXONOMY_MAIL_QUEUE_DIRECTORY` | `taxonomy.mail.queue.directory` | `./data/mail-analysis` | Persistent directory owned by one coordinator. |
+| `TAXONOMY_MAIL_QUEUE_CAPACITY` | `taxonomy.mail.queue.capacity` | `16` | Maximum number of waiting jobs. The delivery backlog has a separate limit equal to this value, with a minimum of one. When delivery is full, accepted jobs keep their waiting places until results are sent or expire. |
+| `TAXONOMY_MAIL_QUEUE_RETENTION` | `taxonomy.mail.queue.retention` | `PT48H` | Retention period for completed job status and maximum retry window for pending deliveries. |
+| `TAXONOMY_MAIL_QUEUE_LANGUAGE` | `taxonomy.mail.queue.language` | `de` | Analysis and document output language. |
+| `TAXONOMY_MAIL_QUEUE_MAX_RESULT_BYTES` | `taxonomy.mail.queue.max-result-bytes` | `15000000` | Maximum total raw export size per job. |
+| `TAXONOMY_REPORTING_VISIO_PDF_ENABLED` | `taxonomy.reporting.visio-pdf.enabled` | `false` | Enables decision tree PDF via LibreOffice. |
+
 ## Local security, administration and Keycloak
 
 `ADMIN_PASSWORD` and `TAXONOMY_ADMIN_PASSWORD` are deliberately separate. The former is an additional token for sensitive Actuator/admin-token checks. The latter bootstraps the local `admin` account. When local authentication starts outside the production profile without `TAXONOMY_ADMIN_PASSWORD`, the application writes a one-time random bootstrap password to an owner-only temporary file, logs only its path, and requires the password to be changed. The production profile fails startup unless the configured password is non-placeholder and at least 16 characters.

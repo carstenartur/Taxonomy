@@ -149,41 +149,29 @@ investigation. For **Saved analysis snapshot**, the lens investigates the exact
 selected snapshot. Both sources remain unchanged. If complete retained evidence
 is unavailable, the application explains why; **Refresh source** checks it again.
 
-In **Working architecture**, scroll below the graph and arrangement controls to
-**Architecture focus lens** and select **Enable focus lens**. Writable investigation
-remains available only for the current editable working revision. This editor
-lens stays disabled for historical working revisions and central read contexts. Analysis
-suggestions can be reviewed and dismissed; **Review adoption into working
-architecture** enters the separate source-check, preview and acceptance workflow.
-A draft that has not been saved as a requirement must be saved first.
+**Relationship proposals** shows the proposals available for the displayed
+architecture. Select an element in the diagram, open its **Architecture focus
+lens**, and choose **Investigate selection**. The diagram also has an
+**Investigate on hover** switch. Possible endpoints span the displayed model.
 
-![Architecture focus lens with Enable focus lens checked and the AI option unchecked](../images/architecture-editor-focus-en.png)
+Investigations use local text by default. Selecting **Ask the configured AI
+provider when available** allows a request to the configured provider. The
+default limit is 16 investigations per page and can be set from 1 to 128.
+Pausing lets the current request finish.
 
-*Application capture of the focus-lens panel in an editable example workspace:
-**Enable focus lens** is checked and the AI option is unchecked.
-[Source revision and capture record](../images/documentation-screenshots.json).*
+Select a proposal or a dashed arrow to review its direction, rationale and
+source excerpts. **Source and method** shows the technical provenance. In
+analysis and snapshot sources, you can dismiss the proposal or show the other
+element. The snapshot action **Open adoption preview** opens an
+adoption preview for the entire saved snapshot.
 
-Slowly sweep over elements, or select an element and choose **Investigate selection**. A touch
-hold works as well. The lens chooses starting elements; possible endpoints can be
-anywhere in the current model, including newly created elements. Arrow keys and
-zoom controls remain available while the lens owns pointer movement.
-
-Each element shows whether investigation is queued, running, assessed, unassessed,
-failed or stale. The default limit is 16 investigations per page session (adjustable
-from 1 to 128); **Pause new investigations** lets the current request finish.
-With the AI option selected, an investigation can use the configured generative
-provider. Local-only, unavailable and mock providers leave candidates explicitly
-unassessed. The current sources are canonical element text and mapped requirements;
-the lens does not discover external systems or verify deployed connections.
-
-Dashed arrows and the proposal list open a pinned review with the full rationale,
-method, source revision and quoted evidence. In **Working architecture**, **Accept relationship** is the
-confirmation: it stores one audited relation, its rationale and provenance, without
-a second dialog. **Dismiss proposal** applies to this investigation only. **Undo**
-uses the accepted operation; history offers undo/redo after reload. Network retries
-retain the same operation identity. A changed revision makes other proposals stale
-and requires a fresh investigation before acceptance. Suggestions themselves are
-temporary; accepted relationships and evidence are durable.
+In the current editable **Working architecture**, **Preview relationship
+change** shows the element names, direction, and evidence. To review several
+relationships together, mark the relevant proposals in the list and open the
+preview for the selection. Confirmation saves those relationships and their
+individual rationale and evidence together. **Undo** previews reversing the
+entire confirmed change. Investigate the element again when its
+proposal becomes stale. Accepted relationships and their evidence are durable.
 
 **Stable order** preserves the default arrangement. **Reduce crossings**, followed
 by **Rearrange explicitly**, computes a deterministic heuristic arrangement; it
@@ -242,13 +230,16 @@ The shared application navigation remains available on this page. Repository, wo
    Resolve analysis questions and rerun any newly accepted requirement version.
 2. Open Architecture and select the analysis or saved snapshot. Use the
    Architecture Lens to review proposed relationships and their source evidence.
-   Preview and explicitly accept the adoption into the working architecture.
+   Use the separate snapshot action to preview and confirm adoption of the saved stand.
 3. Open **Prepare C1–S1 and R7 from this workspace**. Inspect the agreed closed
    `.qea` file, select the native references, and review the service contribution
    and the operational constraint against the current requirement quotation.
-4. Check the selected delivery coverage in the preview. Save the reviewed
-   changes to a checkpoint, export its assessment and QEA copy, and verify the
-   native delivery in Enterprise Architect with the agreed ADMBw MDG.
+4. Check delivery coverage and review the service contribution and R7
+   derivation separately. Save the reviewed changes to a checkpoint. Download
+   the assessment and, when the native checks permit it, the QEA copy from the
+   same panel. Taxonomy uses the saved checkpoint, reviewed view and selected
+   basis for the download. Verify the native delivery in Enterprise Architect
+   with the agreed ADMBw MDG.
 
 The Sparx plugin is required for native QEA delivery. See the
 [illustrated walkthrough (German)](https://github.com/carstenartur/Taxonomy/blob/main/docs/de/ARCHITECTURE_EDITOR.md#architecture-delivery-guide).

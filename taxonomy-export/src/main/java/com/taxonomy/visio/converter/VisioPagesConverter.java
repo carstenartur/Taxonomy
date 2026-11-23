@@ -11,9 +11,15 @@ import com.thoughtworks.xstream.io.HierarchicalStreamReader;
 import com.thoughtworks.xstream.io.HierarchicalStreamWriter;
 
 import java.math.BigDecimal;
+import java.util.Map;
 
 /** Marshals the Visio page index part used inside a {@code .vsdx} package. */
 public class VisioPagesConverter implements Converter {
+    private final Map<String, VisioPageLayout> layouts;
+
+    public VisioPagesConverter() { this(Map.of()); }
+
+    public VisioPagesConverter(Map<String, VisioPageLayout> layouts) { this.layouts = layouts; }
 
     private static final String VISIO_NS =
             "http://schemas.microsoft.com/office/visio/2012/main";
@@ -43,7 +49,8 @@ public class VisioPagesConverter implements Converter {
             writer.addAttribute("IsCustomNameU", "1");
 
             writer.startNode("PageSheet");
-            var layout = VisioPageLayout.of(page, document.getDrawingOptions());
+            var layout = layouts.get(page.getId());
+            if (layout == null) layout = VisioPageLayout.of(page, document.getDrawingOptions());
             writeCell(writer, "PageWidth", decimal(layout.width()));
             writeCell(writer, "PageHeight", decimal(layout.height()));
             writeCell(writer, "PageScale", "1");

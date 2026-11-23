@@ -21,9 +21,10 @@ class TaxonomyTreeGeometryTest {
         Path views = copy("/static/js/core/taxonomy-views.js", "views.js");
         Path d3 = copy("/META-INF/resources/webjars/d3/7.9.0/dist/d3.min.js", "d3.js");
         Path utils = copy("/static/js/shared/taxonomy-utils.js", "utils.js");
+        Path matchScale = copy("/static/js/shared/match-scale.js", "match-scale.js");
         Path log = directory.resolve("result.log");
         Process process = new ProcessBuilder(System.getProperty("taxonomy.node.executable", "node"),
-                script.toString(), views.toString(), d3.toString(), scenario, utils.toString())
+                script.toString(), views.toString(), d3.toString(), scenario, utils.toString(), matchScale.toString())
                 .redirectErrorStream(true).redirectOutput(log.toFile()).start();
         boolean finished = process.waitFor(15, TimeUnit.SECONDS);
         if (!finished) { process.destroyForcibly(); process.waitFor(5, TimeUnit.SECONDS); }

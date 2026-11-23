@@ -82,7 +82,7 @@ public final class WordDocumentWriter {
         p.setSpacingAfter(paragraphSpacingAfter);
         var r = p.createRun();
         r.setFontSize(10);
-        writeLines(r, text);
+        writeLines(r, value(text));
         return p;
     }
 
@@ -92,6 +92,14 @@ public final class WordDocumentWriter {
             if (line.isBlank()) continue;
             paragraph(line);
         }
+    }
+
+    public void requirementParagraphs(String text) {
+        RequirementReportText.write(text, () -> {
+            var paragraph = document.createParagraph();
+            paragraph.setSpacingAfter(paragraphSpacingAfter);
+            return paragraph;
+        }, 10);
     }
 
     public void contents(Map<String, String> sections) {
@@ -484,11 +492,11 @@ public final class WordDocumentWriter {
         p.setSpacingAfter(60);
         var run = p.createRun();
         run.setFontSize(9);
-        writeLines(run, value);
+        writeLines(run, value(value));
     }
 
-    private void writeLines(XWPFRun run, String text) {
-        var lines = value(text).split("\\R", -1);
+    static void writeLines(XWPFRun run, String text) {
+        var lines = text.split("\\R", -1);
         for (int i = 0; i < lines.length; i++) {
             if (i > 0) run.addBreak();
             run.setText(lines[i]);

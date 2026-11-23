@@ -27,6 +27,22 @@ class MeasuredShardBalanceTest {
   var assignments=AppTestShardVerifier.catalogueAssignments(root.resolve("taxonomy-app/src/test/java"),plan);
   {
    var expected=Set.of(
+    "com.taxonomy.BackupExportBrowserIT",
+    "com.taxonomy.LlmMockScoringTests",
+    "com.taxonomy.backup.restore.RestoreIdentityImportTest",
+    "com.taxonomy.backup.restore.WorkspaceEditorRestoreRuntimeTest",
+    "com.taxonomy.backup.restore.WorkspaceRestoreImporterTest",
+    "com.taxonomy.backup.runtime.AnalysisRecordsExportIT",
+    "com.taxonomy.backup.runtime.BackupArchiveValidationTest",
+    "com.taxonomy.backup.runtime.PortfolioRecordsExportIT",
+    "com.taxonomy.backup.runtime.ProductionCurrentBackupIT",
+    "com.taxonomy.backup.runtime.ProductionHistoryBackupIT",
+    "com.taxonomy.backup.runtime.WorkspaceRecordsExportIT",
+    "com.taxonomy.composition.analysis.artemis.WorkerRuntimeFootprintTest",
+    "com.taxonomy.composition.persistence.RelationHypothesisTenantMigrationPostgresIT",
+    "com.taxonomy.composition.persistence.RequirementTenantPostgresMigrationIT",
+    "com.taxonomy.composition.persistence.TaxonomySchemaPostgresMigrationIT",
+    "com.taxonomy.ui.DatabaseSetupBrowserTest",
     "com.taxonomy.backup.recovery.NativeInstallationPostgresRecoveryIT",
     "com.taxonomy.KeycloakSecurityContainerIT",
     "com.taxonomy.ObservabilityContainerIT",
@@ -45,6 +61,14 @@ class MeasuredShardBalanceTest {
   }
   {
    var expected=Set.of(
+    "com.taxonomy.PortfolioRequirementReviewIT",
+    "com.taxonomy.RequirementVersionReviewIT",
+    "com.taxonomy.acceptance.ReformulationAuthoredScenarioTest",
+    "com.taxonomy.acceptance.ReformulationScenarioAcceptanceTest",
+    "com.taxonomy.interop.publication.IntegrationPublicationBoundaryRestartTest",
+    "com.taxonomy.templates.DocumentTemplateApiHttpIT",
+    "com.taxonomy.templates.DocumentTemplateGitHttpIT",
+    "com.taxonomy.templates.DocumentTemplateHttpIT",
     "com.taxonomy.portfolio.reformulation.AdoptedLineageRealReanalysisTest",
     "com.taxonomy.portfolio.reformulation.ReformulationEncodingTest",
     "com.taxonomy.portfolio.reformulation.ReformulationDispatchClaimTest",

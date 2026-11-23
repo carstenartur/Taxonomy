@@ -19,6 +19,7 @@ import org.hibernate.search.mapper.orm.session.SearchSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.TransientDataAccessResourceException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -62,6 +63,7 @@ public class CommitIndexService {
     /** Index every commit not yet projected for this exact tenant and branch. */
     @Transactional
     public int indexBranch(String branch, RepositoryContext context) {
+        requireSearchMutationAvailable();
         TenantScope scope = TenantScope.from(context);
         String normalizedBranch = requireText(branch, "branch");
         try {
@@ -83,6 +85,7 @@ public class CommitIndexService {
      */
     @Transactional
     public int rebuildBranch(String branch, RepositoryContext context) {
+        requireSearchMutationAvailable();
         TenantScope scope = TenantScope.from(context);
         String normalizedBranch = requireText(branch, "branch");
         try {
@@ -128,6 +131,7 @@ public class CommitIndexService {
     /** A retry can remove only rows that already existed in this scope when the user requested the purge. */
     @Transactional
     public int purgeCaptured(RepositoryContext context, String operationId) {
+        requireSearchMutationAvailable();
         TenantScope scope = TenantScope.from(context);
         List<ArchitectureCommitIndex> rows = entityManager.createQuery("""
                 select projection from ArchitectureCommitIndex projection
@@ -147,6 +151,7 @@ public class CommitIndexService {
     /** Delete only the selected central/workspace history projection. */
     @Transactional
     public int purge(RepositoryContext context) {
+        requireSearchMutationAvailable();
         TenantScope scope = TenantScope.from(context);
         List<ArchitectureCommitIndex> existing = indexRepository
                 .findByRepositoryIdAndWorkspaceScopeKey(
@@ -458,6 +463,21 @@ public class CommitIndexService {
                         + ", workspace=" + scope.workspaceScopeKey()
                         + ", branch=" + branch,
                 exception);
+    }
+
+    boolean canRecoverHistory() {
+        return searchLifecycle == null || switch (searchLifecycle.getState()) {
+            case READY, FAILED -> true;
+            default -> false;
+        };
+    }
+
+    private void requireSearchMutationAvailable() {
+        // Startup verification runs only once. A mutation admitted afterward
+        // can finish its transaction without overlapping the startup mass indexer.
+        if (searchLifecycle != null && searchLifecycle.isInitializing()) {
+            throw new TransientDataAccessResourceException("Commit history search index is initializing");
+        }
     }
 
     private void requireSearchReady() {

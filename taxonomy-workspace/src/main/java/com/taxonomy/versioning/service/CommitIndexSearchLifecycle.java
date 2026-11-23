@@ -105,6 +105,13 @@ public class CommitIndexSearchLifecycle implements ApplicationRunner {
     public State getState() { return state; }
     public boolean isReady() { return state == State.READY; }
 
+    boolean isInitializing() {
+        return switch (state) {
+            case WAITING, CHECKING, REBUILDING -> true;
+            default -> false;
+        };
+    }
+
     private synchronized boolean transition(State next) {
         if (stopped) return false;
         state = next;

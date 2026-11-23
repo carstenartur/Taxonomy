@@ -1,5 +1,6 @@
 package com.taxonomy.templates;
 
+import org.junit.jupiter.api.Tag;
 import com.taxonomy.TaxonomyApplication;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -31,6 +32,7 @@ import static org.junit.jupiter.api.Assertions.assertNotSame;
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("hsqldb")
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
+@Tag("ci-app-shard-domain-integration")
 class DocumentTemplateHttpIT {
     private static final String PASSWORD = UUID.randomUUID().toString();
     private static final Map<String, String> NODE_PROPERTIES = Map.of(

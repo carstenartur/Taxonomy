@@ -5,6 +5,7 @@ import vm from 'node:vm';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import canonicalFixture from './canonical-api-fixture.cjs';
+import { architectureLensMarkup } from './architecture-lens-fixture.mjs';
 
 afterEach(() => canonicalFixture.dispose());
 
@@ -89,7 +90,9 @@ test('malformed namespace is visible and cannot be overwritten through the profi
 // Run the production planning, focus and editor modules together: do not replace the panel's stage callback.
 // Only browser rendering and the remote API boundary are fixtures, not retry logic.
 async function editorFixture(conflictAt, history = [], serverUndo = history[0] || null, lifecycleOptions = null, configure = () => {}) {
-    const html = fs.readFileSync(path.join(root, 'taxonomy-app/src/main/resources/templates/architecture-editor.html'), 'utf8');
+    const resources = path.join(root, 'taxonomy-app/src/main/resources');
+    const { panel, controls } = await architectureLensMarkup(resources, 'editorLens', 'editorArchitectureLensAction');
+    const html = fs.readFileSync(path.join(resources, 'templates/architecture-editor.html'), 'utf8') + panel + controls;
     const ids = Object.fromEntries([...html.matchAll(/<([a-z0-9]+)\b[^>]*\bid="([^"]+)"/gi)]
         .map(([, tag, id]) => [id, new Element(tag)]));
     if (lifecycleOptions) ids.architectureLifecycle = new Element('section');
@@ -152,7 +155,9 @@ async function editorFixture(conflictAt, history = [], serverUndo = history[0] |
         if(lifecycleOptions && !ids[id])return null;
         assert.ok(ids[id], `Production template is missing ${id}`);
         return ids[id];
-    }, createElement:tag => new Element(tag), createTextNode:text => ({textContent:text}), querySelectorAll:() => [], documentElement:{lang:'en'}, activeElement:null};
+    }, createElement:tag => new Element(tag), createTextNode:text => ({textContent:text}),
+    querySelectorAll:selector => selector === '[data-architecture-lens-hover="editorLens"]' ? [ids.editorLensEnabled] : [],
+    documentElement:{lang:'en'}, activeElement:null};
     ids.editorTree.ownerDocument = document;
     document.body={querySelector:selector=>document.getElementById(selector.slice(1)),
         querySelectorAll:selector=>selector.startsWith('#editorForm input') ? [ids.editorTitle,ids.editorRationale] : []};

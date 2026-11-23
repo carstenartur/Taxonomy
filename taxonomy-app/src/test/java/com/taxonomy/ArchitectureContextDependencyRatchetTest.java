@@ -108,6 +108,53 @@ class ArchitectureContextDependencyRatchetTest {
     }
 
     @Test
+    void mailAnalysisBridgeRetainsOnlyItsReviewedCrossContextDependencies() throws Exception {
+        ContextPolicy policy = readAndValidateContextPolicy(
+                findRepositoryRoot().resolve(".github/architecture-contexts.json"));
+        var classes = new ClassFileImporter()
+                .withImportOption(new ImportOption.DoNotIncludeTests())
+                .importPackages("com.taxonomy.mail");
+        Set<String> pairs = new TreeSet<>();
+        for (JavaClass origin : classes) {
+            assertThat(contextFor(origin, policy).id()).isEqualTo("app-composition");
+            for (Dependency dependency : origin.getDirectDependenciesFromSelf()) {
+                JavaClass target = dependency.getTargetClass();
+                ContextDefinition context = contextFor(target, policy);
+                if (context != null && !"app-composition".equals(context.id())) {
+                    pairs.add(origin.getSimpleName() + " -> " + target.getName());
+                }
+            }
+        }
+
+        // The mailbox adapter reuses the catalogue, unpublished analysis and export entry points.
+        // Its data source is scoped to the readable primary branch, without workspace persistence access.
+        assertThat(pairs).containsExactly(
+                "MailAnalysisCommandClassifier -> com.taxonomy.analysis.service.LlmCompletionOptions",
+                "MailAnalysisCommandClassifier -> com.taxonomy.analysis.service.LlmService",
+                "MailAnalysisCommandClassifier -> com.taxonomy.catalog.model.TaxonomyNode",
+                "MailAnalysisCommandClassifier -> com.taxonomy.catalog.service.TaxonomyService",
+                "MailAnalysisProcessor -> com.taxonomy.analysis.service.AnalysisRuntimeSettings",
+                "MailAnalysisProcessor -> com.taxonomy.analysis.usecase.AnalyzeRequirementCommand",
+                "MailAnalysisProcessor -> com.taxonomy.analysis.usecase.AnalyzeRequirementResult",
+                "MailAnalysisProcessor -> com.taxonomy.analysis.usecase.AnalyzeRequirementUseCase",
+                "MailAnalysisProcessor -> com.taxonomy.architecture.decision.DecisionRationaleReportService",
+                "MailAnalysisProcessor -> com.taxonomy.architecture.decision.DecisionRationaleReportService$DecisionAnalysisInput",
+                "MailAnalysisProcessor -> com.taxonomy.architecture.decision.DecisionRationaleScoreSemanticsAdapter",
+                "MailAnalysisProcessor -> com.taxonomy.architecture.service.ArchitectureReportService",
+                "MailAnalysisProcessor -> com.taxonomy.catalog.service.TaxonomyService",
+                "MailAnalysisProcessor -> com.taxonomy.export.service.ExportFacade",
+                "MailAnalysisProcessor -> com.taxonomy.workspace.model.SystemRepository",
+                "MailAnalysisProcessor -> com.taxonomy.workspace.service.RepositoryMembershipService",
+                "MailAnalysisProcessor -> com.taxonomy.workspace.service.SystemRepositoryService",
+                "MailAnalysisProcessor -> com.taxonomy.workspace.service.WorkspaceContext",
+                "MailAnalysisRenderers -> com.taxonomy.export.service.ExportFormatExtensionRegistry",
+                "MailAnalysisRenderers -> com.taxonomy.reporting.render.document.ReportRendererRegistry",
+                "MailRequestParser -> com.taxonomy.provenance.service.DocumentLimitException",
+                "MailRequestParser -> com.taxonomy.provenance.service.DocumentParserService",
+                "MailTransportConfiguration -> com.taxonomy.provenance.service.DocumentParserService");
+    }
+
+    @Test
     void snapshotAdoptionBridgeRetainsOnlyItsReviewedPortfolioAndWorkspaceEdges() throws Exception {
         ContextPolicy policy = readAndValidateContextPolicy(
                 findRepositoryRoot().resolve(".github/architecture-contexts.json"));

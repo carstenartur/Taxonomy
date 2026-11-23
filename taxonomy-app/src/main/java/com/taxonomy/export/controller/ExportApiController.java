@@ -245,7 +245,7 @@ public class ExportApiController {
         try {
             var language = com.taxonomy.dto.DocumentLanguage.resolve(com.taxonomy.dto.DocumentLanguage.optionalOverride(locale),
                     null, org.springframework.context.i18n.LocaleContextHolder.getLocale());
-            byte[] bytes = currentDiagramPdf.renderWorkingView(currentDiagramLayout.layout(diagram), elementReasons(view),
+            byte[] bytes = currentDiagramPdf.renderWorkingView(currentDiagramLayout.layout(diagram), ExportFacade.elementReasons(view),
                     Map.of(), language);
             if (bytes == null || bytes.length == 0) throw new IllegalStateException("Empty architecture PDF");
             return ResponseEntity.ok().contentType(MediaType.APPLICATION_PDF).cacheControl(CacheControl.noStore())
@@ -282,7 +282,7 @@ public class ExportApiController {
             ExportFormatExtension extension = extensionOpt.get();
             ExportFormatDescriptor descriptor = extension.descriptor();
             Map<String, Object> options = new HashMap<>();
-            options.put("elementReasons", elementReasons(view));
+            options.put("elementReasons", ExportFacade.elementReasons(view));
             if (locale != null && !locale.isBlank()) options.put("locale", locale);
             if (VisioExportExtension.FORMAT_ID.equals(descriptor.id()) && view.getOriginalRequirementText() != null) {
                 options.put("originalRequirementText", view.getOriginalRequirementText());
@@ -304,20 +304,6 @@ public class ExportApiController {
 
     public ResponseEntity<?> exportCurrentDiagram(String formatId, RequirementArchitectureView view) {
         return exportCurrentDiagram(formatId, view, null);
-    }
-
-    /** Captured node explanations are presentation evidence, independent of neutral diagram identity. */
-    private static Map<String, String> elementReasons(RequirementArchitectureView view) {
-        var reasons = new LinkedHashMap<String, String>();
-        for (var element : view.getIncludedElements()) {
-            var recorded = new java.util.LinkedHashSet<String>();
-            recorded.add(element.getPresenceReason());
-            recorded.add(element.getIncludedBecause());
-            recorded.removeIf(value -> value == null || value.isBlank());
-            if (element.getNodeCode() != null && !recorded.isEmpty())
-                reasons.put(element.getNodeCode(), String.join("\n\n", recorded));
-        }
-        return reasons;
     }
 
     @Operation(summary = "Export analysis scores as JSON",

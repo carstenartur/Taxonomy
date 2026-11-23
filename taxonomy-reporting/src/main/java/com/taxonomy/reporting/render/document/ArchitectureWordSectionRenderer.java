@@ -2,9 +2,11 @@ package com.taxonomy.reporting.render.document;
 
 import com.taxonomy.diagram.DiagramModel;
 import com.taxonomy.diagram.DiagramNode;
+import com.taxonomy.export.DiagramPresentation;
 import com.taxonomy.reporting.api.document.ArchitectureReportDocument;
 
 import com.taxonomy.reporting.render.decision.DecisionReportLabels;
+import com.taxonomy.reporting.render.decision.DecisionReportPresentation;
 
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
 
@@ -17,7 +19,7 @@ public final class ArchitectureWordSectionRenderer {
         var writer = new WordDocumentWriter(document, labels);
         writer.properties(report);
         writer.heading(labels.requirement(), 1, "architecture_requirement");
-        writer.sourceParagraphs(report.requirement());
+        writer.requirementParagraphs(report.requirement());
         writer.heading(labels.scope(), 2, null);
         writer.paragraph(report.scope());
         ReportInventory.diagram(report.diagram(), labels.german()).forEach(writer::paragraph);
@@ -60,10 +62,8 @@ public final class ArchitectureWordSectionRenderer {
                                                                         + " → "
                                                                         + edge.targetId(),
                                                                 value(edge.relationType(), labels),
-                                                                value(
-                                                                        edge.relationCategory(),
-                                                                        labels)
-                                                                        + " · " + com.taxonomy.export.DiagramPresentation
+                                                                labels.relationCategory(edge.relationCategory())
+                                                                        + " · " + DiagramPresentation
                                                                                 .relationshipStatus(edge.metadata(), labels.german())))
                                         .toList());
                 writer.columnWidths(key, 12, 32, 32, 24);
@@ -108,7 +108,7 @@ public final class ArchitectureWordSectionRenderer {
             writer.heading(labels.recordedNodeReasons(), 2, null);
             report.nodeReasons().entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(entry -> {
                 writer.heading(entry.getKey(), 3, null);
-                writer.paragraph(entry.getValue());
+                writer.paragraph(DecisionReportPresentation.nodeReason(entry.getValue(), labels));
             });
         }
         writer.heading(labels.relations(), 1, "architecture_relations");
@@ -131,8 +131,8 @@ public final class ArchitectureWordSectionRenderer {
                                                 e.sourceId(),
                                                 e.targetId(),
                                                 value(e.type(), labels),
-                                                value(e.category(), labels) + " · "
-                                                        + com.taxonomy.export.DiagramPresentation.relationshipStatus(metadataById.get(e.id()), labels.german()),
+                                                labels.relationCategory(e.category()) + " · "
+                                                        + DiagramPresentation.relationshipStatus(metadataById.get(e.id()), labels.german()),
                                                 percentage(e.relevance())))
                         .toList());
         writer.columnWidths(relations, 10, 16, 16, 15, 31, 12);
@@ -144,8 +144,10 @@ public final class ArchitectureWordSectionRenderer {
                 if (edge.metadata() == null && supplemental == null) continue;
                 writer.heading(edge.id() + " · " + edge.sourceId() + " → " + edge.targetId(), 2, null);
                 // One point between evidence fields; body type remains the writer's readable 10pt.
-                relationshipDetails(edge.metadata(), supplemental, labels.german())
-                        .forEach(detail -> writer.paragraph(detail).setSpacingAfter(20));
+                var details = labels.german() && edge.metadata() != null && !edge.metadata().requirementEvidence().isEmpty()
+                        ? DiagramPresentation.relationshipReportDetails(edge.metadata(), supplemental, true)
+                        : relationshipDetails(edge.metadata(), supplemental, labels.german());
+                details.forEach(detail -> writer.paragraph(detail).setSpacingAfter(20));
             }
         }
         writer.heading(labels.provenance(), 1, "architecture_evidence");
@@ -165,7 +167,7 @@ public final class ArchitectureWordSectionRenderer {
                         row(labels.branch(), value(e.branch(), labels)),
                         row(labels.basedOnCommit(), value(e.commit(), labels)),
                         row(labels.analysisProvider(), value(e.provider(), labels)),
-                        row(labels.analysisModel(), value(e.model(), labels)),
+                        row(labels.analysisModel(), value(labels.modelName(e.model()), labels)),
                         row(
                                 labels.recordedTaxonomyDigest(),
                                 value(e.taxonomyFingerprint(), labels))));

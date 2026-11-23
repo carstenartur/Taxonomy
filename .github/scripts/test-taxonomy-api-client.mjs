@@ -1086,7 +1086,7 @@ for (const [initialWorkspace, hydratedWorkspace] of [[null, 'workspace-A'], [nul
   });
 }
 
-async function loadWorkspaceBadgeStartup() {
+async function loadWorkspaceBadgeStartup(workspaceId = 'workspace-A') {
   const calls = [], writes = [], classes = new Set(['d-none']);
   let finishSource;
   const sourceReady = new Promise(resolve => { finishSource = resolve; });
@@ -1106,7 +1106,7 @@ async function loadWorkspaceBadgeStartup() {
     }
   });
   const w = app.context.window;
-  w.__TaxonomyAnalysisSessionContext.runtime.workspaceId = 'workspace-A';
+  w.__TaxonomyAnalysisSessionContext.runtime.workspaceId = workspaceId;
   w.TaxonomyArchitectureWorkspace = {ready: () => sourceReady};
   app.context.setInterval = () => 1;
   app.context.clearInterval = () => {};
@@ -1176,6 +1176,17 @@ test('the live workspace badge waits for the initial repository context in the s
   assert.equal(read.init.signal.aborted, false);
   assert.equal(new URL(read.url, f.w.location.href).searchParams.get('workspaceId'), 'workspace-A');
   assert.equal(read.init.headers.get('X-Taxonomy-Workspace-Id'), 'workspace-A');
+});
+
+test('the live workspace badge stays hidden while the default source is still pending', async () => {
+  const f = await loadWorkspaceBadgeStartup(null);
+  await confirmWorkspaceBadgeSource(f);
+  const [read] = f.reads('/api/workspace/current');
+  assert.equal(new URL(read.url, f.w.location.href).searchParams.has('workspaceId'), false);
+  read.resolve(Response.json({state: 'INITIAL_SOURCE_PENDING'}, {status: 202}));
+  await f.settle();
+  assert.deepEqual(f.writes, []);
+  assert.equal(f.classes.has('d-none'), true);
 });
 
 for (const stayed of [false, true]) {
@@ -1530,6 +1541,14 @@ function assertSurfaces(app, prefix = '', expected = surfaces) {
     assert.equal(app.appended[index].async, false, 'surface execution order stays explicit');
   }
 }
+
+test('a public page can use the canonical transport without loading account controls', async () => {
+  const app = await surfaceHarness({ prefix: '/taxonomy' });
+  app.document.currentScript.dataset = { authenticatedSurfaces: 'false' };
+  app.run();
+  assert.equal(typeof app.window.TaxonomyApiClient.requestJson, 'function');
+  assertSurfaces(app, '/taxonomy', []);
+});
 
 for (const prefix of ['', '/taxonomy', '/teams/blue/taxonomy']) {
   test(`authenticated surfaces prefer the real i18n resolver at ${prefix || '/'}`, async () => {

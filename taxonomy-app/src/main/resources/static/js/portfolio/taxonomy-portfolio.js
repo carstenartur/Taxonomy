@@ -297,29 +297,53 @@
     document.addEventListener('DOMContentLoaded', initialize);
 
     async function initialize() {
-        // Initial lifecycle hydration establishes the source used by every read.
-        // Only page/auth ownership is captured before that intentional transition.
-        const activePage = window.TaxonomyApiClient.captureContext({contextSensitive:false});
+        translatePage();
+        wireStaticEvents();
+        setDefaultVerifiedAt();
+        return initializeSource();
+    }
+
+    function initializeSource() {
+        if (initialSourceReady) return initialSourceReady;
+        // Lifecycle hydration can intentionally publish a new source. Every network
+        // read retains its own selection fence while that publication is in progress.
+        const activePage = window.TaxonomyApiClient.captureContext({contextSensitive: false});
+        const scope = window.TaxonomyArchitectureWorkflow?.getScope?.();
+        const workspace = window.TaxonomyWorkspaceApi;
+        const lifecycle = window.TaxonomyArchitectureLifecycle;
+        const retry = document.getElementById('portfolioSourceRetry');
+        if (retry) retry.hidden = true;
         state.busyCount += 1;
         updateBusyState();
-        initialSourceReady = Promise.resolve(window.TaxonomyArchitectureLifecycle?.ready?.()).then(async function () {
+        initialSourceReady = Promise.resolve(lifecycle?.ready?.()).then(async function () {
             if (!activePage()) return false;
-            // Initial selection also publishes context. Finish it before a
-            // submission accepted during hydration can create its own target.
-            await loadProjects(undefined, {sourceBootstrap:true});
+            if (workspace && scope?.workspaceId === undefined && scope?.workspaceScopeKey === undefined) {
+                const currentSource = window.TaxonomyApiClient.captureContext();
+                const confirmed = await workspace.waitForCurrent(workspace.current);
+                if (!currentSource()) {
+                    if (activePage() && retry) retry.hidden = false;
+                    return false;
+                }
+                const selected = confirmed?.workspaceId ? {...scope, workspaceId: confirmed.workspaceId} : scope;
+                if (lifecycle && !await lifecycle.refresh(selected)) {
+                    throw new Error(window.TaxonomyI18n.t('lifecycle.intake.contextUnavailable'));
+                }
+            }
+            if (!activePage()) return false;
+            await loadProjects(undefined, {sourceBootstrap: true});
             if (!activePage()) return false;
             sourceInitialized = true;
             return true;
+        }).catch(function (error) {
+            if (activePage() && error.code !== 'ABORTED') showError(error);
+            if (activePage() && retry) retry.hidden = false;
+            return false;
         }).finally(function () {
+            initialSourceReady = null;
             state.busyCount = Math.max(0, state.busyCount - 1);
             updateBusyState();
         });
-        translatePage();
-        // The visible forms must already prevent native submission while their
-        // first source is loading. withBusy admits their work after hydration.
-        wireStaticEvents();
-        setDefaultVerifiedAt();
-        await initialSourceReady;
+        return initialSourceReady;
     }
 
     function resolveLocale() {
@@ -353,6 +377,7 @@
         document.getElementById('projectFilter').addEventListener('input', renderProjectList);
         document.getElementById('projectList').addEventListener('click', onProjectListClick);
         document.getElementById('projectForm').addEventListener('submit', createProject);
+        document.getElementById('portfolioSourceRetry')?.addEventListener('click', initializeSource);
         document.getElementById('requirementForm').addEventListener('submit', createRequirement);
         window.TaxonomyRequirementIntake?.attach(document.getElementById('requirementForm'), {textElement:document.querySelector('#requirementForm [name="text"]'), projectId:function () { return state.selectedProjectId; }});
         document.getElementById('solutionForm').addEventListener('submit', createSolution);
@@ -401,7 +426,7 @@
     function updateBusyState() {
         document.getElementById('portfolioBusy').classList.toggle('d-none', state.busyCount === 0);
         document.querySelectorAll('button[type="submit"], #analyzeAllBtn, #proposeSolutionsBtn, #detectConflictsBtn')
-            .forEach(function (button) { button.disabled = state.busyCount > 0; });
+            .forEach(function (button) { button.disabled = state.busyCount > 0 || !sourceInitialized; });
     }
 
     function showError(error) {
@@ -448,7 +473,7 @@
                     showError(new Error(window.TaxonomyI18n.t('workflow.projectUnavailable')));
                 }
             }
-        }, options).catch(function () {});
+        }, options).catch(function (error) { if (options?.sourceBootstrap) throw error; });
     }
 
     function renderProjectList() {
@@ -748,6 +773,7 @@
 
     async function createProject(event) {
         event.preventDefault();
+        if (!sourceInitialized) return;
         const form = event.currentTarget;
         const payload = formDataObject(form);
         payload.status = 'PLANNING';

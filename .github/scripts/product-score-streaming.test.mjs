@@ -7,6 +7,8 @@ import vm from 'node:vm';
 const source = await readFile(new URL(
   '../../taxonomy-app/src/main/resources/static/js/core/taxonomy-scoring.js',
   import.meta.url), 'utf8');
+const matchScale = await readFile(new URL(
+  '../../taxonomy-app/src/main/resources/static/js/shared/match-scale.js', import.meta.url), 'utf8');
 const viewsSource = await readFile(new URL(
   '../../taxonomy-app/src/main/resources/static/js/core/taxonomy-views.js',
   import.meta.url), 'utf8');
@@ -137,6 +139,7 @@ function harness(locale = 'en') {
     }
   });
   const browse = window.TaxonomyBrowse;
+  vm.runInContext(matchScale, context);
   vm.runInContext(durationBrowseSource, context);
   browse.refreshAnalysisDuration = window.TaxonomyBrowse.refreshAnalysisDuration;
   // Keep the real source-summary renderer at this module boundary, not a stubbed area badge.

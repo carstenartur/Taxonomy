@@ -1,5 +1,6 @@
 package com.taxonomy.backup.runtime;
 
+import org.junit.jupiter.api.Tag;
 import com.taxonomy.backup.*;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -23,6 +24,7 @@ import java.util.function.IntConsumer;
 import static com.taxonomy.backup.runtime.CurrentStateExportIT.*;
 import static org.assertj.core.api.Assertions.*;
 
+@Tag("ci-app-shard-runtime")
 class AnalysisRecordsExportIT {
     @Test void adapterBackupSelectsTheStableActorAndExactWorkspaceAndPreservesTheNativeResult() throws Exception {
         var snapshot = scoped(BackupProfile.REPOSITORY_HISTORY);

@@ -50,6 +50,9 @@
         return selectionOf({commit:params.get('commit'), revision:params.get('revision')});
     }
     function isEditor() { return Boolean(document.getElementById('architectureEditor')); }
+    function awaitsPortfolioSource() {
+        return Boolean(document.getElementById('portfolioMain') && workspaceId(scope()) === undefined);
+    }
     function signalStandChange() { listeners.forEach(function (listener) { listener(); }); }
     function invalidateStand() { state.generation++; signalStandChange(); }
     function historicalSelection() {
@@ -703,7 +706,8 @@
         body.append(status,commands,tableContainer,historyButton,historyForm,historyList); disclosure.append(body);
         currentButton = button(t('lifecycle.currentStand'),function () { requestStand(null); }); currentButton.dataset.lifecycleCurrent = ''; currentButton.dataset.lifecycleAction = 'current'; currentButton.hidden = true;
         root.append(disclosure,currentButton);
-        if (!isEditor()) return refresh(scope(),selectionFromUrl());
+        // The portfolio observes its implicit workspace before opening this stand.
+        if (!isEditor() && !awaitsPortfolioSource()) return refresh(scope(),selectionFromUrl());
     }
     document.addEventListener('taxonomy:entity-context-changed', function () {
         var value = window.TaxonomyAppChrome?.getContext() || {};
@@ -716,7 +720,9 @@
         var next = publicationOf(event.detail)?.context;
         if (next && scopeKey(next) === scopeKey(state.context)) showPublishedCurrentStand(next);
     });
-    window.addEventListener('popstate',function () { if (!isEditor()) refresh(scope(),selectionFromUrl()); });
+    window.addEventListener('popstate',function () {
+        if (!isEditor() && (state.context || !awaitsPortfolioSource())) refresh(scope(),selectionFromUrl());
+    });
     window.TaxonomyArchitectureLifecycle = {state:function () { return clone(state.overview); },
         ready:ready,
         selectedContext:function () { return state.suspended ? null : clone(state.overview?.context || null); },

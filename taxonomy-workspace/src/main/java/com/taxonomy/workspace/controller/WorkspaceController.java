@@ -9,6 +9,7 @@ import com.taxonomy.versioning.model.ContextHistoryRecord;
 import com.taxonomy.versioning.service.ContextCompareService;
 import com.taxonomy.versioning.service.ContextHistoryService;
 import com.taxonomy.versioning.service.ContextNavigationService;
+import com.taxonomy.workspace.service.InitialWorkspaceSourcePending;
 import com.taxonomy.workspace.service.SyncIntegrationService;
 import com.taxonomy.workspace.service.SystemRepositoryService;
 import com.taxonomy.workspace.service.WorkspaceManager;
@@ -21,7 +22,12 @@ import com.taxonomy.workspace.model.SystemRepository;
 import com.taxonomy.workspace.model.UserWorkspace;
 import com.taxonomy.workspace.model.WorkspaceProvisioningStatus;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.http.CacheControl;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -82,8 +88,12 @@ public class WorkspaceController {
     @Operation(summary = "Get the current user's workspace",
             description = "Returns workspace metadata including current branch, context, " +
                     "and timestamps for the authenticated user.")
+    @ApiResponse(responseCode = "200", description = "Current workspace metadata",
+            content = @Content(schema = @Schema(implementation = WorkspaceInfo.class)))
+    @ApiResponse(responseCode = "202",
+            description = "The automatic workspace is waiting for its initial source checkpoint (INITIAL_SOURCE_PENDING). Retry this read after Retry-After.")
     @WorkspaceMetadataOperation
-    public ResponseEntity<WorkspaceInfo> getCurrentWorkspace() {
+    public ResponseEntity<?> getCurrentWorkspace() {
         String user = workspaceResolver.resolveCurrentUsername();
         String pinned = WorkspaceContextResolver.requestedWorkspaceId();
         if (pinned != null && pinned.isEmpty()) {
@@ -104,7 +114,12 @@ public class WorkspaceController {
         if (info != null && info.isDefault()
                 && ("NOT_PROVISIONED".equals(info.provisioningStatus())
                 || "PROVISIONING".equals(info.provisioningStatus()))) {
-            workspaceResolver.resolveCurrentRepositoryContext();
+            try {
+                workspaceResolver.resolveCurrentRepositoryContext();
+            } catch (InitialWorkspaceSourcePending pending) {
+                return ResponseEntity.accepted().cacheControl(CacheControl.noStore()).header(HttpHeaders.RETRY_AFTER, "1")
+                        .body(Map.of("state", "INITIAL_SOURCE_PENDING"));
+            }
             info = workspaceManager.getWorkspaceInfo(user);
         }
         return ResponseEntity.ok(info);

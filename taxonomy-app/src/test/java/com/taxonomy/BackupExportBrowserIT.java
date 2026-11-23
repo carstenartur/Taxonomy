@@ -23,6 +23,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Persistence/archive acceptance is independently covered by ProductionCurrentBackupIT. */
 @Tag("browser")
 @Tag("ui-acceptance")
+@Tag("ci-app-shard-runtime")
 class BackupExportBrowserIT {
     @TempDir static Path downloads;
     private static PortfolioClientTestPage page;

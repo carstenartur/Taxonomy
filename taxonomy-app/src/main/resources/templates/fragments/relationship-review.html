@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<body>
+<section th:fragment="inbox(integrated)" id="proposalsPanel" class="relationship-review" aria-labelledby="relationshipReviewTitle">
+    <header class="relationship-review-header">
+        <h2 id="relationshipReviewTitle" tabindex="-1" th:text="#{relationshipReview.title}">Relationship proposals</h2>
+        <span th:if="${integrated}" id="proposalPendingBadge" class="badge bg-warning text-dark proposal-pending-badge" th:text="#{browse.proposals.pending(0)}">0 pending</span>
+    </header>
+    <div th:if="${integrated}" id="relationshipReviewSwitch" class="relationship-review-switch" role="group" th:aria-label="#{relationshipReview.title}">
+        <button type="button" data-review-queue="analysis" aria-controls="relationshipReviewAnalysis" aria-pressed="true" th:text="#{relationshipReview.analysis}">From this analysis</button>
+        <button type="button" data-review-queue="saved" aria-controls="relationshipReviewSaved" aria-pressed="false" th:text="#{relationshipReview.saved}">Saved proposals</button>
+        <button type="button" data-review-queue="focus" aria-controls="relationshipReviewFocus" aria-pressed="false" th:text="#{relationshipReview.focus}">Focus investigation</button>
+    </div>
+    <div th:if="${integrated}" id="relationshipReviewAnalysis" data-review-section="analysis">
+        <div id="suggestedRelationsPanel" style="display:none;">
+            <span id="suggestedRelationsBadge" class="badge bg-info">0</span>
+            <div id="suggestedRelationsContent"></div>
+        </div>
+        <p id="relationshipReviewAnalysisEmpty" class="relationship-review-empty" th:text="#{architecture.no.suggestions}">No suggested relationships yet.</p>
+    </div>
+    <div th:if="${integrated}" id="relationshipReviewSaved" data-review-section="saved" hidden>
+        <div class="btn-group btn-group-sm mb-2 proposal-filter-group" role="group" th:attr="aria-label=#{ui.aria.proposal_status_filter}" aria-label="Proposal status filter">
+            <button id="filterPending"  class="btn btn-warning"          data-filter="PENDING"  aria-pressed="true" th:text="#{quality.pending}">Pending</button>
+            <button id="filterAll"      class="btn btn-outline-secondary" data-filter="ALL"      aria-pressed="false" th:text="#{compare.filter.all}">All</button>
+            <button id="filterAccepted" class="btn btn-outline-success"  data-filter="ACCEPTED" aria-pressed="false" th:text="#{browse.proposals.adoption.filter}">Accepted / check adoption</button>
+            <button id="filterRejected" class="btn btn-outline-danger"   data-filter="REJECTED" aria-pressed="false" th:text="#{quality.rejected}">Rejected</button>
+        </div>
+        <section id="proposalAdoptionSection" class="border-bottom mb-2 pb-2" aria-labelledby="proposalAdoptionHeading" hidden>
+            <h3 id="proposalAdoptionHeading" class="h6" th:text="#{browse.proposals.adoption.section}">Accepted proposals from the shared repository</h3>
+            <div id="proposalAdoptionTable" class="table-responsive" tabindex="0" role="region" aria-labelledby="proposalAdoptionHeading"></div>
+        </section>
+        <div id="proposalsTableContainer" class="table-responsive" tabindex="0" role="region" th:attr="aria-label=#{ui.aria.scrollable_data_table}" aria-label="Scrollable data table">
+            <div class="text-muted small p-2" th:text="#{proposals.loading.text}">Loading proposals&hellip;</div>
+        </div>
+    </div>
+    <div id="relationshipReviewFocus" data-review-section="focus" th:hidden="${integrated}">
+        <th:block th:if="${integrated}">
+            <section th:replace="~{fragments/architecture-source-lens :: panel('architectureSourceLens',true)}"></section>
+        </th:block>
+        <section id="relationshipReviewWorkingFocus" th:hidden="${integrated}">
+            <section th:replace="~{fragments/architecture-source-lens :: panel('editorLens',false)}"></section>
+        </section>
+    </div>
+</section>
+</body>
+</html>

@@ -118,6 +118,11 @@ public class TaxonomyService {
         return stateService.isReady();
     }
 
+    /** Whether live catalogue reads are available on this runtime. */
+    public boolean isLiveCatalogueReady() {
+        return isInitialized() && !catalogueRuntimePolicy.workerOnly();
+    }
+
     /** Digest of the workbook actually applied to the live catalogue, including across a configuration change. */
     @Transactional(readOnly = true)
     public Optional<String> appliedWorkbookSha256() {
@@ -777,12 +782,37 @@ public class TaxonomyService {
 
     @Transactional(readOnly = true)
     public List<TaxonomyNodeDto> getFullTree() {
-        List<TaxonomyNode> roots = getRootNodes();
-        List<TaxonomyNodeDto> dtos = new ArrayList<>();
-        for (TaxonomyNode root : roots) {
-            dtos.add(toDtoEvidence(root));
+        var frozen = FrozenCatalogueContext.current();
+        if (frozen != null) {
+            List<TaxonomyNodeDto> roots = new ArrayList<>();
+            for (var root : frozen.rootNodes()) roots.add(toDtoEvidence(root));
+            return roots;
         }
-        return dtos;
+        catalogueRuntimePolicy.requireCurrentCatalogueAllowed();
+        var nodes = repository.findAllInTreeOrder();
+        Map<Long, TaxonomyNodeDto> byId = new HashMap<>();
+        for (var row : nodes) {
+            applyOverlayMetadata(row.node());
+            byId.put(row.node().getId(), row.node());
+        }
+        List<TaxonomyNodeDto> roots = new ArrayList<>();
+        for (var row : nodes) {
+            if (row.parentId() == null) roots.add(row.node());
+            else byId.get(row.parentId()).getChildren().add(row.node());
+        }
+        // The public catalogue carries the primary reference graph. Workspace relations have a separate read path.
+        for (var relation : relationRepository.findCentralReferenceRelations()) {
+            var source = byId.get(relation.getSourceNode().getId());
+            var target = byId.get(relation.getTargetNode().getId());
+            // A concurrently inserted node belongs to a later catalogue read.
+            if (source != null && target != null) {
+                source.getOutgoingRelations().add(relationToDto(relation, source.getCode(), source.getNameEn(),
+                        target.getCode(), target.getNameEn()));
+                target.getIncomingRelations().add(relationToDto(relation, source.getCode(), source.getNameEn(),
+                        target.getCode(), target.getNameEn()));
+            }
+        }
+        return roots;
     }
 
     /**
@@ -859,7 +889,7 @@ public class TaxonomyService {
         return toDtoEvidence(node);
     }
 
-    private TaxonomyNodeDto toDtoEvidence(TaxonomyNode node) {
+    private TaxonomyNodeDto toNodeDto(TaxonomyNode node) {
         TaxonomyNodeDto dto = new TaxonomyNodeDto();
         dto.setId(node.getId());
         dto.setCode(node.getCode());
@@ -877,13 +907,22 @@ public class TaxonomyService {
         dto.setReference(node.getReference());
         dto.setSortOrder(node.getSortOrder());
         dto.setState(node.getState());
+        applyOverlayMetadata(dto);
+        return dto;
+    }
+
+    private void applyOverlayMetadata(TaxonomyNodeDto dto) {
         CatalogueOverlayService.NodeMetadata overlayMetadata =
-                catalogueOverlayService.getNodeMetadata(node.getCode());
+                catalogueOverlayService.getNodeMetadata(dto.getCode());
         dto.setAnalysisRole(overlayMetadata.analysisRole());
         dto.setSecondaryClassificationCodes(overlayMetadata.secondaryClassificationCodes());
         dto.setClassificationConfidence(overlayMetadata.confidence());
         dto.setClassificationReviewRequired(overlayMetadata.reviewRequired());
         dto.setClassificationJustification(overlayMetadata.justification());
+    }
+
+    private TaxonomyNodeDto toDtoEvidence(TaxonomyNode node) {
+        TaxonomyNodeDto dto = toNodeDto(node);
         List<TaxonomyNodeDto> childDtos = new ArrayList<>();
         for (TaxonomyNode child : node.getChildren()) {
             childDtos.add(toDtoEvidence(child));
@@ -903,12 +942,18 @@ public class TaxonomyService {
     }
 
     private TaxonomyRelationDto relationToDto(TaxonomyRelation relation) {
+        return relationToDto(relation, relation.getSourceNode().getCode(), relation.getSourceNode().getNameEn(),
+                relation.getTargetNode().getCode(), relation.getTargetNode().getNameEn());
+    }
+
+    private TaxonomyRelationDto relationToDto(TaxonomyRelation relation, String sourceCode, String sourceName,
+                                                String targetCode, String targetName) {
         TaxonomyRelationDto dto = new TaxonomyRelationDto();
         dto.setId(relation.getId());
-        dto.setSourceCode(relation.getSourceNode().getCode());
-        dto.setSourceName(relation.getSourceNode().getNameEn());
-        dto.setTargetCode(relation.getTargetNode().getCode());
-        dto.setTargetName(relation.getTargetNode().getNameEn());
+        dto.setSourceCode(sourceCode);
+        dto.setSourceName(sourceName);
+        dto.setTargetCode(targetCode);
+        dto.setTargetName(targetName);
         dto.setRelationType(relation.getRelationType().name());
         dto.setDescription(relation.getDescription());
         dto.setProvenance(relation.getProvenance());

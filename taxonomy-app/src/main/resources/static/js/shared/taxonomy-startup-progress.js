@@ -2,12 +2,33 @@
 window.TaxonomyStartupProgress = (function () {
     'use strict';
     var blockedAnalysis = false;
+    var catalogueReady = false;
+    var sessionLoader = document.querySelector?.('script[data-taxonomy-analysis-session]');
     var phases = new Set(['STARTING', 'LOADING_CATALOGUE', 'CHECKING_NODE_INDEX', 'INDEXING_NODES',
         'CHECKING_RELATION_INDEX', 'INDEXING_RELATIONS', 'WAITING_FOR_TAXONOMY', 'LOADING_MODEL',
         'CHECKING_HISTORY_INDEX', 'INDEXING_HISTORY', 'READY']);
     function text(id, value) {
         var node = document.getElementById(id);
         if (node) node.textContent = value;
+    }
+    function analysisReady() {
+        var session = window.TaxonomyAnalysisSession;
+        if (!session && !window.TaxonomyAnalysisSessionReady && !sessionLoader) return catalogueReady;
+        return catalogueReady && session?.state?.().ready === true;
+    }
+    function updateAnalysis() {
+        var button = document.getElementById('analyzeBtn');
+        if (!button) return;
+        if (!analysisReady()) {
+            button.disabled = true;
+            button.title = TaxonomyI18n.t(catalogueReady ? 'scoring.lifecycle.not.ready' : 'browse.loading.wait');
+            blockedAnalysis = true;
+        } else if (blockedAnalysis) {
+            button.disabled = button.getAttribute('aria-busy') === 'true'
+                || document.getElementById('analyzeSpinner')?.classList.contains('d-none') === false;
+            button.title = TaxonomyI18n.t('browse.analyze.btn.title');
+            blockedAnalysis = false;
+        }
     }
     function render(snapshot) {
         var t = TaxonomyI18n.t;
@@ -28,16 +49,8 @@ window.TaxonomyStartupProgress = (function () {
             banner.classList.toggle('alert-warning', semanticFailed || historyFailed);
             banner.classList.toggle('alert-info', !failed && !semanticFailed && !historyFailed);
         }
-        var button = document.getElementById('analyzeBtn');
-        if (button && !ready) {
-            button.disabled = true;
-            button.title = t('browse.loading.wait');
-            blockedAnalysis = true;
-        } else if (button && blockedAnalysis) {
-            button.disabled = false;
-            button.title = t('browse.analyze.btn.title');
-            blockedAnalysis = false;
-        }
+        catalogueReady = ready;
+        updateAnalysis();
         // Later embedding updates must not re-enable a button disabled by a running analysis.
         text('startupBannerTitle', t(failed ? 'startup.ui.failedTitle'
             : historyFailed ? 'startup.ui.historyFailedTitle'
@@ -79,5 +92,11 @@ window.TaxonomyStartupProgress = (function () {
                 Math.floor(progress.processed / progress.total * 100)) : '');
         return {ready: ready, failed: failed, pending: !failed && (!ready || semanticPending || historyPending)};
     }
-    return {render: render};
+    document.addEventListener('taxonomy:analysis-source-ready', updateAnalysis);
+    document.addEventListener('taxonomy:analysis-draft-restored', updateAnalysis);
+    if (window.TaxonomyAnalysisSessionReady) window.TaxonomyAnalysisSessionReady.then(updateAnalysis);
+    else sessionLoader?.addEventListener('load', function () {
+        window.TaxonomyAnalysisSessionReady?.then(updateAnalysis);
+    }, {once: true});
+    return {render: render, analysisReady: analysisReady};
 }());

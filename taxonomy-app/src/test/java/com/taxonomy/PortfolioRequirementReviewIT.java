@@ -29,6 +29,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /** Real form events and HTTP races, owned by JUnit/Failsafe rather than a script suite. */
 @Tag("browser")
+@Tag("ci-app-shard-domain-integration")
 class PortfolioRequirementReviewIT {
     private static PortfolioClientTestPage page;
     private static final JsonMapper JSON = JsonMapper.builder().build();
