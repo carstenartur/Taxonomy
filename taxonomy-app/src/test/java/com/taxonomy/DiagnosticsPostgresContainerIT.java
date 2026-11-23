@@ -1,6 +1,8 @@
 package com.taxonomy;
 
+import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.Network;
 import org.testcontainers.junit.jupiter.Container;
@@ -31,6 +33,11 @@ class DiagnosticsPostgresContainerIT extends AbstractExternalDatabaseContainerIT
     static GenericContainer<?> app = ContainerTestUtils.postgresAppContainer(network)
             .withEnv("TAXONOMY_FEATURES_MULTI_REPOSITORY_API_ENABLED", "true")
             .dependsOn(db);
+
+    @Test @Order(30)
+    void portfolioArchiveReadsPlainAndPackedAnalysisFromActualOidLocators() throws Exception {
+        postgresPortfolioArchiveReadsPlainAndPackedAnalysisFromActualOidLocators();
+    }
 
     @Override
     protected GenericContainer<?> getAppContainer() {

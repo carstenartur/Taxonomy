@@ -53,6 +53,7 @@ import java.util.function.Consumer;
 import java.util.stream.IntStream;
 
 import static com.taxonomy.dto.RelationSearchModel.*;
+import static com.taxonomy.portfolio.service.PortfolioSnapshotEvidenceReaderTest.packedAnalysis;
 import static com.taxonomy.portfolio.model.PortfolioTypes.*;
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -233,10 +234,11 @@ class ProjectAnalysisBudgetContinuationTest {
         }
     }
 
-    @Test
-    void matchingSnapshotOnlyBindsOnceAcrossEligibilityPrepareAndBegin() throws Exception {
+    @ParameterizedTest @ValueSource(booleans = {false, true})
+    void matchingSnapshotOnlyBindsOnceAcrossEligibilityPrepareAndBegin(boolean packed) throws Exception {
         try (var f = new Fixture(database)) {
             var first = f.start("repeat-continuation-evidence");
+            if (packed) f.replaceWithPackedAnalysis(first.items().getFirst().snapshotId());
             var decision = f.eligibility(first);
             assertThat(decision.available()).as(decision.reason()).isTrue();
             assertThat(f.eligibility(first)).isEqualTo(decision);
@@ -965,6 +967,21 @@ class ProjectAnalysisBudgetContinuationTest {
             return service.enqueueContinuation(job.id(), projectId, job.items().getFirst().id(), request, "owner", scope);
         }
         void runQueued() { while (!queue.isEmpty()) queue.remove().run(); }
+        void replaceWithPackedAnalysis(String snapshotId) throws Exception {
+            String source;
+            try (var connection = DriverManager.getConnection(url);
+                 var query = connection.prepareStatement("select analysis_payload from req_analysis_snapshot where id=?")) {
+                query.setString(1, snapshotId);
+                try (var rows = query.executeQuery()) {
+                    assertThat(rows.next()).isTrue();
+                    source = rows.getString(1);
+                }
+            }
+            String packed = packedAnalysis(source);
+            transaction(em -> assertThat(em.createNativeQuery(
+                    "update req_analysis_snapshot set analysis_payload = :payload where id = :id")
+                    .setParameter("payload", packed).setParameter("id", snapshotId).executeUpdate()).isEqualTo(1));
+        }
         void replaceAnalysisWithLegacyWarning(String snapshotId) {
             // Fault injection at the persistence boundary for historically nullable policy data.
             var legacy = new AnalysisResult();

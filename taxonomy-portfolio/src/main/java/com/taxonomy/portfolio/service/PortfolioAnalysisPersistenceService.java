@@ -31,6 +31,7 @@ import com.taxonomy.portfolio.model.RequirementAnalysisJobItem;
 import com.taxonomy.portfolio.model.RequirementAnalysisSnapshot;
 import com.taxonomy.portfolio.model.RequirementElementMapping;
 import com.taxonomy.portfolio.model.RequirementRelationMapping;
+import com.taxonomy.portfolio.payload.PortfolioAnalysisPayloads;
 import com.taxonomy.portfolio.repository.ArchitectureProjectRepository;
 import com.taxonomy.portfolio.repository.AnalysisJobReadRow;
 import com.taxonomy.portfolio.repository.ProjectRequirementRepository;
@@ -42,6 +43,7 @@ import com.taxonomy.portfolio.repository.RequirementElementMappingRepository;
 import com.taxonomy.portfolio.repository.RequirementRelationMappingRepository;
 import com.taxonomy.relations.service.AnalysisHypothesisLinkPort;
 import com.taxonomy.workspace.service.WorkspaceContext;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -64,6 +66,9 @@ public class PortfolioAnalysisPersistenceService {
 
     private static final String AUTOMATIC_IDEMPOTENCY_PREFIX = "auto:";
     private static final int MAX_OPERATION_JOB_IDS_PER_READ = 256;
+
+    @Value("${taxonomy.portfolio.snapshot.packed-writes:false}")
+    private boolean packedWrites;
 
     private com.taxonomy.analysis.service.LlmProviderConfig providerConfiguration;
     @org.springframework.beans.factory.annotation.Autowired
@@ -360,7 +365,7 @@ public class PortfolioAnalysisPersistenceService {
                 durationMs,
                 analysis.getWarnings() != null ? analysis.getWarnings().size() : 0,
                 diagnosticPreview(analysis.getErrorMessage()),
-                jsonCodec.write(analysis),
+                PortfolioAnalysisPayloads.store(jsonCodec.write(analysis), packedWrites),
                 jsonCodec.write(gaps),
                 jsonCodec.write(patterns),
                 jsonCodec.write(recommendation));

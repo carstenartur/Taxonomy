@@ -2,6 +2,7 @@ package com.taxonomy.portfolio.repository;
 
 import com.taxonomy.portfolio.dto.PortfolioDtos.SnapshotSummary;
 import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
+import com.taxonomy.portfolio.payload.PortfolioAnalysisPayloads;
 
 import java.time.Instant;
 
@@ -14,6 +15,10 @@ public record AnalysisSnapshotReadRow(
         Instant createdAt, long durationMs, int warningCount, String errorMessage,
         String analysisPayload, String gapAnalysisPayload, String patternDetectionPayload,
         String recommendationPayload) {
+
+    public AnalysisSnapshotReadRow {
+        analysisPayload = PortfolioAnalysisPayloads.plain(analysisPayload);
+    }
 
     public SnapshotSummary summary() {
         return new SnapshotSummary(id, projectId, requirementId, requirementKey,

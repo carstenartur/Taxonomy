@@ -145,15 +145,52 @@ public final class PortableRows {
     public static String text(ResultSet row, String column, int maxCharacters) throws SQLException, IOException {
         if (maxCharacters < 0) throw new IllegalArgumentException("Invalid portable text limit");
         try (Reader input = row.getCharacterStream(column)) {
-            if (input == null) return null;
-            var value = new StringBuilder(); var buffer = new char[8192];
-            for (int count; (count = input.read(buffer)) != -1;) {
-                cancelled();
-                if (count > maxCharacters - value.length()) throw new IOException("Portable text limit exceeded");
-                value.append(buffer, 0, count);
-            }
-            return value.toString();
+            return readText(input, maxCharacters);
         }
+    }
+    /** Read text stored either directly or as a PostgreSQL OID pointing to a large object. */
+    public static String textWithOidLocator(ResultSet row, String column, int maxCharacters)
+            throws SQLException, IOException {
+        if (maxCharacters < 0) throw new IllegalArgumentException("Invalid portable text limit");
+        cancelled();
+        if (!"oid".equalsIgnoreCase(row.getMetaData().getColumnTypeName(row.findColumn(column)))) {
+            return text(row, column, maxCharacters);
+        }
+
+        Clob clob = row.getClob(column);
+        if (clob == null) {
+            cancelled();
+            return null;
+        }
+        try (Closeable locator = () -> freeTextLocator(clob)) {
+            cancelled();
+            try (Reader input = clob.getCharacterStream()) {
+                cancelled();
+                if (input == null) throw new IOException("Portable text locator returned no stream");
+                String value = readText(input, maxCharacters);
+                cancelled();
+                return value;
+            } catch (SQLException failure) {
+                throw new IOException("Could not open portable text locator", failure);
+            }
+        }
+    }
+    private static void freeTextLocator(Clob locator) throws IOException {
+        try {
+            locator.free();
+        } catch (SQLException failure) {
+            throw new IOException("Could not free portable text locator", failure);
+        }
+    }
+    private static String readText(Reader input, int maxCharacters) throws IOException {
+        if (input == null) return null;
+        var value = new StringBuilder(); var buffer = new char[8192];
+        for (int count; (count = input.read(buffer)) != -1;) {
+            cancelled();
+            if (count > maxCharacters - value.length()) throw new IOException("Portable text limit exceeded");
+            value.append(buffer, 0, count);
+        }
+        return value.toString();
     }
     public static String instant(ResultSet row, String column) throws SQLException {
         int index = row.findColumn(column);

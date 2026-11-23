@@ -11,8 +11,17 @@ The project portfolio applies explicit server-side limits before persisting or s
 | `taxonomy.portfolio.analysis-worker-concurrency` | `TAXONOMY_PORTFOLIO_ANALYSIS_WORKER_CONCURRENCY` | `1` | Fixed number of concurrently dispatched analysis jobs |
 | `taxonomy.portfolio.analysis-worker-queue-capacity` | `TAXONOMY_PORTFOLIO_ANALYSIS_WORKER_QUEUE_CAPACITY` | `100` | Persisted jobs that may wait in the in-process dispatch queue |
 | `taxonomy.portfolio.analysis-worker-shutdown-seconds` | `TAXONOMY_PORTFOLIO_ANALYSIS_WORKER_SHUTDOWN_SECONDS` | `30` | Graceful shutdown period for active workers |
+| `taxonomy.portfolio.snapshot.packed-writes` | `TAXONOMY_PORTFOLIO_SNAPSHOT_PACKED_WRITES` | `false` | Allow v1 packed storage for eligible new analysis snapshot payloads |
 
 The default concurrency of one is deliberately conservative because one requirement analysis can issue several provider calls while traversing the taxonomy. Increase it only together with provider rate limits, database capacity and an observed latency/error budget. Unlike a core/max pool with a large queue, this fixed value is the actual steady-state concurrency.
+
+## Packed snapshot storage rollout and rollback
+
+Leave `TAXONOMY_PORTFOLIO_SNAPSHOT_PACKED_WRITES=false` while upgrading. The compatible release reads both plain JSON and v1 frames with either setting. Before explicitly setting the option to `true` on selected writers, upgrade every reader of the same database, including application and worker replicas, report and backup processes, command-line and batch tools, and integrations that query `req_analysis_snapshot.analysis_payload` directly. Retire older replicas and prevent old images from restarting against that database. Verify a v1 portfolio export and reopen on the installation before activation.
+
+With the option enabled, the writer stores smaller v1 frames for eligible analysis payloads. Payloads below 65,536 or above 24,000,000 UTF-16 code units, and payloads that do not compress enough, stay as plain JSON. The other snapshot payloads and public export and restore contracts retain their existing formats and support. Upgrade and activation require neither schema changes nor a backfill.
+
+Set the option back to `false` to stop writing new frames. Existing frames still need compatible readers. After the first framed write, the compatible dual-reader release is the rollback floor. A rollback to an older release requires separately converting and verifying every affected database before any older reader reconnects.
 
 ## HTTP job contract
 

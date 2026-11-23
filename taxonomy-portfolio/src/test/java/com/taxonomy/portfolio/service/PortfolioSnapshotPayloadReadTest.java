@@ -13,6 +13,7 @@ import org.hibernate.SessionFactory;
 import org.hibernate.cfg.Configuration;
 import org.hibernate.resource.jdbc.spi.StatementInspector;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.aop.framework.ProxyFactory;
@@ -25,9 +26,13 @@ import org.springframework.transaction.interceptor.TransactionInterceptor;
 import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.json.JsonMapper;
 
+import java.io.IOException;
+import java.io.Reader;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.CountDownLatch;
@@ -38,6 +43,8 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
+import static com.taxonomy.portfolio.service.PortfolioSnapshotEvidenceReaderTest.corruptFrame;
+import static com.taxonomy.portfolio.service.PortfolioSnapshotEvidenceReaderTest.packedAnalysis;
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
@@ -303,6 +310,80 @@ class PortfolioSnapshotPayloadReadTest {
     }
 
     @Test
+    void fileHsqlContinuationRebindsChangedStorageAndRejectsSameLengthPackedCorruption(@TempDir Path database)
+            throws Exception {
+        try (var f = new Fixture(false, "jdbc:hsqldb:file:" + database.resolve("packed") + ";shutdown=true")) {
+            String id = f.snapshotIds.getFirst(), scope = PortfolioScope.key("owner", f.scope);
+            String firstJson = "{\"status\":\"PARTIAL\",\"warnings\":[\"CALL_BUDGET\"]}";
+            String changedJson = "{\"status\":\"PARTIAL\",\"warnings\":[\"SOURCE_COHORT_LIMIT\"]}";
+            String packed = packedAnalysis(firstJson);
+            String replacement = packedAnalysis(changedJson);
+            var codec = spy(f.codec);
+            var reader = new PortfolioSnapshotEvidenceReader(f.shared, codec);
+            Supplier<ContinuationPolicyInputs> read = () -> readContinuation(f, reader, 0).inputs();
+
+            replaceAnalysisPayload(f, id, packed);
+            f.resetReads();
+            var initial = read.get();
+            assertThat(initial.warnings()).containsExactly("CALL_BUDGET");
+            assertThat(f.payloadSelects()).hasSize(1);
+            verify(codec).read(any(Reader.class), eq(AnalysisResult.class));
+
+            clearInvocations(codec);
+            f.resetReads();
+            assertThat(read.get()).isSameAs(initial);
+            assertThat(f.payloadSelects()).hasSize(1);
+            verifyNoInteractions(codec);
+
+            f.transaction(em -> {
+                assertThat(reader.readContinuation(f.otherProjectId, id, scope, f.jobIds.getFirst(),
+                        f.requirementId, f.versionId)).isEmpty();
+                assertThat(reader.readContinuation(f.projectId, "other-id", scope, f.jobIds.getFirst(),
+                        f.requirementId, f.versionId)).isEmpty();
+                assertThat(reader.readContinuation(f.projectId, id, "foreign-scope", f.jobIds.getFirst(),
+                        f.requirementId, f.versionId)).isEmpty();
+                assertThat(reader.readContinuation(f.projectId, id, scope, f.jobIds.getLast(),
+                        f.requirementId, f.versionId)).isEmpty();
+                assertThat(reader.readContinuation(f.projectId, id, scope, f.jobIds.getFirst(),
+                        f.requirementId + 100, f.versionId)).isEmpty();
+                assertThat(reader.readContinuation(f.projectId, id, scope, f.jobIds.getFirst(),
+                        f.requirementId, f.versionId + 100)).isEmpty();
+            });
+            verifyNoInteractions(codec);
+
+            replaceAnalysisPayload(f, id, replacement);
+            f.resetReads();
+            var changed = read.get();
+            assertThat(changed.warnings()).containsExactly("SOURCE_COHORT_LIMIT");
+            assertThat(f.payloadSelects()).hasSize(2);
+            verify(codec).read(any(Reader.class), eq(AnalysisResult.class));
+
+            String corrupt = corruptFrame(replacement);
+            assertThat(corrupt).hasSameSizeAs(replacement).isNotEqualTo(replacement);
+            replaceAnalysisPayload(f, id, corrupt);
+            f.resetReads();
+            assertThatThrownBy(read::get).isInstanceOf(PortfolioException.class).hasRootCauseInstanceOf(IOException.class);
+            assertThat(f.payloadSelects()).hasSize(2);
+
+            replaceAnalysisPayload(f, id, changedJson + " ".repeat(65_536));
+            clearInvocations(codec);
+            f.resetReads();
+            var nowPlain = read.get();
+            assertThat(nowPlain).isEqualTo(changed).isNotSameAs(changed);
+            assertThat(f.payloadSelects()).hasSize(2);
+            verify(codec).read(any(Reader.class), eq(AnalysisResult.class));
+
+            replaceAnalysisPayload(f, id, replacement);
+            clearInvocations(codec);
+            f.resetReads();
+            assertThat(read.get()).isEqualTo(nowPlain).isNotSameAs(nowPlain);
+            assertThat(f.payloadSelects()).hasSize(2);
+            verify(codec).read(any(Reader.class), eq(AnalysisResult.class));
+            f.assertNoResultEntityLoads();
+        }
+    }
+
+    @Test
     void concurrentContinuationReadsUseIndependentScopedTransactions() throws Exception {
         try (var f = new Fixture(); var readers = Executors.newFixedThreadPool(2)) {
             var reader = new PortfolioSnapshotEvidenceReader(f.shared, f.codec);
@@ -342,6 +423,86 @@ class PortfolioSnapshotPayloadReadTest {
         f.transaction(em -> assertThat(em.createNativeQuery(
                 "update req_analysis_snapshot set analysis_payload = :payload where id = :id")
                 .setParameter("payload", payload).setParameter("id", snapshotId).executeUpdate()).isEqualTo(1));
+    }
+
+    @Test
+    void scopedLegacyAccessorsAndConsumersReplayExactPackedAnalysis() throws Exception {
+        try (var f = new Fixture()) {
+            String id = f.snapshotIds.getFirst();
+            String sibling = f.snapshotIds.getLast();
+            String scope = PortfolioScope.key("owner", f.scope);
+            String original = """
+                    {
+                      "scores" : {"BP-1000": 58, "BP-P1": 0},
+                      "productCoverageGaps" : [{
+                        "productFamilyCode":"BP-1000", "productFamilyName":"Legacy family", "familyScore":58,
+                        "candidateCodes":["BP-P1"], "reason":"Historical gap"
+                      }],
+                      "reasons" : {"BP-P1": "Unveränderte Begründung"},
+                      "legacyExtra" : {"detail":"retained"}
+                    }
+                    """ + " ".repeat(65_536);
+            String packed = com.taxonomy.exchange.backup.PortableJsonPayloads.pack(original, 24_000_000);
+            assertThat(packed).startsWith("taxonomy-json-payload:v1:");
+            replaceAnalysisPayload(f, id, original);
+
+            var repository = new JpaRepositoryFactory(f.shared).getRepository(RequirementAnalysisSnapshotRepository.class);
+            var gapReader = f.proxy(new ProjectGapEvidenceReader(repository, JsonMapper.builder().build()));
+            var transactions = new TransactionTemplate(f.transactions);
+            Supplier<AnalysisSnapshotReadRow> readRow = () -> transactions.execute(status ->
+                    repository.findReadRowByIdAndProjectIdAndScopeKey(id, f.projectId, scope).orElseThrow());
+            Supplier<List<ProductGapSnapshotRow>> gapRows = () -> transactions.execute(status -> {
+                try (var rows = repository.streamProductGapEvidence(f.projectId, scope, f.requirementId, Set.of(AnalysisStatus.PARTIAL))) {
+                    return rows.toList();
+                }
+            });
+            Supplier<List<String>> continuation = () -> transactions.execute(status -> repository.findAnalysisPayloadForContinuation(
+                    id, f.jobIds.getFirst(), f.requirementId, f.versionId, f.projectId, scope));
+            Supplier<String> entityPayload = () -> transactions.execute(status ->
+                    repository.findByIdAndProjectIdAndScopeKey(id, f.projectId, scope).orElseThrow().getAnalysisPayload());
+
+            var plainReadRow = readRow.get();
+            var plainGapRows = gapRows.get();
+            var plainGaps = gapReader.read(f.projectId, f.requirementId, scope);
+            var plainDiff = f.persistence.diffSnapshots(f.projectId, id, sibling, "owner", f.scope);
+            assertThat(plainReadRow.analysisPayload()).isEqualTo(original);
+            assertThat(plainGapRows.getFirst().analysisPayload()).isEqualTo(original);
+            assertThat(plainGaps).singleElement().satisfies(family -> assertThat(family.observations())
+                    .singleElement().satisfies(observation -> assertThat(observation.snapshotId()).isEqualTo(id)));
+            assertThat(plainDiff.scoreChanges()).containsKey("BP-1000");
+
+            replaceAnalysisPayload(f, id, packed);
+
+            var packedReadRow = readRow.get();
+            assertThat(packedReadRow).isEqualTo(plainReadRow).hasSameHashCodeAs(plainReadRow)
+                    .hasToString(plainReadRow.toString());
+            assertThat(packedReadRow.analysisPayload()).isEqualTo(original).isSameAs(packedReadRow.analysisPayload());
+            var packedGapRows = gapRows.get();
+            assertThat(packedGapRows).containsExactlyElementsOf(plainGapRows);
+            assertThat(packedGapRows.getFirst()).hasSameHashCodeAs(plainGapRows.getFirst())
+                    .hasToString(plainGapRows.getFirst().toString());
+            assertThat(packedGapRows.getFirst().analysisPayload()).isEqualTo(original)
+                    .isSameAs(packedGapRows.getFirst().analysisPayload());
+            assertThat(entityPayload.get()).isEqualTo(original);
+            assertThat(continuation.get()).containsExactly(original);
+            assertThat(gapReader.read(f.projectId, f.requirementId, scope)).isEqualTo(plainGaps);
+            assertThat(f.persistence.diffSnapshots(f.projectId, id, sibling, "owner", f.scope)).isEqualTo(plainDiff);
+            f.transaction(em -> {
+                assertThat(repository.findReadRowByIdAndProjectIdAndScopeKey(id, f.otherProjectId, scope)).isEmpty();
+                assertThat(repository.findReadRowByIdAndProjectIdAndScopeKey(id, f.projectId, "foreign-scope")).isEmpty();
+                assertThat(repository.findAnalysisPayloadForContinuation(id, f.jobIds.getLast(), f.requirementId,
+                        f.versionId, f.projectId, scope)).isEmpty();
+                assertThat(repository.findAnalysisPayloadForContinuation(id, f.jobIds.getFirst(), f.requirementId,
+                        f.versionId, f.projectId, "foreign-scope")).isEmpty();
+                assertThat(gapReader.read(f.projectId, f.requirementId, "foreign-scope")).isEmpty();
+            });
+
+            replaceAnalysisPayload(f, id, corruptFrame(packed));
+            assertThatThrownBy(readRow::get).hasRootCauseInstanceOf(IOException.class);
+            assertThatThrownBy(gapRows::get).hasRootCauseInstanceOf(IOException.class);
+            assertThatThrownBy(continuation::get).hasRootCauseInstanceOf(IOException.class);
+            assertThatThrownBy(entityPayload::get).hasRootCauseInstanceOf(IOException.class);
+        }
     }
 
     @Test
@@ -691,6 +852,10 @@ class PortfolioSnapshotPayloadReadTest {
         Fixture() { this(false); }
 
         Fixture(boolean realEnrichment) {
+            this(realEnrichment, "jdbc:hsqldb:mem:snapshot-read-" + UUID.randomUUID() + ";shutdown=true");
+        }
+
+        Fixture(boolean realEnrichment, String url) {
             this.realEnrichment = realEnrichment;
             Configuration configuration = new Configuration();
             for (Class<?> entity : List.of(ArchitectureProject.class, ProjectRequirement.class,
@@ -702,7 +867,7 @@ class PortfolioSnapshotPayloadReadTest {
                 sql.add(statement); return statement;
             });
             factory = configuration.setProperty("hibernate.connection.driver_class", "org.hsqldb.jdbc.JDBCDriver")
-                    .setProperty("hibernate.connection.url", "jdbc:hsqldb:mem:snapshot-read-" + UUID.randomUUID() + ";shutdown=true")
+                    .setProperty("hibernate.connection.url", url)
                     .setProperty("hibernate.hbm2ddl.auto", "create-drop")
                     .setProperty("hibernate.generate_statistics", "true")
                     .setProperty("hibernate.search.enabled", "false").buildSessionFactory();

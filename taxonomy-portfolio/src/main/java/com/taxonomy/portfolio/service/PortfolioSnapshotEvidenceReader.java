@@ -4,6 +4,8 @@ import com.taxonomy.dto.AnalysisResult;
 import com.taxonomy.dto.ArchitectureRecommendation;
 import com.taxonomy.dto.GapAnalysisView;
 import com.taxonomy.dto.PatternDetectionView;
+import com.taxonomy.exchange.backup.PortableJsonPayloads.PayloadReader;
+import com.taxonomy.portfolio.payload.PortfolioAnalysisPayloads;
 import jakarta.persistence.EntityManager;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
@@ -72,8 +74,10 @@ public class PortfolioSnapshotEvidenceReader {
         // Register every locator before opening any stream: even unopened payloads must be freed on failure.
         try (AutoCloseable analysisLocator = locator(analysis); AutoCloseable gapLocator = locator(gap);
              AutoCloseable patternLocator = locator(pattern); AutoCloseable recommendationLocator = locator(recommendation)) {
-            return Optional.of(new Evidence(parse(analysis, AnalysisResult.class), parse(gap, GapAnalysisView.class),
-                    parse(pattern, PatternDetectionView.class), parse(recommendation, ArchitectureRecommendation.class)));
+            return Optional.of(new Evidence(parse(analysis, this::parseAnalysis),
+                    parse(gap, input -> jsonCodec.read(input, GapAnalysisView.class)),
+                    parse(pattern, input -> jsonCodec.read(input, PatternDetectionView.class)),
+                    parse(recommendation, input -> jsonCodec.read(input, ArchitectureRecommendation.class))));
         } catch (RuntimeException exception) {
             throw exception;
         } catch (Exception exception) {
@@ -92,7 +96,7 @@ public class PortfolioSnapshotEvidenceReader {
         if (row == null) return Optional.empty();
         Clob clob = (Clob) row[1];
         try (AutoCloseable locator = locator(clob)) {
-            return Optional.of(new AnalysisEvidence(parse(clob, AnalysisResult.class)));
+            return Optional.of(new AnalysisEvidence(parse(clob, this::parseAnalysis)));
         } catch (RuntimeException exception) {
             throw exception;
         } catch (Exception exception) {
@@ -149,7 +153,8 @@ public class PortfolioSnapshotEvidenceReader {
     private ValidatedPass readContinuationPass(Clob clob, boolean bind) throws Exception {
         try (AutoCloseable locator = locator(clob);
              var input = new FingerprintingReader(sha256(), JdbcClobReaders.open(clob))) {
-            AnalysisResult analysis = bind ? jsonCodec.read(input, AnalysisResult.class) : null;
+            // The memo compares the stored characters. Only a validation pass decodes for binding.
+            AnalysisResult analysis = bind ? parseAnalysis(input) : null;
             return new ValidatedPass(input.finish(), ContinuationPolicyInputs.from(analysis));
         }
     }
@@ -258,9 +263,13 @@ public class PortfolioSnapshotEvidenceReader {
         }
     }
 
-    private <T> T parse(Clob clob, Class<T> type) throws Exception {
+    private AnalysisResult parseAnalysis(Reader input) throws IOException {
+        return PortfolioAnalysisPayloads.read(input, json -> jsonCodec.read(json, AnalysisResult.class));
+    }
+
+    private static <T> T parse(Clob clob, PayloadReader<T> parser) throws Exception {
         try (Reader input = clob == null ? null : JdbcClobReaders.open(clob)) {
-            return jsonCodec.read(input, type);
+            return parser.read(input);
         }
     }
 

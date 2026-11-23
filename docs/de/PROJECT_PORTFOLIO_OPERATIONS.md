@@ -11,8 +11,17 @@ Das Projektportfolio prüft serverseitige Grenzen, bevor Daten gespeichert oder 
 | `taxonomy.portfolio.analysis-worker-concurrency` | `TAXONOMY_PORTFOLIO_ANALYSIS_WORKER_CONCURRENCY` | `1` | Feste Zahl gleichzeitig ausgeführter Analysejobs |
 | `taxonomy.portfolio.analysis-worker-queue-capacity` | `TAXONOMY_PORTFOLIO_ANALYSIS_WORKER_QUEUE_CAPACITY` | `100` | Persistierte Jobs, die in der prozessinternen Dispatch-Warteschlange warten dürfen |
 | `taxonomy.portfolio.analysis-worker-shutdown-seconds` | `TAXONOMY_PORTFOLIO_ANALYSIS_WORKER_SHUTDOWN_SECONDS` | `30` | Graceful-Shutdown-Frist für aktive Worker |
+| `taxonomy.portfolio.snapshot.packed-writes` | `TAXONOMY_PORTFOLIO_SNAPSHOT_PACKED_WRITES` | `false` | Erlaubt das kompakte v1-Speicherformat für geeignete neue Analyse-Snapshots |
 
 Die Standardparallelität von eins ist bewusst konservativ: Bereits die Analyse einer einzigen Anforderung kann beim Durchlaufen der Taxonomie mehrere Provideraufrufe auslösen. Sie sollte nur zusammen mit Provider-Rate-Limits, Datenbankkapazität und einem beobachteten Latenz-/Fehlerbudget erhöht werden. Anders als bei einem Core-/Max-Pool mit großer Warteschlange entspricht dieser feste Wert der tatsächlichen dauerhaften Parallelität.
+
+## Einführung und Rücknahme des kompakten Snapshot-Formats
+
+Belassen Sie `TAXONOMY_PORTFOLIO_SNAPSHOT_PACKED_WRITES` während der Aktualisierung auf `false`. Die kompatible Version liest bei jeder Einstellung sowohl reines JSON als auch das kompakte v1-Format. Aktualisieren Sie vor der ausdrücklichen Aktivierung mit `true` auf ausgewählten schreibenden Instanzen alle Leser derselben Datenbank. Dazu gehören Anwendungs- und Worker-Replikate, Berichts- und Sicherungsprozesse, Kommandozeilen- und Batch-Werkzeuge sowie Integrationen mit direkten Abfragen auf `req_analysis_snapshot.analysis_payload`. Nehmen Sie ältere Replikate außer Betrieb und verhindern Sie einen Neustart alter Images mit Zugriff auf diese Datenbank. Prüfen Sie vor der Aktivierung auf der Installation, dass sich ein Portfolio-Export im v1-Format erstellen und wieder öffnen lässt.
+
+Bei aktivierter Option speichert die Anwendung geeignete Analyse-Nutzdaten kompakt im v1-Format, sofern das Ergebnis ausreichend kleiner ist. Nutzdaten unter 65.536 oder über 24.000.000 UTF-16-Codeeinheiten sowie Nutzdaten mit zu geringer Komprimierung bleiben reines JSON. Für die übrigen Snapshot-Nutzdaten sowie für den öffentlichen Export und die Wiederherstellung gelten weiterhin die bisherigen Formate und der bisherige Funktionsumfang. Das Upgrade und die Aktivierung erfordern weder eine Schemaänderung noch eine nachträgliche Anpassung bestehender Datensätze.
+
+Mit `false` beenden Sie das Schreiben neuer v1-Datensätze. Bereits gespeicherte v1-Datensätze erfordern weiterhin kompatible Leser. Sobald ein v1-Datensatz geschrieben wurde, ist die kompatible Version mit Unterstützung für beide Formate die älteste zulässige Rückfallversion. Vor einer Rückkehr zu einer älteren Version muss jede betroffene Datenbank separat umgestellt und geprüft werden, bevor sich ein älterer Leser wieder verbindet.
 
 ## HTTP-Jobvertrag
 

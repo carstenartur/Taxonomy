@@ -12,7 +12,9 @@ import com.taxonomy.reporting.render.decision.DecisionReportTemplateProvenance;
 import com.taxonomy.architecture.decision.DecisionRationaleReportService;
 import com.taxonomy.architecture.decision.DecisionRationaleReportService.DecisionAnalysisInput;
 import com.taxonomy.reporting.render.document.ReportRendererRegistry;
+import com.taxonomy.dto.AnalysisLanguage;
 import com.taxonomy.dto.AnalysisResult;
+import com.taxonomy.exchange.backup.PortableJsonPayloads;
 import com.taxonomy.dto.ProductCoverageGap;
 import com.taxonomy.dto.RelationHypothesisDto;
 import com.taxonomy.dto.TaxonomyNodeDto;
@@ -39,6 +41,7 @@ import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.List;
@@ -51,6 +54,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -207,24 +212,42 @@ class DecisionRationaleSnapshotReportTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"missing", "null", "full"})
-    void sourceScopeRecordednessSurvivesRealJsonDeserialization(String recordedness) {
+    void sourceScopeRecordednessSurvivesPackedAndPlainJsonDeserialization(String recordedness) throws IOException {
         var mapper = tools.jackson.databind.json.JsonMapper.builder()
                 .disable(tools.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES).build();
         var codec = new PortfolioJsonCodec(mapper);
-        var json = (tools.jackson.databind.node.ObjectNode) mapper.readTree(codec.write(reportableAnalysis()));
+        var analysis = reportableAnalysis();
+        analysis.setAnalysisLanguage(AnalysisLanguage.GERMAN);
+        var json = (tools.jackson.databind.node.ObjectNode) mapper.readTree(codec.write(analysis));
         if (recordedness.equals("missing")) json.remove("analysisScope");
         if (recordedness.equals("null")) json.putNull("analysisScope");
+        json.put("legacyExtra", "Unveränderte Evidenz");
+        String original = " \n" + json.toString() + " ".repeat(65_536);
+        String packed = PortableJsonPayloads.pack(original, 24_000_000);
+        assertThat(packed).startsWith("taxonomy-json-payload:v1:");
         var repository = mock(RequirementAnalysisSnapshotRepository.class);
         var reports = mock(DecisionRationaleReportService.class);
         var snapshot = snapshot("MOCK", "model", "sha", "prompt", "main", "commit", AnalysisStatus.SUCCESS);
-        when(snapshot.getAnalysisPayload()).thenReturn(json.toString());
-        when(repository.findByIdAndProjectIdAndScopeKey(eq("snapshot-1"),eq(41L),anyString())).thenReturn(Optional.of(snapshot));
-        when(reports.generate(any(),any(),any(),any())).thenReturn(report(7));
-        new DecisionRationaleSnapshotReportService(repository,codec,reports).generate(41L,"snapshot-1","auditor",CONTEXT,Locale.ENGLISH);
-        var input = ArgumentCaptor.forClass(DecisionAnalysisInput.class);
-        verify(reports).generate(input.capture(),any(),any(),any());
-        if (recordedness.equals("full")) assertThat(input.getValue().analysisScope()).isEqualTo(com.taxonomy.dto.AnalysisScope.full());
-        else assertThat(input.getValue().analysisScope()).isNull();
+        doCallRealMethod().when(snapshot).getAnalysisPayload();
+        when(repository.findByIdAndProjectIdAndScopeKey(eq("snapshot-1"), eq(41L), anyString()))
+                .thenReturn(Optional.of(snapshot));
+        when(reports.generate(any(), any(), any(), any())).thenReturn(report(7));
+        var service = new DecisionRationaleSnapshotReportService(repository, codec, reports);
+        var inputs = new java.util.ArrayList<DecisionAnalysisInput>();
+        for (String stored : List.of(original, packed)) {
+            org.springframework.test.util.ReflectionTestUtils.setField(snapshot, "analysisPayload", stored);
+            clearInvocations(reports, snapshot);
+            service.generate(41L, "snapshot-1", "auditor", CONTEXT, Locale.ENGLISH);
+            var input = ArgumentCaptor.forClass(DecisionAnalysisInput.class);
+            verify(reports).generate(input.capture(), any(), any(), any());
+            inputs.add(input.getValue());
+            verify(snapshot).getAnalysisPayload();
+            assertThat(service.recordedAnalysisLanguage(41L, "snapshot-1", "auditor", CONTEXT))
+                    .isEqualTo(AnalysisLanguage.GERMAN);
+        }
+        assertThat(inputs.getLast()).usingRecursiveComparison().isEqualTo(inputs.getFirst());
+        if (recordedness.equals("full")) assertThat(inputs.getLast().analysisScope()).isEqualTo(com.taxonomy.dto.AnalysisScope.full());
+        else assertThat(inputs.getLast().analysisScope()).isNull();
     }
 
     @Test

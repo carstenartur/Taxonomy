@@ -2,6 +2,7 @@ package com.taxonomy.portfolio.service;
 
 import com.taxonomy.portfolio.dto.SnapshotSelection;
 import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
+import com.taxonomy.portfolio.payload.PortfolioAnalysisPayloads;
 import jakarta.persistence.EntityManager;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
@@ -110,7 +111,7 @@ public class PortfolioSnapshotSelectionReader {
         // Register the locator first so it is freed even if opening the stream fails.
         try (AutoCloseable locator = () -> { if (clob != null) clob.free(); };
              Reader input = clob == null ? null : JdbcClobReaders.open(clob)) {
-            var analysis = jsonCodec.readSelectionAnalysis(input);
+            var analysis = PortfolioAnalysisPayloads.read(input, jsonCodec::readSelectionAnalysis);
             return new ParsedEvidence(analysis == null ? Map.of() : analysis.getScores(),
                     analysis == null || analysis.getWarnings() == null ? 0 : analysis.getWarnings().size());
         }

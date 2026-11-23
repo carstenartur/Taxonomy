@@ -13,6 +13,7 @@ import java.util.HexFormat;
 import java.util.Objects;
 import java.util.zip.CRC32;
 import java.util.zip.DataFormatException;
+import java.util.zip.Deflater;
 import java.util.zip.GZIPOutputStream;
 import java.util.zip.Inflater;
 
@@ -30,14 +31,30 @@ public final class PortableJsonPayloads {
     private PortableJsonPayloads() { }
 
     public static String pack(String json, int maxCharacters) throws IOException {
+        return pack(json, maxCharacters, Deflater.DEFAULT_COMPRESSION);
+    }
+
+    /** Pack complete evidence in the same bounded v1 representation using fast compression. */
+    public static String packFast(String json, int maxCharacters) throws IOException {
+        return pack(json, maxCharacters, Deflater.BEST_SPEED);
+    }
+
+    private static String pack(String json, int maxCharacters, int level) throws IOException {
         bounded(json, maxCharacters);
         if (json == null || json.length() < MIN_PACK_CHARACTERS) return json;
         var compressed = new ByteArrayOutputStream();
-        try (var gzip = new GZIPOutputStream(compressed)) { units(json, gzip::write); }
+        try (var gzip = new LevelGzipOutputStream(compressed, level)) { units(json, gzip::write); }
         // The input is bounded, including the worst-case deflate and Base64 overhead.
         if (((long) compressed.size() + 2) / 3 * 4 + 128 >= json.length()) return json;
         return PREFIX + json.length() + ":" + hash(json) + ":"
                 + Base64.getEncoder().encodeToString(compressed.toByteArray());
+    }
+
+    private static final class LevelGzipOutputStream extends GZIPOutputStream {
+        LevelGzipOutputStream(ByteArrayOutputStream destination, int level) throws IOException {
+            super(destination);
+            def.setLevel(level);
+        }
     }
 
     @FunctionalInterface public interface PayloadWriter { void write(Writer writer) throws IOException; }
@@ -256,8 +273,20 @@ public final class PortableJsonPayloads {
             Objects.checkFromIndexSize(offset, length, target.length);
             if (closed) throw new IOException("Packed JSON reader is closed");
             if (length == 0) return 0;
+            if (failure != null) throw failure;
             int count = 0;
             while (count < length) {
+                int pairs = Math.min(length - count, (available - index) / 2);
+                int output = offset + count;
+                int end = output + pairs;
+                int cursor = index;
+                while (output < end) {
+                    target[output++] = (char) (((buffer[cursor++] & 255) << 8) | (buffer[cursor++] & 255));
+                }
+                index = cursor;
+                count += pairs;
+                if (count == length) break;
+
                 int high = nextByte();
                 if (high < 0) break;
                 int low = nextByte();

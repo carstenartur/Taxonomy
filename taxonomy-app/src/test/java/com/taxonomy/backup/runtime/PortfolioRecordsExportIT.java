@@ -4,19 +4,29 @@ import org.junit.jupiter.api.Tag;
 import com.taxonomy.backup.*;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.taxonomy.exchange.backup.PortableJsonPayloads;
 import com.taxonomy.exchange.backup.PortableRows;
 import com.taxonomy.portfolio.backup.PortfolioBackupContributor;
 import com.taxonomy.portfolio.model.*;
+import com.taxonomy.portfolio.payload.PortfolioAnalysisPayloads;
+import com.taxonomy.portfolio.repository.RequirementAnalysisSnapshotRepository;
 import com.taxonomy.portfolio.reformulation.*;
 import com.taxonomy.workspace.model.RepositoryTenantIdentity;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
+import org.hsqldb.jdbc.JDBCDataSource;
+import org.springframework.data.jpa.repository.support.JpaRepositoryFactory;
+
+import java.io.IOException;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
+import java.sql.DriverManager;
 import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.util.*;
@@ -47,20 +57,86 @@ class PortfolioRecordsExportIT {
         }
     }
 
-    @Test void largeAnalysisSnapshotExportsCompletelyWithoutChangingItsDatabaseProjection() throws Exception {
-        String original = "{\"reasons\":{\"CP\":\"" + "Complete snapshot evidence. ".repeat(500_000) + "\"}}";
+    @Test void largeAnalysisSnapshotExportsCompletelyWithoutChangingItsDatabaseProjection(@TempDir Path directory)
+            throws Exception {
+        String original = "  \n{ \"reasons\" : {\"CP\" : \"" + "Complete snapshot evidence. ".repeat(500_000)
+                + "\"}, \"legacyExtra\" : null } \n";
         assertThat(original.length()).isGreaterThan(12_000_000);
-        try (var fixture = new Fixture()) {
-            graph(fixture,"repo-a","private-a","ALICE");
-            fixture.jdbc.update("update req_analysis_snapshot set analysis_payload=?",original);
-            var output = new Contents();
-            new PortfolioBackupContributor(fixture.database).write(snapshot(BackupProfile.CURRENT_STATE,
-                    new BackupScope.Workspace("repo-a","private-a")),output);
-            String exported = one(output,"analysis-snapshot").path("analysisPayload").asText();
-            assertThat(com.taxonomy.exchange.backup.PortableJsonPayloads.unpack(exported,24_000_000)).isEqualTo(original);
-            assertThat(output.entries.get("data/portfolio/analysis-snapshot.ndjson").length).isLessThan(PortableRows.MAX_RECORD_BYTES);
-            assertThat(fixture.jdbc.queryForObject("select analysis_payload from req_analysis_snapshot",String.class)).isEqualTo(original);
+        String storedFrame = PortfolioAnalysisPayloads.store(original, true);
+        String expectedArchive = PortableJsonPayloads.pack(original, 24_000_000);
+        assertThat(expectedArchive).startsWith("taxonomy-json-payload:v1:");
+        assertThat(storedFrame).startsWith("taxonomy-json-payload:v1:").isNotEqualTo(expectedArchive);
+
+        String exported;
+        try (var source = new Fixture()) {
+            graph(source, "repo-a", "private-a", "ALICE");
+            source.jdbc.update("update req_analysis_snapshot set analysis_payload=?", original);
+            assertThat(exportAnalysis(source)).isEqualTo(expectedArchive);
+            assertThat(source.jdbc.queryForObject("select analysis_payload from req_analysis_snapshot", String.class))
+                    .isEqualTo(original);
+
+            source.jdbc.update("update req_analysis_snapshot set analysis_payload=?", storedFrame);
+            exported = exportAnalysis(source);
+            assertThat(exported).isEqualTo(expectedArchive);
+            assertThat(source.jdbc.queryForObject("select analysis_payload from req_analysis_snapshot", String.class))
+                    .isEqualTo(storedFrame);
         }
+
+        String decoded = PortableJsonPayloads.unpack(exported, 24_000_000);
+        assertThat(decoded).isEqualTo(original);
+        String url = "jdbc:hsqldb:file:" + directory.resolve("archive-readback");
+        try (var reopened = new Fixture(configuration -> {
+            var database = (JDBCDataSource) configuration.getProperties().get("hibernate.connection.datasource");
+            database.setUrl(url);
+        })) {
+            reopened.requirement("repo-a", "private-a", "BEFORE", "RESTORED");
+            reopened.jdbc.update("update req_analysis_snapshot set analysis_payload=?", decoded);
+            reopened.jdbc.execute("SHUTDOWN");
+
+            String id = reopened.jdbc.queryForObject("select id from req_analysis_snapshot", String.class);
+            Long projectId = reopened.jdbc.queryForObject("select project_id from req_analysis_snapshot", Long.class);
+            try (var em = reopened.factory.createEntityManager()) {
+                var repository = new JpaRepositoryFactory(em).getRepository(RequirementAnalysisSnapshotRepository.class);
+                assertThat(repository.findReadRowByIdAndProjectIdAndScopeKey(id, projectId, tenant("private-a", "draft"))
+                        .orElseThrow().analysisPayload()).isEqualTo(original);
+            }
+        } finally {
+            try (var connection = DriverManager.getConnection(url, "sa", ""); var statement = connection.createStatement()) {
+                statement.execute("SHUTDOWN");
+            }
+        }
+    }
+
+    @Test void archiveRejectsCorruptPackedAnalysis() throws Exception {
+        String packed = PortableJsonPayloads.pack("{\"legacyExtra\":\"" + "evidence ".repeat(10_000) + "\"}", 24_000_000);
+        assertThat(packed).startsWith("taxonomy-json-payload:v1:");
+        try (var fixture = new Fixture()) {
+            fixture.requirement("repo-a", "private-a", "OLD", "CURRENT");
+            fixture.jdbc.update("update req_analysis_snapshot set analysis_payload=?", packed + "!");
+            assertThatThrownBy(() -> exportAnalysis(fixture)).isInstanceOf(IOException.class)
+                    .hasCauseInstanceOf(com.taxonomy.portfolio.service.PortfolioException.class)
+                    .hasRootCauseInstanceOf(IOException.class);
+        }
+    }
+
+    @ParameterizedTest @ValueSource(booleans = {false, true})
+    void archiveRejectsAnalysisAboveTheDecodedQuota(boolean framed) throws Exception {
+        String original = "{}" + " ".repeat(23_999_999);
+        String stored = framed ? PortableJsonPayloads.pack(original, original.length()) : original;
+        if (framed) assertThat(stored).startsWith("taxonomy-json-payload:v1:");
+        try (var fixture = new Fixture()) {
+            fixture.requirement("repo-a", "private-a", "OLD", "CURRENT");
+            fixture.jdbc.update("update req_analysis_snapshot set analysis_payload=?", stored);
+            assertThatThrownBy(() -> exportAnalysis(fixture)).isInstanceOf(IOException.class);
+        }
+    }
+
+    private static String exportAnalysis(Fixture fixture) throws IOException {
+        var output = new Contents();
+        new PortfolioBackupContributor(fixture.database).write(snapshot(BackupProfile.CURRENT_STATE,
+                new BackupScope.Workspace("repo-a", "private-a")), output);
+        assertThat(output.entries.get("data/portfolio/analysis-snapshot.ndjson").length).isLessThan(PortableRows.MAX_RECORD_BYTES);
+        return one(output, "analysis-snapshot").path("analysisPayload").asText();
     }
 
     @ParameterizedTest @ValueSource(strings = {"SHORT", "STANDARD", "DETAILED"})

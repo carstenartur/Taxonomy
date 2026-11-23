@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Base64;
+import java.util.Random;
 
 import static org.assertj.core.api.Assertions.*;
 
@@ -35,6 +36,24 @@ class PortableJsonPayloadsTest {
         assertThat(PortableJsonPayloads.unpack(original, LIMIT)).isEqualTo(original);
         assertThat(PortableJsonPayloads.pack(null, LIMIT)).isNull();
         assertThat(PortableJsonPayloads.unpack(null, LIMIT)).isNull();
+    }
+
+    @Test void fastPackingUsesTheSameBoundsAndRawFallbacks() throws Exception {
+        String belowThreshold = "水".repeat(65_535);
+        String atThreshold = belowThreshold + "水";
+        assertThat(PortableJsonPayloads.packFast(null, LIMIT)).isNull();
+        assertThat(PortableJsonPayloads.packFast(belowThreshold, LIMIT)).isSameAs(belowThreshold);
+        assertThatThrownBy(() -> PortableJsonPayloads.packFast(atThreshold, belowThreshold.length()))
+                .isInstanceOf(IOException.class);
+        String packed = PortableJsonPayloads.packFast(atThreshold, atThreshold.length());
+        assertThat(packed).startsWith("taxonomy-json-payload:v1:").hasSizeLessThan(atThreshold.length());
+        assertThat(PortableJsonPayloads.unpack(packed, atThreshold.length())).isEqualTo(atThreshold);
+
+        var random = new Random(1234567);
+        char[] units = new char[atThreshold.length()];
+        for (int i = 0; i < units.length; i++) units[i] = (char) random.nextInt(Character.MAX_VALUE + 1);
+        String incompressible = new String(units);
+        assertThat(PortableJsonPayloads.packFast(incompressible, LIMIT)).isSameAs(incompressible);
     }
 
     @Test void expandedAndStoredLimitsAreCheckedBeforeDecompression() throws Exception {
@@ -76,6 +95,8 @@ class PortableJsonPayloadsTest {
         try {
             String packed = PortableJsonPayloads.pack(original,LIMIT);
             assertThat(PortableJsonPayloads.unpack(packed,LIMIT)).isEqualTo(original);
+            String fast = PortableJsonPayloads.packFast(original, LIMIT);
+            assertThat(PortableJsonPayloads.unpack(fast, LIMIT)).isEqualTo(original);
             assertThat(PortableJsonPayloads.unpack("{}",LIMIT)).isEqualTo("{}");
             assertThat(Thread.currentThread().isInterrupted()).isTrue();
         } finally { Thread.interrupted(); }

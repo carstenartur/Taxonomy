@@ -8,6 +8,7 @@ import com.taxonomy.dsl.ast.PropertyAst;
 import com.taxonomy.dsl.parser.TaxDslParser;
 import com.taxonomy.dsl.serializer.TaxDslSerializer;
 import com.taxonomy.identity.StableIdentityHash;
+import com.taxonomy.exchange.backup.PortableJsonPayloads;
 import com.taxonomy.portfolio.service.PortablePortfolioGitService;
 import com.taxonomy.portfolio.service.PortfolioException;
 import com.taxonomy.workspace.service.WorkspaceContext;
@@ -257,6 +258,29 @@ class ReformulationEvidenceRoundTripTest extends ReformulationWorkflowFixture {
                 .contains("Question channel")
                 .contains("Adopt reviewed draft")
                 .contains("architect");
+    }
+
+    @Test
+    void packedSnapshotFreezesTheOriginalBaselineTextAcrossReload() throws Exception {
+        String original = """
+                 {
+                   "scores" : {"BP-1": 45},
+                   "legacyExtra" : { "hint": "Unveränderte Evidenz" }
+                 }
+                """ + " ".repeat(65_536);
+        String packed = PortableJsonPayloads.pack(original, 24_000_000);
+        assertThat(packed).startsWith("taxonomy-json-payload:v1:");
+        assertThat(jdbc.update("update req_analysis_snapshot set analysis_payload=? where id=?", packed, snapshot))
+                .isEqualTo(1);
+
+        var offer = reformulations.create(project.id(), requirement.id(),
+                new ReformulationDtos.CreateRequest(requirement.currentVersionId(), snapshot, "de"), "architect", context);
+        var reloaded = reformulations.get(project.id(), requirement.id(), offer.id(), "architect", context);
+
+        assertThat(offer.baseline().snapshotPayload()).isEqualTo(original);
+        assertThat(reloaded.baseline()).isEqualTo(offer.baseline());
+        assertThat(jdbc.queryForObject("select analysis_payload from req_analysis_snapshot where id=?", String.class, snapshot))
+                .isEqualTo(packed);
     }
 
     @Test
