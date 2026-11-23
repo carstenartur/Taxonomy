@@ -81,6 +81,7 @@
 .github/scripts/ui-dsl-read-delivery.test.mjs
 .github/scripts/ui-dsl-text-read.test.mjs
 .github/scripts/ui-evidence-policy.test.mjs
+.github/scripts/ui-integration-navigation-evidence.test.mjs
 .github/scripts/ui-localization-regression.test.mjs
 .github/scripts/ui-navigation-poll-evidence.test.mjs
 .github/scripts/ui-primary-account-workflows.test.mjs

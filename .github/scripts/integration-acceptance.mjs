@@ -52,7 +52,8 @@ export async function readRenderedExportPreview(page, response, connection, prev
 }
 
 /** Uses actual authenticated forms, durable operations and the source-controlled Archi producer fixture. */
-export async function runIntegrationAcceptance({ page, role, baseUrl, evidence, outputDir, httpFailures }) {
+export async function runIntegrationAcceptance({ page, role, baseUrl, evidence, outputDir, httpFailures,
+  onInitialNavigationStart, onInitialNavigationEnd, onInitialNavigationVerified }) {
   const failuresBefore = httpFailures.length;
   const expectedFailures = [];
   const previous = new URL(page.url());
@@ -61,7 +62,16 @@ export async function runIntegrationAcceptance({ page, role, baseUrl, evidence, 
   if (previous.searchParams.has('workspaceScopeKey')) url.searchParams.set('workspaceId', previous.searchParams.get('workspaceScopeKey'));
   url.searchParams.set('lang', 'en');
   const profiles = page.waitForResponse(r => new URL(r.url()).pathname.endsWith('/api/integrations/profiles'));
-  await page.goto(url.toString());
+  // A failed goto can leave the prearmed response observer waiting until the page closes.
+  profiles.catch(() => {});
+  let navigationSucceeded = false;
+  try {
+    await onInitialNavigationStart?.({ sourceUrl: previous.href, destinationUrl: url.href });
+    await page.goto(url.href);
+    navigationSucceeded = true;
+  } finally {
+    await onInitialNavigationEnd?.(navigationSucceeded);
+  }
   const initial = await profiles;
   const measurements = { role, expectedFailures, reflow: [], sourceFixture: 'archi-sample.xml' };
   const skip = page.locator('a.skip');
@@ -100,6 +110,7 @@ export async function runIntegrationAcceptance({ page, role, baseUrl, evidence, 
     assert.equal(registeredProfiles.filter(profile => profile.id === expectedProfile.id && profile.version === expectedProfile.version).length, 1,
       'The exact Archi fixture profile must be registered');
     await page.waitForFunction(() => !document.getElementById('integrationRefresh').disabled);
+    await onInitialNavigationVerified?.();
     await page.locator('#integrationCreate').locator('..').locator('summary').click();
     await page.locator('#connectionName').fill(`Archi browser ${role}`);
     await page.locator('#connectionProfile').selectOption(`${expectedProfile.id}@${expectedProfile.version}`);
