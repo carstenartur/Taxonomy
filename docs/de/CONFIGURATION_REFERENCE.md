@@ -281,6 +281,7 @@ Wirksame Richtlinie: `GET /api/ai-automation`. Verbindliche Zuordnungen, Zustän
 | `TAXONOMY_PORTFOLIO_ANALYSIS_WORKER_QUEUE_CAPACITY` | `taxonomy.portfolio.analysis-worker-queue-capacity` | `100`, mindestens `0` | In-Memory-Dispatch-Queue; Jobs bleiben persistiert. |
 | `TAXONOMY_PORTFOLIO_ANALYSIS_WORKER_SHUTDOWN_SECONDS` | `taxonomy.portfolio.analysis-worker-shutdown-seconds` | `30`, mindestens `0` | Worker-Auslaufzeit. |
 | `TAXONOMY_PORTFOLIO_SNAPSHOT_STALE_AFTER_DAYS` | `taxonomy.portfolio.snapshot-stale-after-days` | `30`, mindestens `1` | Altersgrenze der Stale-Snapshot-Metrik. |
+| `TAXONOMY_PORTFOLIO_SNAPSHOT_PACKED_WRITES` | `taxonomy.portfolio.snapshot.packed-writes` | `false` | Erlaubt das kompakte v1-Format für geeignete neue Analyse-Snapshots. Erst aktivieren, wenn alle Leser derselben Datenbank aktualisiert wurden. Siehe [Einführung und Rücknahme](PROJECT_PORTFOLIO_OPERATIONS.md#einführung-und-rücknahme-des-kompakten-snapshot-formats). |
 
 ## Analyse per E-Mail
 
