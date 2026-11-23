@@ -2291,6 +2291,7 @@ class ScreenshotGeneratorIT {
             for (String language : List.of("de", "en")) {
                 resetPageState(language);
                 navigateToTab("export");
+                wait(30).until(ExpectedConditions.elementToBeClickable(By.id("importJson")));
                 // Selenium's real file upload invokes the production importer and its HTTP validation.
                 js("window.__screenshotPreviousImportScores = window.TaxonomyState.currentRawScores;");
                 driver.findElement(By.id("importJsonFile")).sendKeys(savedFile.toAbsolutePath().toString());

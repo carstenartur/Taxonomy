@@ -67,6 +67,56 @@ test('a departed async source cannot publish a late completion', async () => {
     assert.equal(workspace.getSource().kind,'snapshot');
     assert.deepEqual(published,['snapshot']);
 });
+test('only the latest successfully activated source admits work', async () => {
+    const api = await boot();
+    const attempts = [], published = [];
+    const workspace = api.create({initial:{kind:'analysis'}, adapters:{
+        analysis:{activate:() => new Promise((resolve, reject) => attempts.push({resolve, reject}))},
+        working:{activate:async () => {}}
+    }, onActivationChange:() => published.push(workspace.confirmedSourceGeneration('analysis'))});
+    const current = () => workspace.confirmedSourceGeneration('analysis');
+    assert.equal(current(), null);
+    const first = workspace.open('analysis');
+    assert.equal(current(), null, 'a mounted adapter still loading cannot admit imports');
+    attempts.shift().resolve();
+    assert.equal(await first, true);
+    const initial = current();
+    assert.equal(typeof initial, 'number');
+    const failed = workspace.open('analysis');
+    assert.equal(current(), null);
+    attempts.shift().reject(new Error('unavailable'));
+    await assert.rejects(failed, /unavailable/);
+    assert.equal(current(), null);
+    const superseded = workspace.open('analysis');
+    await workspace.open('working');
+    attempts.shift().resolve();
+    assert.equal(await superseded, false);
+    assert.equal(current(), null, 'a superseded activation cannot restore analysis admission');
+    const next = workspace.open('analysis');
+    attempts.shift().resolve();
+    assert.equal(await next, true);
+    assert.ok(current() > initial, 'returning to the same source creates a fresh owner');
+    workspace.suspend();
+    assert.equal(current(), null);
+    assert.ok(published.includes(initial));
+    assert.equal(published.at(-1), null, 'suspend synchronously refreshes controls');
+});
+test('cancelled navigation retains the visible analysis with a fresh admission generation', async () => {
+    const api = await boot();
+    const workspace = api.create({initial:{kind:'working'}, adapters:{
+        analysis:{activate:async () => {}},
+        working:{activate:async () => {}, canLeave:async (source, options) => options.retain}
+    }});
+    await workspace.open('working');
+    await workspace.open('analysis');
+    const original = workspace.confirmedSourceGeneration('analysis');
+    assert.equal(typeof original, 'number');
+    const change = workspace.open('working', {branch:'different'});
+    assert.equal(workspace.confirmedSourceGeneration('analysis'), null);
+    assert.equal(await change, false, 'retained editor declines to discard its draft');
+    assert.equal(workspace.getSource().kind, 'analysis');
+    assert.ok(workspace.confirmedSourceGeneration('analysis') > original, 'the still-visible source admits new selections');
+});
 test('a pending command guard refuses source change before hiding or changing source', async () => {
     const api = await boot(); let loaded = false, hidden = false;
     const workspace = api.create({initial:{kind:'working'},adapters:{

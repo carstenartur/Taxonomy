@@ -124,19 +124,48 @@
         const importJsonBtn = document.getElementById('importJson');
         const importJsonFile = document.getElementById('importJsonFile');
         if (importJsonBtn && importJsonFile) {
+            let selectionEpoch = 0;
+            function importGeneration() {
+                if (window.TaxonomyAnalysisSession?.state?.().ready !== true) return null;
+                return window.TaxonomyArchitectureWorkspace?.confirmedSourceGeneration?.('analysis') ?? null;
+            }
+            function syncImportControl() {
+                const disabled = importGeneration() === null;
+                // A draft can become ready again without changing workspace or repository.
+                if (disabled) selectionEpoch++;
+                importJsonBtn.disabled = disabled;
+                importJsonFile.disabled = disabled;
+            }
+            function captureImportSource() {
+                const generation = importGeneration();
+                const selectedAt = selectionEpoch;
+                const current = window.TaxonomyApiClient?.captureContext?.();
+                return generation !== null && current
+                    ? () => selectedAt === selectionEpoch && importGeneration() === generation && current() : null;
+            }
+            ['taxonomy:analysis-source-ready', 'taxonomy:analysis-draft-state-changed',
+                'taxonomy:architecture-source-activation'].forEach(name => document.addEventListener(name, syncImportControl));
+            syncImportControl();
+            let pickerSource = null;
             importJsonBtn.addEventListener('click', function () {
+                pickerSource = captureImportSource();
+                if (!pickerSource) { syncImportControl(); return; }
                 importJsonFile.value = '';
                 importJsonFile.click();
             });
             importJsonFile.addEventListener('change', function () {
                 const file = importJsonFile.files && importJsonFile.files[0];
-                if (!file) { return; }
+                const current = pickerSource || captureImportSource();
+                pickerSource = null;
+                if (!file || !current?.()) { syncImportControl(); return; }
                 const reader = new FileReader();
                 reader.onload = function (e) {
+                    if (!current()) return;
                     const jsonText = e.target.result;
                     window.AnalysisApi.importScores(jsonText)
                     .then(function (resp) { return resp.json(); })
                     .then(function (data) {
+                        if (!current()) return;
                         if (data.error) {
                             showStatus('danger', t('browse.import.failed', data.error));
                             return;
@@ -211,7 +240,7 @@
                         showStatus(data.warnings && data.warnings.length > 0 ? 'warning' : 'success', msg);
                     })
                     .catch(function (err) {
-                if (err?.code === 'ABORTED') return;
+                        if (!current() || err?.code === 'ABORTED') return;
                         showStatus('danger', t('browse.import.failed', err.message));
                     });
                 };

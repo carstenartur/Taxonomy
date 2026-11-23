@@ -78,8 +78,13 @@
             ? AUTOSAVE_DELAY_MS : delay);
     }
 
+    function notifyDraftState() {
+        document.dispatchEvent(new CustomEvent('taxonomy:analysis-draft-state-changed', {detail:{workspaceId:runtime.workspaceId}}));
+    }
+
     function setDraftDecisionPending(pending) {
         runtime.draftDecisionPending = pending;
+        notifyDraftState();
         document.querySelectorAll(DECISION_CONTROL_SELECTOR).forEach(function (control) {
             if (pending) {
                 if (control.dataset.analysisDraftDecisionPending !== 'true') {
@@ -155,6 +160,7 @@
         var endpoint = draftEndpoint();
         if (!endpoint) {
             runtime.resetting = false;
+            notifyDraftState();
             return Promise.resolve(null);
         }
         var options = typeof C.analysisOptions === 'function'
@@ -175,6 +181,7 @@
             return view;
         }).finally(function () {
             runtime.resetting = false;
+            notifyDraftState();
         });
         return finishMutation(operation);
     }
@@ -191,6 +198,7 @@
         runtime.saveTimer = null;
         runtime.saveQueued = false;
         runtime.resetting = true;
+        notifyDraftState();
         if (runtime.saveInFlight) {
             return runtime.saveInFlight.catch(function () { return null; })
                 .then(performResetDraft);
