@@ -10,7 +10,7 @@ const script = fileURLToPath(new URL('../../deploy/container/apt/ubuntu-archive.
 const primary = 'https://archive.ubuntu.com/ubuntu/';
 const secondary = 'https://mirrors.kernel.org/ubuntu/';
 
-async function select(t, reachable, signedSuite = 'noble') {
+async function select(t, outcomes) {
   const dir = await mkdtemp(path.join(tmpdir(), 'docker-ubuntu-archive-'));
   t.after(() => rm(dir, {recursive:true,force:true}));
   const bin = path.join(dir, 'bin');
@@ -23,39 +23,76 @@ for arg; do
     Dir::State::lists=*) lists=$(cut -d= -f2- <<< "$arg");;
   esac
 done
-uri=$(sed -n 's/^URIs: //p' "$source_file")
-printf '%s\\n' "$uri" >> "$PROBE_LOG"
 grep -Fxq 'Signed-By: /test/ubuntu-keyring.gpg' "$source_file"
 grep -Fxq 'Targets: InRelease' "$source_file"
-[[ "$uri" == "$REACHABLE" ]] || exit 100
-printf 'Origin: Ubuntu\\nSuite: %s\\n' "$SIGNED_SUITE" > "$lists/probe_InRelease"
+[[ -d "$lists/partial" ]] || exit 101
+if compgen -G "$lists/*_InRelease" >/dev/null; then exit 101; fi
+uri=$(sed -n 's/^URIs: //p' "$source_file")
+attempt=$(wc -l < "$PROBE_LOG")
+printf '%s\\t%s\\n' "$uri" "$lists" >> "$PROBE_LOG"
+read -ra outcomes <<< "$PROBE_OUTCOMES"
+outcome=\${outcomes[attempt]:-unavailable}
+origin=Ubuntu suite=noble
+case "$outcome" in
+  unavailable) exit 100 ;;
+  missing-release) exit 0 ;;
+  wrong-origin) origin=Debian ;;
+  wrong-suite) suite=jammy ;;
+  verified|failed-apt|duplicate-release) ;;
+  *) exit 102 ;;
+esac
+printf 'Origin: %s\\nSuite: %s\\n' "$origin" "$suite" > "$lists/probe_InRelease"
+case "$outcome" in
+  failed-apt) exit 100 ;;
+  duplicate-release) cp "$lists/probe_InRelease" "$lists/another_InRelease" ;;
+esac
 `, {mode:0o755});
   const probeLog = path.join(dir, 'probes');
   await writeFile(probeLog, '');
-  const result = spawnSync('bash', ['-c','source "$1"; select_ubuntu_archive "$2" noble /test/ubuntu-keyring.gpg "$3" "$4"',
-    'test',script,dir,primary,secondary], {encoding:'utf8', env:{...process.env,PATH:bin+':'+process.env.PATH,
-      REACHABLE:reachable,PROBE_LOG:probeLog,SIGNED_SUITE:signedSuite}});
-  return {code:result.status, selected:result.stdout.trim(), probes:(await readFile(probeLog,'utf8')).trim().split('\n')};
+  const result = spawnSync('bash', ['-c','source "$1"; shopt -s nullglob; select_ubuntu_archive "$2" noble /test/ubuntu-keyring.gpg "$3" "$4"',
+    'test',script,dir,primary,secondary], {encoding:'utf8', timeout:10_000, env:{...process.env,PATH:bin+':'+process.env.PATH,
+      PROBE_OUTCOMES:outcomes.join(' '),PROBE_LOG:probeLog}});
+  assert.ifError(result.error);
+  const records = (await readFile(probeLog,'utf8')).split('\n').filter(Boolean).map(record => record.split('\t'));
+  const probes = records.map(([uri]) => uri);
+  const lists = records.map(([, list]) => list);
+  assert.equal(new Set(lists).size, lists.length, 'each probe must use a distinct list directory');
+  const retryNotices = result.stderr.match(/^Retrying Ubuntu release probes for noble$/gm)?.length ?? 0;
+  return {code:result.status, selected:result.stdout.trim(), probes, retryNotices};
 }
 
 test('Docker uses a verified Canonical suite without retrying an unavailable secondary for each index', async t => {
-  const result = await select(t, primary);
-  assert.deepEqual(result, {code:0,selected:primary,probes:[primary]});
+  const result = await select(t, ['verified']);
+  assert.deepEqual(result, {code:0,selected:primary,probes:[primary],retryNotices:0});
 });
 test('Docker falls back once when Canonical cannot serve the signed suite', async t => {
-  const result = await select(t, secondary);
-  assert.deepEqual(result, {code:0,selected:secondary,probes:[primary,secondary]});
+  const result = await select(t, ['unavailable', 'verified']);
+  assert.deepEqual(result, {code:0,selected:secondary,probes:[primary,secondary],retryNotices:0});
+});
+test('Docker recovers when Canonical serves a verified release in the second round', async t => {
+  const result = await select(t, ['unavailable', 'unavailable', 'verified']);
+  assert.deepEqual(result, {code:0,selected:primary,probes:[primary,secondary,primary],retryNotices:1});
+});
+test('Docker recovers when the fallback serves a verified release in the second round', async t => {
+  const result = await select(t, ['unavailable', 'unavailable', 'unavailable', 'verified']);
+  assert.deepEqual(result, {code:0,selected:secondary,probes:[primary,secondary,primary,secondary],retryNotices:1});
 });
 test('Docker fails closed when neither source can serve the suite', async t => {
-  const result = await select(t, '');
-  assert.notEqual(result.code,0); assert.equal(result.selected,'');
-  assert.deepEqual(result.probes,[primary,secondary]);
+  const result = await select(t, ['unavailable']);
+  assert.deepEqual(result, {code:1,selected:'',probes:[primary,secondary,primary,secondary],retryNotices:1});
 });
-test('an authenticated release for a different suite cannot select the mirror', async t => {
-  const result = await select(t, secondary, 'jammy');
-  assert.notEqual(result.code,0); assert.equal(result.selected,'');
-  assert.deepEqual(result.probes,[primary,secondary]);
-});
+for (const [description, outcome] of [
+  ['a release left by a failed APT update', 'failed-apt'],
+  ['an authenticated release for a different suite', 'wrong-suite'],
+  ['an authenticated release from a different origin', 'wrong-origin'],
+  ['a successful APT update without an InRelease', 'missing-release'],
+  ['an APT update leaving multiple InRelease files', 'duplicate-release'],
+]) {
+  test(`${description} cannot select the mirror`, async t => {
+    const result = await select(t, ['unavailable', outcome, 'unavailable', outcome]);
+    assert.deepEqual(result, {code:1,selected:'',probes:[primary,secondary,primary,secondary],retryNotices:1});
+  });
+}
 
 test('Docker chooses a signed origin for every active suite in legacy and deb822 sources', async t => {
   const dir = await mkdtemp(path.join(tmpdir(), 'docker-ubuntu-suites-'));
