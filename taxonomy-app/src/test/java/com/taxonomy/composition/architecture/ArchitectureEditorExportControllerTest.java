@@ -20,7 +20,10 @@ import com.taxonomy.export.SvgDiagramRenderer;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
+import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
 import java.util.List;
@@ -140,18 +143,20 @@ class ArchitectureEditorExportControllerTest {
         verify(lease, org.mockito.Mockito.times(2)).close();
     }
 
-    @Test
-    void refusesForeignContextAndStructuralFindingsBeforeInvokingThePlugin() throws Exception {
+    @ParameterizedTest
+    @ValueSource(strings = {"", "/preflight"})
+    void refusesForeignContextAndStructuralFindingsBeforeInvokingThePlugin(String suffix) throws Exception {
         loadCheckpoint("");
         var mvc = standaloneSetup(exports).build();
-        mvc.perform(nativeRequest("workspace-b")).andExpect(status().isNotFound());
-        mvc.perform(nativeRequest("workspace-a")).andExpect(status().isUnprocessableContent())
+        mvc.perform(nativeRequest("workspace-b", suffix)).andExpect(status().isNotFound());
+        mvc.perform(nativeRequest("workspace-a", suffix)).andExpect(status().isUnprocessableContent())
                 .andExpect(jsonPath("$.code").value("ADMBW_CHANGES_REQUIRED"));
         verifyNoInteractions(catalog);
     }
 
-    @Test
-    void flagsTheNativePartBindingBeforeReadingTheBasis() throws Exception {
+    @ParameterizedTest
+    @ValueSource(strings = {"", "/preflight"})
+    void flagsTheNativePartBindingBeforeReadingTheBasis(String suffix) throws Exception {
         String dsl = deliverableDsl() + """
                 element realizer type Component {
                   title: "Warning role";
@@ -169,14 +174,15 @@ class ArchitectureEditorExportControllerTest {
                         .param("commit", HEAD).param("projectCode", "WARN"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.assessment.requirementDerivation.status").value("REVIEW_REQUIRED"))
                 .andExpect(jsonPath("$.qeaIssues[0].object").value("element:realizer"));
-        mvc.perform(nativeRequest("workspace-a")).andExpect(status().isUnprocessableContent())
+        mvc.perform(nativeRequest("workspace-a", suffix)).andExpect(status().isUnprocessableContent())
                 .andExpect(jsonPath("$.code").value("ADMBW_QEA_PART_OWNER"));
         verifyNoInteractions(catalog);
     }
 
-    @Test
+    @ParameterizedTest
+    @ValueSource(strings = {"", "/preflight"})
     @SuppressWarnings("unchecked")
-    void ordinaryNativeRouteCannotMoveAReviewedGuidedViewToAnotherRoot() throws Exception {
+    void ordinaryNativeRouteCannotMoveAReviewedGuidedViewToAnotherRoot(String suffix) throws Exception {
         String reviewedRoot = "{20000000-0000-0000-0000-000000000002}";
         String project = "{20000000-0000-0000-0000-000000000003}";
         String dsl = deliverableDsl().replace("relation capability REALIZES service", "relation service FULFILLS capability");
@@ -194,21 +200,77 @@ class ArchitectureEditorExportControllerTest {
         when(writer.supportsBasisInspection()).thenReturn(true);
         when(writer.inspectAdmbwBasis(any())).thenReturn(new AdmbwQeaExport.Basis("a".repeat(64), project,
                 List.of(new AdmbwQeaExport.Root(ROOT, "Other root"), new AdmbwQeaExport.Root(reviewedRoot, "Reviewed root")), List.of()));
-        standaloneSetup(exports).build().perform(nativeRequest("workspace-a").param("viewId", "guided"))
+        standaloneSetup(exports).build().perform(nativeRequest("workspace-a", suffix).param("viewId", "guided"))
                 .andExpect(status().isBadRequest());
         verify(writer).inspectAdmbwBasis(any());
+        verify(writer, org.mockito.Mockito.never()).exportAdmbw(any(), any(), any());
+        verify(writer, org.mockito.Mockito.never()).preflightAdmbw(any(), any(), any());
+        verify(lease).close();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"", "/preflight"})
+    void reportsAnUnavailableNativePlugin(String suffix) throws Exception {
+        loadCheckpoint(deliverableDsl());
+        when(catalog.acquire(AdmbwQeaExport.KEY, IntegrationConnectorExtension.class)).thenThrow(
+                new ExtensionUnavailableException(AdmbwQeaExport.KEY, ExtensionUnavailableException.Reason.UNKNOWN));
+        standaloneSetup(exports).build().perform(nativeRequest("workspace-a", suffix))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value("ADMBW_QEA_UNAVAILABLE"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void preflightChecksTheExactDeliveryWithoutReturningOrExportingAFile() throws Exception {
+        loadCheckpoint(deliverableDsl());
+        var writer = mock(AdmbwQeaExport.class);
+        ExtensionLease<IntegrationConnectorExtension> lease = mock(ExtensionLease.class);
+        when(catalog.acquire(AdmbwQeaExport.KEY, IntegrationConnectorExtension.class)).thenReturn(lease);
+        when(lease.extension()).thenReturn(writer);
+        when(writer.supportsCoverageNotes()).thenReturn(true);
+        when(writer.supportsDeliveryPreflight()).thenReturn(true);
+
+        standaloneSetup(exports).build().perform(nativeRequest("workspace-a", "/preflight"))
+                .andExpect(status().isOk()).andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(header().string("X-Content-Type-Options", "nosniff"))
+                .andExpect(header().string("X-Taxonomy-Commit", HEAD))
+                .andExpect(header().doesNotExist("Content-Disposition"))
+                .andExpect(jsonPath("$.commit").value(HEAD))
+                .andExpect(jsonPath("$.coverage").isString());
+        var delivery = ArgumentCaptor.forClass(AdmbwQeaExport.Delivery.class);
+        var bytes = ArgumentCaptor.forClass(byte[].class);
+        verify(writer).preflightAdmbw(delivery.capture(), eq(ROOT), bytes.capture());
+        assertThat(delivery.getValue().commit()).isEqualTo(HEAD);
+        assertThat(delivery.getValue().coverageNotes()).contains("R7 scope: all checkpoint requirements");
+        assertThat(bytes.getValue()).containsExactly(BASIS);
         verify(writer, org.mockito.Mockito.never()).exportAdmbw(any(), any(), any());
         verify(lease).close();
     }
 
     @Test
-    void reportsAnUnavailableNativePlugin() throws Exception {
+    @SuppressWarnings("unchecked")
+    void preflightRequiresCapabilityAndReleasesTheLeaseAfterNativeRejection() throws Exception {
         loadCheckpoint(deliverableDsl());
-        when(catalog.acquire(AdmbwQeaExport.KEY, IntegrationConnectorExtension.class)).thenThrow(
-                new ExtensionUnavailableException(AdmbwQeaExport.KEY, ExtensionUnavailableException.Reason.UNKNOWN));
-        standaloneSetup(exports).build().perform(nativeRequest("workspace-a"))
+        var writer = mock(AdmbwQeaExport.class);
+        ExtensionLease<IntegrationConnectorExtension> lease = mock(ExtensionLease.class);
+        when(catalog.acquire(AdmbwQeaExport.KEY, IntegrationConnectorExtension.class)).thenReturn(lease);
+        when(lease.extension()).thenReturn(writer);
+        when(writer.supportsCoverageNotes()).thenReturn(true);
+        var mvc = standaloneSetup(exports).build();
+        mvc.perform(nativeRequest("workspace-a", "/preflight"))
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(jsonPath("$.code").value("ADMBW_QEA_UNAVAILABLE"));
+        verify(writer, org.mockito.Mockito.never()).preflightAdmbw(any(), any(), any());
+
+        when(writer.supportsDeliveryPreflight()).thenReturn(true);
+        org.mockito.Mockito.doThrow(new IllegalArgumentException("QEA_ADMBW_DIAGRAM_EXISTS: diagram exists"))
+                .when(writer).preflightAdmbw(any(), any(), any());
+        mvc.perform(nativeRequest("workspace-a", "/preflight"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail").value("QEA_ADMBW_DIAGRAM_EXISTS: diagram exists"));
+        verify(writer, org.mockito.Mockito.never()).exportAdmbw(any(), any(), any());
+        verify(lease, org.mockito.Mockito.times(2)).close();
     }
 
     @Test
@@ -273,7 +335,11 @@ class ArchitectureEditorExportControllerTest {
     }
 
     private static MockHttpServletRequestBuilder nativeRequest(String workspace) {
-        return post("/api/architecture/editor.admbw.qea").param("repositoryId", "repo-a")
+        return nativeRequest(workspace, "");
+    }
+
+    private static MockHttpServletRequestBuilder nativeRequest(String workspace, String suffix) {
+        return post("/api/architecture/editor.admbw.qea" + suffix).param("repositoryId", "repo-a")
                 .param("workspaceScopeKey", workspace).param("branch", "draft").param("commit", HEAD)
                 .param("projectCode", "WARN").param("rootPackageGuid", ROOT)
                 .contentType(AdmbwQeaExport.MEDIA_TYPE).content(BASIS);

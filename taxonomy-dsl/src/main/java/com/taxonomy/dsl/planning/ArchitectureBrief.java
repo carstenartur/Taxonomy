@@ -1,5 +1,6 @@
 package com.taxonomy.dsl.planning;
 
+import com.taxonomy.dsl.requirements.RequirementTrace;
 import com.taxonomy.dsl.ast.BlockAst;
 import com.taxonomy.dsl.ast.PropertyAst;
 import com.taxonomy.dsl.command.ArchitectureDslCommands;
@@ -34,8 +35,22 @@ public final class ArchitectureBrief {
         public Reference { values = Map.copyOf(values); }
     }
 
-    public record Snapshot(boolean present, String version, Map<String, String> fields, List<Reference> references, String problem) {
-        public Snapshot { fields = Map.copyOf(fields); references = List.copyOf(references); }
+    private static final String PIN = PREFIX + "requirement.";
+    public record Binding(RequirementTrace.Link link, String evidenceQuote) {
+        public Binding {
+            if (link == null || !businessKey(link.projectKey()) || !businessKey(link.requirementKey())
+                    || link.requirementVersion() < 1 || link.contentHash() == null || !link.contentHash().matches("[a-f0-9]{64}"))
+                throw new IllegalArgumentException("An exact requirement version is required");
+            if (evidenceQuote == null || evidenceQuote.isBlank() || evidenceQuote.length() > 4096)
+                throw new IllegalArgumentException("An exact requirement excerpt of up to 4096 characters is required");
+        }
+        private static boolean businessKey(String value) {
+            return value != null && value.matches("[A-Za-z0-9][A-Za-z0-9._-]{0,63}");
+        }
+    }
+
+    public record Snapshot(boolean present, String version, Map<String, String> fields, List<Reference> references, List<Binding> bindings, String problem) {
+        public Snapshot { fields = Map.copyOf(fields); references = List.copyOf(references); bindings = List.copyOf(bindings); }
 
         /** Only explicit rules with a binding source and whole-architecture scope affect generation. */
         public Set<String> excludedRelationTypes() {
@@ -51,15 +66,15 @@ public final class ArchitectureBrief {
 
     public static Snapshot read(CanonicalArchitectureModel model) {
         var sources = model.getSources().stream().filter(s -> reservedId(s.getId()) && ID.equals(s.getSourceType())).toList();
-        if (sources.isEmpty()) return new Snapshot(false, null, Map.of(), List.of(), null);
-        if (sources.size() != 1) return new Snapshot(true, null, Map.of(), List.of(), "AMBIGUOUS_ARCHITECTURE_BRIEF");
+        if (sources.isEmpty()) return new Snapshot(false, null, Map.of(), List.of(), List.of(), null);
+        if (sources.size() != 1) return new Snapshot(true, null, Map.of(), List.of(), List.of(), "AMBIGUOUS_ARCHITECTURE_BRIEF");
         var properties = sources.getFirst().getExtensions();
         var version = properties.get(PREFIX + "version");
-        if (!VERSION.equals(version)) return new Snapshot(true, version, Map.of(), List.of(), "UNSUPPORTED_ARCHITECTURE_BRIEF");
+        if (!VERSION.equals(version)) return new Snapshot(true, version, Map.of(), List.of(), List.of(), "UNSUPPORTED_ARCHITECTURE_BRIEF");
         try {
             return decode(model, properties);
         } catch (IllegalArgumentException invalid) {
-            return new Snapshot(true, version, Map.of(), List.of(), "INVALID_ARCHITECTURE_BRIEF");
+            return new Snapshot(true, version, Map.of(), List.of(), List.of(), "INVALID_ARCHITECTURE_BRIEF");
         }
     }
 
@@ -87,7 +102,24 @@ public final class ArchitectureBrief {
             validateReference(values);
             references.add(new Reference(group.getKey(), values, stored.get("source"), stored.get("sourceVersion"), stored.get("sourceFragment")));
         }
-        return new Snapshot(true, VERSION, fields, references, null);
+        Map<Integer, Map<String, String>> pins = new TreeMap<>();
+        for (var entry : properties.entrySet()) {
+            if (!entry.getKey().startsWith(PIN)) continue;
+            String[] path = entry.getKey().substring(PIN.length()).split("\\.", 2);
+            if (path.length != 2 || !path[0].matches("0|[1-9][0-9]{0,2}"))
+                throw new IllegalArgumentException("Malformed requirement pin");
+            pins.computeIfAbsent(Integer.parseInt(path[0]), ignored -> new TreeMap<>()).put(path[1], entry.getValue());
+        }
+        var bindings = new ArrayList<Binding>();
+        for (var entry : pins.entrySet()) {
+            var pin = entry.getValue();
+            if (entry.getKey() != bindings.size() || !pin.keySet().equals(Set.of("project", "requirement", "version", "hash", "quote")))
+                throw new IllegalArgumentException("Malformed requirement pin");
+            bindings.add(new Binding(new RequirementTrace.Link(pin.get("project"), pin.get("requirement"),
+                    Integer.parseInt(pin.get("version")), pin.get("hash")), pin.get("quote")));
+        }
+        validateBindings(bindings);
+        return new Snapshot(true, VERSION, fields, references, bindings, null);
     }
 
     public static String store(String dsl, Map<String, String> fields) {
@@ -97,6 +129,31 @@ public final class ArchitectureBrief {
         Map<String, String> updated = new LinkedHashMap<>();
         fields.forEach((key, value) -> updated.put(FIELD + key, value));
         return replace(dsl, FIELD, updated, true);
+    }
+
+    private static void validateBindings(List<Binding> bindings) {
+        var seen = new java.util.HashSet<List<String>>();
+        if (bindings.size() > PlanningInformation.MAX_ENTRIES) throw new IllegalArgumentException("Too many requirement pins");
+        for (var binding : bindings)
+            if (!seen.add(List.of(binding.link().projectKey(), binding.link().requirementKey())))
+                throw new IllegalArgumentException("Duplicate requirement pin");
+    }
+
+    public static String bind(String dsl, List<Binding> bindings) {
+        var before = read(new ArchitectureDslCommands().model(dsl));
+        if (!before.present() || before.problem() != null) throw new IllegalArgumentException("A supported architecture brief is required");
+        validateBindings(bindings);
+        var updated = new LinkedHashMap<String, String>();
+        for (int index = 0; index < bindings.size(); index++) {
+            var binding = bindings.get(index);
+            String prefix = PIN + index + ".";
+            updated.put(prefix + "project", binding.link().projectKey());
+            updated.put(prefix + "requirement", binding.link().requirementKey());
+            updated.put(prefix + "version", Integer.toString(binding.link().requirementVersion()));
+            updated.put(prefix + "hash", binding.link().contentHash());
+            updated.put(prefix + "quote", binding.evidenceQuote());
+        }
+        return replace(dsl, PIN, updated, false);
     }
 
     public static String putReference(String dsl, String id, Map<String, String> values) {

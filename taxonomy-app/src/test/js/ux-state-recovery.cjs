@@ -102,6 +102,111 @@ function admbwCoverageFixture() {
     return {...f, selected, text, render: coverage => window.TaxonomyAdmbwCoverage.render(coverage, t, id => selected.push(id))};
 }
 
+test('ADMBw findings route only supported codes and exact objects at the live editable revision', () => {
+    const window = {};
+    vm.runInNewContext(source('architecture-admbw-coverage.js'), {window});
+    const target = window.TaxonomyAdmbwCoverage.findingTarget;
+    const view = {mayEdit:true, document:{source:'WORKSPACE_REVISION', projectionState:'READY'},
+        model:{elements:[{id:'records'}], requirements:[{id:'records'}]}};
+    const issue = {code:'STALE_R7_PLANNING', object:'requirement:records'};
+    assert.equal(target(view, issue).panel, 'planning');
+    assert.equal(target(view, issue).id, 'records');
+    assert.equal(target(view, {code:'CAPABILITY_CATALOGUE_GUID_REQUIRED', object:'element:records'}).field, 'editorAdmbwCatalogueGuid');
+    for (const wrong of [{...issue, object:'element:records'}, {...issue, object:'requirement:absent'}, {...issue, code:'NEW_CODE'}])
+        assert.equal(target(view, wrong), null);
+    assert.equal(target({...view, document:{source:'GIT_CHECKPOINT', projectionState:'HISTORICAL'}}, issue), null);
+    assert.equal(target({...view, mayEdit:false}, issue), null);
+});
+
+test('the canonical guided transport rejects a late 200 for the previous model stand and recovers the admitted operation by GET', async () => {
+    const f = dom(), admitted = deferred(), reply = deferred(), calls = [];
+    const operationId = '000c6141-fb93-409c-9d54-781503b49200';
+    const scope = {repositoryId:'registry',workspaceScopeKey:'office',branch:'draft',revision:5,commit:'a'.repeat(40)};
+    const checkpoint = {state:'CHECKPOINTED',checkpoint:{commitId:'b'.repeat(40)}};
+    const window = {location:{pathname:'/architecture/editor'}, TaxonomyI18n:{t:key=>key,resolveUrl:p=>p},
+        fetch:async (url,init) => {
+            const path = new URL(url,'http://localhost').pathname;
+            calls.push([init.method,path]);
+            if (path.endsWith('/accept')) { admitted.resolve(); await reply.promise; return Response.json(checkpoint); }
+            assert.ok(path.endsWith('/operations/' + operationId));
+            return Response.json({publication:checkpoint});
+        }};
+    const document = f.document;
+    document.dispatchEvent = event => { document.fire(event.type,event); return true; };
+    const context = canonicalFixture.install({window,document,URL,URLSearchParams,FormData,Blob,CustomEvent},
+        ['api/architecture-editor-api.js','shared/application-chrome.js']);
+    const publish = revision => window.TaxonomyAppChrome.updateContext({architecture:{...scope,revision,
+        modelStand:'Revision ' + revision},editable:revision === 5,source:null},'working');
+    publish(5);
+    const outcome = window.ArchitectureEditorApi.acceptAdmbwPreparation({context:scope,metadata:{commandId:operationId}},
+        new File(['fixture basis'],'example.qea')).then(() => null, error => error);
+    await admitted.promise;
+    publish(2);
+    reply.resolve();
+    const error = await outcome;
+    assert.equal(error?.code,'ABORTED');
+    assert.equal(error.status,0);
+    assert.equal(context.window.TaxonomyAppChrome.getContext().architecture.revision,2);
+    publish(5);
+    const recovered = await window.ArchitectureEditorApi.recoverAdmbw(scope,operationId,false);
+    assert.deepEqual(recovered.publication,checkpoint);
+    assert.deepEqual(calls,[['POST','/api/architecture/editor/admbw/accept'],['GET','/api/architecture/editor/admbw/operations/'+operationId]]);
+});
+
+test('reloaded guided delivery consults the original scoped receipt and requires its file to pass preflight', async () => {
+    const f = dom(), widgets = new Map(), window = {};
+    const context = {repositoryId:'portfolio',workspaceScopeKey:'office',branch:'draft',actor:'owner',revision:4,commit:'a'.repeat(40)};
+    const operationId = 'b1b52cb3-fde4-4087-9ae4-888a2da793c2', commit = 'b'.repeat(40);
+    const prefix = 'taxonomy.admbw.delivery.' + JSON.stringify(['portfolio','office','office','draft','owner']);
+    const storage = new Map([[prefix,operationId]]);
+    const root = {querySelector(selector) {
+        const id = selector.slice(1);
+        if (!widgets.has(id)) {
+            const item = f.element('div', id);
+            item.reset = () => {}; item.setCustomValidity = () => {};
+            item.add = child => item.append(child);
+            widgets.set(id,item);
+        }
+        return widgets.get(id);
+    }};
+    const lookup = deferred(), calls = [], messages = [];
+    const api = {recoverAdmbw(c,id,resume) { calls.push([c.workspaceScopeKey,id,resume]); return lookup.promise; },
+        admbwUrl(c) {return '/assessment/' + c.commit;},
+        async preflightAdmbw(c, project, viewId, rootGuid, file) {
+            assert.deepEqual([c.commit,project,viewId,rootGuid],[commit,'REG','delivery','root']);
+            if (file.name === 'different') throw new Error('Basis hash differs');
+            return {commit,coverage:'PARTIAL'};
+        }};
+    vm.runInNewContext(source('architecture-admbw-coverage.js'), {window, document:f.document});
+    vm.runInNewContext(source('architecture-admbw-preparation.js'), {window, document:f.document,
+        sessionStorage:{getItem:key=>storage.get(key)}, Option:class {}, AbortController});
+    const panel = window.TaxonomyAdmbwPreparation.create({root, api, t:k=>k, report:error=>messages.push(error.message)});
+    const view = {mayEdit:true, document:{context,source:'WORKSPACE_REVISION',projectionState:'READY'},
+        model:{elements:[],requirements:[]}};
+    panel.update(view,true);
+    assert.deepEqual(calls,[['office',operationId,false]]);
+    const other = {...view,document:{...view.document,context:{...context,workspaceScopeKey:'other'}}};
+    panel.update(other,true);
+    const clean = {status:'REVIEW_REQUIRED',issues:[],requiredReviews:[]};
+    lookup.resolve({delivery:{viewId:'delivery',rootPackageGuid:'root',projectCode:'REG',basisSha256:'7'.repeat(64)},
+        publication:{state:'CHECKPOINTED',context:{...context,revision:5,commit},checkpoint:{commitId:commit}},
+        assessment:{coverage:{status:'PARTIAL'},capabilityToService:clean,requirementDerivation:clean},qeaIssues:[]});
+    await tick();
+    assert.equal(widgets.get('prepAssessment').hidden,true);
+    panel.update(view,true);
+    assert.equal(widgets.get('prepAssessment').href,'/assessment/' + commit);
+    assert.equal(widgets.get('prepDownload').disabled,true);
+    const input = widgets.get('prepDeliveryBasis');
+    input.files = [{name:'different'}]; await input.fire('change'); await widgets.get('prepPreflight').fire('click');
+    assert.deepEqual(messages,['Basis hash differs']);
+    assert.equal(widgets.get('prepDownload').disabled,true);
+    input.files = [{name:'reviewed'}]; await input.fire('change'); await widgets.get('prepPreflight').fire('click');
+    assert.equal(widgets.get('prepDownload').disabled,false);
+    panel.update({...view,mayEdit:false,document:{...view.document,projectionState:'HISTORICAL'}},true);
+    assert.equal(widgets.get('editorAdmbwPreparation').hidden,true);
+    assert.equal(calls.length,1);
+});
+
 test('R7 excerpt guidance resolves through the English and German editor messages', () => {
     const window = {};
     vm.runInNewContext(source('architecture-admbw-coverage.js'), {window});

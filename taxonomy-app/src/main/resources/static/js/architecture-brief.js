@@ -14,7 +14,98 @@
             rule: ['', 'exclude-relation-v1']
         };
         let snapshot, source, workspace, writable = false, selectedId = '', draftId, briefDirty = false, refDirty = false;
-        let relationTypes = [];
+        let relationTypes = [], context, pinReview, pinDirty = false, pinEpoch = 0, pinBusy = false;
+        function listPins(id, bindings) {
+            const list = el(id);
+            list.replaceChildren();
+            for (const {link, evidenceQuote} of bindings || []) {
+                const item = document.createElement('li');
+                item.textContent = link.projectKey + ' / ' + link.requirementKey + ' · v' + link.requirementVersion
+                    + ' · SHA-256 ' + link.contentHash + ' · ' + evidenceQuote;
+                list.append(item);
+            }
+        }
+        function invalidatePins() {
+            pinEpoch++;
+            pinReview = null;
+            el('PinReview').replaceChildren();
+            el('PinAccept').hidden = true;
+            el('PinStatus').textContent = '';
+        }
+        function pinFailure(error) { el('PinStatus').textContent = error.detail || error.message || String(error); }
+        el('PinForm').addEventListener('input', () => { invalidatePins(); pinDirty = true; });
+        el('PinEdit').addEventListener('click', async () => {
+            if (!writable || pinBusy || pinDirty && !window.confirm(t('discard'))) return;
+            invalidatePins();
+            const ticket = pinEpoch;
+            try {
+                const overview = await window.TaxonomyArchitectureLifecycleApi.overview(context);
+                if (ticket !== pinEpoch || !writable) return;
+                if (!overview.mayEdit || overview.context.revision !== context.revision || overview.context.commit !== context.commit)
+                    throw new Error(t('refreshPins'));
+                const choices = el('PinChoices');
+                choices.replaceChildren();
+                for (const req of overview.requirements.filter(row => row.versionId != null)) {
+                    const binding = snapshot.bindings?.find(item => item.link.projectKey === req.projectKey
+                        && item.link.requirementKey === req.requirementKey && item.link.contentHash === req.contentHash
+                        && item.link.requirementVersion === req.version);
+                    const row = document.createElement('div'), label = document.createElement('label');
+                    const check = document.createElement('input');
+                    check.type = 'checkbox'; check.checked = !!binding;
+                    label.append(check, ' ' + req.projectKey + ' / ' + req.requirementKey + ' · v' + req.version + ' · ' + req.title);
+                    const source = document.createElement('p'); source.textContent = req.text;
+                    const quote = document.createElement('textarea'); quote.maxLength = 4096;
+                    quote.setAttribute('aria-label', t('excerpt') + ' · ' + req.requirementKey);
+                    quote.value = binding?.evidenceQuote || ''; quote.placeholder = t('excerpt');
+                    quote.required = check.checked; quote.disabled = !check.checked;
+                    check.addEventListener('change', () => { quote.required = check.checked; quote.disabled = !check.checked; });
+                    row.append(label, source, quote);
+                    row.pin = () => {
+                        if (!check.checked) return null;
+                        // Textarea line endings are normalized by the browser. Return the corresponding original slice.
+                        const index = req.text.replace(/\r\n?/g, '\n').indexOf(quote.value);
+                        if (index < 0 || !quote.value.trim()) throw new Error(t('excerpt'));
+                        const chars = req.text.match(/\r\n|[\s\S]/g) || [];
+                        return {projectId:req.projectId, requirementId:req.requirementId, expectedVersionId:req.versionId,
+                            expectedContentHash:req.contentHash, evidenceQuote:chars.slice(index, index + quote.value.length).join('')};
+                    };
+                    choices.append(row);
+                }
+                pinDirty = false;
+                el('PinForm').hidden = false;
+            } catch (error) { if (ticket === pinEpoch) pinFailure(error); }
+        });
+        el('PinForm').addEventListener('submit', async event => {
+            event.preventDefault();
+            if (!writable || pinBusy || !el('PinForm').reportValidity()) return;
+            invalidatePins();
+            const ticket = pinEpoch;
+            try {
+                const pins = Array.from(el('PinChoices').children).map(row => row.pin()).filter(Boolean);
+                const id = crypto.randomUUID(), rationale = el('PinReason').value.trim();
+                if (!rationale) throw new Error(t('reasonRequired'));
+                const request = {context, pins, metadata:{commandId:id, causationId:id, correlationId:id, rationale}};
+                const result = await window.TaxonomyArchitectureLifecycleApi.previewBriefScope(request);
+                if (ticket !== pinEpoch || !writable) return;
+                pinReview = {...request, previewFingerprint:result.fingerprint};
+                listPins('PinReview', result.bindings);
+                el('PinStatus').textContent = t('replacePins');
+                el('PinAccept').hidden = false;
+            } catch (error) { if (ticket === pinEpoch) pinFailure(error); }
+        });
+        el('PinAccept').addEventListener('click', async () => {
+            if (!writable || !pinReview || pinBusy) return;
+            const ticket = pinEpoch, original = pinReview, generation = options.generation?.();
+            pinBusy = true; permissions();
+            try {
+                const publication = await window.TaxonomyArchitectureLifecycleApi.acceptBriefScope(original);
+                if (ticket !== pinEpoch) return;
+                if (publication.state !== 'CHECKPOINTED') { el('PinStatus').textContent = publication.detail || publication.state; return; }
+                pinDirty = false;
+                await options.onPinsAccepted(publication, original.context, generation);
+            } catch (error) { if (ticket === pinEpoch) pinFailure(error); }
+            finally { pinBusy = false; permissions(); }
+        });
         function option(select, value, label) {
             const item = document.createElement('option');
             item.value = value;
@@ -49,6 +140,8 @@
         }
         function permissions() {
             const mayEdit = writable && !snapshot?.problem && (!snapshot?.present || snapshot.version === '1');
+            el('PinEdit').disabled = !mayEdit || !snapshot?.present || pinBusy;
+            el('PinChoices').disabled = el('PinReason').disabled = el('PinAccept').disabled = !mayEdit || pinBusy;
             el('Fields').disabled = el('Save').disabled = !mayEdit;
             el('ReferenceFields').disabled = el('ReferenceSave').disabled = !mayEdit || !snapshot?.present;
             el('ReferenceRemove').disabled = !mayEdit || !selectedId;
@@ -109,33 +202,38 @@
             options.stage({kind: 'DELETE_ARCHITECTURE_REFERENCE', id: selectedId}, el('ReferenceReason'));
         });
         return {
-            render(view, preserveDraft) {
-                const ctx = view.document.context;
-                const nextWorkspace = JSON.stringify([ctx.repositoryId, ctx.workspaceScopeKey, ctx.branch]);
-                const next = JSON.stringify([nextWorkspace, ctx.commit, ctx.revision]);
+            render(view, preserveDraft, preserveBriefDrafts) {
+                const ctx = context = view.document.context;
+                const nextWorkspace = JSON.stringify([ctx.repositoryId, ctx.workspaceScopeKey, ctx.workspaceId, ctx.branch, ctx.actor]);
+                const next = JSON.stringify([nextWorkspace, ctx.commit, ctx.revision, view.document.source, view.document.projectionState]);
                 const changedScope = source !== next;
+                const keepBrief = preserveDraft && preserveBriefDrafts && workspace === nextWorkspace
+                    && view.document.source === 'WORKSPACE_REVISION' && view.document.projectionState === 'READY';
                 if (changedScope) {
-                    selectedId = '';
+                    pinDirty = false; invalidatePins(); el('PinForm').hidden = true; el('PinChoices').replaceChildren();
+                    el('PinReason').value = '';
+                    if (!keepBrief || !refDirty) { selectedId = ''; el('ReferenceReason').value = ''; }
                     if (workspace !== nextWorkspace) draftId = null;
-                    el('Reason').value = el('ReferenceReason').value = '';
+                    if (!keepBrief || !briefDirty) el('Reason').value = '';
                 }
                 source = next;
                 workspace = nextWorkspace;
                 snapshot = view.architectureBrief;
+                listPins('Pins', snapshot?.bindings);
                 relationTypes = Object.keys(view.schema.relationDomains || {}).sort();
                 offerSources(view);
                 el('Status').textContent = t(snapshot?.problem === 'INVALID_ARCHITECTURE_BRIEF' ? 'invalid' : snapshot?.present ? snapshot.version === '1' && !snapshot.problem ? 'saved' : 'unsupported' : 'absent');
-                if (changedScope || !preserveDraft || !briefDirty) {
+                if (changedScope && !keepBrief || !preserveDraft || !briefDirty) {
                     renderFields('Fields', fields, snapshot?.fields || {});
                     briefDirty = false;
                 }
-                if (changedScope || !preserveDraft || !refDirty) {
+                if (changedScope && !keepBrief || !preserveDraft || !refDirty) {
                     updateReferences();
                     refDirty = false;
                 }
                 permissions();
             },
-            hasDraft() { return briefDirty || refDirty; },
+            hasDraft() { return briefDirty || refDirty || pinDirty; },
             setEnabled(enabled) { writable = Boolean(enabled); permissions(); }
         };
     }

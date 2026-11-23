@@ -21,12 +21,12 @@ window.ArchitectureEditorApi = (function () {
         if (layoutRevision !== null && layoutRevision !== undefined) params.set('layoutRevision', layoutRevision);
         return params.toString();
     }
-    function admbwPath(context, projectCode, viewId, rootPackageGuid) {
+    function admbwPath(context, projectCode, viewId, rootPackageGuid, preflight) {
         var params = new URLSearchParams(query(context, context.commit, null, null, viewId));
         params.set('projectCode', projectCode);
         if (rootPackageGuid != null) {
             params.set('rootPackageGuid', rootPackageGuid);
-            return base + '.admbw.qea?' + params;
+            return base + (preflight ? '.admbw.qea/preflight?' : '.admbw.qea?') + params;
         }
         return base + '.admbw.json?' + params;
     }
@@ -104,6 +104,19 @@ window.ArchitectureEditorApi = (function () {
         },
         admbwAssessment: function (context, projectCode, viewId) {
             return window.TaxonomyApiClient.getJson(admbwPath(context, projectCode, viewId), exactPolicy(context));
+        },
+        recoverAdmbw: function (context, id, resume) {
+            var url = base + '/admbw/operations/' + encodeURIComponent(id) + (resume ? '/resume?' : '?') + query(context);
+            return window.TaxonomyApiClient.request(url, {method:resume ? 'POST' : 'GET'},
+                Object.assign({retries:0}, exactPolicy(context))).then(response => response.json());
+        },
+        preflightAdmbw: function (context, projectCode, viewId, rootPackageGuid, basis, signal) {
+            return window.TaxonomyApiClient.request(admbwPath(context, projectCode, viewId, rootPackageGuid, true), {
+                method:'POST', headers:{'Content-Type':'application/vnd.sparx.qea'}, body:basis
+            }, Object.assign({retries:0, timeoutMillis:120000, signal}, exactPolicy(context))).then(response => response.json()).then(result => {
+                if (result.commit !== context.commit || !result.coverage) throw new Error(window.TaxonomyI18n.t('editor.admbw.qeaUnexpected'));
+                return result;
+            });
         },
         admbwQea: function (context, projectCode, viewId, rootPackageGuid, basis, signal) {
             var mediaType = 'application/vnd.sparx.qea';

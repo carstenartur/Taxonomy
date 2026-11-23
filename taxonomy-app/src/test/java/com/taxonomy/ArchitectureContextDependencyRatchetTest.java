@@ -155,6 +155,33 @@ class ArchitectureContextDependencyRatchetTest {
     }
 
     @Test
+    void briefScopeAndDeliveryRecoveryUseOnlyTheirReviewedEditorContracts() {
+        var classes = new ClassFileImporter().importClasses(
+                com.taxonomy.composition.architecture.ArchitectureLifecycleService.ScopeRequest.class,
+                com.taxonomy.composition.architecture.ArchitectureLifecycleService.ScopePreview.class,
+                com.taxonomy.composition.architecture.ArchitectureAdmbwPreparationService.class);
+        Set<String> pairs = new TreeSet<>();
+        for (JavaClass origin : classes) {
+            for (Dependency dependency : origin.getDirectDependenciesFromSelf()) {
+                JavaClass target = dependency.getTargetClass();
+                if (target.getName().startsWith("com.taxonomy.editor.")) {
+                    pairs.add(origin.getSimpleName() + " -> " + target.getName());
+                }
+            }
+        }
+        assertThat(pairs).containsExactly(
+                "ArchitectureAdmbwPreparationService -> com.taxonomy.editor.ArchitectureCommandPort$CheckpointAccepted",
+                "ArchitectureAdmbwPreparationService -> com.taxonomy.editor.ArchitectureCommandPort$Context",
+                "ArchitectureAdmbwPreparationService -> com.taxonomy.editor.ArchitectureCommandPort$Metadata",
+                "ArchitectureAdmbwPreparationService -> com.taxonomy.editor.ArchitectureEditorService",
+                "ArchitectureAdmbwPreparationService -> com.taxonomy.editor.ArchitectureEditorService$Document",
+                "ArchitectureAdmbwPreparationService -> com.taxonomy.editor.ArchitectureEditorService$IntegrationReceipt",
+                "ScopePreview -> com.taxonomy.editor.ArchitectureCommandPort$Context",
+                "ScopeRequest -> com.taxonomy.editor.ArchitectureCommandPort$Context",
+                "ScopeRequest -> com.taxonomy.editor.ArchitectureCommandPort$Metadata");
+    }
+
+    @Test
     void snapshotAdoptionBridgeRetainsOnlyItsReviewedPortfolioAndWorkspaceEdges() throws Exception {
         ContextPolicy policy = readAndValidateContextPolicy(
                 findRepositoryRoot().resolve(".github/architecture-contexts.json"));

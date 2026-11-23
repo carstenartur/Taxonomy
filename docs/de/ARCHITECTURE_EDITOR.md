@@ -244,6 +244,7 @@ Die Verbindungsübersicht zeigt Werkzeug, externes Projekt, Branch, Arbeitsstand
 Die gemeinsame Anwendungsnavigation bleibt auch auf dieser Seite verfügbar. Beim Wechsel zwischen Architektureditor und Werkzeugintegrationen bleiben Repository, Arbeitsbereich und Branch erhalten; über **Projekte** gelangen Sie zurück zur Projektübersicht.
 
 <a id="architecture-delivery-guide"></a>
+
 ## Von der Anforderung zur geprüften ADMBw-Liefersicht
 
 Das Beispiel verwendet ein fiktives Ausbildungsportal. Für einen eigenen Lauf
@@ -254,6 +255,12 @@ mit dem vereinbarten ADMBw-Katalog hinzu. Das öffentliche MASC-Beispiel eignet
 sich als Referenz für eine Übung. Die [Bildfolge zum Ausbildungsportal](https://github.com/carstenartur/Taxonomy/blob/main/docs/features/admbw-conformance-de.md#bildfolge-zum-ausbildungsportal)
 zeigt die Schritte am gespeicherten Teststand.
 [KI-Anbieter einrichten](AI_PROVIDERS.md) · [Sparx-Plugin installieren](https://github.com/carstenartur/Taxonomy/blob/main/docs/features/sparx-integration-de.md)
+
+**Anforderungen im Architekturauftrag festlegen.** Speichern Sie in einer beschreibbaren Arbeitskopie das Ziel des Architekturauftrags. Öffnen Sie **Anforderungen und Textbelege auswählen**. Wählen Sie die Projektanforderungen und geben Sie jeweils die wörtliche Textstelle an. Die Vorschau zeigt den vollständigen Ersatz für die alten Zuordnungen mit Projektschlüssel, Anforderungsschlüssel, Version und Inhaltshash. Eine zwischenzeitliche Textänderung erfordert eine neue Vorschau. Ein historischer Checkpoint behält die damals zugeordneten Versionen.
+
+**Befund bearbeiten.** Bei unterstützten Befunden der Arbeitsvorschau öffnet **Betroffenes Objekt bearbeiten** das zugehörige Element, die Beziehung oder den R7-Planungseintrag. Prüfen und übernehmen Sie die Änderung am Modell. Die Liefervorschau berechnet den gültigen Entwurf für die neue Revision erneut. Bestätigen Sie danach beide fachlichen Prüfungen. Befunde historischer Checkpoints sind schreibgeschützt.
+
+**Nach dem Neuladen fortsetzen.** Öffnen Sie im selben Tab den Arbeitsbereich und Branch mit demselben Benutzer. Die Oberfläche fragt den ursprünglichen Vorgang auch nach einer verlorenen Serverantwort erneut ab. Bei ausstehender Veröffentlichung können Sie den Checkpoint dieses Vorgangs fortsetzen. Wählen Sie die vereinbarte QEA-Datei erneut aus und klicken Sie auf **Nativen Export prüfen**. Die Prüfung verwendet den gespeicherten Checkpoint, das Projekt, die Sicht, das Modell-Root und die Gesamtabdeckung. Bei neu geprüften Lieferungen muss der SHA-256-Wert der Basis übereinstimmen. Der Download prüft die Datei erneut und erzeugt eine gesonderte Kopie für die fachliche Prüfung in Enterprise Architect.
 
 ### 1. Anforderung analysieren und offene Fragen klären
 

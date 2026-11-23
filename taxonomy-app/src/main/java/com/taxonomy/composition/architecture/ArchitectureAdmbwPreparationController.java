@@ -67,6 +67,24 @@ public class ArchitectureAdmbwPreparationController {
         return LifecycleHttpContext.response(result.context()).body(result);
     }
 
+    @GetMapping("/operations/{operationId}")
+    @Operation(summary="Recover the selected user's accepted ADMBw delivery after reload",
+            description="Looks up the original operation and reachable checkpoint in the authenticated workspace. Returns basis identity and coverage without uploading a QEA or changing the model.")
+    public ResponseEntity<ArchitectureAdmbwPreparationService.Recovery> receipt(@PathVariable String operationId,
+            @RequestParam String repositoryId, @RequestParam String workspaceScopeKey, @RequestParam String branch) throws IOException {
+        var result = service.recover(contexts.resolveForRead(repositoryId, workspaceScopeKey, branch), operationId, false);
+        return LifecycleHttpContext.response(result.publication().context()).body(result);
+    }
+
+    @PostMapping("/operations/{operationId}/resume")
+    @Operation(summary="Finish the checkpoint of an already accepted ADMBw delivery",
+            description="Resumes only the authenticated user's exact durable checkpoint intent. The original assignments are never resubmitted.")
+    public ResponseEntity<ArchitectureAdmbwPreparationService.Recovery> resume(@PathVariable String operationId,
+            @RequestParam String repositoryId, @RequestParam String workspaceScopeKey, @RequestParam String branch) throws IOException {
+        var result = service.recover(contexts.resolveForRead(repositoryId, workspaceScopeKey, branch), operationId, true);
+        return LifecycleHttpContext.response(result.publication().context()).body(result);
+    }
+
     private ArchitectureAdmbwPreparationService.Request review(MultipartFile part) throws IOException {
         if (part.getSize() > MAX_REVIEW_BYTES) throw new IllegalArgumentException("The ADMBw review exceeds 64 KiB");
         try (var stream = part.getInputStream()) {

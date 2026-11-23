@@ -142,12 +142,51 @@ class ArchitectureAdmbwPreparationServiceTest extends LifecycleTestSupport {
         var before = capture(context);
         when(catalog.acquire(AdmbwQeaExport.KEY, IntegrationConnectorExtension.class))
                 .thenThrow(new ExtensionUnavailableException(AdmbwQeaExport.KEY));
+        var recovered = service.recover(context, request.metadata().commandId(), false);
+        assertThat(recovered.publication().checkpoint().commitId()).isEqualTo(first.checkpoint().commitId());
+        assertThat(recovered.delivery().basisSha256()).isEqualTo(basisHash);
+        assertThat(recovered.delivery().viewId()).isEqualTo(preview.viewId());
+        assertThat(recovered.delivery().rootPackageGuid()).isEqualToIgnoringCase(request.selection().rootPackageGuid());
+        var other = workspace("outside-receipt");
+        rejected("NOT_FOUND", () -> service.recover(other, request.metadata().commandId(), true));
         var replay = service.accept(context, reviewed, BYTES);
         assertThat(replay.state()).isEqualTo("CHECKPOINTED");
         assertThat(replay.context()).isEqualTo(first.context());
         assertThat(replay.checkpoint().commitId()).isEqualTo(first.checkpoint().commitId());
         assertUnchanged(context, before);
         assertThat(editor.read(context, null).dsl()).contains("Later edit must survive");
+    }
+
+    @Test
+    void restoreReadsPendingReceiptAndResumesOnlyTheOriginalPublicationWithoutApplyingAgain() throws Exception {
+        var context = workspace("admbw-pending-restore");
+        var request = request(context, "RESTORE");
+        var failOnce = new java.util.concurrent.atomic.AtomicBoolean(true);
+        var writer = new com.taxonomy.editor.ArchitectureCheckpointWriter() {
+            @Override public Result write(com.taxonomy.workspace.storage.DslGitRepository repository, String scope, String branch,
+                    com.taxonomy.editor.persistence.EditorJournal.Checkpoint intent) throws java.io.IOException {
+                if (failOnce.getAndSet(false)) throw new java.io.IOException("Publication outage");
+                return super.write(repository, scope, branch, intent);
+            }
+        };
+        var recoveringEditor = new com.taxonomy.editor.ArchitectureEditorService(git, journal, writer);
+        var recoveringLifecycle = new ArchitectureLifecycleService(recoveringEditor, projects, portfolio, workspaces,
+                repositories, membership, transactions);
+        var recoveringService = new ArchitectureAdmbwPreparationService(recoveringEditor, recoveringLifecycle, catalog, transactions);
+        var preview = recoveringService.preview(context, request, BYTES);
+        var pending = recoveringService.accept(context, reviewed(request, preview.fingerprint(), true, true), BYTES);
+        assertThat(pending.state()).isEqualTo("CHECKPOINT_PENDING");
+        var before = capture(context);
+        var id = request.metadata().commandId();
+        assertThat(recoveringService.recover(context, id, false).publication().state()).isEqualTo("CHECKPOINT_PENDING");
+        rejected("NOT_FOUND", () -> recoveringEditor.resumeCheckpoint(context, java.util.UUID.randomUUID().toString()));
+        assertUnchanged(context, before);
+        var result = recoveringService.recover(context, id, true);
+        assertThat(result.publication().state()).isEqualTo("CHECKPOINTED");
+        assertThat(result.publication().context().revision()).isEqualTo(pending.context().revision());
+        assertThat(journal.read(context).operations()).isEqualTo(before.journal().operations());
+        assertThat(recoveringService.recover(context, id, true).publication().checkpoint().commitId())
+                .isEqualTo(result.publication().checkpoint().commitId());
     }
 
     @Test

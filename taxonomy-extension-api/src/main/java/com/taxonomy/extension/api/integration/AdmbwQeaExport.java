@@ -15,6 +15,12 @@ public interface AdmbwQeaExport extends IntegrationConnectorExtension {
 
     ExchangeFile exportAdmbw(Delivery delivery, String rootPackageGuid, byte[] basis);
 
+    /** Preflight checks the same native serialization constraints without publishing or returning a file. */
+    default boolean supportsDeliveryPreflight() { return false; }
+    default void preflightAdmbw(Delivery delivery, String rootPackageGuid, byte[] basis) {
+        throw new UnsupportedOperationException("Native delivery preflight is unavailable");
+    }
+
     /** Older plugins still support export without exposing a native reference inventory. */
     default boolean supportsBasisInspection() { return false; }
     default Basis inspectAdmbwBasis(byte[] basis) {

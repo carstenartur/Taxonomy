@@ -221,6 +221,7 @@ The connection summary shows the tool, external project, branch, workspace revis
 The shared application navigation remains available on this page. Repository, workspace and branch are retained when moving between the architecture editor and tool integrations; **Projects** returns to the project overview.
 
 <a id="architecture-delivery-guide"></a>
+
 ## From a requirement to a reviewed ADMBw delivery view
 
 1. Open the saved requirement and run Copilot. The automatic analysis defaults
@@ -240,6 +241,12 @@ The shared application navigation remains available on this page. Repository, wo
    same panel. Taxonomy uses the saved checkpoint, reviewed view and selected
    basis for the download. Verify the native delivery in Enterprise Architect
    with the agreed ADMBw MDG.
+
+**Bind the architecture brief to requirements.** In a writable working copy, save the architecture objective and open **Select requirements and excerpts**. Select each project requirement and enter the exact supporting passage. Preview shows the complete replacement set, including project and requirement keys, version numbers and content hashes. A changed requirement requires a fresh preview. The selected checkpoint retains the previous assignment set for historical review.
+
+**Correct a finding.** In a working delivery preview, choose **Edit the affected object** next to a supported finding. The editor opens the element, relationship or R7 planning entry named by the assessment. Preview and accept the model edit. The delivery panel recomputes a valid draft against the new revision. Review both approvals again before accepting the delivery. Findings on historical checkpoints remain available for inspection.
+
+**Continue after reloading the tab.** Return to the same workspace, branch and user. The panel looks up the original operation, including after a response was lost. If publication is pending, retry its checkpoint. Reselect the agreed QEA file and choose **Check native export**. The check uses the saved checkpoint, project, view, root and whole-model coverage. Newly reviewed deliveries require the saved SHA-256 of the uploaded basis. Download rechecks the file and produces a separate copy for manual inspection in Enterprise Architect.
 
 The Sparx plugin is required for native QEA delivery. See the
 [illustrated walkthrough (German)](https://github.com/carstenartur/Taxonomy/blob/main/docs/de/ARCHITECTURE_EDITOR.md#architecture-delivery-guide).

@@ -172,7 +172,8 @@ public final class ApiAccessPolicy {
         rules.add(rule(null, "/api/integrations/**", Access.DENIED, null, "Unclassified integration operation is denied."));
         rules.add(rule(null, "/oslc/**", Access.DENIED, null, "OSLC is read-only."));
 
-        add(rules, "POST", INTEGRATION_EXPORT, "/api/scores/export", "/api/architecture/editor.admbw.qea");
+        add(rules, "POST", INTEGRATION_EXPORT, "/api/scores/export", "/api/architecture/editor.admbw.qea",
+                "/api/architecture/editor.admbw.qea/preflight");
         add(rules, "POST", ARCHITECTURE_READ, "/api/dsl/parse", "/api/dsl/validate", "/api/dsl/format", "/api/dsl/project/compare-current", "/api/graph/**", "/api/scores/**");
         for (String path : List.of("/api/diagram/visio", "/api/diagram/archimate", "/api/diagram/mermaid",
                 "/api/diagram/structurizr", "/api/diagram/export/*")) {

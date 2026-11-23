@@ -42,6 +42,59 @@ class ArchitectureLifecycleServiceTest extends LifecycleTestSupport {
     @Autowired ObjectMapper json;
 
     @Test
+    void briefPinsUseScopedCurrentVersionsAndRejectTheWholeStaleOrForeignSelection() throws Exception {
+        var context = workspace("brief-pins");
+        var elsewhere = workspace("brief-foreign");
+        var first = create(context, null, "BRIEF", "R1", "First source text");
+        var second = create(context, first.projectId(), null, "R2", "Second source text");
+        var foreign = create(elsewhere, null, "OTHER", "R1", "Foreign source text");
+        editor.execute(context, new com.taxonomy.editor.ArchitectureCommandPort.Command(editor.read(context, null).context(),
+                metadata("Create brief"), new com.taxonomy.editor.ArchitectureCommandPort.SemanticCommand(
+                new com.taxonomy.dsl.command.ArchitectureCommand.SetArchitectureBrief(java.util.Map.of("objective", "Document sources")))));
+        var stand = editor.read(context, null).context();
+        var pins = List.of(pin(first, "First source"), pin(second, "Second source"));
+        var original = new ArchitectureLifecycleService.ScopeRequest(stand, metadata("Bind two requirements"), pins, null);
+        var before = capture(context);
+        assertThatThrownBy(() -> lifecycle.previewScope(context, new ArchitectureLifecycleService.ScopeRequest(stand,
+                original.metadata(), List.of(pins.getFirst(), pin(foreign, "Foreign")), null))).isInstanceOf(PortfolioException.class);
+        rejected("REQUIREMENT_EVIDENCE_CHANGED", () -> lifecycle.previewScope(context, new ArchitectureLifecycleService.ScopeRequest(
+                stand, original.metadata(), List.of(pin(first, "wrong excerpt")), null)));
+        projects.updateProject(first.projectId(), new UpdateProjectRequest("Pending project rename", null, null, null, null, null, null),
+                "alice", scope(context));
+        var preview = lifecycle.previewScope(context, original);
+        assertThat(preview.changes()).extracting(com.taxonomy.dsl.command.ArchitectureSemanticPatch.BlockChange::id)
+                .containsExactly("source:architecture-brief");
+        assertUnchanged(context, before);
+        var accepted = lifecycle.acceptScope(context, new ArchitectureLifecycleService.ScopeRequest(stand,
+                original.metadata(), pins, preview.fingerprint()));
+        var checkpoint = accepted.checkpoint().commitId();
+        var clear = new ArchitectureLifecycleService.ScopeRequest(accepted.context(), metadata("Clear assignments"), List.of(), null);
+        var clearPreview = lifecycle.previewScope(context, clear);
+        assertThat(clearPreview.changes()).extracting(com.taxonomy.dsl.command.ArchitectureSemanticPatch.BlockChange::id)
+                .containsExactly("source:architecture-brief");
+        assertThat(editor.read(context, checkpoint).dsl()).doesNotContain("Pending project rename");
+        var old = com.taxonomy.dsl.planning.ArchitectureBrief.read(new com.taxonomy.dsl.command.ArchitectureDslCommands()
+                .model(editor.read(context, checkpoint).dsl()));
+        assertThat(old.bindings()).extracting(com.taxonomy.dsl.planning.ArchitectureBrief.Binding::evidenceQuote)
+                .containsExactly("First source", "Second source");
+        var next = new ArchitectureLifecycleService.ScopeRequest(accepted.context(), metadata("Review changed quote"),
+                List.of(pin(first, "text"), pin(second, "Second source")), null);
+        var nextPreview = lifecycle.previewScope(context, next);
+        projects.addRequirementVersion(second.projectId(), second.requirementId(), new CreateRequirementVersionRequest(
+                "New second text", "Source correction", null), "alice", scope(context));
+        var beforeStaleAccept = capture(context);
+        rejected("REQUIREMENT_VERSION_CHANGED", () -> lifecycle.acceptScope(context, new ArchitectureLifecycleService.ScopeRequest(
+                next.context(), next.metadata(), next.pins(), nextPreview.fingerprint())));
+        assertUnchanged(context, beforeStaleAccept);
+        assertThat(editor.read(context, checkpoint).dsl()).isEqualTo(editor.read(context, null).dsl());
+    }
+
+    private ArchitectureLifecycleService.RequirementPin pin(ArchitectureRequirementService.Saved saved, String quote) {
+        return new ArchitectureLifecycleService.RequirementPin(saved.projectId(), saved.requirementId(),
+                saved.requirement().currentVersionId(), saved.requirement().currentVersion().contentHash(), quote);
+    }
+
+    @Test
     void aSharedContributorExtendsTheSameRequirementLifecycleAndRevocationClosesAccess() throws Exception {
         var owner = workspace("shared-contribution");
         var first = create(owner, null, "SHARED-LIFECYCLE", "REQ-1", "Retained requirement before sharing");

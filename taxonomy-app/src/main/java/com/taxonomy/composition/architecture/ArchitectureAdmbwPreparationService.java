@@ -186,13 +186,51 @@ public class ArchitectureAdmbwPreparationService {
         return lifecycle.finish(context, accepted, checkpoint);
     }
 
+    public record Recovery(Publication publication, AdmbwPreparation.DeliveryIdentity delivery,
+                           AdmbwFffmlvProfile.Report assessment, List<AdmbwFffmlvProfile.Issue> qeaIssues) {}
+
+    public Recovery recover(RepositoryContext context, String operationId, boolean resume) throws IOException {
+        lifecycle.authorize(context, true);
+        String id = java.util.UUID.fromString(operationId).toString();
+        String checkpointId = checkpointId(id);
+        var entry = editor.integrationReceipt(context, id, checkpointId);
+        var delivery = entry == null ? null : AdmbwPreparation.deliveryForOperation(entry.source(), id);
+        if (delivery == null) throw problem("NOT_FOUND", "The selected workspace has no personal delivery receipt for this operation");
+        var receipt = entry.checkpoint();
+        if (receipt == null && entry.pending()) {
+            if (!resume) return new Recovery(new Publication(entry.accepted(), "CHECKPOINT_PENDING", null, null, null), delivery, null, List.of());
+            try { receipt = editor.resumeCheckpoint(context, checkpointId); }
+            catch (ArchitectureDslCommands.CommandProblem changed) {
+                if (!"NOT_FOUND".equals(changed.code())) throw changed;
+                // Another tab may have completed this receipt or started a later checkpoint.
+                return recover(context, id, false);
+            }
+        }
+        if (receipt != null) {
+            try { editor.read(context, receipt.commitId()); }
+            catch (ArchitectureDslCommands.CommandProblem unavailable) {
+                if (!"NOT_FOUND".equals(unavailable.code())) throw unavailable;
+                receipt = null;
+            }
+        }
+        if (receipt == null) receipt = editor.integrationCheckpointForOperation(context, id).orElse(null);
+        if (receipt == null) return new Recovery(new Publication(entry.accepted(), "RECONCILIATION_REQUIRED", null,
+                "VERSION_CHANGED", "Reconcile the retained delivery before downloading it"), delivery, null, List.of());
+        var document = editor.read(context, receipt.commitId());
+        if (!delivery.equals(AdmbwPreparation.deliveryForOperation(document.dsl(), id)))
+            throw problem("VERSION_CHANGED", "The checkpoint no longer contains this reviewed delivery");
+        var report = new AdmbwFffmlvProfile().assess(document.dsl(), delivery.projectCode(), delivery.viewId());
+        return new Recovery(new Publication(receipt.context(), "CHECKPOINTED", receipt, null, null), delivery,
+                report, ArchitectureEditorExportController.qeaIssues(report));
+    }
+
     private AdmbwPreparation.Prepared prepare(String source, Request request, AdmbwQeaExport.Basis basis) {
         if (basis.roots().stream().noneMatch(root -> root.guid().equalsIgnoreCase(request.selection().rootPackageGuid())))
             throw problem("ADMBW_REFERENCE_MISSING", "Select an actual model root from this QEA basis");
         var references = basis.references().stream().map(ref -> new AdmbwPreparation.Reference(ref.guid(), ref.stereotype(),
                 ref.name(), ref.notes(), ref.packagePath(), ref.rootGuid(), ref.ownerGuid())).toList();
         return new AdmbwPreparation(catalogues).prepare(source, request.selection(),
-                new AdmbwPreparation.Basis(basis.sha256(), basis.projectGuid(), references));
+                new AdmbwPreparation.Basis(basis.sha256(), basis.projectGuid(), references), request.metadata().commandId());
     }
 
     private static String previewFingerprint(Request request, AdmbwPreparation.Prepared prepared) {

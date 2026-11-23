@@ -3,6 +3,7 @@ package com.taxonomy.plugins.sparx;
 import com.taxonomy.extension.api.integration.AdmbwQeaExport;
 import com.taxonomy.extension.api.integration.IntegrationContracts.*;
 import com.taxonomy.sparx.mapping.SparxSemanticTypes;
+import java.util.List;
 import java.util.Set;
 
 /** Versioned native-file output. A supplied basis is mandatory; this never publishes to EA or PCS. */
@@ -32,7 +33,15 @@ public final class SparxQeaWriterConnector implements AdmbwQeaExport {
     @Override public ExchangeFile previewOutbound(BasedOutboundRequest request) { return new QeaWriter().write(request); }
 
     @Override public ExchangeFile exportAdmbw(Delivery delivery, String rootPackageGuid, byte[] basis) {
-        return new AdmbwQeaWriter().write(delivery, rootPackageGuid, basis);
+        byte[] content = new AdmbwQeaWriter().writeCopy(delivery, rootPackageGuid, basis);
+        return new ExchangeFile(MEDIA_TYPE, delivery.projectCode() + "-admbw.qea", content, List.of());
+    }
+
+    @Override public boolean supportsDeliveryPreflight() { return true; }
+
+    /** Validates the delivery by serializing a disposable private copy under the native export limits. */
+    @Override public void preflightAdmbw(Delivery delivery, String rootPackageGuid, byte[] basis) {
+        new AdmbwQeaWriter().writeCopy(delivery, rootPackageGuid, basis);
     }
 
     @Override public boolean supportsBasisInspection() { return true; }

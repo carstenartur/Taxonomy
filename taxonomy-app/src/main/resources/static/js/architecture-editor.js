@@ -47,7 +47,13 @@
     var directoryRoot = window.TaxonomyOrganizationDirectory && el('editorOrganizationDirectory');
     var directory = directoryRoot && window.TaxonomyOrganizationDirectory?.create({root: directoryRoot, t: t, stage: stage});
     var legacyOption = ':legacy:';
-    var briefPanel = window.TaxonomyArchitectureBrief?.create({ root: root, t: t, stage: stage });
+    var briefPanel = window.TaxonomyArchitectureBrief?.create({ root: root, t: t, stage: stage,
+        generation: function () { return generation; },
+        onPinsAccepted: async function (publication, origin, ticket) {
+            if (active && !loading && view && ticket === generation && sameScope(context(), origin) && context().actor === origin.actor)
+                await load(preserveWorkspacePin(publication.context, origin), null, true, true);
+        }
+    });
     var planningPanel = window.TaxonomyPlanningEditor.create({ t: t, stage: stage });
     var focusPanel = window.ArchitectureFocusPanel({ t: t, request: api.suggest, present: renderer.presentFocus,
         language: function () { return document.documentElement.lang === 'de' ? 'de' : 'en'; },
@@ -67,8 +73,22 @@
         }
     });
     var preparationPanel = window.TaxonomyAdmbwPreparation?.create({root:root, api:api, t:t, report:report,
-        onAccepted:async function (publication, origin, viewId) {
-            if (!active || loading || !view || !sameScope(context(), origin) || context().actor !== origin.actor) return;
+        openFinding:function (target) {
+            if (!active || loading || busy || !view?.mayEdit || view.document.projectionState !== 'READY') return false;
+            if (target.panel === 'planning') return planningPanel.openR7(target.id, target.field);
+            if (!selectElement(target.id)) return false;
+            const field = el(target.field);
+            for (let ancestor = field.parentElement; ancestor; ancestor = ancestor.parentElement) {
+                if (ancestor.tagName === 'DETAILS') ancestor.open = true;
+            }
+            field.focus();
+            return true;
+        },
+        generation:function () { return generation; },
+        onAccepted:async function (publication, origin, viewId, ticket) {
+            if (!active || loading || ticket !== generation || !view || view.document.source !== 'WORKSPACE_REVISION'
+                    || view.document.projectionState === 'HISTORICAL' || !sameScope(context(), origin)
+                    || context().actor !== origin.actor) return;
             selectedView = viewId;
             await load(preserveWorkspacePin(publication.context, origin), null, true);
         }
@@ -93,7 +113,7 @@
         return confirmed;
     }
     var admbwUrl = null, admbwRequest = null, admbwScope = null;
-    var admbwChecked = false, admbwNativeRequest = null;
+    var admbwChecked = false, admbwNativeRequest = null, checkedBasis = null, checkedRoot = null;
     function renderAdmbwExport() {
         var options = el('editorAdmbwOptions');
         options.hidden = !active || loading || !view || view.document.source !== 'GIT_CHECKPOINT' || !context().commit;
@@ -102,7 +122,7 @@
         link.hidden = options.hidden || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$/.test(projectCode);
         var url = link.hidden ? null : api.admbwUrl(context(), projectCode, el('editorAdmbwView').value);
         if (url !== admbwUrl) {
-            admbwUrl = url;
+            admbwUrl = url; checkedBasis = checkedRoot = null;
             admbwRequest = null;
             el('editorAdmbwResult').hidden = true;
             admbwChecked = false;
@@ -119,9 +139,10 @@
         var basisInput = el('editorAdmbwQeaBasis'), rootInput = el('editorAdmbwRootGuid');
         basisInput.disabled = rootInput.disabled = admbwNativeRequest !== null;
         var basis = basisInput.files?.[0], rootGuid = rootInput.value.trim();
-        el('editorAdmbwQeaDownload').disabled = !admbwChecked || admbwNativeRequest !== null || !basis
+        el('editorAdmbwPreflight').disabled = !admbwChecked || admbwNativeRequest !== null || !basis
             || basis.size === 0 || basis.size > 32 * 1024 * 1024
             || !/^\{[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\}$/i.test(rootGuid);
+        el('editorAdmbwQeaDownload').disabled = el('editorAdmbwPreflight').disabled || checkedBasis !== basis || checkedRoot !== rootGuid;
     }
     el('editorAdmbwProjectCode').addEventListener('input', renderAdmbwExport);
     el('editorAdmbwView').addEventListener('change', renderAdmbwExport);
@@ -144,7 +165,7 @@
                 var title = document.createElement('h3');
                 title.textContent = reportView.name + ' · ' + t('editor.admbw.status.' + reportView.status);
                 var list = document.createElement('ul');
-                reportView.issues.map(function (issue) { return issue.object + ' · ' + issue.detail; })
+                reportView.issues.map(function (issue) { return [issue.code, issue.object, issue.detail].filter(Boolean).join(' · '); })
                     .concat(reportView.requiredReviews).forEach(function (detail) {
                         var item = document.createElement('li'); item.textContent = window.TaxonomyAdmbwCoverage.message(detail, t); list.append(item);
                     });
@@ -152,7 +173,8 @@
             });
             qeaIssues.forEach(function (issue) {
                 var item = document.createElement('p');
-                item.textContent = issue.object + ' · ' + t('editor.problem.' + issue.code);
+                var key = 'editor.problem.' + issue.code, localized = t(key);
+                item.textContent = [issue.code, issue.object, localized === key ? issue.detail : localized].filter(Boolean).join(' · ');
                 result.append(item);
             });
             result.hidden = false;
@@ -162,8 +184,29 @@
             if (admbwRequest === request) { admbwRequest = null; renderAdmbwExport(); }
         }
     });
-    el('editorAdmbwQeaBasis').addEventListener('change', renderAdmbwExport);
-    el('editorAdmbwRootGuid').addEventListener('input', renderAdmbwExport);
+    function invalidateNativeCheck() {
+        checkedBasis = checkedRoot = null;
+        el('editorAdmbwQeaStatus').hidden = true;
+        renderAdmbwExport();
+    }
+    el('editorAdmbwPreflight').addEventListener('click', async function () {
+        if (this.disabled) return;
+        var ticket = admbwNativeRequest = new AbortController(), status = el('editorAdmbwQeaStatus');
+        var basis = el('editorAdmbwQeaBasis').files[0], guid = el('editorAdmbwRootGuid').value.trim();
+        checkedBasis = checkedRoot = null;
+        renderAdmbwExport();
+        status.hidden = false;
+        try {
+            var result = await api.preflightAdmbw(context(), el('editorAdmbwProjectCode').value.trim(),
+                el('editorAdmbwView').value, guid, basis, ticket.signal);
+            if (admbwNativeRequest !== ticket) return;
+            checkedBasis = basis; checkedRoot = guid;
+            status.textContent = t('editor.prep.preflightReady') + ' · ' + (result.coverage.status || result.coverage);
+        } catch (error) { if (admbwNativeRequest === ticket) report(error, status); }
+        finally { if (ticket === admbwNativeRequest) { admbwNativeRequest = null; renderAdmbwExport(); } }
+    });
+    el('editorAdmbwQeaBasis').addEventListener('change', invalidateNativeCheck);
+    el('editorAdmbwRootGuid').addEventListener('input', invalidateNativeCheck);
     el('editorAdmbwQeaDownload').addEventListener('click', async function () {
         if (this.disabled) return;
         var request = admbwNativeRequest = new AbortController();
@@ -262,7 +305,7 @@
         el('editorAccept').disabled = busy || !pending || pending !== previewed;
         el('editorCollaborationToggle').disabled = !writable || !view?.collaboration?.mayManage;
     }
-    async function load(scope, commit, preserveDraft) {
+    async function load(scope, commit, preserveDraft, preserveBriefDrafts) {
         if (!active) return false;
         var ticket = ++generation;
         loading = true;
@@ -288,7 +331,7 @@
             layoutRevision = view.schema.layoutRevision === undefined ? null : view.schema.layoutRevision;
             Object.freeze(view.document.context);
             if (!preserveDraft && !selectedElement()) selected = null;
-            render(preserveDraft);
+            render(preserveDraft, preserveBriefDrafts);
             linkSelection(true);
             return true;
         } catch (error) {
@@ -312,7 +355,7 @@
         // Later source changes still invalidate its canonical request context.
         window.TaxonomyArchitectureLifecycle?.observe(view.document, view.mayEdit);
     }
-    function render(preserveDraft) {
+    function render(preserveDraft, preserveBriefDrafts) {
         if (responsibilityDisplay) {
             displayedAssignments = null;
             var controls = el('editorResponsibilityControl');
@@ -320,7 +363,7 @@
         }
         directory?.render(view.model.organizations || [], view.mayEdit, preserveDraft);
         renderPackages(preserveDraft);
-        briefPanel?.render(view, preserveDraft);
+        briefPanel?.render(view, preserveDraft, preserveBriefDrafts);
         planningPanel.render(view, preserveDraft);
         var c = context();
         publishContext();
