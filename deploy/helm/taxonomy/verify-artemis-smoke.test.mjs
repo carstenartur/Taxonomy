@@ -328,6 +328,116 @@ if catalogue_ready; then exit 0; else exit 1; fi
     }
   } finally { rmSync(root, {recursive: true, force: true}); }
 });
+function runProviderFault(root, responses, {advanceSeconds = 0, analysisHttpCode = 200} = {}) {
+  const evidence = join(root, 'evidence');
+  mkdirSync(evidence);
+  writeFileSync(join(root, 'startup-responses.json'), JSON.stringify(responses));
+  writeFileSync(join(root, 'polls'), '0');
+  writeFileSync(join(root, 'calls'), '');
+  // A previous pod's readiness must never authorize the replacement pod's request.
+  writeFileSync(join(evidence, 'catalogue-readiness.json'), '{"initialized":true}');
+  const result = spawnSync('bash', ['-c', String.raw`set -euo pipefail
+source "$PROVIDER_FAULT_SCRIPT"
+fail() { echo "$*" >&2; exit 1; }
+sleep() { SECONDS=$((SECONDS + SMOKE_ADVANCE_SECONDS)); command sleep 0.005; }
+kubectl() {
+  if [[ "$1" == exec && "$4" == replacement-web-pod ]]; then
+    local url
+    for url in "$@"; do :; done
+    case "$url" in
+      */api/status/startup)
+        local poll response exit_code
+        poll=$(cat "$SMOKE_TEST_STATE/polls")
+        printf '%s\n' "$((poll + 1))" >"$SMOKE_TEST_STATE/polls"
+        response=$(jq -c --argjson poll "$poll" '.[$poll] // .[-1]' "$SMOKE_TEST_STATE/startup-responses.json")
+        printf '%s\n' 'startup:replacement-web-pod' >>"$SMOKE_TEST_STATE/calls"
+        if [[ $(jq -r '.ready' <<<"$response") == true ]]; then touch "$SMOKE_TEST_STATE/ready"; fi
+        jq -r '.body' <<<"$response"
+        exit_code=$(jq -r '.exit' <<<"$response")
+        return "$exit_code"
+        ;;
+      */api/workspace/create)
+        echo workspace-create >>"$SMOKE_TEST_STATE/calls"
+        echo '{"workspaceId":"fixture-workspace"}' ;;
+      */api/workspace/provision\?workspaceId=fixture-workspace)
+        echo workspace-provision >>"$SMOKE_TEST_STATE/calls"
+        echo '{"status":"READY"}' ;;
+      */api/analyze\?workspaceId=fixture-workspace)
+        if [[ -f "$SMOKE_TEST_STATE/ready" ]]; then
+          echo "analysis:$SMOKE_ANALYSIS_HTTP" >>"$SMOKE_TEST_STATE/calls"
+          if [[ "$SMOKE_ANALYSIS_HTTP" == 200 ]]; then touch "$SMOKE_TEST_STATE/inference"; fi
+          printf '%s' "$SMOKE_ANALYSIS_HTTP"
+        else
+          echo analysis:503 >>"$SMOKE_TEST_STATE/calls"
+          printf 503
+        fi ;;
+      *) echo "Unexpected application request: $url" >&2; return 97 ;;
+    esac
+  elif [[ "$1" == exec && "$4" == deployment/small-provider ]]; then
+    if [[ -f "$SMOKE_TEST_STATE/inference" ]]; then printf 1; fi
+  elif [[ "$1" == get && "$2" == pods ]]; then
+    echo 11111111-1111-4111-8111-111111111111
+  else
+    echo "Unexpected Kubernetes request: $*" >&2; return 97
+  fi
+}
+observe_started() {
+  echo provider-in-flight >>"$SMOKE_TEST_STATE/calls"
+  # The readiness regression ends at the existing physical-provider assertion.
+  exit 73
+}
+exercise_small_provider_fault replacement-web-pod "$EVIDENCE_DIR" observe_started
+`], {env: {...process.env, NAMESPACE: 'fixture-namespace', SMOKE_TEST_STATE: root,
+    SMOKE_ADVANCE_SECONDS: String(advanceSeconds), SMOKE_ANALYSIS_HTTP: String(analysisHttpCode), EVIDENCE_DIR: evidence,
+    PROVIDER_FAULT_SCRIPT: join(dirname(script), 'small-provider-fault.sh')},
+    encoding: 'utf8', timeout: 5000});
+  return {result, evidence, calls: readFileSync(join(root, 'calls'), 'utf8').trim().split('\n')};
+}
+
+test('Provider fault waits for the replacement web catalogue before creating a workspace or admitting analysis', () => {
+  const root = mkdtempSync(join(tmpdir(), 'provider-catalogue-ready-'));
+  try {
+    const responses = [
+      {body: '{"initialized":false,"status":"Loading"}', exit: 0},
+      {body: '{"status":"UP"}', exit: 0},
+      {body: '{"initialized":"true"}', exit: 0},
+      {body: 'incomplete JSON', exit: 0},
+      {body: '{"initialized":true}', exit: 22},
+      {body: '{"initialized":true,"status":"ready"}', exit: 0, ready: true},
+    ];
+    const {result, evidence, calls} = runProviderFault(root, responses);
+    assert.equal(result.status, 73, result.stdout + result.stderr + '\n' + calls.join('\n'));
+    assert.deepEqual(calls, [
+      ...Array(6).fill('startup:replacement-web-pod'),
+      'workspace-create', 'workspace-provision', 'analysis:200', 'provider-in-flight',
+    ]);
+    assert.deepEqual(JSON.parse(readFileSync(join(evidence, 'catalogue-readiness.json'), 'utf8')),
+      {initialized: true, status: 'ready'});
+  } finally { rmSync(root, {recursive: true, force: true}); }
+});
+
+test('Provider fault stops before workspace mutation when replacement catalogue readiness remains unavailable', () => {
+  const root = mkdtempSync(join(tmpdir(), 'provider-catalogue-unavailable-'));
+  try {
+    const {result, calls} = runProviderFault(root, [{body: '{"initialized":true}', exit: 22}], {advanceSeconds: 1000});
+    assert.equal(result.status, 1, result.stdout + result.stderr);
+    assert.match(result.stderr, /catalogue readiness/i);
+    assert.deepEqual(calls, ['startup:replacement-web-pod', 'startup:replacement-web-pod']);
+  } finally { rmSync(root, {recursive: true, force: true}); }
+});
+
+test('Provider fault preserves the completed analysis HTTP status when no inference was admitted', () => {
+  const root = mkdtempSync(join(tmpdir(), 'provider-admission-rejected-'));
+  try {
+    const {result, evidence, calls} = runProviderFault(root,
+      [{body: '{"initialized":true}', exit: 0, ready: true}], {analysisHttpCode: 503});
+    assert.equal(result.status, 1, result.stdout + result.stderr);
+    assert.match(result.stderr, /No real provider request/);
+    assert.deepEqual(calls, ['startup:replacement-web-pod', 'workspace-create', 'workspace-provision', 'analysis:503']);
+    assert.equal(readFileSync(join(evidence, 'analysis-http-status.txt'), 'utf8'), '503\n');
+  } finally { rmSync(root, {recursive: true, force: true}); }
+});
+
 test('Frozen coordinator identity refuses incomplete selected graph and detects changed input or revision', () => {
   const root=mkdtempSync(join(tmpdir(), 'artemis-coordinator-identity-'));
   try {
