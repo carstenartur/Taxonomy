@@ -6,16 +6,29 @@ import com.taxonomy.dto.GapAnalysisView;
 import com.taxonomy.dto.PatternDetectionView;
 import jakarta.persistence.EntityManager;
 import org.hibernate.Session;
+import org.hibernate.SessionFactory;
 import org.hibernate.type.StandardBasicTypes;
 import org.springframework.stereotype.Repository;
 
+import java.io.FilterReader;
+import java.io.IOException;
 import java.io.Reader;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.nio.CharBuffer;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.sql.Clob;
+import java.util.LinkedHashMap;
+import java.util.Objects;
 import java.util.Optional;
 
 /** Reads complete immutable evidence while its caller's transaction still owns the CLOB locators. */
 @Repository
 public class PortfolioSnapshotEvidenceReader {
+    private static final int MAX_CONTINUATION_ENTRIES = 16;
+    private static final long MAX_CONTINUATION_BYTES = 2L * 1024 * 1024;
+    private static final int FINGERPRINT_BUFFER_CHARACTERS = 8192;
     private static final String SELECT = """
             select s.analysis_payload as analysis_payload, s.gap_payload as gap_payload,
                    s.pattern_payload as pattern_payload, s.recommendation_payload as recommendation_payload
@@ -34,9 +47,12 @@ public class PortfolioSnapshotEvidenceReader {
                            PatternDetectionView patternDetection, ArchitectureRecommendation recommendation) { }
     /** The wrapper preserves an existing row whose recorded analysis payload is null. */
     public record AnalysisEvidence(AnalysisResult analysis) { }
+    record ContinuationEvidence(ContinuationPolicyInputs inputs) { }
 
     private final EntityManager entityManager;
     private final PortfolioJsonCodec jsonCodec;
+    private final LinkedHashMap<ContinuationKey, MemoEntry> validatedInputs = new LinkedHashMap<>(16, 0.75f, true);
+    private long retainedContinuationBytes;
 
     public PortfolioSnapshotEvidenceReader(EntityManager entityManager, PortfolioJsonCodec jsonCodec) {
         this.entityManager = entityManager;
@@ -81,6 +97,164 @@ public class PortfolioSnapshotEvidenceReader {
             throw exception;
         } catch (Exception exception) {
             throw PortfolioException.analysisFailed("Could not read portfolio snapshot evidence", exception);
+        }
+    }
+
+    Optional<ContinuationEvidence> readContinuation(Long projectId, String snapshotId, String scopeKey,
+                                                    String jobId, Long requirementId, Long requirementVersionId) {
+        Session session = entityManager.unwrap(Session.class);
+        var key = new ContinuationKey(session.getSessionFactory(), projectId, snapshotId, scopeKey, jobId,
+                requirementId, requirementVersionId);
+        MemoEntry cached;
+        synchronized (validatedInputs) {
+            cached = validatedInputs.get(key);
+        }
+        Object[] row = selectContinuation(session, key);
+        if (row == null) return Optional.empty();
+        Clob clob = (Clob) row[1];
+        if (clob == null) return Optional.of(new ContinuationEvidence(null));
+        try {
+            if (cached != null) {
+                var comparison = readContinuationPass(clob, false);
+                if (cached.validated().fingerprint().matches(comparison.fingerprint())) {
+                    return Optional.of(new ContinuationEvidence(cached.validated().inputs()));
+                }
+                // Read a fresh scoped locator after releasing the comparison locator. Only the
+                // full validation pass can associate its fingerprint with newly bound inputs.
+                row = selectContinuation(session, key);
+                if (row == null) return Optional.empty();
+                clob = (Clob) row[1];
+                if (clob == null) return Optional.of(new ContinuationEvidence(null));
+            }
+            var validated = readContinuationPass(clob, true);
+            remember(key, validated);
+            return Optional.of(new ContinuationEvidence(validated.inputs()));
+        } catch (RuntimeException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            throw PortfolioException.analysisFailed("Could not read portfolio snapshot evidence", exception);
+        }
+    }
+
+    private static Object[] selectContinuation(Session session, ContinuationKey key) {
+        return session.createNativeQuery(SELECT_ANALYSIS, Object[].class)
+                .addScalar("snapshot_id", StandardBasicTypes.STRING)
+                .addScalar("analysis_payload", StandardBasicTypes.CLOB)
+                .setParameter("id", key.snapshotId()).setParameter("projectId", key.projectId())
+                .setParameter("scopeKey", key.scopeKey()).setParameter("jobId", key.jobId())
+                .setParameter("requirementId", key.requirementId())
+                .setParameter("requirementVersionId", key.requirementVersionId()).getSingleResultOrNull();
+    }
+
+    private ValidatedPass readContinuationPass(Clob clob, boolean bind) throws Exception {
+        try (AutoCloseable locator = locator(clob);
+             var input = new FingerprintingReader(sha256(), JdbcClobReaders.open(clob))) {
+            AnalysisResult analysis = bind ? jsonCodec.read(input, AnalysisResult.class) : null;
+            return new ValidatedPass(input.finish(), ContinuationPolicyInputs.from(analysis));
+        }
+    }
+
+    private void remember(ContinuationKey key, ValidatedPass validated) {
+        long bytes = key.retainedBytes() + (validated.inputs() == null ? 0 : validated.inputs().retainedBytes());
+        synchronized (validatedInputs) {
+            var previous = validatedInputs.remove(key);
+            if (previous != null) retainedContinuationBytes -= previous.retainedBytes();
+            if (bytes > MAX_CONTINUATION_BYTES) return;
+            while (validatedInputs.size() >= MAX_CONTINUATION_ENTRIES
+                    || retainedContinuationBytes + bytes > MAX_CONTINUATION_BYTES) {
+                retainedContinuationBytes -= validatedInputs.pollFirstEntry().getValue().retainedBytes();
+            }
+            validatedInputs.put(key, new MemoEntry(validated, bytes));
+            retainedContinuationBytes += bytes;
+        }
+    }
+
+    private record ContinuationKey(SessionFactory factory, Long projectId, String snapshotId, String scopeKey,
+                                   String jobId, Long requirementId, Long requirementVersionId) {
+        @Override public boolean equals(Object value) {
+            return value instanceof ContinuationKey other && factory == other.factory
+                    && Objects.equals(projectId, other.projectId) && Objects.equals(snapshotId, other.snapshotId)
+                    && Objects.equals(scopeKey, other.scopeKey) && Objects.equals(jobId, other.jobId)
+                    && Objects.equals(requirementId, other.requirementId)
+                    && Objects.equals(requirementVersionId, other.requirementVersionId);
+        }
+
+        @Override public int hashCode() {
+            return Objects.hash(System.identityHashCode(factory), projectId, snapshotId, scopeKey, jobId,
+                    requirementId, requirementVersionId);
+        }
+
+        long retainedBytes() {
+            // Includes map entry, key, boxed IDs, memo records and digest storage.
+            return 512L + ContinuationPolicyInputs.stringBytes(snapshotId)
+                    + ContinuationPolicyInputs.stringBytes(scopeKey) + ContinuationPolicyInputs.stringBytes(jobId);
+        }
+    }
+
+    private record MemoEntry(ValidatedPass validated, long retainedBytes) { }
+    private record ValidatedPass(Fingerprint fingerprint, ContinuationPolicyInputs inputs) { }
+    private record Fingerprint(long characters, byte[] digest) {
+        boolean matches(Fingerprint other) {
+            return characters == other.characters && MessageDigest.isEqual(digest, other.digest);
+        }
+    }
+
+    private static MessageDigest sha256() {
+        try {
+            return MessageDigest.getInstance("SHA-256");
+        } catch (NoSuchAlgorithmException unavailable) {
+            throw new IllegalStateException("SHA-256 is unavailable", unavailable);
+        }
+    }
+
+    /** Hashes raw UTF-16 code units, including unpaired surrogates, as the parser reads them. */
+    private static final class FingerprintingReader extends FilterReader {
+        private final MessageDigest digest;
+        private final byte[] bytes = new byte[2 * FINGERPRINT_BUFFER_CHARACTERS];
+        private final CharBuffer codeUnits = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).asCharBuffer();
+        private long characters;
+        private boolean exhausted;
+
+        FingerprintingReader(MessageDigest digest, Reader input) {
+            super(input);
+            this.digest = digest;
+        }
+
+        @Override public int read() throws IOException {
+            if (exhausted) return -1;
+            int unit = super.read();
+            if (unit < 0) exhausted = true;
+            else {
+                digest.update((byte) unit);
+                digest.update((byte) (unit >>> 8));
+                characters++;
+            }
+            return unit;
+        }
+
+        @Override public int read(char[] buffer, int offset, int count) throws IOException {
+            if (count == 0) return 0;
+            if (exhausted) return -1;
+            int length = super.read(buffer, offset, count);
+            if (length < 0) exhausted = true;
+            else {
+                for (int copied = 0; copied < length;) {
+                    int batch = Math.min(length - copied, codeUnits.capacity());
+                    codeUnits.clear().put(buffer, offset + copied, batch);
+                    digest.update(bytes, 0, 2 * batch);
+                    copied += batch;
+                }
+                characters += length;
+            }
+            return length;
+        }
+
+        Fingerprint finish() throws IOException {
+            if (!exhausted) {
+                char[] tail = new char[FINGERPRINT_BUFFER_CHARACTERS];
+                while (read(tail) != -1) { }
+            }
+            return new Fingerprint(characters, digest.digest());
         }
     }
 

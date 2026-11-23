@@ -84,6 +84,21 @@ class ProjectAnalysisContinuationPolicyTest {
         assertThat(ProjectAnalysisContinuationService.budgetProblem(analysis)).isNotNull();
     }
 
+    @Test
+    void aLegacySourceWithoutANodeOnlyBlocksWhenItHasAnUnacceptedQuestion() {
+        var analysis = partial("SOURCE_LIMIT");
+        var report = analysis.getRelationSearchReport();
+        analysis.setRelationSearchReport(new RelationSearchReport(1, "0".repeat(64), "reference",
+                List.of(new SourceAssessment(null, List.of(), "", null)),
+                report.result(), 3, 24, 0, report.warnings(), ""));
+        assertThat(ProjectAnalysisContinuationService.budgetProblem(analysis)).isNull();
+
+        analysis.setRelationSearchReport(new RelationSearchReport(1, "0".repeat(64), "reference",
+                List.of(new SourceAssessment(null, List.of(), "", "Which archive?")),
+                report.result(), 3, 24, 0, report.warnings(), ""));
+        assertThat(ProjectAnalysisContinuationService.budgetProblem(analysis)).contains("unaccepted evidence");
+    }
+
     private AnalysisResult partial(String limit) {
         var analysis = new AnalysisResult(Map.of("BP-1", 0.5), List.of()); analysis.setStatus("PARTIAL");
         analysis.setErrorMessage("RELATION_SEARCH_PARTIAL: pending tasks");

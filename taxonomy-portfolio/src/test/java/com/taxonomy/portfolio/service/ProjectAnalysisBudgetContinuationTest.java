@@ -234,6 +234,22 @@ class ProjectAnalysisBudgetContinuationTest {
     }
 
     @Test
+    void matchingSnapshotOnlyBindsOnceAcrossEligibilityPrepareAndBegin() throws Exception {
+        try (var f = new Fixture(database)) {
+            var first = f.start("repeat-continuation-evidence");
+            var decision = f.eligibility(first);
+            assertThat(decision.available()).as(decision.reason()).isTrue();
+            assertThat(f.eligibility(first)).isEqualTo(decision);
+            f.continueWith(first, new ContinueAnalysisRequest(decision.snapshotId(), decision.continuationVersion()));
+            f.runQueued();
+            var completed = f.current(first);
+            assertThat(completed.status()).as(completed.errorSummary()).isEqualTo(AnalysisStatus.SUCCESS);
+            assertThat(completed.items().getFirst().attempt()).isEqualTo(2);
+            verify(f.snapshotCodec, times(1)).read(any(java.io.Reader.class), eq(AnalysisResult.class));
+        }
+    }
+
+    @Test
     void explicitCycleSurvivesDatabaseRestartAndCompletesSavedSnapshotWithoutRepeatingSuccessfulQuestions() throws Exception {
         try (var f = new Fixture(database)) {
             var first = f.start("regular");
@@ -474,6 +490,7 @@ class ProjectAnalysisBudgetContinuationTest {
             f.explicitSources = Set.of("BP-000", "BP-032");
             f.clarifyRelation = true;
             var first = f.start("blocked-checkpoint-state");
+            assertThat(f.eligibility(first).available()).isTrue();
             var recovery = f.snapshot(first).analysis().getRecovery();
             assertThat(recovery.openQuestions()).hasSize(1);
             f.transaction(em -> assertThat(em.createQuery("update AnalysisQuestionCheckpoint q set q.state=:state "
@@ -511,6 +528,30 @@ class ProjectAnalysisBudgetContinuationTest {
             var next = f.start("version-new");
             assertThat(next.items().getFirst().requirementVersionId()).isNotEqualTo(oldVersion);
             assertThat(f.snapshot(next).analysis().getRecovery().id()).isNotEqualTo(decision.continuationId());
+        }
+    }
+
+    @Test
+    void aChangedWorkerVersionTakesPrecedenceOverMalformedLegacyPolicyInputs() throws Exception {
+        try (var f = new Fixture(database)) {
+            var first = f.start("worker-version-precedence");
+            var decision = f.eligibility(first);
+            assertThat(decision.available()).as(decision.reason()).isTrue();
+            f.continueWith(first, new ContinueAnalysisRequest(decision.snapshotId(), decision.continuationVersion()));
+            f.transaction(em -> {
+                var requirement = em.find(ProjectRequirement.class, f.requirementId);
+                var next = f.version(requirement, 2);
+                em.persist(next);
+                em.flush();
+                requirement.pointToVersion(next.getId(), Instant.now());
+            });
+            f.replaceAnalysisWithLegacyWarning(decision.snapshotId());
+            int calls = f.prompts.size();
+            f.runQueued();
+            var rejected = f.current(first);
+            assertThat(rejected.status()).isEqualTo(AnalysisStatus.FAILED);
+            assertThat(rejected.errorSummary()).contains("requirement version or continuation snapshot changed");
+            assertThat(f.prompts).hasSize(calls);
         }
     }
 
@@ -594,10 +635,13 @@ class ProjectAnalysisBudgetContinuationTest {
         try (var f = new Fixture(database)) {
             var first = f.start("transport");
             var decision = f.eligibility(first);
+            f.replaceAnalysisWithLegacyWarning(decision.snapshotId());
             f.transport = "artemis";
             f.restart();
-            assertThat(f.eligibility(first).available()).isFalse();
-            assertThat(f.eligibility(first).reason()).contains("Artemis");
+            var rejected = f.eligibility(first);
+            assertThat(rejected.available()).isFalse();
+            assertThat(rejected.reason()).contains("Artemis");
+            assertThat(rejected.continuationId()).isEqualTo("legacy");
             assertThatThrownBy(() -> f.continueWith(first,
                     new ContinueAnalysisRequest(decision.snapshotId(), decision.continuationVersion())))
                     .isInstanceOf(PortfolioException.class).hasMessageContaining("Artemis");
@@ -692,6 +736,7 @@ class ProjectAnalysisBudgetContinuationTest {
         SessionFactory factory;
         JpaTransactionManager transactions;
         EntityManager shared;
+        PortfolioJsonCodec snapshotCodec;
         ProjectRequirementAnalysisService service;
         CopilotJobControlService jobControl;
         CopilotAutomationService copilot;
@@ -836,8 +881,9 @@ class ProjectAnalysisBudgetContinuationTest {
                     catalogue, llm, workspaces, json);
             ReflectionTestUtils.setField(continuation, "relations", relations);
             ReflectionTestUtils.setField(continuation, "workspaceActors", workspaceActors);
+            snapshotCodec = spy(codec);
             var portfolio = new ProjectAnalysisContinuationService(continuation, workspaces, projectService, persistence, jobs, items,
-                    requirements, snapshots, new PortfolioSnapshotEvidenceReader(shared, codec), transport);
+                    requirements, snapshots, new PortfolioSnapshotEvidenceReader(shared, snapshotCodec), transport);
             portfolio.configureWorkspaceActors(workspaceActors);
             var local = proxied(portfolio);
             var projection = new RequirementArchitectureViewService(new com.taxonomy.architecture.pipeline.ArchitectureViewPipeline(
@@ -919,6 +965,17 @@ class ProjectAnalysisBudgetContinuationTest {
             return service.enqueueContinuation(job.id(), projectId, job.items().getFirst().id(), request, "owner", scope);
         }
         void runQueued() { while (!queue.isEmpty()) queue.remove().run(); }
+        void replaceAnalysisWithLegacyWarning(String snapshotId) {
+            // Fault injection at the persistence boundary for historically nullable policy data.
+            var legacy = new AnalysisResult();
+            legacy.setStatus("PARTIAL");
+            legacy.setRecovery(new AnalysisRecoveryView("legacy", 1, "STOPPED", 0, 0, null, List.of()));
+            legacy.setWarnings(Collections.singletonList(null));
+            transaction(em -> assertThat(em.createNativeQuery(
+                    "update req_analysis_snapshot set analysis_payload = :payload where id = :id")
+                    .setParameter("payload", json.writeValueAsString(legacy))
+                    .setParameter("id", snapshotId).executeUpdate()).isEqualTo(1));
+        }
         String questionEvidence(String run, String question) { return questionColumn(run, question, "detailJson"); }
         String questionState(String run, String question) { return questionColumn(run, question, "state"); }
         private String questionColumn(String run, String question, String column) {

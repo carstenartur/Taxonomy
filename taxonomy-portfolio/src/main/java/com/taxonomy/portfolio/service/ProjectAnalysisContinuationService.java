@@ -1,10 +1,8 @@
 package com.taxonomy.portfolio.service;
 
 import com.taxonomy.analysis.recovery.AnalysisContinuationService;
-import com.taxonomy.dto.AnalysisRecoveryView;
 import com.taxonomy.dto.AnalysisRequest;
 import com.taxonomy.dto.AnalysisResult;
-import com.taxonomy.dto.RelationSearchReport;
 import com.taxonomy.portfolio.dto.PortfolioDtos.AnalysisContinuationView;
 import com.taxonomy.portfolio.dto.PortfolioDtos.AnalysisJobView;
 import com.taxonomy.portfolio.dto.PortfolioDtos.ContinueAnalysisRequest;
@@ -167,17 +165,17 @@ public class ProjectAnalysisContinuationService {
             if (!Objects.equals(item.getSnapshotId(), snapshot.getId())) {
                 throw PortfolioException.conflict("The requirement version or continuation snapshot changed");
             }
-            AnalysisResult saved = requireAnalysis(item, snapshot.getId());
+            var saved = requireContinuationInputs(item, snapshot.getId());
             if (!canResumeVersion(saved, work.requirementVersionId(), item.getRequirement().getCurrentVersionId())) {
                 throw PortfolioException.conflict("The requirement version or continuation snapshot changed");
             }
-            String problem = budgetProblem(saved);
-            if (problem == null) problem = questionProblem(saved.getRecovery(), username, context, owner);
+            String problem = budgetProblemForInputs(saved);
+            if (problem == null) problem = questionProblem(saved.recovery().id(), username, context, owner);
             if (problem != null) throw PortfolioException.conflict(problem);
             requireProviderBinding(item, username, context);
             rejectCancelledOperation(item);
-            request.setContinuationId(saved.getRecovery().id());
-            request.setContinuationVersion(saved.getRecovery().version());
+            request.setContinuationId(saved.recovery().id());
+            request.setContinuationVersion(saved.recovery().version());
             request.setContinuationAction("CONTINUE");
         }
         return continuations.beginPortfolio(request, username, context, job.maxArchitectureNodes(), admittedModel, owner);
@@ -185,13 +183,13 @@ public class ProjectAnalysisContinuationService {
 
     private AnalysisContinuationView view(AnalysisContinuationReadRow item, String username, WorkspaceContext context) {
         String problem = scopeLimitation(username, context);
-        AnalysisRecoveryView recovery = null;
+        ContinuationPolicyInputs.Recovery recovery = null;
         if (item.snapshotId() == null) {
             problem = problem == null ? "This item has no saved partial snapshot" : problem;
         } else {
-            AnalysisResult saved = requireAnalysis(item);
-            recovery = saved == null ? null : saved.getRecovery();
-            if (problem == null) problem = budgetProblem(saved);
+            var saved = requireContinuationInputs(item);
+            recovery = saved == null ? null : saved.recovery();
+            if (problem == null) problem = budgetProblemForInputs(saved);
             if (problem == null && !canResumeVersion(saved, item.requirementVersionId(), item.currentRequirementVersionId()))
                 problem = "The requirement version changed; start a new analysis for the current version";
             if (problem == null) {
@@ -199,7 +197,7 @@ public class ProjectAnalysisContinuationService {
                 if (durable.recovery().version() != recovery.version())
                     problem = "A newer continuation revision exists; this snapshot cannot authorize another cycle";
                 else problem = budgetProblem(durable.result());
-                if (problem == null) problem = questionProblem(recovery, username, context);
+                if (problem == null) problem = questionProblem(recovery.id(), username, context, workspaceActors::owns);
             }
         }
         if (problem == null && (item.itemStatus() != AnalysisStatus.PARTIAL
@@ -225,14 +223,14 @@ public class ProjectAnalysisContinuationService {
     private AnalysisContinuationView view(RequirementAnalysisJobItem item, String username, WorkspaceContext context,
             boolean checkProviderForRead) {
         String problem = scopeLimitation(username, context);
-        AnalysisRecoveryView recovery = null;
+        ContinuationPolicyInputs.Recovery recovery = null;
         if (item.getSnapshotId() == null) {
             problem = problem == null ? "This item has no saved partial snapshot" : problem;
         } else {
             var snapshot = requireSnapshot(item, item.getSnapshotId());
-            AnalysisResult saved = requireAnalysis(item, snapshot.getId());
-            recovery = saved == null ? null : saved.getRecovery();
-            if (problem == null) problem = budgetProblem(saved);
+            var saved = requireContinuationInputs(item, snapshot.getId());
+            recovery = saved == null ? null : saved.recovery();
+            if (problem == null) problem = budgetProblemForInputs(saved);
             if (problem == null && !canResumeVersion(saved, item.getRequirementVersionId(), item.getRequirement().getCurrentVersionId()))
                 problem = "The requirement version changed; start a new analysis for the current version";
             if (problem == null) {
@@ -240,7 +238,7 @@ public class ProjectAnalysisContinuationService {
                 if (durable.recovery().version() != recovery.version())
                     problem = "A newer continuation revision exists; this snapshot cannot authorize another cycle";
                 else problem = budgetProblem(durable.result());
-                if (problem == null) problem = questionProblem(recovery, username, context);
+                if (problem == null) problem = questionProblem(recovery.id(), username, context, workspaceActors::owns);
             }
         }
         if (problem == null && (item.getStatus() != AnalysisStatus.PARTIAL
@@ -262,9 +260,9 @@ public class ProjectAnalysisContinuationService {
     }
 
     /** The scoped snapshot read has already matched its immutable version to this job item. */
-    private static boolean canResumeVersion(AnalysisResult saved, Long itemVersion, Long currentVersion) {
+    private static boolean canResumeVersion(ContinuationPolicyInputs saved, Long itemVersion, Long currentVersion) {
         return Objects.equals(itemVersion, currentVersion)
-                || (itemVersion != null && saved != null && saved.getModelBinding() != null);
+                || (itemVersion != null && saved != null && saved.modelBound());
     }
 
     private void requireProviderBinding(RequirementAnalysisJobItem item, String username, WorkspaceContext context) {
@@ -276,12 +274,8 @@ public class ProjectAnalysisContinuationService {
         return java.util.List.of(new ProjectProviderBinding.Target(item.getRequirementId(), item.getRequirementVersionId()));
     }
 
-    private String questionProblem(AnalysisRecoveryView recovery, String username, WorkspaceContext context) {
-        return questionProblem(recovery, username, context, workspaceActors::owns);
-    }
-
-    private String questionProblem(AnalysisRecoveryView recovery, String username, WorkspaceContext context, AnalysisOwner owner) {
-        return continuations.hasBlockingBudgetQuestions(recovery.id(), username, context, owner)
+    private String questionProblem(String recoveryId, String username, WorkspaceContext context, AnalysisOwner owner) {
+        return continuations.hasBlockingBudgetQuestions(recoveryId, username, context, owner)
                 ? "Failed, unassessed or uncertain provider questions require their own decision" : null;
     }
 
@@ -302,44 +296,48 @@ public class ProjectAnalysisContinuationService {
 
     /** Execution limits can advance while accepted clarifications remain open and unchanged. */
     static String budgetProblem(AnalysisResult analysis) {
-        if (analysis == null || !"PARTIAL".equals(analysis.getStatus()) || analysis.getRecovery() == null)
+        return budgetProblemForInputs(ContinuationPolicyInputs.from(analysis));
+    }
+
+    static String budgetProblemForInputs(ContinuationPolicyInputs analysis) {
+        if (analysis == null || !"PARTIAL".equals(analysis.status()) || analysis.recovery() == null)
             return "This snapshot has no resumable partial analysis";
-        var recovery = analysis.getRecovery();
+        var recovery = analysis.recovery();
         if (!"STOPPED".equals(recovery.state()) || recovery.openQuestions().stream().anyMatch(question -> !recordedClarification(question)))
             return "Failed, unassessed or cancelled assessments require their own decision; budget continuation is unavailable";
         boolean clarifications = !recovery.openQuestions().isEmpty();
-        if (analysis.getErrorMessage() != null && !analysis.getErrorMessage().isBlank()
-                && !analysis.getErrorMessage().startsWith("RELATION_SEARCH_PARTIAL:"))
+        if (analysis.errorMessage() != null && !analysis.errorMessage().isBlank()
+                && !analysis.errorMessage().startsWith("RELATION_SEARCH_PARTIAL:"))
             return "The analysis has another partial-result cause; budget continuation cannot replace that recovery decision";
-        if (analysis.getWarnings() != null && analysis.getWarnings().stream().anyMatch(warning ->
+        if (analysis.warnings() != null && analysis.warnings().stream().anyMatch(warning ->
                 warning.startsWith("ARCHITECTURE_VIEW_INCOMPLETE:") || warning.startsWith("RELATION_EVALUATION_FAILED:")
                         || java.util.Arrays.stream(com.taxonomy.analysis.service.AnalysisStoppedException.Reason.values())
                                 .anyMatch(reason -> warning.startsWith(reason.name() + ":"))))
             return "The analysis contains an interruption or projection failure in addition to its budget stop";
-        RelationSearchReport report = analysis.getRelationSearchReport();
+        var report = analysis.relation();
         if (report == null || !report.stopReason().isBlank() && !budgetReason(report.stopReason())
                 || !clarifications && report.sources().stream().anyMatch(source -> hasText(source.question()))
-                || report.result().unfinished().stream().anyMatch(work -> !budgetReason(work.reason())
+                || report.unfinished().stream().anyMatch(work -> !budgetReason(work.reason())
                         && !(clarifications && "UNRESOLVED".equals(work.reason()) && hasText(work.question())))
                 || report.warnings().stream().anyMatch(warning -> !budgetWarning(warning)
                         && !(clarifications && sourceClarificationWarning(report, warning))))
             return "This partial result contains an interruption or unaccepted evidence that needs a separate recovery decision";
         boolean stopped = budgetReason(report.stopReason())
-                || report.result().unfinished().stream().anyMatch(work -> budgetReason(work.reason()))
+                || report.unfinished().stream().anyMatch(work -> budgetReason(work.reason()))
                 || report.warnings().stream().anyMatch(ProjectAnalysisContinuationService::budgetWarning);
         return stopped ? null : "No resumable execution budget stop is recorded";
     }
 
-    private static boolean recordedClarification(AnalysisRecoveryView.OpenQuestion question) {
+    private static boolean recordedClarification(ContinuationPolicyInputs.OpenQuestion question) {
         String prefix = "RELATION_UNRESOLVED:";
         return com.taxonomy.analysis.recovery.AnalysisCheckpointSession.isRelationQuestion(question.key())
                 && !question.skipped() && !question.outcomeUncertain() && question.error() != null
                 && question.error().startsWith(prefix) && !question.error().substring(prefix.length()).isBlank();
     }
 
-    private static boolean sourceClarificationWarning(RelationSearchReport report, String warning) {
+    private static boolean sourceClarificationWarning(ContinuationPolicyInputs.RelationEvidence report, String warning) {
         return report.sources().stream().anyMatch(source -> hasText(source.question())
-                && warning.equals("SOURCE_UNRESOLVED " + source.node().id() + ": " + source.question()));
+                && warning.equals("SOURCE_UNRESOLVED " + Objects.requireNonNull(source.nodeId()) + ": " + source.question()));
     }
 
     private static boolean hasText(String value) { return value != null && !value.isBlank(); }
@@ -385,21 +383,21 @@ public class ProjectAnalysisContinuationService {
                         .map(key -> key.operationId().equals(operation.get().operationId())).orElse(false));
     }
 
-    private AnalysisResult requireAnalysis(AnalysisContinuationReadRow item) {
+    private ContinuationPolicyInputs requireContinuationInputs(AnalysisContinuationReadRow item) {
         if (item.matchedSnapshotId() == null) throw PortfolioException.notFound("Analysis snapshot not found");
         if (!Objects.equals(item.snapshotJobId(), item.jobId())
                 || !Objects.equals(item.snapshotRequirementId(), item.requirementId())
                 || !Objects.equals(item.snapshotRequirementVersionId(), item.requirementVersionId()))
             throw PortfolioException.conflict("The snapshot belongs to another analysis item or requirement version");
-        return evidence.readAnalysis(item.projectId(), item.snapshotId(), item.scopeKey(), item.jobId(),
+        return evidence.readContinuation(item.projectId(), item.snapshotId(), item.scopeKey(), item.jobId(),
                         item.requirementId(), item.requirementVersionId())
-                .orElseThrow(() -> PortfolioException.notFound("Analysis snapshot not found")).analysis();
+                .orElseThrow(() -> PortfolioException.notFound("Analysis snapshot not found")).inputs();
     }
 
-    private AnalysisResult requireAnalysis(RequirementAnalysisJobItem item, String snapshotId) {
-        return evidence.readAnalysis(item.getProjectId(), snapshotId, item.getScopeKey(), item.getJobId(),
+    private ContinuationPolicyInputs requireContinuationInputs(RequirementAnalysisJobItem item, String snapshotId) {
+        return evidence.readContinuation(item.getProjectId(), snapshotId, item.getScopeKey(), item.getJobId(),
                         item.getRequirementId(), item.getRequirementVersionId())
-                .orElseThrow(() -> PortfolioException.notFound("Analysis snapshot not found")).analysis();
+                .orElseThrow(() -> PortfolioException.notFound("Analysis snapshot not found")).inputs();
     }
 
     private void rejectCancelledOperation(RequirementAnalysisJobItem item) {

@@ -255,9 +255,14 @@ class PortfolioSnapshotPayloadReadTest {
                         f.versionId).orElseThrow().analysis();
                 assertThat(analysis.getReasons()).isEqualTo(full.analysis().getReasons());
                 assertThat(analysis.getTree().getFirst().getDescriptionEn()).isEqualTo(Fixture.LARGE_EVIDENCE);
+                var continuation = reader.readContinuation(f.projectId, snapshotId, tenant, f.jobIds.getFirst(),
+                        f.requirementId, f.versionId).orElseThrow();
+                assertThat(continuation.inputs().warnings()).containsExactly("CALL_BUDGET");
                 for (int i = 0; i < foreign.size(); i++) {
                     var identity = foreign.get(i);
                     assertThat(reader.readAnalysis(identity.projectId(), identity.snapshotId(), identity.scopeKey(), identity.jobId(),
+                            identity.requirementId(), identity.requirementVersionId())).isEmpty();
+                    assertThat(reader.readContinuation(identity.projectId(), identity.snapshotId(), identity.scopeKey(), identity.jobId(),
                             identity.requirementId(), identity.requirementVersionId())).isEmpty();
                     if (i < 3) {
                         assertThat(reader.read(identity.projectId(), identity.snapshotId(), identity.scopeKey())).isEmpty();
@@ -268,6 +273,75 @@ class PortfolioSnapshotPayloadReadTest {
             });
             f.assertNoResultEntityLoads();
         }
+    }
+
+    @Test
+    void continuationRejectsSameLengthCorruptReplacementAndColdMalformedUnusedFields() {
+        try (var f = new Fixture()) {
+            var valid = "{\"status\":\"PARTIAL\",\"analysisDurationMillis\":123}";
+            var malformed = "{\"status\":\"PARTIAL\",\"analysisDurationMillis\":\"x\"}";
+            assertThat(malformed.length()).isEqualTo(valid.length());
+            var reader = new PortfolioSnapshotEvidenceReader(f.shared, f.codec);
+            Supplier<PortfolioSnapshotEvidenceReader.ContinuationEvidence> first = () -> readContinuation(f, reader, 0);
+            replaceAnalysisPayload(f, f.snapshotIds.getFirst(), valid);
+            var initial = first.get();
+            assertThat(initial.inputs().status()).isEqualTo("PARTIAL");
+            assertThat(first.get().inputs()).isSameAs(initial.inputs());
+
+            replaceAnalysisPayload(f, f.snapshotIds.getFirst(), malformed);
+            f.resetReads();
+            assertThatThrownBy(first::get).isInstanceOf(PortfolioException.class)
+                    .hasMessageContaining("Could not deserialize portfolio payload as AnalysisResult");
+            assertThat(f.payloadSelects()).hasSize(2);
+
+            replaceAnalysisPayload(f, f.snapshotIds.getLast(), malformed);
+            f.resetReads();
+            assertThatThrownBy(() -> readContinuation(f, reader, 1)).isInstanceOf(PortfolioException.class)
+                    .hasMessageContaining("Could not deserialize portfolio payload as AnalysisResult");
+            assertThat(f.payloadSelects()).hasSize(1);
+        }
+    }
+
+    @Test
+    void concurrentContinuationReadsUseIndependentScopedTransactions() throws Exception {
+        try (var f = new Fixture(); var readers = Executors.newFixedThreadPool(2)) {
+            var reader = new PortfolioSnapshotEvidenceReader(f.shared, f.codec);
+            var initial = readContinuation(f, reader, 0);
+            var bothTransactionsOpen = new CountDownLatch(2);
+            java.util.concurrent.Callable<ContinuationPolicyInputs> warmRead = () -> new TransactionTemplate(f.transactions)
+                    .execute(status -> {
+                        bothTransactionsOpen.countDown();
+                        try {
+                            assertThat(bothTransactionsOpen.await(10, TimeUnit.SECONDS)).isTrue();
+                        } catch (InterruptedException interrupted) {
+                            Thread.currentThread().interrupt();
+                            throw new AssertionError(interrupted);
+                        }
+                        return reader.readContinuation(f.projectId, f.snapshotIds.getFirst(), PortfolioScope.key("owner", f.scope),
+                                f.jobIds.getFirst(), f.requirementId, f.versionId).orElseThrow().inputs();
+                    });
+            f.resetReads();
+            var first = readers.submit(warmRead);
+            var second = readers.submit(warmRead);
+            assertThat(first.get(10, TimeUnit.SECONDS)).isSameAs(initial.inputs());
+            assertThat(second.get(10, TimeUnit.SECONDS)).isSameAs(initial.inputs());
+            assertThat(f.payloadSelects()).hasSize(2);
+            f.assertNoResultEntityLoads();
+        }
+    }
+
+    private static PortfolioSnapshotEvidenceReader.ContinuationEvidence readContinuation(
+            Fixture f, PortfolioSnapshotEvidenceReader reader, int pass) {
+        return new TransactionTemplate(f.transactions).execute(status -> reader.readContinuation(
+                f.projectId, f.snapshotIds.get(pass), PortfolioScope.key("owner", f.scope),
+                f.jobIds.get(pass), f.requirementId, f.versionId).orElseThrow());
+    }
+
+    private static void replaceAnalysisPayload(Fixture f, String snapshotId, String payload) {
+        // Fault injection bypasses the immutable snapshot writing API.
+        f.transaction(em -> assertThat(em.createNativeQuery(
+                "update req_analysis_snapshot set analysis_payload = :payload where id = :id")
+                .setParameter("payload", payload).setParameter("id", snapshotId).executeUpdate()).isEqualTo(1));
     }
 
     @Test

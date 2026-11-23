@@ -168,6 +168,33 @@ llm.timeout.seconds
 llm.retry.max
 ```
 
+## Fresh session-backed integration checks
+
+An assistant session can serve fresh responses through a local OpenAI-compatible
+HTTP relay when an independent model server is unavailable. Taxonomy still sends
+its original messages through `CUSTOM_OPENAI`; the session reads each new request
+and supplies its answer through the relay. This checks the provider transport and
+application handling of those answers. It does not measure a vLLM inference engine
+or establish the quality or speed of a separately deployed model.
+
+For this explicit QA path, bind the relay to loopback, use a distinct model name,
+retain request and response hashes, and stop the relay when the run finishes.
+Keep prompt/response evidence under `target/` and separate time awaiting the
+assistant from application and relay processing. Do not substitute recorded
+responses or silently fall back to a remote provider.
+
+The relay and Maven must share a reachable network context. Some execution tools
+share files while isolating loopback networking between invocations. In that
+environment, start the relay and Maven within the same invocation and use a shared
+file spool to provide fresh answers. A connection-refused failure before the
+relay receives any request is a transport/setup failure, not a model result.
+
+The opt-in [architecture dialogue test](../testing/architecture-quality-2026-11-21.md#optionaler-live-test-des-architekturdialogs-mit-vllm)
+uses two questions about a synthetic editor checkpoint. Its explicit
+`real-llm` selection and disabled Maven build cache ensure that a requested live
+run obtains new completions. See the [23 November QA record](../qa/2026-11-23-automatic-continuation-performance.md)
+for the fresh session-backed run and its measurement boundaries.
+
 ## Security guidance
 
 - Treat `CUSTOM_LLM_URL` as trusted operator configuration. It controls an outbound server-side HTTP connection.
