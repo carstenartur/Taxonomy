@@ -3,6 +3,7 @@ package com.taxonomy.search;
 import com.taxonomy.catalog.model.TaxonomyNode;
 import com.taxonomy.catalog.model.TaxonomyRelation;
 import com.taxonomy.catalog.service.AppInitializationStateService;
+import com.taxonomy.catalog.service.CatalogueIndexInitializer;
 import com.taxonomy.catalog.snapshot.CatalogueRuntimePolicy;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityManagerFactory;
@@ -42,7 +43,7 @@ import java.util.function.Function;
  * scope.</p>
  */
 @Service
-public class LocalEmbeddingIndexRebuilder {
+public class LocalEmbeddingIndexRebuilder implements CatalogueIndexInitializer {
     private static final Logger log = LoggerFactory.getLogger(LocalEmbeddingIndexRebuilder.class);
 
     private final EntityManagerFactory entityManagerFactory;
@@ -239,6 +240,7 @@ public class LocalEmbeddingIndexRebuilder {
     }
 
     /** Full-text readiness is verified separately from optional semantic readiness. */
+    @Override
     public void ensureCatalogueIndexes(AppInitializationStateService state) throws InterruptedException {
         catalogueRuntimePolicy.requireGlobalIndexAllowed();
         Search.mapping(entityManagerFactory).scope(java.util.List.of(TaxonomyNode.class, TaxonomyRelation.class))

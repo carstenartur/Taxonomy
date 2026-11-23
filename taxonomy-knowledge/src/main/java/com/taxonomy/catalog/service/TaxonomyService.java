@@ -16,7 +16,6 @@ import com.taxonomy.catalog.provenance.CatalogueSourceBytes;
 import com.taxonomy.catalog.provenance.CatalogueSourceJournal;
 import com.taxonomy.catalog.provenance.CatalogueSourceJournal.SourceUse;
 import com.taxonomy.catalog.provenance.CatalogueSourceJournal.Use;
-import com.taxonomy.search.LocalEmbeddingIndexRebuilder;
 import jakarta.annotation.PostConstruct;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
@@ -80,7 +79,7 @@ public class TaxonomyService {
     private CatalogueSourceJournal catalogueSourceJournal;
 
     @Autowired
-    private LocalEmbeddingIndexRebuilder searchIndexRebuilder;
+    private CatalogueIndexInitializer searchIndexRebuilder;
 
     @Autowired
     private CatalogueRuntimePolicy catalogueRuntimePolicy = CatalogueRuntimePolicy.fullCatalogue();
