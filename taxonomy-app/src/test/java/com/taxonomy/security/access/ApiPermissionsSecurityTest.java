@@ -90,6 +90,15 @@ class ApiPermissionsSecurityTest {
     }
 
     @Test
+    void deliveryReceiptIsReadableWhileResumingRequiresArchitectureWriteAndSessionCsrf() throws Exception {
+        String receipt = "/api/architecture/editor/admbw/operations/operation";
+        mvc.perform(get(receipt).with(user("architect").roles("ARCHITECT"))).andExpect(status().isOk());
+        mvc.perform(post(receipt + "/resume").with(user("architect").roles("ARCHITECT"))).andExpect(status().isForbidden());
+        mvc.perform(post(receipt + "/resume").with(csrf()).with(user("reader").roles("READER"))).andExpect(status().isForbidden());
+        mvc.perform(post(receipt + "/resume").with(csrf()).with(user("architect").roles("ARCHITECT"))).andExpect(status().isOk());
+    }
+
+    @Test
     void provisionalCatalogueQueueRequiresTechnicalAdministrationBeforeReadingEvidence() throws Exception {
         String path = "/api/admin/catalogue/provisional-information-products";
         mvc.perform(get(path)).andExpect(status().isUnauthorized());
@@ -282,9 +291,9 @@ class ApiPermissionsSecurityTest {
                 new SimpleGrantedAuthority("SCOPE_analysis:run")))).andExpect(status().isOk());
     }
 
-    @Test
-    void nativeAdmbwCopyRequiresExportScope() throws Exception {
-        String path = "/api/architecture/editor.admbw.qea";
+    @ParameterizedTest
+    @ValueSource(strings = {"/api/architecture/editor.admbw.qea", "/api/architecture/editor.admbw.qea/preflight"})
+    void nativeAdmbwCopyRequiresExportScope(String path) throws Exception {
         mvc.perform(post(path).with(csrf()).with(jwt().authorities(new SimpleGrantedAuthority("ROLE_ARCHITECT"),
                 new SimpleGrantedAuthority("SCOPE_architecture:write")))).andExpect(status().isForbidden());
         mvc.perform(post(path).with(csrf()).with(jwt().authorities(new SimpleGrantedAuthority("ROLE_READER"),
@@ -440,7 +449,8 @@ class ApiPermissionsSecurityTest {
                 "/api/analyze-stream", "/api/analyze-node", "/api/workspace/external/push", "/api/workspace/external/full-sync",
                 "/api/workspace/create", "/api/workspace/copy", "/api/workspace/compare", "/api/workspace/unclassified",
                 "/api/projects/p/**", "/api/architecture/editor.svg", "/api/architecture/editor.pdf",
-                "/api/architecture/editor.admbw.json", "/api/architecture/editor.admbw.qea", "/api/dsl/export",
+                "/api/architecture/editor.admbw.json", "/api/architecture/editor.admbw.qea", "/api/architecture/editor.admbw.qea/preflight", "/api/dsl/export",
+                "/api/architecture/editor/admbw/operations/operation", "/api/architecture/editor/admbw/operations/operation/resume",
                 "/api/projects/git/export", "/api/documents/**", "/api/architecture/focus/suggestions",
                 "/api/architecture/editor/focus/suggestions", "/api/architecture/dialogue", "/api/diagram/**", "/api/scores/export",
                 "/api/integrations/c/publish", "/api/integrations/c/operations/o/retry"})

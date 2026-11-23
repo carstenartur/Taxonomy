@@ -56,6 +56,7 @@
             <input id="editorAdmbwQeaBasis" type="file" accept=".qea,application/vnd.sparx.qea"/>
             <label for="editorAdmbwRootGuid" data-i18n="editor.admbw.qeaRoot">Model root package GUID</label>
             <input id="editorAdmbwRootGuid" type="text" maxlength="38" autocomplete="off"/>
+            <button type="button" id="editorAdmbwPreflight" disabled data-i18n="editor.admbw.preflight">Check native export</button>
             <button id="editorAdmbwQeaDownload" type="button" disabled data-i18n="editor.admbw.qeaDownload">Download ADMBw QEA copy</button>
             <p id="editorAdmbwQeaStatus" role="status" aria-live="polite" hidden></p>
         </div>
@@ -131,6 +132,13 @@
         <p id="prepReceipt" role="status" aria-live="polite"></p>
         <button id="prepRetry" type="button" hidden data-i18n="editor.prep.retry">Retry the same operation</button>
         <a id="prepAssessment" aria-describedby="prepReceipt" hidden data-i18n="editor.admbw.download">Download ADMBw assessment (JSON)</a>
+        <ul id="prepAcceptedFindings" hidden></ul>
+        <div id="prepDeliveryFile" hidden>
+            <label for="prepDeliveryBasis" data-i18n="editor.prep.reselectBasis">Reselect the reviewed QEA basis</label>
+            <input type="file" id="prepDeliveryBasis" accept=".qea,application/vnd.sparx.qea"/>
+            <span id="prepBasisDigest"></span>
+        </div>
+        <button type="button" id="prepPreflight" hidden data-i18n="editor.admbw.preflight">Check native export</button>
         <button id="prepDownload" type="button" aria-describedby="prepReceipt" hidden data-i18n="editor.admbw.qeaDownload">Download ADMBw QEA copy</button>
     </details>
     <p id="editorMode"></p>
@@ -248,6 +256,20 @@
                     <button id="editorBriefSave" type="submit" disabled data-i18n="editor.preview">Preview change</button>
                 </form>
                 <h3 data-i18n="editor.brief.references">Sources and modelling constraints</h3>
+                <section aria-labelledby="editorBriefRequirementsTitle">
+                    <h3 id="editorBriefRequirementsTitle" data-i18n="editor.brief.pins">Assigned requirement versions</h3>
+                    <ul id="editorBriefPins"></ul>
+                    <button type="button" id="editorBriefPinEdit" disabled data-i18n="editor.brief.editPins">Select requirements and excerpts</button>
+                    <form id="editorBriefPinForm" hidden>
+                        <fieldset id="editorBriefPinChoices"></fieldset>
+                        <label for="editorBriefPinReason" data-i18n="editor.rationale">Reason for the command</label>
+                        <input id="editorBriefPinReason" maxlength="1000" required/>
+                        <button type="submit" data-i18n="editor.preview">Preview change</button>
+                    </form>
+                    <p id="editorBriefPinStatus" role="status"></p>
+                    <ul id="editorBriefPinReview"></ul>
+                    <button type="button" id="editorBriefPinAccept" hidden data-i18n="editor.brief.acceptPins">Accept this set of requirements</button>
+                </section>
                 <label for="editorBriefReference" data-i18n="editor.brief.reference">Source assignment</label>
                 <select id="editorBriefReference"></select>
                 <form id="editorBriefReferenceForm">

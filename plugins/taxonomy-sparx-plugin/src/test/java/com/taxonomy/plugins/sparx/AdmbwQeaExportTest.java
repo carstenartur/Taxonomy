@@ -184,13 +184,44 @@ class AdmbwQeaExportTest {
     }
 
     @Test
+    void preflightsTheNativeDeliveryOnADisposableCopy() throws Exception {
+        try (var basis = basis()) {
+            byte[] supplied = basis.bytes();
+            var connector = new SparxQeaWriterConnector();
+            assertTrue(connector.supportsDeliveryPreflight());
+            connector.preflightAdmbw(delivery(), QeaFixture.ROOT, supplied);
+            assertArrayEquals(basis.bytes(), supplied);
+        }
+    }
+
+    @Test
+    void preflightAndExportRequireAModelRoot() throws Exception {
+        try (var basis = basis()) {
+            assertRejectedByPreflightAndExport(QeaFixture.CHILD, basis.bytes(), "QEA_ADMBW_ROOT");
+        }
+    }
+
+    @ParameterizedTest
+    @CsvSource(delimiter = '|', value = {
+            "UPDATE t_object SET ParentID=Object_ID WHERE Object_ID=11 | QEA_ADMBW_PART_OWNER",
+            "INSERT INTO t_package(Name,Parent_ID,ea_guid) VALUES ('Requirements',1,'{20000000-0000-0000-0000-000000000003}'),"
+                    + " ('Requirements',1,'{20000000-0000-0000-0000-000000000004}') | QEA_ADMBW_PACKAGE",
+            "ALTER TABLE t_diagramlinks DROP COLUMN Geometry | QEA_SCHEMA_UNSUPPORTED",
+            "UPDATE t_diagram SET Diagram_ID=2147483647 | QEA_LIMIT"
+    })
+    void preflightAndExportRejectTheSameNativeConstraints(String sql, String reason) throws Exception {
+        try (var basis = basis()) {
+            basis.sql(sql);
+            assertRejectedByPreflightAndExport(QeaFixture.ROOT, basis.bytes(), reason);
+        }
+    }
+
+    @Test
     void requiresCatalogueGuidAndQualifiedStereotypeInTheBasis() throws Exception {
         try (var basis = basis()) {
-            var connector = new SparxQeaWriterConnector();
             basis.sql("UPDATE t_xref SET Description = replace(Description, 'NAFv4-ADMBw::', 'Other::') WHERE Client = ?", QeaFixture.A);
             byte[] original = basis.bytes();
-            assertTrue(assertThrows(IllegalArgumentException.class, () ->
-                    connector.exportAdmbw(delivery(), QeaFixture.ROOT, original)).getMessage().contains("QEA_ADMBW_CATALOGUE"));
+            assertRejectedByPreflightAndExport(QeaFixture.ROOT, original, "QEA_ADMBW_CATALOGUE");
             assertArrayEquals(original, basis.bytes());
         }
     }
@@ -200,8 +231,7 @@ class AdmbwQeaExportTest {
         try (var basis = basis()) {
             var connector = new SparxQeaWriterConnector();
             var file = connector.exportAdmbw(delivery(), QeaFixture.ROOT, basis.bytes());
-            assertTrue(assertThrows(IllegalArgumentException.class, () ->
-                    connector.exportAdmbw(delivery(), QeaFixture.ROOT, file.content())).getMessage().contains("QEA_ADMBW_DIAGRAM_EXISTS"));
+            assertRejectedByPreflightAndExport(QeaFixture.ROOT, file.content(), "QEA_ADMBW_DIAGRAM_EXISTS");
         }
     }
 
@@ -334,6 +364,17 @@ class AdmbwQeaExportTest {
                         "select count(*) from t_connectortag where ElementID=20 and Value='Original value'"));
             }
         }
+    }
+
+    private static void assertRejectedByPreflightAndExport(String root, byte[] basis, String reason) {
+        var connector = new SparxQeaWriterConnector();
+        var delivery = delivery();
+        byte[] original = basis.clone();
+        var export = assertThrows(IllegalArgumentException.class, () -> connector.exportAdmbw(delivery, root, basis));
+        assertTrue(export.getMessage().startsWith(reason + ":"), export::getMessage);
+        var preflight = assertThrows(IllegalArgumentException.class, () -> connector.preflightAdmbw(delivery, root, basis));
+        assertEquals(export.getMessage(), preflight.getMessage());
+        assertArrayEquals(original, basis);
     }
 
     private QeaFixture basis() throws Exception {

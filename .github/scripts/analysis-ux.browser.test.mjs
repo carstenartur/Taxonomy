@@ -1114,7 +1114,12 @@ async function bootBrowseWithReport(page) {
 }
 
 async function bootScoreImport(page, importedResult) {
-    await page.evaluate(({result, oldReport}) => {
+    await page.addScriptTag({path:path.join(resources, 'static/js/shared/architecture-workspace.js')});
+    await page.evaluate(async ({result, oldReport}) => {
+        window.TaxonomyArchitectureWorkspace = TaxonomyArchitectureWorkspaceController.create({
+            initial:{kind:'analysis', workspaceId:'draft-workspace'}, adapters:{analysis:{activate:async () => {}}}
+        });
+        await TaxonomyArchitectureWorkspace.open('analysis');
         document.body.insertAdjacentHTML('beforeend', `
             <button id="expandAll"></button><button id="collapseAll"></button>
             <button id="importJson"></button><input id="importJsonFile" type="file">
@@ -1124,21 +1129,22 @@ async function bootScoreImport(page, importedResult) {
         window.importResult = result;
         window.importRequestBody = null;
         window.__taxonomyFixtureFetch = async (url, options = {}) => {
-            if (url === '/api/scores/import') {
+            const pathname = new URL(url, location.href).pathname;
+            if (pathname === '/api/scores/import') {
                 window.importRequestBody = options.body;
                 const imported = options.body === 'not-json'
                     ? {error: 'Malformed score import'} : window.importResult;
                 return {ok: true, json: async () => imported};
             }
-            if (url === '/api/taxonomy') {
+            if (pathname === '/api/taxonomy') {
                 return {ok: true, status: 200, json: async () => [
                     {code: 'BP-1000', name: 'Zeiterfassung', children: []}
                 ]};
             }
-            if (url === '/api/ai-status') {
+            if (pathname === '/api/ai-status') {
                 return {ok: true, json: async () => ({available: false, availableProviders: []})};
             }
-            if (url === '/api/account/me') {
+            if (pathname === '/api/account/me') {
                 return {ok: true, json: async () => ({administrator: false, roles: ['USER']})};
             }
             throw new Error(`Unexpected test request: ${url}`);
@@ -1157,6 +1163,11 @@ async function bootScoreImport(page, importedResult) {
         document.getElementById('viewSummary').style.display = '';
     }, {result: importedResult, oldReport: relationReport});
     await page.addScriptTag({path: path.join(resources, 'static/js/core/taxonomy-analysis-session-core.js')});
+    await page.evaluate(() => {
+        const runtime = window.__TaxonomyAnalysisSessionContext.runtime;
+        runtime.workspaceId = 'draft-workspace';
+        window.TaxonomyAnalysisSession = {state:() => ({ready:true, workspaceId:runtime.workspaceId})};
+    });
     await page.addScriptTag({path: path.join(resources, 'static/js/core/taxonomy-browse.js')});
     await page.evaluate(() => document.dispatchEvent(new Event('DOMContentLoaded')));
     await page.waitForFunction(() => document.querySelector('#providerSelect option[value="MANUAL"]'));
@@ -1200,7 +1211,7 @@ test('portable Copilot import renders and re-exports retained evidence without g
         });
         await page.waitForFunction(() => window.portableExport);
         const exported=await page.evaluate(() => window.portableExport);
-        assert.equal(exported.url,'/api/scores/export');
+        assert.equal(exported.url,'/api/scores/export?workspaceId=draft-workspace');
         assert.deepEqual(exported.body.copilot,copilot);assert.equal(exported.body.analysisReference,undefined);
     } finally { await finish(page); }
 });

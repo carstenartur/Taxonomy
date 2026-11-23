@@ -73,6 +73,8 @@ public final class ArchitectureEditorExportController {
     public record AdmbwAssessment(String repositoryId, String workspaceScopeKey, String branch, String commit,
                                   AdmbwFffmlvProfile.Report assessment, List<AdmbwFffmlvProfile.Issue> qeaIssues) { }
 
+    public record AdmbwPreflight(String commit, String coverage) { }
+
     @GetMapping(value = "/api/architecture/editor.admbw.json", produces = MediaType.APPLICATION_JSON_VALUE)
     @Operation(summary = "Prepare ADMBw C1-S1 and R7 from an exact architecture checkpoint",
             description = "Exports typed authoring data, structural findings and manual reviews for the public FFFmLV 2.0 and ADMBw 2026.05 subset. Requires a reachable Git checkpoint in the authenticated selected context. Optional viewId scopes C1-S1 only. Native EA delivery and acceptance require separate verification.")
@@ -108,6 +110,51 @@ public final class ArchitectureEditorExportController {
             @RequestParam(required = false) String viewId,
             @RequestParam String rootPackageGuid,
             HttpServletRequest request) throws IOException {
+        return withNativeDelivery(repositoryId, workspaceScopeKey, branch, commit, projectCode, viewId,
+                rootPackageGuid, request, (writer, delivery, basis, checked) -> {
+                    var file = writer.exportAdmbw(delivery, rootPackageGuid, basis);
+                    return nativeResponse(checked)
+                            .contentType(MediaType.parseMediaType(file.mediaType()))
+                            .header(HttpHeaders.CONTENT_DISPOSITION,
+                                    ContentDisposition.attachment().filename(file.filename()).build().toString())
+                            .body(file.content());
+                });
+    }
+
+    @PostMapping(value = "/api/architecture/editor.admbw.qea/preflight",
+            consumes = {AdmbwQeaExport.MEDIA_TYPE, MediaType.APPLICATION_OCTET_STREAM_VALUE},
+            produces = MediaType.APPLICATION_JSON_VALUE)
+    @Operation(summary = "Check native ADMBw delivery against a supplied QEA basis",
+            description = "Checks the exact authorized checkpoint, reviewed native bindings and the native writer constraints on a disposable private copy. Returns the checked commit and coverage status without downloading or publishing a file. Export repeats the checks against its own supplied basis.",
+            requestBody = @io.swagger.v3.oas.annotations.parameters.RequestBody(required = true,
+                    content = @Content(mediaType = AdmbwQeaExport.MEDIA_TYPE, schema = @Schema(type = "string", format = "binary"))))
+    public ResponseEntity<AdmbwPreflight> admbwQeaPreflight(
+            @RequestParam String repositoryId,
+            @RequestParam String workspaceScopeKey,
+            @RequestParam String branch,
+            @RequestParam String commit,
+            @RequestParam String projectCode,
+            @RequestParam(required = false) String viewId,
+            @RequestParam String rootPackageGuid,
+            HttpServletRequest request) throws IOException {
+        return withNativeDelivery(repositoryId, workspaceScopeKey, branch, commit, projectCode, viewId,
+                rootPackageGuid, request, (writer, delivery, basis, checked) -> {
+                    if (!writer.supportsDeliveryPreflight()) throw admbwExporterUnavailable();
+                    writer.preflightAdmbw(delivery, rootPackageGuid, basis);
+                    return nativeResponse(checked).contentType(MediaType.APPLICATION_JSON)
+                            .body(new AdmbwPreflight(checked.commit(), checked.assessment().coverage().status()));
+                });
+    }
+
+    @FunctionalInterface
+    private interface NativeDeliveryAction<T> {
+        ResponseEntity<T> apply(AdmbwQeaExport writer, AdmbwQeaExport.Delivery delivery,
+                                byte[] basis, AdmbwAssessment checked);
+    }
+
+    private <T> ResponseEntity<T> withNativeDelivery(String repositoryId, String workspaceScopeKey, String branch,
+            String commit, String projectCode, String viewId, String rootPackageGuid, HttpServletRequest request,
+            NativeDeliveryAction<T> action) throws IOException {
         var checked = assessAdmbw(repositoryId, workspaceScopeKey, branch, commit, projectCode, viewId);
         var report = checked.assessment();
         var views = List.of(report.capabilityToService(), report.requirementDerivation());
@@ -137,19 +184,19 @@ public final class ArchitectureEditorExportController {
                                 .map(ref -> new AdmbwPreparation.Reference(ref.guid(), ref.stereotype(), ref.name(), ref.notes(),
                                         ref.packagePath(), ref.rootGuid(), ref.ownerGuid())).toList()));
             }
-            var file = writer.exportAdmbw(delivery, rootPackageGuid, bytes);
-            return ResponseEntity.ok()
-                    .cacheControl(CacheControl.noStore())
-                    .contentType(MediaType.parseMediaType(file.mediaType()))
-                    .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.attachment().filename(file.filename()).build().toString())
-                    .header("X-Content-Type-Options", "nosniff")
-                    .header("X-Taxonomy-Source", "GIT_CHECKPOINT")
-                    .header("X-Taxonomy-Commit", checked.commit())
-                    .header("X-Taxonomy-Delivery-Coverage", report.coverage().status())
-                    .body(file.content());
+            return action.apply(writer, delivery, bytes, checked);
         } catch (ExtensionUnavailableException unavailable) {
             throw admbwExporterUnavailable();
         }
+    }
+
+    private static ResponseEntity.BodyBuilder nativeResponse(AdmbwAssessment checked) {
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.noStore())
+                .header("X-Content-Type-Options", "nosniff")
+                .header("X-Taxonomy-Source", "GIT_CHECKPOINT")
+                .header("X-Taxonomy-Commit", checked.commit())
+                .header("X-Taxonomy-Delivery-Coverage", checked.assessment().coverage().status());
     }
 
     private AdmbwAssessment assessAdmbw(String repositoryId, String workspaceScopeKey, String branch,

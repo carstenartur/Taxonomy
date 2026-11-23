@@ -42,13 +42,34 @@
         var current = Object.assign({}, options.initial), retained = {}, activated = new Set(), active = false, generation = 0;
         retained[current.kind] = current;
         var adapters = options.adapters;
+        var publishedGeneration = null;
+        function beginActivation() {
+            const ticket = ++generation;
+            publishedGeneration = null;
+            options.onActivationChange?.(null);
+            return ticket;
+        }
+        function confirmActivation(ticket) {
+            publishedGeneration = ticket;
+            options.onActivationChange?.(ticket);
+        }
+        function confirmedSourceGeneration(kind) {
+            return active && current.kind === kind ? publishedGeneration : null;
+        }
         function getSource() {
             return Object.assign({}, current, active ? adapters[current.kind]?.getSource?.() : null, {kind:current.kind});
         }
         async function open(kind, settings) {
             if (!kinds.includes(kind)) throw new Error('Unknown architecture source: ' + kind);
             settings = settings || {};
-            var ticket = ++generation, prior = adapters[current.kind];
+            const priorConfirmed = publishedGeneration !== null;
+            var ticket = beginActivation(), prior = adapters[current.kind];
+            function refused() {
+                // Neither adapter has been suspended. Keep the visible source usable,
+                // but selections made before the attempted transition stay revoked.
+                if (priorConfirmed && ticket === generation) confirmActivation(ticket);
+                return false;
+            }
             var next = Object.assign({}, settings.source || retained[kind] || options.defaults?.[kind] || {}, {kind:kind});
             pinKeys.forEach(function (key) { if (settings[key] !== undefined) next[key] = settings[key]; });
             if (settings.workspaceId !== undefined && settings.workspaceScopeKey === undefined) next.workspaceScopeKey = settings.workspaceId || '__shared__';
@@ -56,9 +77,9 @@
             completeWorkspacePin(next);
             if (options.initialize && await options.initialize() === false) return false;
             if (ticket !== generation) return false;
-            if (active && prior?.canLeave && !await prior.canLeave(next, {retain:kind !== current.kind})) return false;
+            if (active && prior?.canLeave && !await prior.canLeave(next, {retain:kind !== current.kind})) return refused();
             var target = adapters[kind];
-            if (activated.has(kind) && (!active || target !== prior) && target?.canLeave && !await target.canLeave(next,{retain:false})) return false;
+            if (activated.has(kind) && (!active || target !== prior) && target?.canLeave && !await target.canLeave(next,{retain:false})) return refused();
             if (ticket !== generation) return false;
             retained[current.kind] = getSource();
             if (active) prior?.suspend?.();
@@ -69,16 +90,18 @@
             if (ticket !== generation || !active) return false;
             current = getSource(); retained[kind] = current;
             options.onChange?.(current, settings);
+            if (ticket !== generation) return false;
+            confirmActivation(ticket);
             return true;
         }
         return {
-            open:open, getSource:getSource, isActive:function () { return active; },
+            open:open, getSource:getSource, confirmedSourceGeneration:confirmedSourceGeneration, isActive:function () { return active; },
             getData:function () { return adapters[current.kind]?.getData?.() ?? null; },
             getDiagram:function () { return adapters[current.kind]?.getDiagram?.(); },
             select:function (id) { current.element = id; adapters[current.kind]?.select?.(id); },
             rememberSelection:function (id) { current.element = id; },
             canLeave:function () { return adapters[current.kind]?.canLeave?.(current,{retain:true}) ?? true; },
-            suspend:function () { retained[current.kind] = getSource(); current = retained[current.kind]; active = false; generation++; adapters[current.kind]?.suspend?.(); },
+            suspend:function () { retained[current.kind] = getSource(); current = retained[current.kind]; active = false; beginActivation(); adapters[current.kind]?.suspend?.(); },
             refresh:function () { if (active) options.onChange?.(getSource(),{replace:true}); }
         };
     }
@@ -290,6 +313,9 @@
                 getSource:function () { return snapshot?.getSource(); }, getData:function () { return snapshot?.getData(); },
                 getDiagram:function () { return snapshot?.getDiagram(); }, select:function (id) { snapshot?.select(id); }
             }
+        },
+        onActivationChange:function (generation) {
+            document.dispatchEvent(new CustomEvent('taxonomy:architecture-source-activation', {detail:{generation:generation}}));
         },
         beforeChange:function (source,settings) {
             if (source.kind === 'analysis' && (settings.source || contextKeys.some(function (key) { return settings[key] !== undefined; }))) {

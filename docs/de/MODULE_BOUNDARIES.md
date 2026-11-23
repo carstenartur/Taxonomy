@@ -121,6 +121,14 @@ Folgebeiträge erhalten ursprüngliche Anforderungsidentität und exakte geprüf
 | `ArchitectureLifecycleService`, `ArchitectureRequirementService` | `taxonomy-app`: Lifecycle-Komposition, authentifizierter Kontext und atomare fachübergreifende Befehlskoordination. |
 | Gemeinsame Lifecycle-Navigation | Anwendungsoberfläche: ausdrückliche Intake-/Umsetzungsentscheidungen, Trennung von Quelle und gewähltem Stand sowie kontextsensitive Hilfe. |
 
+Für den Architekturauftrag und die Wiederaufnahme einer Lieferung stieg die Zahl
+der geprüften Klassenabhängigkeiten von `com.taxonomy.composition.architecture` zu
+`com.taxonomy.editor` von 49 auf 54. `ScopeRequest` übernimmt den Editorkontext
+und die Befehlsmetadaten. `ScopePreview` gibt den geprüften Kontext zurück.
+`ArchitectureAdmbwPreparationService` liest die `IntegrationReceipt` des handelnden
+Benutzers und deren `CheckpointAccepted` über den Editor. Der Workspace verwaltet
+das Journal und prüft, ob der Checkpoint erreichbar ist.
+
 `WorkspaceSourceDiscoveryService` besitzt die begrenzte Architekturquellensuche und
 Leseberechtigung für exakte Kontexte. Portfolio-Intake verwendet diese Workspace-API
 statt auf Workspace-Repositories zuzugreifen. Dokumentzugriffe bleiben hinter

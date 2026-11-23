@@ -20,6 +20,28 @@ public class ArchitectureLifecycleController {
         if(!LifecycleHttpContext.mayEdit()) result=result.readOnly();
         return LifecycleHttpContext.response(result.context()).header("X-Taxonomy-Source",result.source()).body(result);
     }
+    @PostMapping("/brief/requirements/preview")
+    @Operation(summary="Preview the complete set of version-bound requirements for the architecture brief",
+            description="Checks each requirement and its exact supporting excerpt in the current portfolio scope and returns the proposed change.")
+    public ResponseEntity<ScopePreview> previewScope(@RequestBody ScopeRequest request,
+            @RequestHeader(value=HttpHeaders.IF_MATCH,required=false) String ifMatch,
+            @RequestHeader(value=HttpHeaders.IF_NONE_MATCH,required=false) String ifNoneMatch) throws IOException {
+        LifecycleHttpContext.requireRevision(request.context(), ifMatch, ifNoneMatch);
+        var result = service.previewScope(contexts.resolve(), request);
+        return LifecycleHttpContext.response(result.context()).body(result);
+    }
+
+    @PostMapping("/brief/requirements")
+    @Operation(summary="Accept and checkpoint reviewed architecture brief requirement assignments",
+            description="Revalidates every version and excerpt under the project and editor locks before replacing the scoped requirements atomically.")
+    public ResponseEntity<Publication> acceptScope(@RequestBody ScopeRequest request,
+            @RequestHeader(value=HttpHeaders.IF_MATCH,required=false) String ifMatch,
+            @RequestHeader(value=HttpHeaders.IF_NONE_MATCH,required=false) String ifNoneMatch) throws IOException {
+        LifecycleHttpContext.requireRevision(request.context(), ifMatch, ifNoneMatch);
+        var result = service.acceptScope(contexts.resolve(), request);
+        return LifecycleHttpContext.response(result.context()).body(result);
+    }
+
     @PostMapping("/realizations/preview")
     @Operation(summary="Preview an exact requirement realization review",description="Checks the requirement text version, contribution project and selected architecture dependencies without writing.")
     public ResponseEntity<ReviewPreview> preview(@RequestBody Request request,@RequestHeader(value=HttpHeaders.IF_MATCH,required=false) String ifMatch,

@@ -118,6 +118,99 @@ test('current Mermaid requests the recorded German content language even when th
     assert.equal(url.searchParams.get('locale'), 'de');
 });
 
+function installImportSource(f) {
+    const controller = readFileSync(path.resolve(__dirname, '../../main/resources/static/js/shared/architecture-workspace.js'), 'utf8');
+    vm.runInNewContext(controller, {window:f.window, document:f.document, URL, URLSearchParams});
+    const workspace = f.window.TaxonomyArchitectureWorkspaceController.create({
+        initial:{kind:'analysis'}, adapters:{analysis:{activate:async () => {}}},
+        onActivationChange:() => f.document.dispatchEvent({type:'taxonomy:architecture-source-activation'})
+    });
+    f.window.TaxonomyArchitectureWorkspace = workspace;
+    f.window.TaxonomyAnalysisSession = {state:() => ({ready:true, workspaceId:'draft-workspace'})};
+    return workspace;
+}
+
+test('score upload follows the confirmed source from file selection to application', async () => {
+    const f = fixture(), button = f.element('button'), file = f.element('input');
+    f.elements.set('importJson', button); f.elements.set('importJsonFile', file);
+    file.files = [{name:'scores.json'}];
+    let finishRead, finishBody;
+    const browse = readFileSync(path.resolve(__dirname, '../../main/resources/static/js/core/taxonomy-browse.js'), 'utf8');
+    const registration = browse.slice(browse.indexOf('// Import JSON button'), browse.indexOf('// Diagnostics panel'));
+    const active = installImportSource(f);
+    const runtime = {workspaceId:'draft-workspace', analysisGeneration:0};
+    f.window.__TaxonomyAnalysisSessionContext = {runtime};
+    let sessionReady = false;
+    f.window.TaxonomyAnalysisSession = {state:() => ({ready:sessionReady, workspaceId:'draft-workspace'})};
+    const statuses = [];
+    const context = {window:f.window, document:f.document, S:f.state, SC:() => ({}),
+        FileReader:class {readAsText() {finishRead = () => this.onload({target:{result:'{}'}});}},
+        resetDiagramContext() {}, switchView() {}, renderView() {}, updateExportGroupVisibility() {},
+        showStatus(kind) {statuses.push(kind);}, t:key=>key};
+    f.window.fetch = (url) => { f.requests.push(url); return Promise.resolve({json:() => new Promise(resolve => {finishBody = resolve;})}); };
+    canonicalFixture.install(context, ['api/analysis-api.js']);
+    vm.runInNewContext(registration, context);
+    assert.equal(button.disabled, true);
+    file.listeners.change();
+    assert.equal(finishRead, undefined);
+    await active.open('analysis');
+    assert.equal(button.disabled, true, 'restoring draft still owns the workspace');
+    sessionReady = true;
+    f.document.dispatchEvent({type:'taxonomy:analysis-source-ready'});
+    assert.equal(button.disabled, false);
+    button.listeners.click();
+    active.suspend();
+    await active.open('analysis');
+    file.listeners.change();
+    assert.equal(finishRead, undefined, 'a chooser opened on the previous activation cannot start a read');
+    file.listeners.change();
+    active.suspend();
+    assert.equal(button.disabled, true);
+    await active.open('analysis');
+    finishRead();
+    assert.equal(f.requests.length, 0, 'a departed file selection cannot send on the next activation');
+    function reconcileDraft() {
+        for (const ready of [false, true]) {
+            sessionReady = ready;
+            f.document.dispatchEvent({type:'taxonomy:analysis-draft-state-changed'});
+            assert.equal(button.disabled, !ready);
+        }
+    }
+    button.listeners.click();
+    reconcileDraft();
+    finishRead = undefined;
+    file.listeners.change();
+    assert.equal(finishRead, undefined, 'a restored draft cannot adopt a previously opened chooser');
+    file.listeners.change();
+    reconcileDraft();
+    finishRead();
+    assert.equal(f.requests.length, 0, 'a read started before reconciliation cannot resume');
+    file.listeners.change();
+    runtime.analysisGeneration++;
+    finishRead();
+    assert.equal(f.requests.length, 0, 'a replaced draft cannot send even if the architecture source remains active');
+    file.listeners.change();
+    finishRead();
+    await new Promise(resolve => setImmediate(resolve));
+    const endpoint = '/api/scores/import?workspaceId=draft-workspace';
+    assert.deepEqual(f.requests, [endpoint]);
+    active.suspend();
+    await active.open('analysis');
+    finishBody({scores:{BP:50}});
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(f.state.currentScores.A, 90);
+    assert.ok(!statuses.includes('success'));
+    button.listeners.click();
+    file.listeners.change();
+    finishRead();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(f.requests, [endpoint, endpoint], 'one POST for the new selection');
+    finishBody({scores:{BP:50}});
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(f.state.currentScores.BP, 50);
+    assert.deepEqual(statuses, ['success']);
+});
+
 for (const scopeKind of ['missing', 'null', 'selected']) {
     test(`JSON file import and re-export preserves ${scopeKind} evidence scope`, async () => {
         const f = fixture();
@@ -170,6 +263,7 @@ for (const scopeKind of ['missing', 'null', 'selected']) {
             t: (key, ...args) => [key, ...args].join(': ')};
         f.window.fetch = importScope.fetch;
         canonicalFixture.install(importScope, ['api/analysis-api.js']);
+        await installImportSource(f).open('analysis');
         vm.runInNewContext(registration, importScope);
         file.listeners.change();
         await new Promise(resolve => setImmediate(resolve));

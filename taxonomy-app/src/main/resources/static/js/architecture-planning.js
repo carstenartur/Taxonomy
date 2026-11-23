@@ -106,6 +106,23 @@
             options.stage({ kind: 'DELETE_PLANNING', id: selectedRequirement, planning: { entryId: selectedEntry } }, el('editorPlanningReason'));
         });
         return {
+            openR7: function (id, field) {
+                if (!writable || !view?.mayEdit || !view.model.requirements.some(r => r.id === id) || !discard()) return false;
+                selectedRequirement = id;
+                el('editorPlanningRequirement').value = id;
+                const matching = entries().filter(item => item.entry?.profile === 'admbw-r7');
+                selectedEntry = matching.length === 1 ? matching[0].entry.id : '';
+                dirty = false; draftId = null;
+                populateEntries();
+                if (!selectedEntry && !matching.length) {
+                    el('editorPlanningProfile').value = 'admbw-r7@1';
+                    detail();
+                }
+                const control = matching.length > 1 ? el('editorPlanningEntry')
+                    : el('editorPlanningValue-' + field) || el('editorPlanningEntry');
+                control.focus();
+                return true;
+            },
             render: function (next, preserveDraft) {
                 var c = next.document && next.document.context || {}, nextScope = [c.repositoryId, c.workspaceScopeKey, c.branch].join('/');
                 if (nextScope !== scope) { selectedRequirement = ''; selectedEntry = ''; draftId = null; dirty = false; }

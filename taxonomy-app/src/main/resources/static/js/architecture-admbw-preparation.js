@@ -5,7 +5,7 @@
         const {root, api, t} = options;
         const el = id => root.querySelector('#' + id);
         const panel = el('editorAdmbwPreparation');
-        let view, scopeKey, standKey, available = false, basis, preview, read, download;
+        let view, scopeKey, standKey, available = false, basis, preview, read, download, repair, findingsKey;
         // A transport failure may arrive after the server has saved the operation.
         // Keep its original File, context, operation ID and fingerprint across model refreshes.
         const operations = new Map();
@@ -52,6 +52,37 @@
             el('prepRelationshipReviewed').checked = el('prepDerivationReviewed').checked = false;
             status('');
         }
+        const receiptKey = scope => 'taxonomy.admbw.delivery.' + scope;
+        function remembered(scope) {
+            try { return sessionStorage.getItem(receiptKey(scope)); }
+            catch (error) { options.report(error, el('prepStatus')); return null; }
+        }
+        function remember(scope, id) {
+            try {
+                if (id) sessionStorage.setItem(receiptKey(scope), id);
+                else sessionStorage.removeItem(receiptKey(scope));
+            } catch (error) { options.report(error, el('prepStatus')); }
+        }
+        async function recover(operation, resume) {
+            const scope = scopeOf(operation.request.context);
+            operation.state = 'RECOVERING';
+            operations.set(scope, operation); controls();
+            try {
+                const result = await api.recoverAdmbw(operation.request.context, operation.id, resume);
+                const {delivery, publication} = result;
+                if (!delivery || !['CHECKPOINTED','CHECKPOINT_PENDING','RECONCILIATION_REQUIRED'].includes(publication?.state)
+                        || publication.state === 'CHECKPOINTED' && !/^[a-f0-9]{40}$/i.test(publication.checkpoint?.commitId))
+                    throw new Error(text('unexpected'));
+                operation.publication = publication;
+                operation.request.selection = delivery;
+                operation.request.basisSha256 = delivery.basisSha256;
+                operation.preview = {viewId:delivery.viewId, assessment:result.assessment, qeaIssues:result.qeaIssues};
+                operation.state = publication.state;
+            } catch (error) {
+                operation.state = error.status === 404 ? 'NO_RECEIPT' : 'UNKNOWN';
+                if (scope === scopeKey) options.report(error, el('prepStatus'));
+            } finally { controls(); }
+        }
         function checkpointContext(operation) {
             const checkpoint = Object.create(operation.request.context);
             Object.defineProperty(checkpoint, 'commit', {value:operation.publication.checkpoint.commitId});
@@ -59,9 +90,9 @@
         }
         function controls() {
             const operation = operations.get(scopeKey), state = operation?.state;
-            const pending = ['SENDING','UNKNOWN','CHECKPOINT_PENDING'].includes(state);
-            const retry = state === 'UNKNOWN' || state === 'CHECKPOINT_PENDING';
-            panel.hidden = !working() || !view.mayEdit && !operation;
+            const pending = ['SENDING','RECOVERING','UNKNOWN','CHECKPOINT_PENDING'].includes(state);
+            const retry = ['UNKNOWN','NO_RECEIPT','CHECKPOINT_PENDING'].includes(state);
+            panel.hidden = !working() || view.document.projectionState === 'HISTORICAL' || !view.mayEdit && !operation;
             const missing = !requirements().length ? 'missingRequirement' : !services().length ? 'missingService' : null;
             const prerequisites = el('prepPrerequisites');
             prerequisites.hidden = !missing;
@@ -80,7 +111,7 @@
                 || !el('prepDerivationReviewed').checked || !el('prepRationale').value.trim();
             el('prepRetry').hidden = !retry;
             el('prepRetry').disabled = !available;
-            el('prepReceipt').textContent = operation ? text('state.' + state) + ' · ' + operation.request.selection.projectCode
+            el('prepReceipt').textContent = operation ? text('state.' + state) + (operation.request.selection?.projectCode ? ' · ' + operation.request.selection.projectCode : '')
                 + (operation.publication?.checkpoint?.commitId ? ' · ' + operation.publication.checkpoint.commitId.slice(0, 12) : '')
                 + (operation.publication?.detail ? ' · ' + operation.publication.detail : '') : '';
             const assessment = el('prepAssessment');
@@ -88,7 +119,26 @@
             if (assessment.hidden) assessment.removeAttribute('href');
             else assessment.href = api.admbwUrl(checkpointContext(operation), operation.request.selection.projectCode, operation.preview.viewId);
             el('prepDownload').hidden = !(state === 'CHECKPOINTED' && exportable(operation.preview));
-            el('prepDownload').disabled = !available || !!download;
+            const findingKey = JSON.stringify([scopeKey, standKey, state, operation?.id || operation?.request.metadata?.commandId, available]);
+            if (findingKey !== findingsKey) {
+                findingsKey = findingKey;
+                const list = el('prepAcceptedFindings');
+                list.replaceChildren();
+                if (state === 'CHECKPOINTED' && operation.preview?.assessment) {
+                    const assessment = operation.preview.assessment;
+                    const current = working() && operation.publication.context.revision === view.document.context.revision
+                        && operation.publication.checkpoint.commitId === view.document.context.commit;
+                    for (const issue of [...assessment.capabilityToService.issues, ...assessment.requirementDerivation.issues, ...operation.preview.qeaIssues]) {
+                        list.append(finding(issue, available && current, false));
+                    }
+                }
+                list.hidden = !list.children.length;
+            }
+            el('prepDeliveryFile').hidden = el('prepDownload').hidden || !operation?.restored;
+            el('prepBasisDigest').textContent = !el('prepDeliveryFile').hidden ? 'SHA-256 ' + operation.request.basisSha256 : '';
+            el('prepPreflight').hidden = el('prepDownload').hidden;
+            el('prepPreflight').disabled = !available || !!download || !operation?.file;
+            el('prepDownload').disabled = !available || !!download || !operation?.checkedFile || operation.file !== operation.checkedFile;
         }
         function exportable(result) {
             const report = result?.assessment;
@@ -97,17 +147,18 @@
         }
         function update(next, enabled) {
             const context = next?.document.context, nextScope = context ? scopeOf(context) : null;
-            const nextStand = context ? JSON.stringify([nextScope, context.revision, context.commit, next.document.source]) : null;
+            const nextStand = context ? JSON.stringify([nextScope, context.revision, context.commit, next.document.source, next.document.projectionState]) : null;
             view = next;
             available = Boolean(enabled);
             if (scopeKey !== nextScope) {
-                scopeKey = nextScope;
+                scopeKey = nextScope; repair = null;
                 basis = null;
                 download?.abort(); download = null;
-                el('prepForm').reset();
+                el('prepForm').reset(); el('prepDeliveryBasis').value = '';
                 select('prepRoot', []);
                 selectReferences();
             }
+            if (standKey !== nextStand || !available) { download?.abort(); download = null; }
             if (standKey !== nextStand) {
                 standKey = nextStand;
                 resetReview();
@@ -118,10 +169,33 @@
                 requirementText();
                 if (el('prepRequirement').value !== priorRequirement || el('prepSource').value !== priorText) el('prepQuote').value = '';
             }
+            if (available && working() && next.document.projectionState !== 'HISTORICAL' && !operations.has(nextScope)) {
+                const id = remembered(nextScope);
+                if (id) recover({id, restored:true, request:{context}}, false);
+            }
             controls();
+            if (repair && repair.scope === nextScope && available && next.mayEdit && context.revision > repair.revision) {
+                repair = null;
+                if (basis && file() && el('prepForm').checkValidity()) el('prepForm').requestSubmit();
+            }
         }
         function node(tag, value) {
             const result = document.createElement(tag); result.textContent = value; return result;
+        }
+        function finding(issue, editable, recompute) {
+            const row = node('li', [issue.code, issue.object, issue.detail].filter(Boolean).join(' · '));
+            const target = editable && options.openFinding && window.TaxonomyAdmbwCoverage.findingTarget(view, issue);
+            if (target) {
+                const button = node('button', text('editFinding'));
+                button.type = 'button';
+                button.addEventListener('click', () => {
+                    if (!available || !options.openFinding(target)) return;
+                    if (recompute) repair = {scope:scopeKey, revision:ctx().revision};
+                    resetReview(); controls();
+                });
+                row.append(button);
+            }
+            return row;
         }
         function showPreview(result, selection) {
             const area = el('prepResult');
@@ -135,19 +209,20 @@
                 section.className = 'editor-admbw-profile';
                 section.append(node('h4', profile.viewpoint || profile.name || viewpoint),
                     node('p', t('editor.admbw.status.' + profile.status)));
-                const findings = [
-                    ...profile.issues.map(issue => issue.object + ' · ' + issue.detail),
-                    ...(profile.requiredReviews || []).map(item => window.TaxonomyAdmbwCoverage.message(item, t))
-                ];
-                if (findings.length) {
+                if (profile.issues.length || profile.requiredReviews?.length) {
                     const list = document.createElement('ul');
-                    list.append(...findings.map(item => node('li', item)));
+                    for (const issue of profile.issues) list.append(finding(issue, true, true));
+                    for (const item of profile.requiredReviews || []) list.append(node('li', window.TaxonomyAdmbwCoverage.message(item, t)));
                     section.append(list);
                 }
                 area.append(section);
             }
             for (const note of result.notes) area.append(node('p', window.TaxonomyAdmbwCoverage.message(note, t)));
-            for (const issue of result.qeaIssues || []) area.append(node('p', issue.object + ' · ' + issue.detail));
+            if (result.qeaIssues?.length) {
+                const list = document.createElement('ul');
+                for (const issue of result.qeaIssues) list.append(finding(issue, true, true));
+                area.append(list);
+            }
             area.append(window.TaxonomyAdmbwCoverage.render(result.assessment.coverage, t));
             const technicalDetails = document.createElement('details');
             technicalDetails.append(node('summary', text('technicalDetails')),
@@ -205,7 +280,7 @@
             return '';
         }
         function inputChanged(event) {
-            const id = event.target.id;
+            const id = event.target.id; repair = null;
             if (id === 'prepBasis') {
                 basis = null; select('prepRoot', []); selectReferences();
             }
@@ -273,8 +348,10 @@
             finally { if (ticket === read) { read = null; controls(); } }
         });
         async function publish(operation) {
-            const originalScope = scopeOf(operation.request.context);
+            const originalScope = scopeOf(operation.request.context), originalStand = standKey;
+            const generation = options.generation?.();
             operation.state = 'SENDING';
+            remember(originalScope, operation.request.metadata.commandId);
             operations.set(originalScope, operation); controls();
             try {
                 const result = await api.acceptAdmbwPreparation(operation.request, operation.file);
@@ -286,15 +363,17 @@
                 }
             } catch (error) {
                 if (error.status >= 400 && error.status < 500 && ![408,429].includes(error.status)) {
-                    operations.delete(originalScope);
+                    operations.delete(originalScope); remember(originalScope, null);
                     if (scopeKey === originalScope) resetReview();
                 } else operation.state = 'UNKNOWN';
                 if (scopeKey === originalScope) options.report(error, el('prepStatus'));
                 controls(); return;
             }
             controls();
-            if (scopeKey === originalScope && available && working() && operation.state === 'CHECKPOINTED') {
-                await options.onAccepted(operation.publication, operation.request.context, operation.preview.viewId);
+            if (scopeKey === originalScope && originalStand === standKey && available && working()
+                    && view.document.projectionState !== 'HISTORICAL' && operation.state === 'CHECKPOINTED'
+                    && generation === options.generation?.()) {
+                await options.onAccepted(operation.publication, operation.request.context, operation.preview.viewId, generation);
             }
         }
         el('prepAccept').addEventListener('click', () => {
@@ -304,11 +383,34 @@
         });
         el('prepRetry').addEventListener('click', () => {
             const operation = operations.get(scopeKey);
-            if (available && ['UNKNOWN','CHECKPOINT_PENDING'].includes(operation?.state)) publish(operation);
+            if (!available || !operation) return;
+            if (operation.restored) recover(operation, operation.state === 'CHECKPOINT_PENDING');
+            else if (['UNKNOWN','CHECKPOINT_PENDING'].includes(operation.state)) publish(operation);
+        });
+        el('prepDeliveryBasis').addEventListener('change', () => {
+            const operation = operations.get(scopeKey);
+            if (!operation?.restored) return;
+            download?.abort(); download = null;
+            operation.file = el('prepDeliveryBasis').files[0]; operation.checkedFile = null;
+            status(''); controls();
+        });
+        el('prepPreflight').addEventListener('click', async () => {
+            const operation = operations.get(scopeKey);
+            if (el('prepPreflight').disabled || !operation?.file) return;
+            const ticket = download = new AbortController(), source = operation.file, selected = operation.request.selection;
+            operation.checkedFile = null; controls();
+            try {
+                const check = await api.preflightAdmbw(checkpointContext(operation), selected.projectCode, operation.preview.viewId,
+                    selected.rootPackageGuid, source, ticket.signal);
+                if (ticket !== download || operation !== operations.get(scopeKey) || source !== operation.file) return;
+                operation.checkedFile = source;
+                status(text('preflightReady') + ' · ' + (check.coverage.status || check.coverage));
+            } catch (error) { if (ticket === download) options.report(error, el('prepStatus')); }
+            finally { if (ticket === download) { download = null; controls(); } }
         });
         el('prepDownload').addEventListener('click', async () => {
             const operation = operations.get(scopeKey);
-            if (!available || download || operation?.state !== 'CHECKPOINTED' || !exportable(operation.preview)) return;
+            if (el('prepDownload').disabled || operation?.state !== 'CHECKPOINTED' || !exportable(operation.preview)) return;
             const ticket = download = new AbortController();
             controls();
             try {

@@ -46,6 +46,8 @@ window.TaxonomyArchitectureLifecycleApi = (function () {
         history:function (context, filters) { return read(base + '/history', context, filters); },
         projects:function (context) { return read('/api/projects', context); },
         requirement:function (context, projectId, requirementId) { return read('/api/projects/' + projectId + '/requirements/' + requirementId, context); },
+        previewBriefScope:function (request) { return write(base + '/brief/requirements/preview', request, true); },
+        acceptBriefScope:function (request) { return write(base + '/brief/requirements', request, true, null, true); },
         previewReview:function (request) { return write(base + '/realizations/preview', request, true); },
         acceptReview:function (request) { return write(base + '/realizations', request, true, null, true); },
         saveRequirement:function (request) { return write('/api/architecture/editor/requirements', request, true, null, true); },

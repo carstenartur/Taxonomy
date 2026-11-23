@@ -22,6 +22,20 @@ class ArchitectureBriefTest {
             }
             """;
 
+    @Test void multipleRequirementPinsAndVerbatimEvidenceBelongToTheExactBriefRevision() {
+        var legacy = ArchitectureBrief.store(MODEL, Map.of("objective", "Record deliveries"));
+        var one = new ArchitectureBrief.Binding(new com.taxonomy.dsl.requirements.RequirementTrace.Link(
+                "REG", "REQ-1", 1, "a".repeat(64)), "original\r\nline");
+        var two = new ArchitectureBrief.Binding(new com.taxonomy.dsl.requirements.RequirementTrace.Link(
+                "PORTAL", "REQ-1", 2, "b".repeat(64)), "section \"B\"");
+        var first = ArchitectureBrief.bind(legacy, java.util.List.of(one, two));
+        var second = ArchitectureBrief.bind(first, java.util.List.of(two));
+        assertTrue(ArchitectureBrief.read(commands.model(legacy)).bindings().isEmpty());
+        assertEquals(java.util.List.of(one, two), ArchitectureBrief.read(commands.model(first)).bindings());
+        assertEquals(java.util.List.of(two), ArchitectureBrief.read(commands.model(second)).bindings());
+        assertThrows(IllegalArgumentException.class, () -> ArchitectureBrief.bind(first, java.util.List.of(one, one)));
+    }
+
     @Test void architectureScopeAndSourceEditionSurviveIndependentRevisions() {
         assertFalse(ArchitectureBrief.read(commands.model(MODEL)).present());
         var brief = ArchitectureBrief.store(MODEL, Map.of("objective", "Provide registry services", "stage", "target"));

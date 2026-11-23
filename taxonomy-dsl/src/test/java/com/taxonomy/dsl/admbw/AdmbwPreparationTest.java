@@ -123,6 +123,9 @@ class AdmbwPreparationTest {
         AdmbwPreparation.validateDeliveryBasis(result.dsl(), result.assessment(), ROOT, basis());
         assertThatIllegalArgumentException().isThrownBy(() -> AdmbwPreparation.validateDeliveryBasis(
                 result.dsl(), result.assessment(), OTHER_ROOT, basis()));
+        var alteredBytes = new Basis("b".repeat(64), basis().projectGuid(), basis().references());
+        assertThatIllegalArgumentException().isThrownBy(() -> AdmbwPreparation.validateDeliveryBasis(
+                result.dsl(), result.assessment(), ROOT, alteredBytes)).withMessageContaining("SHA-256");
         var otherProject = new AdmbwFffmlvProfile().assess(result.dsl(), "OTHER", result.viewId());
         assertThatIllegalArgumentException().isThrownBy(() -> AdmbwPreparation.validateDeliveryBasis(
                 result.dsl(), otherProject, ROOT, basis()));

@@ -531,7 +531,7 @@
       "fromPackage": "com.taxonomy.composition.architecture",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.editor",
-      "classDependencyCount": 49
+      "classDependencyCount": 54
     },
     {
       "fromContext": "app-composition",

@@ -118,5 +118,31 @@
         }
         return section;
     }
-    window.TaxonomyAdmbwCoverage = {render: render, message: message, serviceTypeEvidence: serviceTypeEvidence};
+    const planningFields = new Map([
+        ['R7_PLANNING_REQUIRED','requirementType'], ['INVALID_R7_PLANNING','requirementType'],
+        ['STALE_R7_PLANNING','requirementType'], ['R7_IMPORTED_REVIEW_REQUIRED','requirementType'],
+        ['OPERATIONAL_CONSTRAINT_REQUIRED','derivedFrom'], ['R7_SUBJECT_REQUIRED','constraintSubject'],
+        ['R7_REALIZER_TYPE','realizer']
+    ]);
+    const elementFields = new Map([
+        ['SERVICE_SPECIFICATION_REQUIRED','editorAdmbwType'], ['UNSUPPORTED_SERVICE_MAPPING','editorAdmbwType'],
+        ['INCOMPATIBLE_ADMBW_ROLE','editorAdmbwType'], ['CAPABILITY_EXHIBITS_REQUIRED','editorRelationType'],
+        ['SERVICE_EXHIBITS_REQUIRED','editorRelationType'], ['NAME_AND_NOTES_REQUIRED','editorDescription'],
+        ['DUPLICATE_CATALOGUE_GUID','editorAdmbwCatalogueGuid'], ['ADMBW_QEA_PART_OWNER','editorAdmbwCatalogueGuid']
+    ]);
+    for (const role of ['CAPABILITY','SUBJECT','REALIZER']) {
+        elementFields.set(role + '_CATALOGUE_GUID_REQUIRED', 'editorAdmbwCatalogueGuid');
+        elementFields.set(role + '_CATALOGUE_REFERENCE_REQUIRED', 'editorAdmbwCatalogueReference');
+    }
+    function findingTarget(view, issue) {
+        if (!view?.mayEdit || view.document.source !== 'WORKSPACE_REVISION' || view.document.projectionState !== 'READY'
+                || typeof issue.object !== 'string') return null;
+        if (issue.object.startsWith('requirement:')) {
+            const id = issue.object.slice('requirement:'.length), field = planningFields.get(issue.code);
+            return field && view.model.requirements.some(row => row.id === id) ? {panel:'planning', id, field} : null;
+        }
+        const id = issue.object.replace(/^element:/, ''), field = elementFields.get(issue.code);
+        return field && view.model.elements.some(row => row.id === id) ? {panel:'element', id, field} : null;
+    }
+    window.TaxonomyAdmbwCoverage = {render, message, serviceTypeEvidence, findingTarget};
 }());

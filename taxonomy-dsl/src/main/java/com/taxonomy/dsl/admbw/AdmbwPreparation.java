@@ -40,6 +40,8 @@ import static com.taxonomy.dsl.admbw.AdmbwFffmlvProfile.TYPE;
 public final class AdmbwPreparation {
     static final String VIEW_PROFILE = "x-exchange-admbw-profile";
     static final String VIEW_RELATIONS = "x-exchange-admbw-relation-members";
+    private static final String BASIS_HASH = "x-exchange-admbw-basis-sha256";
+    private static final String OPERATION = "x-exchange-admbw-operation";
     private static final String VIEW_PROJECT = "x-exchange-admbw-project-code";
     private static final String NATIVE_PROJECT = "x-exchange-admbw-native-project";
     private static final String NATIVE_ROOT = "x-exchange-admbw-native-root";
@@ -85,7 +87,23 @@ public final class AdmbwPreparation {
         this.catalogues = Objects.requireNonNull(catalogues);
     }
 
+    public record DeliveryIdentity(String viewId, String projectCode, String rootPackageGuid, String basisSha256) {}
+
+    public static DeliveryIdentity deliveryForOperation(String source, String operationId) {
+        var matches = ArchitectureSemanticPatch.index(source).values().stream()
+                .filter(block -> "view".equals(block.getKind()) && operationId.equals(unique(block, OPERATION))
+                        && AdmbwFffmlvProfile.ID.equals(unique(block, VIEW_PROFILE))).toList();
+        if (matches.size() != 1) return null;
+        var view = matches.getFirst();
+        return new DeliveryIdentity(view.getHeaderTokens().getFirst(), unique(view, VIEW_PROJECT),
+                guid(unique(view, NATIVE_ROOT), "model root"), require(SHA256, unique(view, BASIS_HASH), "basis SHA-256"));
+    }
+
     public Prepared prepare(String source, Selection selection, Basis basis) {
+        return prepare(source, selection, basis, null);
+    }
+
+    public Prepared prepare(String source, Selection selection, Basis basis, String operationId) {
         Objects.requireNonNull(source, "source");
         Objects.requireNonNull(selection, "selection");
         Objects.requireNonNull(basis, "basis");
@@ -132,7 +150,7 @@ public final class AdmbwPreparation {
 
         String viewId = "admbw-delivery-" + projectCode + "-" + bare(root);
         deliveryView(blocks.get("view:" + viewId), viewId, projectCode, projectGuid, root,
-                relation, subjectId, constraintId, changes);
+                basisHash, operationId, relation, subjectId, constraintId, changes);
         var model = new ArchitectureDslCommands().model(source);
         var commands = new ArchitectureDslCommands(catalogues.forModel(model), code -> catalogues.assignmentTarget(model, code));
         String prepared = commands.applyAll(source, changes).dsl();
@@ -214,6 +232,8 @@ public final class AdmbwPreparation {
             throw invalid("The delivery project and native model root must match the reviewed guided view");
         }
         verifyDeliveryReferences(indexReferences(basis), root, project, assessment, blocks);
+        if (view != null && unique(view, BASIS_HASH) != null && !basis.sha256().equals(unique(view, BASIS_HASH)))
+            throw invalid("The supplied QEA basis SHA-256 differs from the reviewed delivery");
     }
 
     /** Verifies delivered native identities and returns commands to retain newly observed pins on acceptance. */
@@ -342,7 +362,7 @@ public final class AdmbwPreparation {
     }
 
     private static void deliveryView(BlockAst existing, String viewId, String projectCode, String projectGuid, String root,
-                                     RelationKey relation, String subject, String constraint, List<ArchitectureCommand> changes) {
+                                     String basisHash, String operationId, RelationKey relation, String subject, String constraint, List<ArchitectureCommand> changes) {
         String title = "ADMBw delivery | " + projectCode;
         String description = "Reviewed selection for the supported ADMBw C1–S1 and R7 delivery views.";
         var members = new LinkedHashSet<String>();
@@ -368,9 +388,10 @@ public final class AdmbwPreparation {
         }
         members.addAll(List.of(relation.sourceId(), relation.targetId(), subject, constraint));
         reviewed.add(relation.id());
-        changes.add(new UpsertArchitectureView(viewId, title, description, List.copyOf(members),
-                Map.of(VIEW_PROFILE, AdmbwFffmlvProfile.ID, VIEW_PROJECT, projectCode, NATIVE_ROOT, root,
-                        NATIVE_PROJECT, projectGuid, VIEW_RELATIONS, String.join("\n", reviewed))));
+        var metadata = new LinkedHashMap<>(Map.of(VIEW_PROFILE, AdmbwFffmlvProfile.ID, VIEW_PROJECT, projectCode,
+                NATIVE_ROOT, root, NATIVE_PROJECT, projectGuid, VIEW_RELATIONS, String.join("\n", reviewed), BASIS_HASH, basisHash));
+        if (operationId != null) metadata.put(OPERATION, java.util.UUID.fromString(operationId).toString());
+        changes.add(new UpsertArchitectureView(viewId, title, description, List.copyOf(members), metadata));
     }
 
     private static String elementType(BlockAst block) {

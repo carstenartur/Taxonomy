@@ -118,6 +118,13 @@ contributions retain the original requirement identity and exact reviewed versio
 | `ArchitectureLifecycleService`, `ArchitectureRequirementService` | `taxonomy-app`: lifecycle composition, authenticated context and atomic cross-feature command orchestration. |
 | Shared lifecycle navigation | Application UI: explicit intake and realization decisions, source/selected-stand distinction and contextual help. |
 
+The reviewed class dependencies from `com.taxonomy.composition.architecture` to
+`com.taxonomy.editor` grew from 49 to 54 for the brief and delivery workflow.
+`ScopeRequest` carries the editor context and command metadata. `ScopePreview`
+returns the verified context. For delivery recovery, `ArchitectureAdmbwPreparationService`
+reads the actor's `IntegrationReceipt` and its `CheckpointAccepted` from the editor.
+The workspace owns journal persistence and verifies that the checkpoint is reachable.
+
 `WorkspaceSourceDiscoveryService` owns bounded architecture-source discovery and
 exact-context read authority. Portfolio intake consumes that workspace-owned API
 instead of accessing workspace repositories. Document reads remain behind

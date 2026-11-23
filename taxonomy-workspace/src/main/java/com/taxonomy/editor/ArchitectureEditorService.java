@@ -348,12 +348,17 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
 
     /** Resume the exact durable intent after restart; the authenticated actor must own it. */
     public CheckpointAccepted resumeCheckpoint(RepositoryContext context) throws IOException {
+        return resumeCheckpoint(context, null);
+    }
+
+    public CheckpointAccepted resumeCheckpoint(RepositoryContext context, String expectedCheckpointId) throws IOException {
         try (var write = writeBarrier.enter(backupScope(context))) {
             requireWritable(context);
             Snapshot snapshot = journal.read(context);
             if (snapshot == null || snapshot.state().pendingCheckpoint() == null) throw problem("NOT_FOUND", "checkpoint", "No pending checkpoint", List.of());
             Checkpoint intent = journal.locked(context, snapshot.state(), session -> session.checkpoint(snapshot.state().pendingCheckpoint()));
-            if (!context.username().equals(intent.actor())) throw problem("NOT_FOUND", "checkpoint", "No personal checkpoint", List.of());
+            if (intent == null || expectedCheckpointId != null && !expectedCheckpointId.equals(intent.commandId())
+                    || !context.username().equals(intent.actor())) throw problem("NOT_FOUND", "checkpoint", "No personal checkpoint", List.of());
             Checkpoint completed = finishCheckpoint(context, snapshot.state(), intent);
             return new CheckpointAccepted(Context.of(context, completed.commitId(), completed.revision()), completed.commandId(),
                     completed.commitId(), completed.fromRevision(), completed.revision(), completed.commitCreated(), true);
@@ -759,14 +764,32 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
         return new Metadata(id, metadata.correlationId(), metadata.commandId(), metadata.rationale());
     }
 
+    public record IntegrationReceipt(Context accepted, String source, CheckpointAccepted checkpoint, boolean pending) {}
+
+    /** Look up the actor's original imported revision and its own durable checkpoint intent. */
+    public IntegrationReceipt integrationReceipt(RepositoryContext context, String operationId, String checkpointId) {
+        requireWritable(context);
+        return journal.readExistingLocked(context, null, session -> {
+            var entry = session.find(operationId);
+            var receipt = session.checkpoint(checkpointId);
+            if (entry == null || !"VERSION_IMPORT".equals(entry.kind()) || !context.username().equals(entry.actor())
+                    || receipt == null || !context.username().equals(receipt.actor()) || receipt.revision() != entry.revision()
+                    || !receipt.dsl().equals(entry.afterDsl())) return null;
+            var accepted = Context.of(context, receipt.expectedCommit(), entry.revision());
+            var checkpoint = receipt.completed() && receipt.commitId() != null
+                    ? new CheckpointAccepted(Context.of(context, receipt.commitId(), receipt.revision()), receipt.commandId(),
+                            receipt.commitId(), receipt.fromRevision(), receipt.revision(), receipt.commitCreated(), true)
+                    : null;
+            return new IntegrationReceipt(accepted, entry.afterDsl(), checkpoint, checkpointId.equals(session.state().pendingCheckpoint()));
+        });
+    }
+
     /** Current Git checkpoint evidence for an original accepted operation, including explicit reconciliation. */
     public Optional<CheckpointAccepted> integrationCheckpointForOperation(RepositoryContext context, String originalCommandId) throws IOException {
         requireWritable(context);
         String operationId = UUID.fromString(originalCommandId).toString();
-        Snapshot snapshot = journal.read(context);
-        if (snapshot == null) return Optional.empty();
         try {
-            return journal.locked(context, snapshot.state(), session -> {
+            return journal.readExistingLocked(context, Optional.empty(), session -> {
                 Entry operation = session.find(operationId);
                 State state = session.state();
                 if (operation == null || !context.username().equals(operation.actor()) || state.pendingCheckpoint() != null

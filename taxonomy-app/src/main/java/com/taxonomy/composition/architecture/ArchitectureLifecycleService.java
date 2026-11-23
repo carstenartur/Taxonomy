@@ -1,5 +1,7 @@
 package com.taxonomy.composition.architecture;
 
+import com.taxonomy.dsl.planning.ArchitectureBrief;
+import com.taxonomy.dsl.planning.PlanningInformation;
 import com.taxonomy.dsl.ast.BlockAst;
 import com.taxonomy.dsl.command.ArchitectureSemanticPatch;
 import com.taxonomy.dsl.command.ArchitectureDslCommands.CommandProblem;
@@ -111,6 +113,82 @@ public class ArchitectureLifecycleService {
         boolean mayEdit=live && "READY".equals(document.projectionState()) && context.scope()==RepositoryScope.WORKSPACE;
         return new Overview(document.context(),repositories.getRepository(context.repositoryId()).getDisplayName(),document.source(),
                 document.projectionState(),publication,mayEdit,List.copyOf(projectViews),List.copyOf(requirementViews),List.copyOf(dependencies));
+    }
+
+    public record RequirementPin(Long projectId, Long requirementId, Long expectedVersionId,
+                                 String expectedContentHash, String evidenceQuote) {
+        public RequirementPin {
+            if (projectId == null || requirementId == null || expectedVersionId == null || expectedContentHash == null
+                    || !expectedContentHash.matches("[a-f0-9]{64}") || evidenceQuote == null || evidenceQuote.isBlank()
+                    || evidenceQuote.length() > 4096)
+                throw new IllegalArgumentException("Select an exact requirement version and supporting excerpt");
+        }
+        String digest() { return fingerprint(projectId, requirementId, expectedVersionId, expectedContentHash, evidenceQuote); }
+    }
+    public record ScopeRequest(Context context, Metadata metadata, List<RequirementPin> pins, String previewFingerprint) {
+        public ScopeRequest {
+            Objects.requireNonNull(context);
+            Objects.requireNonNull(metadata);
+            if (pins == null || pins.size() > PlanningInformation.MAX_ENTRIES)
+                throw new IllegalArgumentException("Supply a bounded list of requirement pins");
+            pins = List.copyOf(pins);
+        }
+    }
+    public record ScopePreview(Context context, String fingerprint, List<ArchitectureBrief.Binding> bindings,
+                               List<ArchitectureSemanticPatch.BlockChange> changes) {}
+    private record ScopedBrief(String source, List<ArchitectureBrief.Binding> bindings, String fingerprint) {}
+
+    public ScopePreview previewScope(RepositoryContext context, ScopeRequest request) throws IOException {
+        authorize(context, true);
+        requireContext(context, request.context());
+        var document = editor.read(context, null);
+        requireStand(request.context(), document.context());
+        if (!"READY".equals(document.projectionState()))
+            throw problem("VERSION_CHANGED", "Refresh or reconcile the architecture before binding requirements");
+        var prepared = prepareScope(context, request, document.dsl());
+        return new ScopePreview(document.context(), prepared.fingerprint(), prepared.bindings(),
+                ArchitectureSemanticPatch.between(document.dsl(), prepared.source()));
+    }
+
+    public Publication acceptScope(RepositoryContext context, ScopeRequest request) throws IOException {
+        authorize(context, true);
+        requireContext(context, request.context());
+        var checkpoint = checkpointMetadata(request.metadata());
+        String intent = fingerprint("brief-scope", request.context(), request.metadata(),
+                request.pins().stream().map(RequirementPin::digest).toList(), request.previewFingerprint());
+        Context accepted;
+        try {
+            accepted = transaction.execute(status -> {
+                try {
+                    return editor.acceptIntegration(context, request.context(), request.metadata(), intent, List.of(), source -> {
+                        lockProjects(context, request.pins().stream().map(RequirementPin::projectId).toArray(Long[]::new));
+                        var prepared = prepareScope(context, request, source);
+                        if (!Objects.equals(request.previewFingerprint(), prepared.fingerprint()))
+                            throw problem("PREVIEW_CHANGED", "Review the current requirements and architecture brief again");
+                        return prepared.source();
+                    }, checkpoint);
+                } catch (IOException failure) { throw new UncheckedIOException(failure); }
+            });
+        } catch (UncheckedIOException failure) { throw failure.getCause(); }
+        return finish(context, accepted, checkpoint);
+    }
+
+    private ScopedBrief prepareScope(RepositoryContext context, ScopeRequest request, String source) {
+        var scope = workspace(context);
+        var bindings = new ArrayList<ArchitectureBrief.Binding>();
+        for (var pin : request.pins()) {
+            var requirement = projects.getRequirement(pin.projectId(), pin.requirementId(), context.username(), scope);
+            requireVersion(requirement, pin.expectedVersionId(), pin.expectedContentHash());
+            var version = requirement.currentVersion();
+            if (!version.text().contains(pin.evidenceQuote()))
+                throw problem("REQUIREMENT_EVIDENCE_CHANGED", "The selected excerpt must occur verbatim in its requirement");
+            var project = projects.getProject(pin.projectId(), context.username(), scope);
+            bindings.add(new ArchitectureBrief.Binding(new RequirementTrace.Link(project.projectKey(), requirement.requirementKey(),
+                    version.versionNumber(), version.contentHash()), pin.evidenceQuote()));
+        }
+        var changed = ArchitectureBrief.bind(source, bindings);
+        return new ScopedBrief(changed, List.copyOf(bindings), fingerprint("brief-scope-preview", request.context(),
+                request.metadata().rationale(), request.pins().stream().map(RequirementPin::digest).toList(), changed));
     }
 
     public ReviewPreview preview(RepositoryContext context, Request request) throws IOException {
@@ -234,8 +312,10 @@ public class ArchitectureLifecycleService {
     }
     static WorkspaceContext workspace(RepositoryContext context) { return new WorkspaceContext(context.username(),context.workspaceId(),context.branch(),context.repositoryId()); }
     static Metadata checkpointMetadata(Metadata original) {
-        String id=UUID.nameUUIDFromBytes(("architecture-lifecycle:"+original.commandId()).getBytes(StandardCharsets.UTF_8)).toString();
-        return new Metadata(id,original.correlationId(),original.commandId(),original.rationale());
+        return new Metadata(checkpointId(original.commandId()),original.correlationId(),original.commandId(),original.rationale());
+    }
+    static String checkpointId(String operationId) {
+        return UUID.nameUUIDFromBytes(("architecture-lifecycle:" + operationId).getBytes(StandardCharsets.UTF_8)).toString();
     }
     static String fingerprint(Object... parts) {
         StringBuilder text=new StringBuilder();

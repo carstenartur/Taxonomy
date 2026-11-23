@@ -696,8 +696,8 @@
 
                         <h6 class="mb-2" th:text="#{export.import.heading}">Import &amp; Load</h6>
                         <div class="d-flex gap-2 flex-wrap">
-                            <button id="importJson" class="btn btn-outline-secondary" th:title="#{export.btn.load.title}" title="Load saved analysis from JSON file" th:text="#{index.ui.loadScores}">&#128228; Load Scores</button>
-                            <input type="file" id="importJsonFile" accept=".json" style="display:none;">
+                            <button id="importJson" disabled class="btn btn-outline-secondary" th:title="#{export.btn.load.title}" title="Load saved analysis from JSON file" th:text="#{index.ui.loadScores}">&#128228; Load Scores</button>
+                            <input type="file" id="importJsonFile" disabled accept=".json" style="display:none;">
                             <button id="archiMateImportBtn" data-taxonomy-feature="interop" class="btn btn-outline-success" th:title="#{export.btn.archimate.import.title}" title="Import an ArchiMate XML model to map elements and relations to taxonomy" th:attr="aria-label=#{ui.aria.import_archimate_xml}" aria-label="Import ArchiMate XML" th:text="#{index.ui.importArchiMate}">&#128228; Import ArchiMate</button>
                             <input type="file" id="archiMateImportFile" accept=".xml" style="display:none;">
                         </div>

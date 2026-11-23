@@ -512,6 +512,56 @@ test('embedded editor loads only when activated and retains an unaccepted form a
         assert.equal(await page.evaluate(()=>loaded.length),1,'Same-source return must retain the mounted form');
     }finally{await page.close();}
 });
+for (const navigate of [false, true]) test('brief acceptance preserves an unrelated draft or in-flight selection: ' + navigate, async () => {
+    const page = await fixture();
+    try {
+        await page.evaluate(async () => {
+            if (!crypto.randomUUID) Object.defineProperty(crypto,'randomUUID',{value:()=> '360b7033-b798-47a4-8442-8077a479d556'});
+            const original = ArchitectureEditorApi.load;
+            ArchitectureEditorApi.load = async (...args) => {
+                const result = await original(...args);
+                result.document.context.revision = loaded.length;
+                result.architectureBrief = {present:true, version:'1', fields:{objective:'Registry'}, references:[], bindings:[]};
+                if (args[0].workspaceScopeKey === 'private-b') await new Promise(resolve => window.finishNavigation = resolve);
+                return result;
+            };
+            window.TaxonomyArchitectureLifecycleApi = {
+                overview: async context => ({context, mayEdit:true, requirements:[]}),
+                previewBriefScope: async () => ({fingerprint:'digest', bindings:[]}),
+                acceptBriefScope: request => new Promise(resolve => window.finishAcceptance = () => resolve({state:'CHECKPOINTED',context:request.context}))
+            };
+            window.editor = TaxonomyArchitectureEditor.mount(document.getElementById('architectureWorkingSource'));
+            await editor.activate({kind:'working',repositoryId:'repo',workspaceScopeKey:'private-a',branch:'draft/a'});
+        });
+        await page.locator('#editorTitle').fill('Unrelated unsaved element');
+        await page.locator('#editorBriefFields-objective').fill('Unsaved objective');
+        await page.locator('#editorBriefReason').fill('Reason for objective');
+        await page.locator('#editorBriefReferenceFields-identifier').fill('Unsubmitted reference');
+        await page.locator('#editorBriefReferenceReason').fill('Reason for reference');
+        await page.locator('#editorBriefPinEdit').click();
+        await page.locator('#editorBriefPinReason').fill('Review scope');
+        await page.locator('#editorBriefPinForm button').click();
+        await page.locator('#editorBriefPinAccept').click();
+        if (navigate) {
+            await page.evaluate(() => { window.newSelection = editor.activate({kind:'working',repositoryId:'repo',
+                workspaceScopeKey:'private-b',branch:'draft/b'}); });
+            await page.waitForFunction(() => typeof finishNavigation === 'function');
+        }
+        await page.evaluate(() => window.finishAcceptance());
+        if (navigate) {
+            await page.evaluate(() => { window.finishNavigation(); return window.newSelection; });
+            assert.equal(await page.evaluate(()=>editor.getData().document.context.workspaceScopeKey), 'private-b');
+            assert.deepEqual(await page.evaluate(()=>loaded.map(r=>r.scope.workspaceScopeKey)), ['private-a','private-b']);
+        } else {
+            await page.waitForFunction(()=>loaded.length === 2 && document.querySelector('#architectureEditor').getAttribute('aria-busy') === 'false');
+            assert.equal(await page.locator('#editorTitle').inputValue(),'Unrelated unsaved element');
+            assert.equal(await page.locator('#editorBriefFields-objective').inputValue(),'Unsaved objective');
+            assert.equal(await page.locator('#editorBriefReferenceFields-identifier').inputValue(),'Unsubmitted reference');
+            assert.equal(await page.locator('#editorBriefReason').inputValue(),'Reason for objective');
+            assert.equal(await page.locator('#editorBriefReferenceReason').inputValue(),'Reason for reference');
+        }
+    } finally { await page.close(); }
+});
 test('unsaved architecture objective participates in working-editor navigation protection', async () => {
     const page = await fixture();
     try {
@@ -840,8 +890,10 @@ test('architecture brief previews model-scoped values and drops an unsaved refer
     }
 });
 
-for (const blockedNative of [false,true]) test('guided ADMBw review pins the original workspace and retries one frozen accepted request; native ' +
-    (blockedNative ? 'blocked by an unbound resource role' : 'available'), async () => {
+for (const scenario of ['lost response', 'late component receipt', 'history supersedes transport']) test(
+    'guided ADMBw preserves the original reviewed operation: ' + scenario, async () => {
+    const blockedNative = scenario !== 'lost response';
+    const publishHistory = scenario === 'history supersedes transport';
     const page = await browser.newPage({viewport:{width:375,height:820}});
     const scope = {repositoryId:'repo',workspaceScopeKey:'__shared__',branch:'work',actor:'reviewer',revision:4,commit:'a'.repeat(40)};
     const fileHash = '1'.repeat(64), fingerprint = '2'.repeat(64), requirementHash = '3'.repeat(64);
@@ -851,6 +903,8 @@ for (const blockedNative of [false,true]) test('guided ADMBw review pins the ori
         const template = await readFile(path.join(resources,'templates/architecture-editor.html'),'utf8');
         const panel = template.match(/<details id="editorAdmbwPreparation"[\s\S]+?(?=\s*<p id="editorMode")/);
         assert.ok(panel, 'The editor needs an accessible guided ADMBw form');
+        let recoveryReads = 0, preflights = 0, lastPreview, journalReceipt, releaseAcceptance;
+        const acceptanceGate = new Promise(resolve => { releaseAcceptance = resolve; });
         await page.route('https://admbw.test/**', async route => {
             const request = route.request(), url = new URL(request.url());
             if (!url.pathname.startsWith('/api/')) return route.fulfill({contentType:'text/html',
@@ -862,6 +916,23 @@ for (const blockedNative of [false,true]) test('guided ADMBw review pins the ori
                     references:[{guid:'cap',stereotype:'Capability',name:'Training capability',rootGuid:'root',packagePath:['Model root','Capabilities']},
                         {guid:'sub',stereotype:'OperationalRole',name:'Student',rootGuid:'root',packagePath:['Model root','School']},
                         {guid:'wrong',stereotype:'ServiceSpecification',name:'Ineligible',rootGuid:'root',packagePath:[]}]}});
+            }
+            if (url.pathname.includes('/admbw/operations/')) {
+                recoveryReads++;
+                assert.equal(request.method(),'GET');
+                assert.ok(journalReceipt,'The server must have accepted the operation before lookup');
+                assert.equal(url.pathname.split('/').at(-1), journalReceipt.id);
+                return route.fulfill({json:{publication:journalReceipt.publication,
+                    delivery:{viewId:'review-view',projectCode:'TRAIN',rootPackageGuid:'root',basisSha256:fileHash},
+                    assessment:lastPreview.assessment,qeaIssues:lastPreview.qeaIssues}});
+            }
+            if (url.pathname.endsWith('.admbw.qea/preflight')) {
+                preflights++;
+                assert.equal(url.searchParams.get('commit'),'b'.repeat(40));
+                assert.equal(url.searchParams.get('rootPackageGuid'),'root');
+                return request.postData()==='fixture QEA'
+                    ? route.fulfill({json:{commit:'b'.repeat(40),coverage:'PARTIAL'}})
+                    : route.fulfill({status:400,json:{code:'INVALID_COMMAND',detail:'Basis SHA-256 differs'}});
             }
             if (url.pathname.endsWith('.admbw.qea')) {
                 assert.equal(url.searchParams.get('commit'),'b'.repeat(40));
@@ -877,7 +948,7 @@ for (const blockedNative of [false,true]) test('guided ADMBw review pins the ori
             assert.equal(request.headers()['if-match'],'"workspace-revision-4"');
             assert.equal(input.basisSha256,fileHash);
             calls.push([url.pathname,input]);
-            if (url.pathname.endsWith('/preview')) return route.fulfill({json:{context:scope,viewId:'review-view',
+            if (url.pathname.endsWith('/preview')) return route.fulfill({json:lastPreview={context:scope,viewId:'review-view',
                 fingerprint,requirementId:'req',requirementVersion:2,requirementContentHash:requirementHash,basisSha256:fileHash,
                 notes:['Modeler review'],qeaIssues:blockedNative ? [{object:'element:resource-role',detail:'Native ResourceRole has no owned EA Part.'}] : [],changes:[{id:'element:service',before:'old service',after:'ServiceSpecification'}],
                 assessment:{coverage:{sourceViewId:'review-view',status:'PARTIAL',elements:counts,relations:counts,requirements:counts,mappings:counts},capabilityToService:{status:'REVIEW_REQUIRED',issues:[],elements:[],connectors:[]},
@@ -885,27 +956,51 @@ for (const blockedNative of [false,true]) test('guided ADMBw review pins the ori
             if (calls.filter(c=>c[0].endsWith('/accept')).length === 1) {
                 return route.fulfill({status:202,json:{state:'CHECKPOINT_PENDING',context:{...scope,revision:5}}});
             }
-            return route.fulfill({json:{state:'CHECKPOINTED',context:{...scope,revision:5,commit:'b'.repeat(40)},checkpoint:{commitId:'b'.repeat(40)}}});
+            journalReceipt = {id:input.metadata.commandId, publication:{state:'CHECKPOINTED',
+                context:{...scope,revision:5,commit:'b'.repeat(40)},checkpoint:{commitId:'b'.repeat(40)}}};
+            if (!blockedNative) return route.fulfill({status:503,json:{detail:'Response lost'}});
+            await page.evaluate(() => { window.fixtureRetryJournaled = true; });
+            await acceptanceGate;
+            return route.fulfill({json:journalReceipt.publication});
         });
         await page.goto('https://admbw.test/');
-        await page.addStyleTag({path:path.join(resources,'static/css/architecture-editor.css')});
-        await page.evaluate(() => { window.TaxonomyI18n={resolveUrl:p=>p,t:(k,...args)=>[k,...args].join(' ')}; });
-        for (const script of ['api/taxonomy-api-client.js','api/architecture-editor-api.js','architecture-admbw-coverage.js','architecture-admbw-preparation.js']) {
-            await page.addScriptTag({path:path.join(resources,'static/js',script)});
+        async function startPage(currentRevision = 4) {
+            await page.addStyleTag({path:path.join(resources,'static/css/architecture-editor.css')});
+            await page.evaluate(() => { window.TaxonomyI18n={resolveUrl:p=>p,t:(k,...args)=>[k,...args].join(' ')}; });
+            if (publishHistory) await page.addScriptTag({path:path.join(resources,'static/js/shared/application-chrome.js')});
+            for (const script of ['api/taxonomy-api-client.js','api/architecture-editor-api.js','architecture-admbw-coverage.js','architecture-admbw-preparation.js']) {
+                await page.addScriptTag({path:path.join(resources,'static/js',script)});
+            }
+            await page.evaluate(({scope, currentRevision}) => {
+                Object.defineProperty(scope,'workspaceId',{value:'__shared__'});
+                const view = {mayEdit:true,document:{context:scope,source:'WORKSPACE_REVISION',projectionState:'READY'},
+                    model:{elements:[{id:'svc',title:'Learning service',type:'COIService'}],requirements:[{
+                        id:'req',title:'Training',text:'Provide\r\ntraining.\r\n' + 'A\r\n'.repeat(2700)}]}};
+                window.guided = TaxonomyAdmbwPreparation.create({root:document,api:ArchitectureEditorApi,t:TaxonomyI18n.t,
+                    report:(error,target)=>{ window.lastErrorCode=error.code; target.textContent=error.message; },
+                    onAccepted:r=>{window.receipt=r;}});
+                function display(next) {
+                    const c = next.document.context;
+                    window.TaxonomyAppChrome?.updateContext({architecture:{repositoryId:c.repositoryId,
+                        workspaceId:c.workspaceId ?? c.workspaceScopeKey, workspaceScopeKey:c.workspaceScopeKey,branch:c.branch,
+                        revision:c.revision,commit:c.commit,modelStand:'Revision ' + c.revision + ' · ' + c.commit.slice(0,12)},
+                        editable:next.mayEdit,source:null}, 'working');
+                    window.guided.update(next,true);
+                }
+                function showRevision(revision, historical, commit = scope.commit) {
+                    const context = {...scope, revision, commit};
+                    Object.defineProperty(context,'workspaceId',{value:scope.workspaceId});
+                    display({...view,mayEdit:!historical,document:{...view.document,context,
+                        projectionState:historical ? 'HISTORICAL' : 'READY'}});
+                }
+                window.showOtherWorkspace = () => display({...view,document:{...view.document,
+                    context:{...scope,workspaceScopeKey:'other-workspace'}}});
+                window.showHistory = () => showRevision(2,true);
+                window.advance = () => showRevision(5,false);
+                showRevision(currentRevision,false,currentRevision === 5 ? 'b'.repeat(40) : scope.commit);
+            },{scope, currentRevision});
         }
-        await page.evaluate(scope => {
-            Object.defineProperty(scope,'workspaceId',{value:'__shared__'});
-            const view = {mayEdit:true,document:{context:scope,source:'WORKSPACE_REVISION',projectionState:'READY'},
-                model:{elements:[{id:'svc',title:'Learning service',type:'COIService'}],requirements:[{
-                    id:'req',title:'Training',text:'Provide\r\ntraining.\r\n' + 'A\r\n'.repeat(2700)}]}};
-            window.guided = TaxonomyAdmbwPreparation.create({root:document,api:ArchitectureEditorApi,t:TaxonomyI18n.t,
-                report:(e,target)=>{target.textContent=e.message;},onAccepted:r=>{window.receipt=r;}});
-            window.guided.update(view,true);
-            window.showOtherWorkspace = () => {
-                guided.update({...view,document:{...view.document,context:{...scope,workspaceScopeKey:'other-workspace'}}}, true);
-            };
-            window.advance = () => {view.document.context={...scope,revision:5};Object.defineProperty(view.document.context,'workspaceId',{value:'__shared__'});guided.update(view,true);};
-        },scope);
+        await startPage();
         await page.locator('#editorAdmbwPreparation summary').first().click();
         assert.equal(await page.locator('#prepService').inputValue(),'svc');
         assert.equal(await page.locator('#prepRequirement').inputValue(),'req');
@@ -974,7 +1069,33 @@ for (const blockedNative of [false,true]) test('guided ADMBw review pins the ori
         assert.equal(await page.locator('#prepRationale').inputValue(),'');
         await page.evaluate(()=>window.advance());
         await page.locator('#prepRetry').click();
-        await page.waitForFunction(()=>window.receipt?.state==='CHECKPOINTED');
+        if (blockedNative) {
+            await page.waitForFunction(() => window.fixtureRetryJournaled === true, null, {timeout:4000});
+            assert.ok(journalReceipt, 'The retried accept must reach the journal before navigation');
+            await page.evaluate(()=>window.showHistory());
+            assert.equal(await page.locator('#editorAdmbwPreparation').isVisible(),false);
+            releaseAcceptance();
+            await page.waitForFunction(state=>document.querySelector('#prepReceipt').textContent.includes(state),
+                publishHistory ? 'UNKNOWN' : 'CHECKPOINTED');
+            assert.equal(await page.evaluate(()=>window.receipt),undefined, 'A late receipt must keep the historical revision selected');
+            if (publishHistory) {
+                assert.equal(await page.evaluate(()=>window.lastErrorCode),'ABORTED');
+                assert.equal(await page.evaluate(()=>TaxonomyAppChrome.getContext().architecture.revision),2);
+                assert.equal(recoveryReads,0,'Historical selection must not trigger receipt recovery');
+            } else await page.evaluate(()=>window.advance());
+        } else await page.waitForFunction(()=>document.querySelector('#prepReceipt').textContent.includes('UNKNOWN'));
+        if (publishHistory || !blockedNative) {
+            const saved = await page.evaluate(()=>JSON.stringify(sessionStorage));
+            assert.ok(saved.includes(calls.find(([p])=>p.endsWith('/accept'))[1].metadata.commandId));
+            assert.doesNotMatch(saved,/training|fixture QEA|Learning service|relationshipReviewed/i);
+            const submitted = calls.filter(([p])=>p.endsWith('/accept')).length;
+            await page.reload();
+            await startPage(5);
+            await page.locator('#editorAdmbwPreparation summary').first().click();
+            await page.locator('#prepAssessment').waitFor();
+            assert.equal(recoveryReads,1);
+            assert.equal(calls.filter(([p])=>p.endsWith('/accept')).length,submitted,'Reload must use the journal receipt without submitting again');
+        }
         const accepted=calls.filter(c=>c[0].endsWith('/accept'));
         assert.equal(accepted.length,2);
         assert.deepEqual(accepted[0][1],accepted[1][1]);
@@ -995,6 +1116,17 @@ for (const blockedNative of [false,true]) test('guided ADMBw review pins the ori
             assert.equal(downloads.length,0);
             return;
         }
+        const restoredFile = page.locator('#prepDeliveryBasis');
+        assert.equal(await page.locator('#prepDownload').isEnabled(),false);
+        await restoredFile.setInputFiles({name:'wrong.qea',mimeType:'application/vnd.sparx.qea',buffer:Buffer.from('wrong')});
+        await page.locator('#prepPreflight').click();
+        await page.waitForFunction(()=>document.querySelector('#prepStatus').textContent.includes('SHA-256'));
+        assert.equal(await page.locator('#prepDownload').isEnabled(),false);
+        await restoredFile.setInputFiles({name:'basis.qea',mimeType:'application/vnd.sparx.qea',buffer:Buffer.from('fixture QEA')});
+        await page.locator('#prepPreflight').click();
+        await page.waitForFunction(()=>!document.querySelector('#prepDownload').disabled);
+        assert.equal(preflights,2);
+        assert.equal(calls.filter(([p])=>p.endsWith('/accept')).length,2);
         const download=page.waitForEvent('download');
         await page.locator('#prepDownload').click();
         assert.equal((await download).suggestedFilename(),'TRAIN-admbw.qea');

@@ -1,11 +1,9 @@
 package com.taxonomy.plugins.sparx;
 
-import com.taxonomy.extension.api.integration.AdmbwQeaExport;
 import com.taxonomy.extension.api.integration.AdmbwQeaExport.Connector;
 import com.taxonomy.extension.api.integration.AdmbwQeaExport.Delivery;
 import com.taxonomy.extension.api.integration.AdmbwQeaExport.Element;
 import com.taxonomy.extension.api.integration.AdmbwQeaExport.View;
-import com.taxonomy.extension.api.integration.IntegrationContracts.ExchangeFile;
 import com.taxonomy.plugins.sparx.QeaDatabase.Row;
 import com.taxonomy.plugins.sparx.QeaDatabase.Snapshot;
 
@@ -28,7 +26,7 @@ import static com.taxonomy.plugins.sparx.QeaIds.key;
 final class AdmbwQeaWriter {
     private static final String LINK_GEOMETRY = "SX=0;SY=0;EX=0;EY=0;EDGE=2;$LLB=;LLT=;LMT=;LMB=;LRT=;LRB=;IRHS=;ILHS=;";
 
-    ExchangeFile write(Delivery delivery, String rootPackageGuid, byte[] basis) {
+    byte[] writeCopy(Delivery delivery, String rootPackageGuid, byte[] basis) {
         if (!delivery.projectCode().matches("[A-Za-z0-9][A-Za-z0-9_-]{0,31}") || !delivery.commit().matches("[a-f0-9]{40}"))
             throw fail("QEA_ADMBW_SOURCE", "An exact Git checkpoint and a valid project code are required");
         if (!delivery.views().stream().map(View::viewpoint).toList().equals(List.of("C1-S1", "R7")))
@@ -45,12 +43,11 @@ final class AdmbwQeaWriter {
         if (projects.size() != 1) throw fail("QEA_MODEL_IDENTITY", "The basis needs a unique EA project GUID");
         QeaIds.guid(projects.getFirst().text("value"), "QEA_MODEL_IDENTITY");
         UUID namespace = stableUuid(snapshot.sha256() + "\0" + root + "\0" + delivery.projectCode() + "\0" + delivery.commit());
-        byte[] content = QeaWriteDatabase.writeCopy(basis, true, database -> {
+        return QeaWriteDatabase.writeCopy(basis, true, database -> {
             var copy = new DeliveryCopy(snapshot, database, namespace);
             for (View view : delivery.views()) copy.writeView(view, roots.getFirst().id("package_id"),
                     delivery.commit(), delivery.coverageNotes());
         });
-        return new ExchangeFile(AdmbwQeaExport.MEDIA_TYPE, delivery.projectCode() + "-admbw.qea", content, List.of());
     }
 
     private record PackageKey(long parent, String name) { }
