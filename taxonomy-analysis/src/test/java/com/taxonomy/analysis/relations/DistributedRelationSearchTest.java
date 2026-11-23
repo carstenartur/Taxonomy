@@ -121,7 +121,159 @@ class DistributedRelationSearchTest {
         assertThat(distributedPrompts).containsExactlyInAnyOrderElementsOf(sequentialPrompts);
         assertThat(distributedPrompts.stream().filter(p -> p.contains("Extract ONLY")).count()).isEqualTo(1);
         var reversed = new ArrayList<>(results); Collections.reverse(reversed);
+        reversed.add(reversed.getFirst());
+        RelationSearchDistribution.validateResults(plan, reversed);
         assertThat(RelationSearchDistribution.combine(plan, reversed)).isEqualTo(report);
+    }
+
+    @Test
+    void distributedHistoryRejectsConflictingGrantsAndForeignEvidence() {
+        var engine = search(twoTargets(), RequirementRelationSearchContract::answer);
+        var plan = engine.prepare("validation-plan", WRITE, Map.of("process", 90d), List.of("root-result"), OPTIONS, true);
+        var wave = RelationSearchDistribution.ready(plan, List.of());
+        var work = wave.getFirst();
+        var valid = engine.evaluate(WRITE, plan, work);
+        var result = valid.result();
+        var intent = RelationSearchDistribution.intent(plan, plan.items().get(work.ordinal()));
+        var direction = intent.direction();
+        var otherRoot = wave.stream().map(RelationSearchDistribution.Work::targetRoot)
+                .filter(root -> !root.equals(work.targetRoot())).findFirst().orElseThrow();
+        var otherWork = wave.stream().filter(grant -> grant.targetRoot().equals(otherRoot)).findFirst().orElseThrow();
+        var foreignTarget = new Node("other-target", otherRoot.code(), "Foreign target", "", false);
+        var foreignEdge = new Edge(intent.contribution(), foreignTarget, intent.type(), direction,
+                new Decision(foreignTarget.id(), Outcome.VERIFIED, "relation", WRITE, Necessity.REQUIRED, "", "", "", ""));
+        var foreignTrace = new Trace("foreign-source", intent.type(), direction, Phase.NAVIGATE,
+                foreignTarget.id(), Outcome.REJECT, "");
+        var unfinished = new Unfinished("foreign-source", intent.type(), direction,
+                List.of(foreignTarget.id()), "UNRESOLVED", "");
+        var invalid = Map.of(
+                "foreign preparation", List.of(new RelationSearchDistribution.WorkResult(
+                        new RelationSearchDistribution.Work("other-plan", work.ordinal(), work.targetRoot(),
+                                work.maxCalls(), work.maxWorkItems()), result, valid.calls(), valid.stopReason())),
+                "changed target root", List.of(new RelationSearchDistribution.WorkResult(
+                        new RelationSearchDistribution.Work(work.preparationId(), work.ordinal(), otherRoot,
+                                work.maxCalls(), work.maxWorkItems()), result, valid.calls(), valid.stopReason())),
+                "changed ordinal", List.of(new RelationSearchDistribution.WorkResult(
+                        new RelationSearchDistribution.Work(work.preparationId(), otherWork.ordinal(), work.targetRoot(),
+                                work.maxCalls(), work.maxWorkItems()), result, valid.calls(), valid.stopReason())),
+                "spent more than the issued budget", List.of(new RelationSearchDistribution.WorkResult(
+                        new RelationSearchDistribution.Work(work.preparationId(), work.ordinal(), work.targetRoot(),
+                                work.maxCalls() + 1, work.maxWorkItems() + 1), result, work.maxCalls() + 1, "")),
+                "conflicting duplicate", List.of(valid, new RelationSearchDistribution.WorkResult(
+                        work, result, valid.calls(), "RELATION_EVALUATION_FAILED")),
+                "foreign edge", List.of(new RelationSearchDistribution.WorkResult(work,
+                        new Result(List.of(foreignEdge), List.of(), List.of(), 1, 1, 0), 1, "")),
+                "foreign trace", List.of(new RelationSearchDistribution.WorkResult(work,
+                        new Result(List.of(), List.of(), List.of(foreignTrace), 1, 1, 0), 1, "")),
+                "foreign unfinished relation", List.of(new RelationSearchDistribution.WorkResult(work,
+                        new Result(List.of(), List.of(unfinished), List.of(), 1, 1, 0), 1, "")));
+        invalid.forEach((reason, history) -> {
+            assertThatIllegalArgumentException().as(reason)
+                    .isThrownBy(() -> RelationSearchDistribution.combine(plan, history));
+            assertThatIllegalArgumentException().as(reason)
+                    .isThrownBy(() -> RelationSearchDistribution.validateResults(plan, history));
+        });
+    }
+
+    @Test
+    void distributedHistoryCanBeValidatedWithoutRequestingAReport() {
+        var engine = search(twoTargets(), RequirementRelationSearchContract::answer);
+        var plan = engine.prepare("validation-plan", WRITE, Map.of("process", 90d), List.of("root-result"), OPTIONS, true);
+        var results = execute(engine, plan, WRITE);
+        RelationSearchDistribution.validateResults(plan, results);
+    }
+
+    @Test
+    void exhaustedFrontierRejectsAnUnfinishedRelationWithoutAReason() {
+        var plan = completionValidationPlan(1, null);
+        var work = RelationSearchDistribution.ready(plan, List.of()).getFirst();
+        var unfinished = new Unfinished(SOURCE.id(), "CONSUMES", Direction.OUTGOING, List.of(ROOT.id()), null, "");
+        var results = List.of(new RelationSearchDistribution.WorkResult(work,
+                new Result(List.of(), List.of(unfinished), List.of(), 1, 1, 0), 1, ""));
+
+        assertThat(RelationSearchDistribution.ready(plan, results)).isEmpty();
+        assertThatNullPointerException().isThrownBy(() -> RelationSearchDistribution.combine(plan, results));
+        assertThatNullPointerException().isThrownBy(() -> RelationSearchDistribution.validateResults(plan, results));
+    }
+
+    @Test
+    void unfinishedRelationWithoutAReasonRemainsReadableWhileWaveIsPending() {
+        var plan = completionValidationPlan(2, null);
+        var wave = RelationSearchDistribution.ready(plan, List.of());
+        var unfinished = new Unfinished(SOURCE.id(), "CONSUMES", Direction.OUTGOING, List.of(ROOT.id()), null, "");
+        var results = List.of(new RelationSearchDistribution.WorkResult(wave.getFirst(),
+                new Result(List.of(), List.of(unfinished), List.of(), 1, 1, 0), 1, ""));
+
+        assertThat(RelationSearchDistribution.ready(plan, results)).containsExactly(wave.getLast());
+        assertThat(RelationSearchDistribution.combine(plan, results).result().unfinished()).contains(unfinished);
+        RelationSearchDistribution.validateResults(plan, results);
+    }
+
+    @Test
+    void earlierBudgetEvidenceShortCircuitsALaterMissingReason() {
+        var plan = completionValidationPlan(1, null);
+        var work = RelationSearchDistribution.ready(plan, List.of()).getFirst();
+        var exhausted = new Unfinished(SOURCE.id(), "CONSUMES", Direction.OUTGOING, List.of(ROOT.id()), "CALL_BUDGET", "");
+        var unfinished = new Unfinished(SOURCE.id(), "CONSUMES", Direction.OUTGOING, List.of(ROOT.id()), null, "");
+        var results = List.of(new RelationSearchDistribution.WorkResult(work,
+                new Result(List.of(), List.of(exhausted, unfinished), List.of(), 1, 1, 0), 1, ""));
+
+        assertThat(RelationSearchDistribution.combine(plan, results).result().unfinished()).contains(exhausted, unfinished);
+        RelationSearchDistribution.validateResults(plan, results);
+    }
+
+    @Test
+    void completionCannotOverflowTheSavedCumulativeCallCount() {
+        var plan = completionValidationPlan(1, Integer.MAX_VALUE);
+        var work = RelationSearchDistribution.ready(plan, List.of()).getFirst();
+        var results = List.of(new RelationSearchDistribution.WorkResult(work,
+                new Result(List.of(), List.of(), List.of(), 1, 1, 0), 1, ""));
+
+        assertThat(RelationSearchDistribution.ready(plan, results)).isEmpty();
+        assertThatIllegalArgumentException().isThrownBy(() -> RelationSearchDistribution.combine(plan, results));
+        assertThatIllegalArgumentException().isThrownBy(() -> RelationSearchDistribution.validateResults(plan, results));
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {0, 1})
+    void cumulativeCallCountUsesActualChargesAndCanReachTheRepresentableLimit(int charged) {
+        var plan = completionValidationPlan(1, Integer.MAX_VALUE - charged);
+        var work = RelationSearchDistribution.ready(plan, List.of()).getFirst();
+        var result = new RelationSearchDistribution.WorkResult(work,
+                new Result(List.of(), List.of(), List.of(), 0, 0, 0), charged, "");
+        var results = List.of(result, result);
+
+        assertThat(RelationSearchDistribution.combine(plan, results).budget().spentCalls()).isEqualTo(Integer.MAX_VALUE);
+        RelationSearchDistribution.validateResults(plan, results);
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void sourceAssessmentMissingAProgressFieldCannotBePresented(boolean missingNode) {
+        var plan = completionValidationPlan(1, null, missingNode ? null : SOURCE, missingNode ? "" : null);
+
+        assertThat(RelationSearchDistribution.ready(plan, List.of())).hasSize(1);
+        assertThatNullPointerException().isThrownBy(() -> RelationSearchDistribution.combine(plan, List.of()));
+        assertThatNullPointerException().isThrownBy(() -> RelationSearchDistribution.validateResults(plan, List.of()));
+    }
+
+    private static RelationSearchDistribution.Plan completionValidationPlan(int maxCalls, Integer before) {
+        return completionValidationPlan(maxCalls, before, SOURCE, "");
+    }
+
+    private static RelationSearchDistribution.Plan completionValidationPlan(int maxCalls, Integer before,
+            Node assessmentNode, String question) {
+        var budget = before == null ? null
+                : new RequirementRelationSearch.BudgetPolicy(maxCalls, maxCalls, before, false, 16, 128, 16);
+        var options = new RequirementRelationSearch.Options(new Limits(maxCalls, 8, 10, 128), 16, 16_000, budget);
+        var root = com.taxonomy.analysis.dag.TaxonomyShardRoot.of(ROOT.root());
+        var contribution = new Contribution(SOURCE, "review evidence", WRITE, "");
+        return new RelationSearchDistribution.Plan(1, "report-validation-plan", "a".repeat(64), List.of("root-result"),
+                options, List.of(SOURCE), List.of(ROOT),
+                List.of(new SourceAssessment(assessmentNode, List.of(contribution), "", question)),
+                List.of(new RelationSearchDistribution.Item(0, 0, 0, "CONSUMES", Direction.OUTGOING, root, 1),
+                        new RelationSearchDistribution.Item(1, 0, 0, "PRODUCES", Direction.OUTGOING, root, 1)),
+                0, 0, List.of(), "", true);
     }
 
     @Test
@@ -134,6 +286,7 @@ class DistributedRelationSearchTest {
             var engine = search(twoTargets(), record(actual));
             var plan = engine.prepare("plan-" + calls, WRITE, Map.of("process", 90d), List.of("root-result"), options, true);
             var results = execute(engine, plan, WRITE);
+            RelationSearchDistribution.validateResults(plan, results);
             var report = RelationSearchDistribution.combine(plan, results);
             assertThat(report.totalCalls()).as("global budget %s", calls).isEqualTo(sequential.totalCalls()).isLessThanOrEqualTo(calls);
             assertThat(actual).containsExactlyElementsOf(prompts);
@@ -154,6 +307,7 @@ class DistributedRelationSearchTest {
         assertThat(wave.size()).isGreaterThan(1);
         var last = wave.getLast();
         var result = engine.evaluate(WRITE, plan, last);
+        RelationSearchDistribution.validateResults(plan, List.of(result));
         assertThat(RelationSearchDistribution.ready(plan, List.of(result))).containsExactlyElementsOf(wave.subList(0, wave.size() - 1));
         assertThat(RelationSearchDistribution.combine(plan, List.of(result)).isSearchExhausted()).isFalse();
         assertThat(RelationSearchDistribution.combine(plan, List.of(result)).result().unfinished())

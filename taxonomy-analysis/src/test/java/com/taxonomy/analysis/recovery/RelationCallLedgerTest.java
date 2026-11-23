@@ -42,6 +42,43 @@ class RelationCallLedgerTest {
         }
     }
 
+    @Test void initializedDebitReadsTheLedgerWithItsLockedOwner() {
+        try (var db = new Database(4)) {
+            assertEquals(4, spent(db));
+            db.statements.clear();
+
+            debit(db, 5);
+
+            var statements = List.copyOf(db.statements);
+            assertEquals(1, statements.stream().filter(sql -> sql.startsWith("select ")
+                    && sql.contains(" from analysis_continuation ") && sql.endsWith(" for update")).count(),
+                    statements::toString);
+            assertEquals(1, statements.stream().filter(sql -> sql.startsWith("update analysis_continuation ")
+                    && sql.contains("claim_token=?") && sql.contains("claim_until>=?")
+                    && sql.contains("state='RUNNING'") && sql.contains("relation_calls_spent<?")).count(),
+                    statements::toString);
+            assertEquals(0, statements.stream().filter(sql -> sql.matches(
+                    "select \\w+\\.relation_calls_spent from analysis_continuation .*")).count(), statements::toString);
+            assertEquals(2, statements.size(), statements::toString);
+
+            db.statements.clear();
+            assertEquals(5, spent(db));
+            assertEquals(1, db.statements.size(), db.statements::toString);
+            assertTrue(db.statements.getFirst().contains("relation_calls_spent")
+                    && db.statements.getFirst().endsWith(" for update"), db.statements::toString);
+        }
+    }
+
+    @Test void aNegativeInitializedLedgerCannotBeReadOrDebited() {
+        try (var db = new Database(4)) {
+            db.tx(em -> { em.find(AnalysisContinuationRun.class, db.id).relationCallsSpent = -1; return null; });
+
+            assertThrows(IllegalStateException.class, () -> spent(db));
+            assertThrows(IllegalStateException.class, () -> debit(db, 5));
+            assertEquals(-1, (Integer) db.tx(em -> em.find(AnalysisContinuationRun.class, db.id).relationCallsSpent));
+        }
+    }
+
     @Test void acceptedReplayAndDeferredQuestionsNeverSpendAnotherRelationCall() {
         try (var db = new Database(0)) {
             var providerCalls = new AtomicInteger();

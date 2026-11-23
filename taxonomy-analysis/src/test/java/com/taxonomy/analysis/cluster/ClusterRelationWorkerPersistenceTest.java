@@ -5,7 +5,11 @@ import com.taxonomy.analysis.relations.RelationSearchDistribution;
 import com.taxonomy.analysis.usecase.AnalyzeRequirementCommand;
 import com.taxonomy.dto.*;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.support.TransactionTemplate;
+import tools.jackson.databind.ObjectMapper;
 
 import java.util.*;
 
@@ -13,6 +17,8 @@ import static org.assertj.core.api.Assertions.*;
 
 /** Real Hibernate/ledger integration around the production frozen relation worker. */
 class ClusterRelationWorkerPersistenceTest {
+    private static final ObjectMapper JSON = new ObjectMapper();
+
     @Test void scoreOnlyFallbackCommitsIdempotentlyWithoutHierarchicalReportOrTargetDispatch() {
         try (var db = new ClusterAnalysisStoreTest.Database()) {
             var fixture = new FrozenClusterRelationComputationTest.Fixture(); fixture.productScores();
@@ -60,17 +66,7 @@ class ClusterRelationWorkerPersistenceTest {
         try (var db = new ClusterAnalysisStoreTest.Database()) {
             var fixture = new FrozenClusterRelationComputationTest.Fixture();
             var context = fixture.store.context;
-            var original = fixture.store.command;
-            var command = new AnalyzeRequirementCommand(original.businessText(), false, 20, "MOCK", original.username(),
-                    original.workspaceContext(), null, new AnalysisScope(Set.of("BP", "IP"), AnalysisMode.FULL));
-            var snapshots = new LinkedHashMap<TaxonomyShardRoot, String>();
-            fixture.store.snapshots.forEach((root, json) -> snapshots.put(TaxonomyShardRoot.of(root), json));
-            var bp = TaxonomyShardRoot.of("BP"); var ip = TaxonomyShardRoot.of("IP");
-            db.store.admit(context, command, null, Map.of(bp, snapshots.get(bp), ip, snapshots.get(ip)), snapshots);
-            var source = new AnalysisResult(Map.of("process", 70), List.of()); source.setStatus("SUCCESS");
-            db.store.accept(db.complete(db.task(bp), source));
-            db.store.accept(db.complete(db.task(ip), ClusterAnalysisStoreTest.result("IP", 0)));
-            var task = (RelationAnalysisTask) db.sent.getLast();
+            var task = admitProcessAndCompleteRoots(db, fixture);
             var store = adapter(db.store);
             var signals = new ClusterAnalysisSignals();
             var service = new ClusterRelationService(store, fixture.computation(store, "all", "BP,BR,CP,CI,CO,CR,IP,UA"), signals);
@@ -115,6 +111,75 @@ class ClusterRelationWorkerPersistenceTest {
             assertThat(fixture.prompts.stream().filter(p -> p.contains("Extract ONLY")).count()).isEqualTo(1);
             assertThat(signals.workerCount()).isZero();
         }
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void workerCompletionRollsBackIfTheStoredAllowanceWasReduced(boolean evaluationFails) {
+        try (var db = new ClusterAnalysisStoreTest.Database()) {
+            var fixture = new FrozenClusterRelationComputationTest.Fixture();
+            var source = admitProcessAndCompleteRoots(db, fixture);
+            var signals = new ClusterAnalysisSignals();
+            var coordinator = new ClusterRelationService(db.store,
+                    fixture.computation(db.store, "all", "BP,BR,CP,CI,CO,CR,IP,UA"), signals);
+            db.store.accept(db.completions.commit(coordinator.prepare(source)));
+
+            var plan = db.store.relationPlan(fixture.store.context);
+            var target = db.sent.stream().filter(RelationAnalysisTask.class::isInstance)
+                    .map(RelationAnalysisTask.class::cast)
+                    .filter(task -> task.taskId().relationWorkOrdinal().isPresent())
+                    .filter(task -> task.routingRoot().code().equals("IP")
+                            && plan.items().get(task.taskId().relationWorkOrdinal().orElseThrow()).type().equals("PRODUCES"))
+                    .findFirst().orElseThrow();
+            var issued = JSON.readValue(workRow(db, target).inputJson, RelationSearchDistribution.Work.class);
+            assertThat(issued.maxCalls()).isGreaterThan(2);
+            var reduced = new RelationSearchDistribution.Work(issued.preparationId(), issued.ordinal(),
+                    issued.targetRoot(), 2, issued.maxWorkItems());
+            assertThat(reduced.maxCalls()).isLessThanOrEqualTo(plan.items().get(issued.ordinal()).maxQueries());
+            var tx = new TransactionTemplate(db.transactions);
+            tx.executeWithoutResult(status -> workRow(db, target).inputJson = JSON.writeValueAsString(reduced));
+            if (evaluationFails) ReflectionTestUtils.setField(fixture.relations, "enabled", false);
+            var worker = new ClusterRelationService(db.store, fixture.computation(db.store, "worker", "IP"), signals);
+            var tampered = worker.prepare(target);
+            var outcome = evaluationFails ? AnalysisTaskOutcome.FAILED : AnalysisTaskOutcome.COMPLETED;
+            assertThat(tampered.completion().outcome()).isEqualTo(outcome);
+
+            assertThatIllegalArgumentException().isThrownBy(() -> db.completions.commit(tampered))
+                    .withMessage("Result does not match its deterministic grant");
+            assertThat(db.completions.find(target.taskId())).isEmpty();
+            var row = workRow(db, target);
+            assertThat(row.resultJson).isNull();
+            assertThat(row.failureReason).isNull();
+            assertThat(row.finishedAt).isNull();
+            assertThat(row.settled).isFalse();
+
+            tx.executeWithoutResult(status -> workRow(db, target).inputJson = JSON.writeValueAsString(issued));
+            var restored = worker.prepare(target);
+            assertThat(restored.completion().outcome()).isEqualTo(outcome);
+            assertThat(db.store.accept(db.completions.commit(restored))).isTrue();
+            assertThat(JSON.readValue(workRow(db, target).resultJson, RelationSearchDistribution.WorkResult.class).work())
+                    .isEqualTo(issued);
+        }
+    }
+
+    private static RelationAnalysisTask admitProcessAndCompleteRoots(ClusterAnalysisStoreTest.Database db,
+            FrozenClusterRelationComputationTest.Fixture fixture) {
+        var original = fixture.store.command;
+        var command = new AnalyzeRequirementCommand(original.businessText(), false, 20, "MOCK", original.username(),
+                original.workspaceContext(), null, new AnalysisScope(Set.of("BP", "IP"), AnalysisMode.FULL));
+        var snapshots = new LinkedHashMap<TaxonomyShardRoot, String>();
+        fixture.store.snapshots.forEach((root, json) -> snapshots.put(TaxonomyShardRoot.of(root), json));
+        var bp = TaxonomyShardRoot.of("BP"); var ip = TaxonomyShardRoot.of("IP");
+        db.store.admit(fixture.store.context, command, null, Map.of(bp, snapshots.get(bp), ip, snapshots.get(ip)), snapshots);
+        var result = new AnalysisResult(Map.of("process", 70), List.of()); result.setStatus("SUCCESS");
+        db.store.accept(db.complete(db.task(bp), result));
+        db.store.accept(db.complete(db.task(ip), ClusterAnalysisStoreTest.result("IP", 0)));
+        return (RelationAnalysisTask) db.sent.getLast();
+    }
+
+    private static ClusterAnalysisWork workRow(ClusterAnalysisStoreTest.Database db, RelationAnalysisTask task) {
+        return db.em.createQuery("select w from ClusterAnalysisWork w where w.taskId = :task", ClusterAnalysisWork.class)
+                .setParameter("task", task.taskId().value()).getSingleResult();
     }
 
     private static ClusterRelationService.Store adapter(ClusterAnalysisStore store) {

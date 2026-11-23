@@ -506,8 +506,8 @@ public class AnalysisContinuationService {
                     store.supersedeEvidence(claim, kind, provider, singletonCodes, covered, null);
                 }
                 public void finish(AnalysisCheckpointSession.Question q, String state, LlmCallDetail detail) {
-                    store.finish(claim, q, state, detail);
-                    if ("SUCCESS".equals(state) && "PAUSED".equals(store.state(claim)))
+                    var completion = store.finish(claim, q, state, detail);
+                    if ("SUCCESS".equals(state) && completion == AnalysisContinuationStore.CheckpointCompletion.STORAGE_LIMIT)
                         throw new AnalysisStoppedException(AnalysisStoppedException.Reason.AWAITING_DECISION);
                 }
                 public void checkActive() {

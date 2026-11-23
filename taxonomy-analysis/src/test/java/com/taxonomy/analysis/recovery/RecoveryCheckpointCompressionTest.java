@@ -1,13 +1,23 @@
 package com.taxonomy.analysis.recovery;
 
+import com.taxonomy.analysis.service.AnalysisStoppedException;
 import com.taxonomy.dto.AnalysisPercentages;
 import com.taxonomy.dto.AnalysisResult;
 import com.taxonomy.dto.LlmCallDetail;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import jakarta.persistence.EntityManager;
+import org.aopalliance.intercept.MethodInterceptor;
 import org.hibernate.SessionFactory;
 import org.hibernate.cfg.Configuration;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.springframework.aop.framework.ProxyFactory;
+import org.springframework.orm.jpa.JpaTransactionManager;
+import org.springframework.orm.jpa.SharedEntityManagerCreator;
+import org.springframework.transaction.annotation.AnnotationTransactionAttributeSource;
+import org.springframework.transaction.interceptor.TransactionInterceptor;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import tools.jackson.databind.ObjectMapper;
 
 import java.lang.reflect.InvocationTargetException;
@@ -103,6 +113,22 @@ class RecoveryCheckpointCompressionTest {
                 }
             };
         }
+        AnalysisContinuationService.Execution localExecution(Runnable afterFinish) {
+            var shared = SharedEntityManagerCreator.createSharedEntityManager(factory);
+            var proxy = new ProxyFactory(store(shared));
+            proxy.setProxyTargetClass(true);
+            proxy.addAdvice((MethodInterceptor) invocation -> {
+                var result = invocation.proceed();
+                if (invocation.getMethod().getName().equals("finish")) afterFinish.run();
+                return result;
+            });
+            var transactions = new TransactionInterceptor();
+            transactions.setTransactionManager(new JpaTransactionManager(factory));
+            transactions.setTransactionAttributeSource(new AnnotationTransactionAttributeSource());
+            proxy.addAdvice(transactions);
+            var service = new AnalysisContinuationService((AnalysisContinuationStore) proxy.getProxy(), null, null, null, mapper);
+            return service.new Execution(claim());
+        }
         void resetSql() { sql.clear(); factory.getStatistics().clear(); }
         @Override public void close() { factory.close(); }
     }
@@ -117,6 +143,63 @@ class RecoveryCheckpointCompressionTest {
         detail.setScores(Map.of("BP", .125)); detail.setReasons(Map.of("BP", "Original assessment with fractional relevance"));
         detail.setRawResponse("Original raw reply: \"quoted\" \\ line\nÄöü 😀\uD800 end");
         return detail;
+    }
+
+    @Test void localSuccessUsesOneFreshStateReadAfterFinishing() {
+        try (var db = new Database(); var execution = db.localExecution(() -> { })) {
+            String prompt = "local assessment";
+            var answer = AnalysisCheckpointSession.evaluate("CATEGORY", "MOCK", List.of("BP"), prompt, () -> {
+                assertFalse(TransactionSynchronizationManager.isActualTransactionActive());
+                assertEquals("ATTEMPT", db.stored(category(prompt)).state());
+                db.resetSql();
+                return detail(prompt);
+            });
+
+            assertEquals(detail(prompt).getRawResponse(), answer.getRawResponse());
+            assertEquals(1, db.sql.stream().filter(sql -> sql.matches(
+                    "select \\w+\\.state from analysis_continuation .*claim_token=\\?")).count(), db.sql::toString);
+            assertEquals(5, db.sql.size(), db.sql::toString);
+            assertEquals("SUCCESS", db.stored(category(prompt)).state());
+        }
+    }
+
+    @Test void localSuccessRejectedByStorageQuotaExposesNoPartialScores() {
+        try (var db = new Database(); var execution = db.localExecution(() -> { })) {
+            String prompt = "local oversized response";
+            var answer = detail(prompt);
+            answer.setRawResponse("r".repeat(FIELD_LIMIT + 1));
+
+            var stop = assertThrows(AnalysisStoppedException.class, () -> AnalysisCheckpointSession.evaluate(
+                    "CATEGORY", "MOCK", List.of("BP"), prompt, () -> answer));
+
+            assertEquals(AnalysisStoppedException.Reason.AWAITING_DECISION, stop.reason());
+            assertTrue(stop.partialScores().isEmpty());
+            var stored = db.stored(category(prompt));
+            assertEquals("FAILED", stored.state());
+            assertEquals("PAUSED", stored.runState());
+            assertNull(stored.detail());
+        }
+    }
+
+    @ParameterizedTest @CsvSource({"PAUSED,AWAITING_DECISION", "CANCELLED,CANCELLED"})
+    void localSuccessObservesStateChangedAfterTheAnswerCommits(String state, AnalysisStoppedException.Reason reason) {
+        try (var db = new Database()) {
+            String prompt = "local response before a state change";
+            try (var execution = db.localExecution(() -> {
+                assertFalse(TransactionSynchronizationManager.isActualTransactionActive());
+                assertEquals("SUCCESS", db.stored(category(prompt)).state());
+                db.transaction(em -> { em.find(AnalysisContinuationRun.class, db.id).state = state; return null; });
+            })) {
+                var stop = assertThrows(AnalysisStoppedException.class, () -> AnalysisCheckpointSession.evaluate(
+                        "CATEGORY", "MOCK", List.of("BP"), prompt, () -> detail(prompt)));
+
+                assertEquals(reason, stop.reason());
+                var stored = db.stored(category(prompt));
+                assertEquals("SUCCESS", stored.state());
+                assertNotNull(stored.detail());
+                assertEquals(state, stored.runState());
+            }
+        }
     }
 
     @Test void completePersistsFullEvidenceWithoutMaterializingTheSerializedDocument(org.junit.jupiter.api.TestReporter report) throws Exception {

@@ -7,6 +7,8 @@ import com.taxonomy.analysis.usecase.AnalyzeRequirementCommand;
 import com.taxonomy.dto.*;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import tools.jackson.databind.ObjectMapper;
 import java.time.Clock;
 import java.util.*;
@@ -128,6 +130,76 @@ class ClusterRelationCoordinatorTest {
             assertEquals(3, db.sent.size());
             assertEquals(ClusterAnalysisState.CANCELLED, db.store.snapshot(context).state());
         }
+    }
+
+    @Test void exhaustedFrontierRollsBackCompletionWithMissingUnfinishedReason() {
+        try (var db = new Database()) {
+            var context = context("missing-unfinished-reason");
+            var options = new RequirementRelationSearch.Options(new Limits(1, 8, 10, 128), 16);
+            var task = issueValidationGrant(db, context, options);
+            var input = db.store.start(task);
+            var grant = JSON.readValue(input.taskInput(), RelationSearchDistribution.Work.class);
+            var unfinished = new Unfinished("source", "REQUIRES", Direction.OUTGOING, List.of("CP"), null, "");
+            var result = new RelationSearchDistribution.WorkResult(grant,
+                    new Result(List.of(), List.of(unfinished), List.of(), 1, 1, 0), 1, "");
+            var prepared = new PreparedAnalysisCompletion<>(completion(context, task), () -> {
+                db.store.verifyDelivery(task, input.deliveryAttempt());
+                db.store.persistRelationResult(task, result);
+            });
+
+            assertThrows(NullPointerException.class, () -> db.completions.commit(prepared));
+            assertRejectedEffectRolledBack(db, task);
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void targetCompletionRollsBackWhenChargedCallsWouldOverflow(boolean failed) {
+        try (var db = new Database()) {
+            var context = context("overflowing-completion");
+            var budget = new RequirementRelationSearch.BudgetPolicy(1, 1, Integer.MAX_VALUE, false, 16, 128, 16);
+            var options = new RequirementRelationSearch.Options(new Limits(1, 8, 10, 128), 16, 16_000, budget);
+            var task = issueValidationGrant(db, context, options);
+            var input = db.store.start(task);
+            var grant = JSON.readValue(input.taskInput(), RelationSearchDistribution.Work.class);
+            var result = new RelationSearchDistribution.WorkResult(grant,
+                    new Result(List.of(), List.of(), List.of(), 1, 1, 0), 1, "");
+            var outcome = failed ? AnalysisTaskOutcome.FAILED : AnalysisTaskOutcome.COMPLETED;
+            var completed = new AnalysisMessageFactory(context, Clock.systemUTC()).completed(task, outcome, 0, null);
+            var prepared = new PreparedAnalysisCompletion<>(completed, () -> {
+                db.store.verifyDelivery(task, input.deliveryAttempt());
+                if (failed) db.store.persistRelationFailure(task, "RELATION_EVALUATION_FAILED");
+                else db.store.persistRelationResult(task, result);
+            });
+
+            assertThrows(IllegalArgumentException.class, () -> db.completions.commit(prepared));
+            assertRejectedEffectRolledBack(db, task);
+        }
+    }
+
+    private static RelationAnalysisTask issueValidationGrant(Database db, AnalysisOperationContext context,
+            RequirementRelationSearch.Options options) {
+        admit(db, context);
+        for (var root : List.of(CP, IP)) db.store.accept(db.complete(db.task(root), result(root.code(), 20)));
+        var preparation = (RelationAnalysisTask) db.sent.getLast();
+        var original = plan(context, preparation);
+        var validationPlan = new RelationSearchDistribution.Plan(original.schemaVersion(), original.preparationId(),
+                original.originalSha256(), original.sourceResultIds(), options, original.sourceNodes(),
+                original.targetRoots(), original.sources(), original.items(), 0, 0, List.of(), "", true);
+        db.store.accept(db.completions.commit(new PreparedAnalysisCompletion<>(completion(context, preparation),
+                () -> db.store.persistRelationPlan(preparation, validationPlan))));
+        return (RelationAnalysisTask) db.sent.getLast();
+    }
+
+    private static void assertRejectedEffectRolledBack(Database db, RelationAnalysisTask task) {
+        assertTrue(db.completions.find(task.taskId()).isEmpty());
+        var row = db.em.createQuery("select w from ClusterAnalysisWork w where w.taskId = :task", ClusterAnalysisWork.class)
+                .setParameter("task", task.taskId().value()).getSingleResult();
+        assertEquals("RUNNING", row.state);
+        assertNull(row.resultJson);
+        assertNull(row.failureReason);
+        assertNull(row.finishedAt);
+        assertFalse(row.settled);
     }
 
     @Test void durableLookupDistinguishesAbsentFromForeignWithoutFallingBackAndFiltersRecentScope() {

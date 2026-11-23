@@ -279,6 +279,11 @@ public class ProjectRequirementAnalysisService {
         return persistenceService.listJobs(projectId, username, context);
     }
 
+    public List<AnalysisJobView> listJobsForOperation(Long projectId, String operationId,
+                                                      String username, WorkspaceContext context) {
+        return persistenceService.listJobsForOperation(projectId, operationId, username, context);
+    }
+
     public List<SnapshotSummary> listSnapshots(Long projectId,
                                                Long requirementId,
                                                String username,

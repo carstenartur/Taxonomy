@@ -719,8 +719,11 @@ public class AnalysisContinuationStore {
         if (changed) updateCheckpointOwner(claim, run, "RUNNING", run.payloadCharacters(), run.currentNode());
     }
 
+    /** Whether the checkpoint write retained the reply within its storage limits. */
+    public enum CheckpointCompletion { ACCEPTED, STORAGE_LIMIT }
+
     @Transactional
-    public void finish(Claim claim, AnalysisCheckpointSession.Question request, String state, LlmCallDetail detail) {
+    public CheckpointCompletion finish(Claim claim, AnalysisCheckpointSession.Question request, String state, LlmCallDetail detail) {
         var run = checkpointOwner(claim, false);
         var question = question(run.id(), request.key());
         if (question == null || !"ATTEMPT".equals(question.state)) throw conflict("Question no longer owns this attempt");
@@ -740,12 +743,13 @@ public class AnalysisContinuationStore {
             question.state = "FAILED"; question.error = "CHECKPOINT_STORAGE_LIMIT: response was not accepted; prior checkpoints remain intact";
             // Do not pretend a result was durably cached. Signal the pause outside this transaction.
             updateCheckpointOwner(claim, run, "PAUSED", run.payloadCharacters(), run.currentNode());
-            return;
+            return CheckpointCompletion.STORAGE_LIMIT;
         }
         question.nodeCodes = nextNodes; question.prompt = nextPrompt; question.detailJson = nextDetail; question.state = state;
         question.error = bounded(detail.getError(), 2048);
         updateCheckpointOwner(claim, run, "FAILED".equals(state) ? "PAUSED" : "RUNNING",
                 nextPayload, run.currentNode());
+        return CheckpointCompletion.ACCEPTED;
     }
 
     @Transactional(readOnly = true)
@@ -776,8 +780,7 @@ public class AnalysisContinuationStore {
     /** Claimed, scalar accounting; only a legacy journal needs its saved report loaded once. */
     @Transactional
     public int relationCallsSpent(Claim claim) {
-        checkpointOwner(claim, true);
-        return initializeRelationCalls(claim);
+        return initializeRelationCalls(claim, checkpointOwner(claim, true).relationCallsSpent());
     }
 
     /** The first admitted source grouping survives a crash even before any report is available. */
@@ -812,8 +815,7 @@ public class AnalysisContinuationStore {
     @Transactional
     public void beforeRelationCall(Claim claim, int maximum) {
         if (maximum < 0) throw new IllegalArgumentException("Relation call maximum must be nonnegative");
-        checkpointOwner(claim, true);
-        initializeRelationCalls(claim);
+        initializeRelationCalls(claim, checkpointOwner(claim, true).relationCallsSpent());
         em.flush();
         long now = System.currentTimeMillis();
         int updated = em.createQuery("update AnalysisContinuationRun r set r.relationCallsSpent=r.relationCallsSpent+1, "
@@ -827,9 +829,7 @@ public class AnalysisContinuationStore {
         }
     }
 
-    private int initializeRelationCalls(Claim claim) {
-        Integer spent = em.createQuery("select r.relationCallsSpent from AnalysisContinuationRun r where r.id=:id", Integer.class)
-                .setParameter("id", claim.id()).getSingleResult();
+    private int initializeRelationCalls(Claim claim, Integer spent) {
         if (spent != null) {
             if (spent < 0) throw new IllegalStateException("Invalid saved relation call ledger");
             return spent;
@@ -847,9 +847,7 @@ public class AnalysisContinuationStore {
                 .setParameter("spent", baseline).setParameter("now", now).setParameter("id", claim.id())
                 .setParameter("token", claim.token()).executeUpdate();
         if (updated == 1) return baseline;
-        checkpointOwner(claim, true);
-        Integer initialized = em.createQuery("select r.relationCallsSpent from AnalysisContinuationRun r where r.id=:id", Integer.class)
-                .setParameter("id", claim.id()).getSingleResult();
+        Integer initialized = checkpointOwner(claim, true).relationCallsSpent();
         if (initialized == null || initialized < 0) throw conflict("Relation call ledger no longer belongs to this claim");
         return initialized;
     }
@@ -1181,10 +1179,12 @@ public class AnalysisContinuationStore {
         authorize((String) row[0], (String) row[1], (String) row[2], (String) row[3], scope);
         return runId;
     }
-    private record CheckpointOwner(String id, long version, long payloadCharacters, String currentNode, String operationId) { }
+    private record CheckpointOwner(String id, long version, long payloadCharacters, String currentNode, String operationId,
+            Integer relationCallsSpent) { }
     private CheckpointOwner checkpointOwner(Claim claim, boolean requireUnexpired) {
         // The same row lock as cancellation/completion, but no result/request LOB hydration.
-        var rows = em.createQuery("select r.version, r.payloadCharacters, r.currentNode, r.state, r.claimToken, r.claimUntil, r.clusterOperationId "
+        var rows = em.createQuery("select r.version, r.payloadCharacters, r.currentNode, r.state, r.claimToken, r.claimUntil, "
+                        + "r.clusterOperationId, r.relationCallsSpent "
                         + "from AnalysisContinuationRun r where r.id=:id", Object[].class)
                 .setParameter("id", claim.id()).setLockMode(LockModeType.PESSIMISTIC_WRITE).getResultList();
         if (rows.isEmpty()) throw conflict("Operation no longer owns its execution claim");
@@ -1193,7 +1193,7 @@ public class AnalysisContinuationStore {
                 || (requireUnexpired && System.currentTimeMillis() > ((Number) row[5]).longValue()))
             throw conflict("Operation no longer owns its execution claim");
         return new CheckpointOwner(claim.id(), ((Number) row[0]).longValue(),
-                ((Number) row[1]).longValue(), (String) row[2], row.length > 6 ? (String) row[6] : null);
+                ((Number) row[1]).longValue(), (String) row[2], (String) row[6], (Integer) row[7]);
     }
     private void updateCheckpointOwner(Claim claim, CheckpointOwner run, String state, long payload, String currentNode) {
         // Commit the question and its bookkeeping atomically. Bulk updates explicitly advance

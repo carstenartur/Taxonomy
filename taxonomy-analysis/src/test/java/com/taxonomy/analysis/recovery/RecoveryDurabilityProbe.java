@@ -55,7 +55,8 @@ public final class RecoveryDurabilityProbe {
                         case "getSingleResult" -> (long) questions.size();
                         case "getResultList" -> {
                             if (jpql.startsWith("select r.version,")) yield present ? Collections.singletonList(new Object[]{run.version,
-                                    run.payloadCharacters, run.currentNode, run.state, run.claimToken, run.claimUntil, run.clusterOperationId}) : List.of();
+                                    run.payloadCharacters, run.currentNode, run.state, run.claimToken, run.claimUntil,
+                                    run.clusterOperationId, run.relationCallsSpent}) : List.of();
                             if (jpql.startsWith("select q.questionKey, q.nodeCodes, q.state,")) yield questions.stream()
                                     .sorted(Comparator.comparingLong((AnalysisQuestionCheckpoint q) -> q.startedAt).thenComparing(q -> q.questionKey))
                                     .map(q -> new Object[]{q.questionKey, q.nodeCodes, q.state, q.error, q.attempts}).toList();
