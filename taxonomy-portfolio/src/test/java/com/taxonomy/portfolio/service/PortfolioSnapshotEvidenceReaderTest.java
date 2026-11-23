@@ -6,6 +6,7 @@ import com.taxonomy.dto.GapAnalysisView;
 import com.taxonomy.dto.PatternDetectionView;
 import jakarta.persistence.EntityManager;
 import org.hibernate.Session;
+import org.hibernate.SessionFactory;
 import org.hibernate.query.NativeQuery;
 import org.hibernate.type.StandardBasicTypes;
 import org.junit.jupiter.api.Test;
@@ -153,6 +154,122 @@ class PortfolioSnapshotEvidenceReaderTest {
         when(f.query.getSingleResultOrNull()).thenReturn(null);
         assertThat(f.reader.readAnalysis(7L, "snapshot", "scope", "job", 11L, 12L)).isEmpty();
         for (Clob clob : f.clobs) verifyNoInteractions(clob);
+    }
+
+    @Test void aMatchingContinuationConsumesItsOwnLocatorWithoutBindingAgain() throws Exception {
+        var f = new ContinuationFixture();
+        var cold = f.read("snapshot", new Input(PAYLOADS[0]));
+        var warm = f.read("snapshot", new Input(PAYLOADS[0]));
+        assertThat(warm.inputs()).isSameAs(cold.inputs());
+        assertThat(warm.inputs().status()).isEqualTo("PARTIAL");
+        assertThat(warm.inputs().warnings()).containsExactly("Recorded warning");
+        verify(f.codec).read(any(Reader.class), eq(AnalysisResult.class));
+    }
+
+    @ParameterizedTest @ValueSource(strings = {"", " \t\r\n", "null"})
+    void anExistingContinuationWithoutAnalysisRemainsDistinctFromAnAbsentRow(String source) throws Exception {
+        var f = new ContinuationFixture();
+        assertThat(f.read("snapshot", new Input(source)).inputs()).isNull();
+        when(f.query.getSingleResultOrNull()).thenReturn(new Object[] {"snapshot", null});
+        assertThat(f.reader.readContinuation(7L, "snapshot", "scope", "job", 11L, 12L)
+                .orElseThrow().inputs()).isNull();
+        when(f.query.getSingleResultOrNull()).thenReturn(null);
+        assertThat(f.reader.readContinuation(7L, "snapshot", "scope", "job", 11L, 12L)).isEmpty();
+    }
+
+    @Test void validationPublishesItsOwnFingerprintAfterContentChangesBetweenPasses() throws Exception {
+        var f = new ContinuationFixture();
+        f.read("snapshot", new Input("{\"status\":\"PARTIAL\"}"));
+        var comparison = new Input("{\"status\":\"ERROR\"}");
+        var validation = new Input("{\"status\":\"SUCCESS\"}");
+        Clob compared = f.clob(comparison), validated = f.clob(validation);
+        when(f.query.getSingleResultOrNull()).thenReturn(new Object[] {"snapshot", compared},
+                new Object[] {"snapshot", validated});
+        var changed = f.reader.readContinuation(7L, "snapshot", "scope", "job", 11L, 12L).orElseThrow();
+        assertThat(changed.inputs().status()).isEqualTo("SUCCESS");
+        var order = inOrder(f.query, compared, validated);
+        order.verify(compared).free();
+        order.verify(f.query).getSingleResultOrNull();
+        order.verify(validated).free();
+        assertThat(f.read("snapshot", new Input("{\"status\":\"SUCCESS\"}")).inputs()).isSameAs(changed.inputs());
+        verify(f.codec, times(2)).read(any(Reader.class), eq(AnalysisResult.class));
+    }
+
+    @Test void fingerprintDistinguishesStoredCodeUnitsLostByUtf8Replacement() throws Exception {
+        var f = new ContinuationFixture();
+        var ascii = f.read("snapshot", new Input("{\"warnings\":[\"?\"]}"));
+        String surrogate = String.valueOf((char) 0xD800);
+        var different = f.read("snapshot", new Input("{\"warnings\":[\"" + surrogate + "\"]}"));
+        assertThat(ascii.inputs().warnings()).containsExactly("?");
+        assertThat(different.inputs().warnings()).containsExactly(surrogate);
+        verify(f.codec, times(2)).read(any(Reader.class), eq(AnalysisResult.class));
+    }
+
+    @ParameterizedTest @EnumSource(ContinuationFailure.class)
+    void warmContinuationSurfacesLateFailuresAndReleasesItsOwnLocator(ContinuationFailure step) throws Exception {
+        var f = new ContinuationFixture();
+        var good = f.read("snapshot", new Input(PAYLOADS[0]));
+        var input = new Input(PAYLOADS[0]);
+        Clob clob = f.clob(input);
+        when(f.query.getSingleResultOrNull()).thenReturn(new Object[] {"snapshot", clob});
+        Exception failure = step.fail(input, clob);
+        assertThatThrownBy(() -> f.reader.readContinuation(7L, "snapshot", "scope", "job", 11L, 12L))
+                .isInstanceOf(PortfolioException.class).hasRootCauseExactlyInstanceOf(failure.getClass())
+                .hasRootCauseMessage(failure.getMessage());
+        assertThat(input.position).isEqualTo(PAYLOADS[0].length());
+        assertThat(input.closed).isEqualTo(1);
+        verify(clob).free();
+        assertThat(f.read("snapshot", new Input(PAYLOADS[0])).inputs()).isSameAs(good.inputs());
+        verify(f.codec).read(any(Reader.class), eq(AnalysisResult.class));
+    }
+
+    @ParameterizedTest @EnumSource(ContinuationFailure.class)
+    void aFailedColdContinuationNeverPublishesItsInputs(ContinuationFailure step) throws Exception {
+        var f = new ContinuationFixture();
+        var input = new Input(PAYLOADS[0]);
+        Clob clob = f.clob(input);
+        when(f.query.getSingleResultOrNull()).thenReturn(new Object[] {"snapshot", clob});
+        Exception failure = step.fail(input, clob);
+        assertThatThrownBy(() -> f.reader.readContinuation(7L, "snapshot", "scope", "job", 11L, 12L))
+                .isInstanceOf(PortfolioException.class).hasStackTraceContaining(failure.getMessage());
+        assertThat(input.closed).isEqualTo(1);
+        verify(clob).free();
+        assertThat(f.read("snapshot", new Input(PAYLOADS[0])).inputs().status()).isEqualTo("PARTIAL");
+        verify(f.codec, times(2)).read(any(Reader.class), eq(AnalysisResult.class));
+    }
+
+    @Test void identicalRowsFromSeparateSessionFactoriesRequireTheirOwnValidation() throws Exception {
+        var f = new ContinuationFixture();
+        var first = f.read("snapshot", new Input(PAYLOADS[0]));
+        when(f.session.getSessionFactory()).thenReturn(mock(SessionFactory.class));
+        var other = f.read("snapshot", new Input(PAYLOADS[0]));
+        assertThat(other.inputs()).isEqualTo(first.inputs()).isNotSameAs(first.inputs());
+        assertThat(f.read("snapshot", new Input(PAYLOADS[0])).inputs()).isSameAs(other.inputs());
+        verify(f.codec, times(2)).read(any(Reader.class), eq(AnalysisResult.class));
+    }
+
+    @Test void seventeenthIdentityEvictsTheLeastRecentlyUsedPolicyInputs() throws Exception {
+        var f = new ContinuationFixture();
+        var first = f.read("1", new Input(PAYLOADS[0]));
+        var second = f.read("2", new Input(PAYLOADS[0]));
+        for (int i = 3; i <= 16; i++) f.read(Integer.toString(i), new Input(PAYLOADS[0]));
+        assertThat(f.read("1", new Input(PAYLOADS[0])).inputs()).isSameAs(first.inputs());
+        f.read("17", new Input(PAYLOADS[0]));
+        assertThat(f.read("1", new Input(PAYLOADS[0])).inputs()).isSameAs(first.inputs());
+        assertThat(f.read("2", new Input(PAYLOADS[0])).inputs()).isEqualTo(second.inputs()).isNotSameAs(second.inputs());
+    }
+
+    @Test void retainedStringsCountTowardAggregateBudgetAndOversizedInputsAreNeverMemoized() throws Exception {
+        var f = new ContinuationFixture();
+        String large = "{\"warnings\":[\"" + "水".repeat(550_000) + "\"]}";
+        var first = f.read("first", new Input(large));
+        f.read("second", new Input(large));
+        assertThat(f.read("first", new Input(large)).inputs()).isEqualTo(first.inputs()).isNotSameAs(first.inputs());
+        String oversized = "{\"warnings\":[\"" + "水".repeat(1_050_000) + "\"]}";
+        var complete = f.read("oversized", new Input(oversized));
+        assertThat(complete.inputs().warnings()).singleElement().asString().hasSize(1_050_000);
+        assertThat(f.read("oversized", new Input(oversized)).inputs()).isEqualTo(complete.inputs()).isNotSameAs(complete.inputs());
+        verify(f.codec, times(5)).read(any(Reader.class), eq(AnalysisResult.class));
     }
 
     @ParameterizedTest @ValueSource(strings = {"", "{}", "  \t\r\n"})
@@ -360,13 +477,72 @@ class PortfolioSnapshotEvidenceReaderTest {
         }
     }
 
+    private enum ContinuationFailure {
+        READ, CLOSE, FREE;
+
+        Exception fail(Input input, Clob clob) throws SQLException {
+            return switch (this) {
+                case READ -> input.eofFailure = new IOException("late continuation read");
+                case CLOSE -> input.closeFailure = new IOException("continuation reader close");
+                case FREE -> {
+                    var exception = new SQLException("continuation locator free");
+                    doThrow(exception).when(clob).free();
+                    yield exception;
+                }
+            };
+        }
+    }
+
+    private static final class ContinuationFixture {
+        final Session session = mock(Session.class);
+        @SuppressWarnings("unchecked") final NativeQuery<Object[]> query = mock(NativeQuery.class, Answers.RETURNS_SELF);
+        final PortfolioJsonCodec codec = spy(new PortfolioJsonCodec(JsonMapper.builder().build()));
+        final PortfolioSnapshotEvidenceReader reader;
+
+        ContinuationFixture() {
+            var entityManager = mock(EntityManager.class);
+            when(entityManager.unwrap(Session.class)).thenReturn(session);
+            when(session.getSessionFactory()).thenReturn(mock(SessionFactory.class));
+            when(session.createNativeQuery(anyString(), eq(Object[].class))).thenReturn(query);
+            reader = new PortfolioSnapshotEvidenceReader(entityManager, codec);
+        }
+
+        Clob clob(Input input) throws SQLException {
+            Clob clob = mock(Clob.class);
+            when(clob.length()).thenReturn((long) input.length);
+            when(clob.getCharacterStream()).thenReturn(input);
+            when(clob.getCharacterStream(anyLong(), anyLong())).thenThrow(new SQLFeatureNotSupportedException());
+            return clob;
+        }
+
+        PortfolioSnapshotEvidenceReader.ContinuationEvidence read(String id, Input input) throws SQLException {
+            Clob clob = clob(input);
+            // Any replacement triggers a second SELECT with its own locator and reader.
+            var replacement = new Input(input.source);
+            Clob second = clob(replacement);
+            when(query.getSingleResultOrNull()).thenReturn(new Object[] {id, clob}, new Object[] {id, second});
+            var evidence = reader.readContinuation(7L, id, "scope", "job", 11L, 12L).orElseThrow();
+            assertThat(input.position).isEqualTo(input.length);
+            assertThat(input.closed).isEqualTo(1);
+            verify(clob).free();
+            if (replacement.closed == 1) {
+                assertThat(replacement.position).isEqualTo(replacement.length);
+                verify(second).free();
+            }
+            return evidence;
+        }
+    }
+
     private static final class Input extends Reader {
+        final String source;
+        final int length;
         final StringReader delegate;
         int position, closed;
-        IOException closeFailure;
-        Input(String json) { delegate = new StringReader(json); }
+        IOException eofFailure, closeFailure;
+        Input(String json) { source = json; length = json.length(); delegate = new StringReader(json); }
         @Override public int read(char[] buffer, int offset, int length) throws IOException {
-            int count = delegate.read(buffer, offset, Math.min(length, 3));
+            int count = delegate.read(buffer, offset, source.length() > RANGE_CHARACTERS ? length : Math.min(length, 3));
+            if (count == -1 && eofFailure != null) throw eofFailure;
             if (count > 0) position += count;
             return count;
         }
