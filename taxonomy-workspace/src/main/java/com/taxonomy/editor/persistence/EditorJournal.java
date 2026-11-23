@@ -55,6 +55,14 @@ public class EditorJournal {
         });
     }
 
+    /** Inspect existing operation evidence under the workspace row lock. Missing workspaces stay absent. */
+    public <T> T readExistingLocked(RepositoryContext context, T missing, Function<Session, T> read) throws CommandProblem {
+        return transaction.execute(status -> {
+            var workspace = em.find(EditorWorkspace.class, scope(context), LockModeType.PESSIMISTIC_WRITE);
+            return workspace == null ? missing : read.apply(new Session(workspace));
+        });
+    }
+
     public Entry operation(RepositoryContext context, String commandId) {
         return transaction.execute(status -> {
             EditorOperation operation = em.find(EditorOperation.class, key(scope(context), commandId));

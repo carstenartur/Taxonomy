@@ -769,9 +769,7 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
     /** Look up the actor's original imported revision and its own durable checkpoint intent. */
     public IntegrationReceipt integrationReceipt(RepositoryContext context, String operationId, String checkpointId) {
         requireWritable(context);
-        var snapshot = journal.read(context);
-        if (snapshot == null) return null;
-        return journal.locked(context, snapshot.state(), session -> {
+        return journal.readExistingLocked(context, null, session -> {
             var entry = session.find(operationId);
             var receipt = session.checkpoint(checkpointId);
             if (entry == null || !"VERSION_IMPORT".equals(entry.kind()) || !context.username().equals(entry.actor())
@@ -790,10 +788,8 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
     public Optional<CheckpointAccepted> integrationCheckpointForOperation(RepositoryContext context, String originalCommandId) throws IOException {
         requireWritable(context);
         String operationId = UUID.fromString(originalCommandId).toString();
-        Snapshot snapshot = journal.read(context);
-        if (snapshot == null) return Optional.empty();
         try {
-            return journal.locked(context, snapshot.state(), session -> {
+            return journal.readExistingLocked(context, Optional.empty(), session -> {
                 Entry operation = session.find(operationId);
                 State state = session.state();
                 if (operation == null || !context.username().equals(operation.actor()) || state.pendingCheckpoint() != null

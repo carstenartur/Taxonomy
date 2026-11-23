@@ -189,7 +189,7 @@ public class ArchitectureAdmbwPreparationService {
     public record Recovery(Publication publication, AdmbwPreparation.DeliveryIdentity delivery,
                            AdmbwFffmlvProfile.Report assessment, List<AdmbwFffmlvProfile.Issue> qeaIssues) {}
 
-    public Recovery recover(RepositoryContext context, String operationId, boolean resume) throws IOException {
+    public Recovery recover(RepositoryContext context, String operationId) throws IOException {
         lifecycle.authorize(context, true);
         String id = java.util.UUID.fromString(operationId).toString();
         String checkpointId = checkpointId(id);
@@ -197,15 +197,8 @@ public class ArchitectureAdmbwPreparationService {
         var delivery = entry == null ? null : AdmbwPreparation.deliveryForOperation(entry.source(), id);
         if (delivery == null) throw problem("NOT_FOUND", "The selected workspace has no personal delivery receipt for this operation");
         var receipt = entry.checkpoint();
-        if (receipt == null && entry.pending()) {
-            if (!resume) return new Recovery(new Publication(entry.accepted(), "CHECKPOINT_PENDING", null, null, null), delivery, null, List.of());
-            try { receipt = editor.resumeCheckpoint(context, checkpointId); }
-            catch (ArchitectureDslCommands.CommandProblem changed) {
-                if (!"NOT_FOUND".equals(changed.code())) throw changed;
-                // Another tab may have completed this receipt or started a later checkpoint.
-                return recover(context, id, false);
-            }
-        }
+        if (receipt == null && entry.pending())
+            return new Recovery(new Publication(entry.accepted(), "CHECKPOINT_PENDING", null, null, null), delivery, null, List.of());
         if (receipt != null) {
             try { editor.read(context, receipt.commitId()); }
             catch (ArchitectureDslCommands.CommandProblem unavailable) {
@@ -222,6 +215,19 @@ public class ArchitectureAdmbwPreparationService {
         var report = new AdmbwFffmlvProfile().assess(document.dsl(), delivery.projectCode(), delivery.viewId());
         return new Recovery(new Publication(receipt.context(), "CHECKPOINTED", receipt, null, null), delivery,
                 report, ArchitectureEditorExportController.qeaIssues(report));
+    }
+
+    public Recovery resume(RepositoryContext context, String operationId) throws IOException {
+        var recovery = recover(context, operationId);
+        if (!"CHECKPOINT_PENDING".equals(recovery.publication().state())) return recovery;
+        String id = java.util.UUID.fromString(operationId).toString();
+        try {
+            editor.resumeCheckpoint(context, checkpointId(id));
+        } catch (ArchitectureDslCommands.CommandProblem changed) {
+            if (!"NOT_FOUND".equals(changed.code())) throw changed;
+            // A concurrent resume may already have published the original checkpoint.
+        }
+        return recover(context, id);
     }
 
     private AdmbwPreparation.Prepared prepare(String source, Request request, AdmbwQeaExport.Basis basis) {

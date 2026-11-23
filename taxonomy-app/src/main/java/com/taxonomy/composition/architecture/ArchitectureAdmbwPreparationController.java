@@ -72,7 +72,7 @@ public class ArchitectureAdmbwPreparationController {
             description="Looks up the original operation and reachable checkpoint in the authenticated workspace. Returns basis identity and coverage without uploading a QEA or changing the model.")
     public ResponseEntity<ArchitectureAdmbwPreparationService.Recovery> receipt(@PathVariable String operationId,
             @RequestParam String repositoryId, @RequestParam String workspaceScopeKey, @RequestParam String branch) throws IOException {
-        var result = service.recover(contexts.resolveForRead(repositoryId, workspaceScopeKey, branch), operationId, false);
+        var result = service.recover(contexts.resolveForRead(repositoryId, workspaceScopeKey, branch), operationId);
         return LifecycleHttpContext.response(result.publication().context()).body(result);
     }
 
@@ -81,7 +81,7 @@ public class ArchitectureAdmbwPreparationController {
             description="Resumes only the authenticated user's exact durable checkpoint intent. The original assignments are never resubmitted.")
     public ResponseEntity<ArchitectureAdmbwPreparationService.Recovery> resume(@PathVariable String operationId,
             @RequestParam String repositoryId, @RequestParam String workspaceScopeKey, @RequestParam String branch) throws IOException {
-        var result = service.recover(contexts.resolveForRead(repositoryId, workspaceScopeKey, branch), operationId, true);
+        var result = service.resume(contexts.resolveForRead(repositoryId, workspaceScopeKey, branch), operationId);
         return LifecycleHttpContext.response(result.publication().context()).body(result);
     }
 

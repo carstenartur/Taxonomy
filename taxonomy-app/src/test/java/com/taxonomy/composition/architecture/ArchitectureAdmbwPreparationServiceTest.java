@@ -30,7 +30,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.head;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 import static org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup;
 
@@ -142,13 +145,13 @@ class ArchitectureAdmbwPreparationServiceTest extends LifecycleTestSupport {
         var before = capture(context);
         when(catalog.acquire(AdmbwQeaExport.KEY, IntegrationConnectorExtension.class))
                 .thenThrow(new ExtensionUnavailableException(AdmbwQeaExport.KEY));
-        var recovered = service.recover(context, request.metadata().commandId(), false);
+        var recovered = service.recover(context, request.metadata().commandId());
         assertThat(recovered.publication().checkpoint().commitId()).isEqualTo(first.checkpoint().commitId());
         assertThat(recovered.delivery().basisSha256()).isEqualTo(basisHash);
         assertThat(recovered.delivery().viewId()).isEqualTo(preview.viewId());
         assertThat(recovered.delivery().rootPackageGuid()).isEqualToIgnoringCase(request.selection().rootPackageGuid());
         var other = workspace("outside-receipt");
-        rejected("NOT_FOUND", () -> service.recover(other, request.metadata().commandId(), true));
+        rejected("NOT_FOUND", () -> service.resume(other, request.metadata().commandId()));
         var replay = service.accept(context, reviewed, BYTES);
         assertThat(replay.state()).isEqualTo("CHECKPOINTED");
         assertThat(replay.context()).isEqualTo(first.context());
@@ -161,11 +164,11 @@ class ArchitectureAdmbwPreparationServiceTest extends LifecycleTestSupport {
     void restoreReadsPendingReceiptAndResumesOnlyTheOriginalPublicationWithoutApplyingAgain() throws Exception {
         var context = workspace("admbw-pending-restore");
         var request = request(context, "RESTORE");
-        var failOnce = new java.util.concurrent.atomic.AtomicBoolean(true);
+        var writeAttempts = new java.util.concurrent.atomic.AtomicInteger();
         var writer = new com.taxonomy.editor.ArchitectureCheckpointWriter() {
             @Override public Result write(com.taxonomy.workspace.storage.DslGitRepository repository, String scope, String branch,
                     com.taxonomy.editor.persistence.EditorJournal.Checkpoint intent) throws java.io.IOException {
-                if (failOnce.getAndSet(false)) throw new java.io.IOException("Publication outage");
+                if (writeAttempts.incrementAndGet() == 1) throw new java.io.IOException("Publication outage");
                 return super.write(repository, scope, branch, intent);
             }
         };
@@ -178,15 +181,34 @@ class ArchitectureAdmbwPreparationServiceTest extends LifecycleTestSupport {
         assertThat(pending.state()).isEqualTo("CHECKPOINT_PENDING");
         var before = capture(context);
         var id = request.metadata().commandId();
-        assertThat(recoveringService.recover(context, id, false).publication().state()).isEqualTo("CHECKPOINT_PENDING");
+        var resolver = mock(WorkspaceResolver.class);
+        when(resolver.resolveCurrentRepositoryContextForRead()).thenReturn(context);
+        var mvc = standaloneSetup(new ArchitectureAdmbwPreparationController(recoveringService, new LifecycleHttpContext(resolver), json))
+                .setControllerAdvice(new ArchitectureLifecycleExceptionHandler()).build();
+        var pins = new org.springframework.util.LinkedMultiValueMap<String, String>();
+        pins.add("repositoryId", request.context().repositoryId());
+        pins.add("workspaceScopeKey", request.context().workspaceScopeKey());
+        pins.add("branch", request.context().branch());
+        String route = "/api/architecture/editor/admbw/operations/{id}";
+        mvc.perform(get(route, id).params(pins)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.publication.state").value("CHECKPOINT_PENDING"));
+        mvc.perform(head(route, id).params(pins)).andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store"));
         rejected("NOT_FOUND", () -> recoveringEditor.resumeCheckpoint(context, java.util.UUID.randomUUID().toString()));
         assertUnchanged(context, before);
-        var result = recoveringService.recover(context, id, true);
-        assertThat(result.publication().state()).isEqualTo("CHECKPOINTED");
-        assertThat(result.publication().context().revision()).isEqualTo(pending.context().revision());
+        assertThat(writeAttempts.get()).isOne();
+
+        var resumed = mvc.perform(post(route + "/resume", id).params(pins)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.publication.state").value("CHECKPOINTED"))
+                .andExpect(jsonPath("$.publication.context.revision").value(pending.context().revision())).andReturn();
+        String commit = json.readTree(resumed.getResponse().getContentAsByteArray()).at("/publication/checkpoint/commitId").asString();
+        assertThat(commit).matches("[0-9a-f]{40}");
+        mvc.perform(post(route + "/resume", id).params(pins)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.publication.checkpoint.commitId").value(commit));
+        mvc.perform(get(route, id).params(pins)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.publication.checkpoint.commitId").value(commit));
+        assertThat(writeAttempts.get()).isEqualTo(2);
         assertThat(journal.read(context).operations()).isEqualTo(before.journal().operations());
-        assertThat(recoveringService.recover(context, id, true).publication().checkpoint().commitId())
-                .isEqualTo(result.publication().checkpoint().commitId());
     }
 
     @Test

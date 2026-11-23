@@ -23,6 +23,18 @@ class ArchitectureEditorIntegrationIdempotencyTest {
     private static final String BASE = "element component type Component {\n title: \"Unchanged integration\";\n}\n";
     private final RepositoryContext scope = RepositoryContext.workspace("noop-repository", "noop-workspace", "draft", "alice");
 
+    @Test
+    void readingAnOperationWithoutAJournalLeavesTheWorkspaceUninitialized() throws Exception {
+        try (var fixture = new EditorPersistenceFixture("jdbc:hsqldb:mem:missing-receipt-" + UUID.randomUUID() + ";shutdown=true")) {
+            var operation = metadata();
+            var checkpoint = metadata();
+            assertThat(fixture.journal.read(scope)).isNull();
+            assertThat(fixture.service.integrationReceipt(scope, operation.commandId(), checkpoint.commandId())).isNull();
+            assertThat(fixture.service.integrationCheckpointForOperation(scope, operation.commandId())).isEmpty();
+            assertThat(fixture.journal.read(scope)).isNull();
+        }
+    }
+
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
     void unchangedIntegrationRetainsItsCommandReceiptBeforeAndAfterCheckpointCompletion(boolean completed) throws Exception {
