@@ -34,6 +34,7 @@ function boot(fetchImpl, {analysis = false, portfolio = false, beforeCanonical =
     localStorage: {getItem: key => stored.get(key) || null, setItem: (key, value) => stored.set(key, value), removeItem: key => stored.delete(key)},
     sessionStorage: {getItem: () => null, setItem() {}, removeItem() {}},
     addEventListener(type, listener) {if (!windowListeners.has(type)) windowListeners.set(type, []); windowListeners.get(type).push(listener);},
+    removeEventListener(type, listener) {windowListeners.set(type, (windowListeners.get(type) || []).filter(value => value !== listener));},
     dispatchEvent(event) {for (const listener of windowListeners.get(event.type) || []) listener(event); return true;},
     setTimeout: (callback, delay) => {timers.set(++timerId, {callback, delay}); return timerId;},
     clearTimeout: id => timers.delete(id),
@@ -336,12 +337,14 @@ test(`an early portfolio with ${description} enables intake and creation for its
   vm.runInContext(sources.get('portfolio/taxonomy-portfolio.js').replace(/\}\)\(\);\s*$/,
     'window.portfolioStartupFixture = {initialize};})();'), app.context);
   const started = app.window.portfolioStartupFixture.initialize();
+  let earlySubmission;
   await flush();
   const calls = () => requests.map(({path, method}) => `${method} ${path}`);
   if (usesDefault) {
     assert.deepEqual(calls(), ['GET /api/workspace/current'], 'The first overview must wait for a confirmed source');
     assert.equal(submit.disabled, true);
-    await nodes.get('projectForm').fire('submit');
+    earlySubmission = nodes.get('projectForm').fire('submit');
+    await flush();
     assert.equal(projectCreated, false);
 
     sourcePending = false;
@@ -350,11 +353,14 @@ test(`an early portfolio with ${description} enables intake and creation for its
     retry.callback();
   }
   assert.equal(await started, true, nodes.get('portfolioError').textContent);
+  if (earlySubmission) await earlySubmission;
   assert.deepEqual(calls(), [
     ...(usesDefault ? ['GET /api/workspace/current', 'GET /api/workspace/current'] : []),
     'GET /api/architecture/lifecycle',
-    'GET /api/projects'
+    'GET /api/projects',
+    ...(usesDefault ? ['POST /api/projects', 'GET /api/projects'] : [])
   ]);
+  assert.equal(projectCreated, usesDefault, 'A queued submission completes exactly once after source confirmation');
   assert.equal(submit.disabled, false);
   assert.deepEqual(JSON.parse(JSON.stringify(app.window.TaxonomyArchitectureLifecycle.selectedContext())), stand);
   requirement.value = 'The earliest selectable requirement.';
@@ -370,7 +376,7 @@ test(`an early portfolio with ${description} enables intake and creation for its
   const command = await app.window.TaxonomyRequirementIntake.prepare(form, {text: requirement.value});
   assert.equal(command.choice, 'NEW');
   assert.equal(command.requirement.text, requirement.value);
-  await nodes.get('projectForm').fire('submit');
+  if (!usesDefault) await nodes.get('projectForm').fire('submit');
   assert.equal(projectCreated, true);
   for (const path of ['/api/architecture/lifecycle/intake-review', '/api/projects']) {
     const writes = requests.filter(request => request.path === path && request.method === 'POST');
