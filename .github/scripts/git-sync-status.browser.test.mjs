@@ -50,22 +50,23 @@ for (const prefix of ['', '/taxonomy']) test(`root-shell reload pins original st
             headers.push(item);
             headerTasks.push(request.allHeaders().then(all => { item.all = all['x-taxonomy-workspace-id'] || null; }));
         });
-        // Drive the two production poll intervals independently of the runner's wall clock.
+        // Drive the two production poll timers independently of the runner's wall clock.
         // Startup, reload, requests, response bodies and renderer adoption remain native.
         await context.addInitScript(() => {
-            const schedule = window.setInterval.bind(window), cancel = window.clearInterval.bind(window);
-            const statusIntervals = new Map();
+            const schedule = window.setTimeout.bind(window), cancel = window.clearTimeout.bind(window);
+            const statusTimers = new Map();
             let next = -1;
-            window.setInterval = (callback, delay, ...args) => {
+            window.setTimeout = (callback, delay, ...args) => {
                 if (delay !== 10000) return schedule(callback, delay, ...args);
                 const id = next--;
-                statusIntervals.set(id, () => callback(...args));
+                statusTimers.set(id, () => callback(...args));
                 return id;
             };
-            window.clearInterval = id => { if (!statusIntervals.delete(id)) cancel(id); };
+            window.clearTimeout = id => { if (!statusTimers.delete(id)) cancel(id); };
             window.__fixturePollStatus = () => {
-                for (const callback of statusIntervals.values()) callback();
-                return statusIntervals.size;
+                const scheduled = [...statusTimers.entries()];
+                for (const [id, callback] of scheduled) if (statusTimers.delete(id)) callback();
+                return scheduled.length;
             };
         });
         await observer.attach(page, context);
@@ -204,16 +205,19 @@ async function fixture(messages = {}) {
         window.TaxonomyUtils = {escapeHtml: value => String(value)};
         // Control only clock and HTTP boundaries; both production renderers use the real DOM.
         window.statusTimers = new Map();
-        let nextTimer = 0;
-        window.setInterval = (callback, delay) => {
-            const id = ++nextTimer;
-            window.statusTimers.set(id, {callback, delay});
+        const schedule = window.setTimeout.bind(window), cancel = window.clearTimeout.bind(window);
+        let nextTimer = -1;
+        window.setTimeout = (callback, delay, ...args) => {
+            if (delay !== 10000 && delay !== 15000) return schedule(callback, delay, ...args);
+            const id = nextTimer--;
+            window.statusTimers.set(id, {delay});
             return id;
         };
-        window.clearInterval = id => window.statusTimers.delete(id);
+        window.clearTimeout = id => { if (!window.statusTimers.delete(id)) cancel(id); };
         window.statusReads = [];
         window.fetch = (url, init) => new Promise(resolve => {
-            window.statusReads.push({url: String(url), method: init?.method || 'GET', body: init?.body, pending: true,
+            window.statusReads.push({url: String(url), method: init?.method || 'GET', body: init?.body,
+                signal: init?.signal, pending: true,
                 answer(value, status = 200, headers) {
                     this.pending = false;
                     resolve(new Response(this.method === 'HEAD' ? null : JSON.stringify(value), {status,
@@ -395,7 +399,7 @@ test('repeated Git refreshes retain the latest sync node without duplicates or e
         const urls = await page.evaluate(() => window.statusReads.map(read => read.url));
         assert.equal(urls.filter(url => url.startsWith('/api/git/state')).length, 4);
         assert.equal(urls.filter(url => url === '/api/workspace/sync-state').length, 2);
-        assert.deepEqual(await page.evaluate(() => [...window.statusTimers.values()].map(timer => timer.delay)), [10000, 15000]);
+        assert.deepEqual(await page.evaluate(() => [...window.statusTimers.values()].map(timer => timer.delay).sort()), [10000, 15000]);
         assert.deepEqual(page.errors, []);
     } finally { await page.close(); }
 });
@@ -465,8 +469,15 @@ test('changing the selected Git context clears previous sync state and actions b
             await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 0)));
         }
         await select(draft);
+        const syncRequests = await page.evaluate(() => statusReads
+            .filter(read => read.url.split('?')[0] === '/api/workspace/sync-state')
+            .map(read => ({pending:read.pending, aborted:read.signal.aborted})));
+        assert.deepEqual(syncRequests, [{pending:true, aborted:true}, {pending:true, aborted:false}],
+            'First repository confirmation replaces the unscoped sync request');
         await answer(page, '/api/workspace/sync-state', initial);
-        await page.evaluate(() => TaxonomyWorkspaceSync.refresh());
+        await settle();
+        assert.equal(await page.evaluate(() => TaxonomyWorkspaceSync.getSyncState()), null,
+            'A late unscoped response cannot publish sync state for the confirmed repository');
         await syncResponse(page, {branch:draft.branch, syncStatus:'AHEAD', unpublishedCommitCount:3, lastSyncedCommitId:draft.commitId});
         await select(draft);
         assert.equal(await fixedPull.isEnabled(), true);

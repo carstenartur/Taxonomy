@@ -1,10 +1,181 @@
 name: Novice QA with native vLLM
-on: workflow_dispatch
+on:
+  push:
+    branches: [qa/novice-vllm-20261125]
 permissions:
   contents: read
 jobs:
-  reserved:
-    if: ${{ false }}
+  exercise:
     runs-on: ubuntu-24.04
+    timeout-minutes: 95
+    env:
+      APP_SHA: 6dbaf80ed55697a2340f032b52417ba53f3d8a43
+      CUSTOM_LLM_URL: http://127.0.0.1:8123/v1/chat/completions
+      CUSTOM_LLM_MODEL: Qwen/Qwen2.5-1.5B-Instruct
+      MODEL_REVISION: 989aa7980e4cf806f80c7fef2b1adb7bc71aa306
+      CPU_IMAGE: vllm/vllm-openai-cpu@sha256:8024248339dc6878daa5349344ed29d49c8a6732f6bdf7400fda32ce33e4b30b
+      CUSTOM_LLM_CONTEXT_WINDOW_TOKENS: '8192'
+      CUSTOM_LLM_MAX_OUTPUT_TOKENS: '768'
+      LLM_PROVIDER: CUSTOM_OPENAI
+      LLM_MOCK: 'false'
+      TAXONOMY_EMBEDDING_ENABLED: 'false'
+      TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
+      PORT: '8111'
+      SERVER_SERVLET_CONTEXT_PATH: /taxonomy
+      BASE_URL: http://127.0.0.1:8111/taxonomy
+      QA_USER: novice-desktop
+      QA_USER_MOBILE: novice-mobile
+      QA_LIVE_SECONDS: "180"
     steps:
-      - run: echo 'Awaiting merged application revision'
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          path: harness
+          persist-credentials: false
+          sparse-checkout: qa-novice
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ env.APP_SHA }}
+          path: app
+          persist-credentials: false
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880
+        with:
+          java-version: '25'
+          distribution: temurin
+          cache: maven
+          cache-read-only: true
+          cache-dependency-path: |
+            app/**/pom.xml
+            app/.github/ui-verification-pom.xml
+            app/**/*-pom.xml
+            app/**/pom-*.xml
+            app/**/.mvn/wrapper/maven-wrapper.properties
+            app/**/.mvn/extensions.xml
+            app/.mvn/dependency-cache-epoch
+      - name: Record exact environment and build application
+        run: |
+          set -eu
+          mkdir evidence
+          { git -C app rev-parse HEAD; java -version; nproc; lscpu; free -h; df -h /; } > evidence/environment.txt 2>&1
+          test "$(git -C app rev-parse HEAD)" = "$APP_SHA"
+          cd app
+          ./mvnw -B -ntp -pl taxonomy-app -am package -DskipTests -Dmaven.build.cache.enabled=false > ../evidence/build.log 2>&1 || { tail -120 ../evidence/build.log; exit 1; }
+      - name: Start private CPU vLLM and verify real token generation
+        run: |
+          set -eu
+          docker pull "$CPU_IMAGE"
+          docker run --detach --name qa-vllm --shm-size=1g --publish 127.0.0.1:8123:8000 \
+            --env "OMP_NUM_THREADS=$(nproc)" --env VLLM_CPU_KVCACHE_SPACE=1 --env VLLM_CPU_OMP_THREADS_BIND=nobind \
+            "$CPU_IMAGE" --model "$CUSTOM_LLM_MODEL" --revision "$MODEL_REVISION" \
+            --max-model-len 8192 --max-num-seqs 1 --dtype bfloat16 --enforce-eager \
+            --generation-config vllm --override-generation-config '{"max_new_tokens":768}'
+          for attempt in $(seq 1 180); do
+            if curl -fsS -o evidence/models.json http://127.0.0.1:8123/v1/models; then break; fi
+            test "$(docker inspect --format '{{.State.Running}}' qa-vllm)" = true || { docker logs --tail 100 qa-vllm; exit 1; }
+            sleep 4
+          done
+          jq -e --arg id "$CUSTOM_LLM_MODEL" '.data | any(.id == $id)' evidence/models.json
+          curl -fsS --max-time 180 -H 'Content-Type: application/json' --data "$(jq -n --arg model "$CUSTOM_LLM_MODEL" '{model: $model, temperature: 0, max_tokens: 32, messages: [{role: "user", content: "Wie heißt die Hauptstadt Deutschlands? Antworte mit dem Städtenamen."}]}')" "$CUSTOM_LLM_URL" > evidence/chat.json
+          jq -e '.usage.completion_tokens > 0 and (.choices[0].message.content | length > 0)' evidence/chat.json
+          curl -fsS http://127.0.0.1:8123/version > evidence/vllm-version.json
+      - name: Run application in its deployment context
+        run: |
+          set -eu
+          pw="$(openssl rand -hex 18)"
+          echo "::add-mask::$pw"
+          echo "BOOTSTRAP_PASSWORD=$pw" >> "$GITHUB_ENV"
+          cd app
+          TAXONOMY_ADMIN_PASSWORD="$pw" nohup java -Xmx2g -Dloader.path=taxonomy-app/target/features \
+            -jar taxonomy-app/target/taxonomy-app-*.jar --server.address=127.0.0.1 \
+            --taxonomy.plugins.directory=taxonomy-app/target/plugins > ../evidence/application.log 2>&1 &
+          pid=$!
+          echo "$pid" > "$RUNNER_TEMP/novice-qa-app.pid"
+          for attempt in $(seq 1 150); do
+            if curl -fsS "$BASE_URL/login" -o /dev/null; then break; fi
+            kill -0 "$pid" || { tail -100 ../evidence/application.log; exit 1; }
+            sleep 3
+          done
+          curl -fsS "$BASE_URL/login" -o /dev/null
+      - name: Create two independent analyst accounts
+        run: |
+          set -eu
+          for device in desktop mobile; do
+            candidate="Aa1-$(openssl rand -hex 16)"
+            echo "::add-mask::$candidate"
+            key=QA_PASSWORD; [ "$device" = mobile ] && key=QA_PASSWORD_MOBILE
+            echo "$key=$candidate" >> "$GITHUB_ENV"
+            jq -n --arg user "novice-$device" --arg pw "$candidate" '{username:$user,password:$pw,roles:["ROLE_USER"]}' | \
+              curl -fsS -H 'Content-Type: application/json' -u "admin:$BOOTSTRAP_PASSWORD" --data-binary @- "$BASE_URL/api/admin/users" | \
+              jq -e '{username,roles,mustChangePassword}|select(.roles == ["ROLE_USER"])' > "evidence/role-$device.json"
+          done
+      - name: Exercise novice interactions in Chromium
+        id: browser
+        continue-on-error: true
+        run: |
+          set -eu
+          python -m venv "$RUNNER_TEMP/qa-python"
+          "$RUNNER_TEMP/qa-python/bin/pip" install 'playwright==1.55.0'
+          export BROWSER_PATH="$(command -v google-chrome)"
+          export QA_OUTPUT="$GITHUB_WORKSPACE/evidence/browser"
+          mkdir -p "$QA_OUTPUT"
+          curl -fsS http://127.0.0.1:8123/metrics > evidence/metrics-before-browser.txt
+          "$RUNNER_TEMP/qa-python/bin/python" harness/qa-novice/novice.py
+      - name: Record browser-generated traffic
+        if: always() && steps.browser.outcome != 'skipped'
+        run: curl -fsS http://127.0.0.1:8123/metrics > evidence/metrics-after-browser.txt
+      - name: Close the browser application before the separate dialogue test
+        if: always() && steps.browser.outcome != 'skipped'
+        run: |
+          if test -f "$RUNNER_TEMP/novice-qa-app.pid"; then
+            pid="$(cat "$RUNNER_TEMP/novice-qa-app.pid")"
+            kill "$pid" || true
+            for check in $(seq 1 20); do
+              kill -0 "$pid" 2>/dev/null || break
+              sleep 1
+            done
+          fi
+      - name: Verify dialogue answers against source evidence
+        id: dialogue
+        continue-on-error: true
+        run: |
+          cd app
+          ./mvnw -B -ntp -pl taxonomy-app -am test -Dtest=ArchitectureDialogueVllmLiveTest \
+            -Dgroups=real-llm -DexcludedGroups=onnx -Dsurefire.failIfNoSpecifiedTests=false \
+            -Dtaxonomy.dialogue.evaluateLive=true -Dmaven.build.cache.enabled=false > ../evidence/dialogue-maven.log 2>&1 || { tail -100 ../evidence/dialogue-maven.log; exit 1; }
+          cp taxonomy-app/target/surefire-reports/*ArchitectureDialogueVllmLiveTest.txt ../evidence/
+          python - <<'PY'
+          import pathlib, xml.etree.ElementTree as ET
+          path, = pathlib.Path('taxonomy-app/target/surefire-reports').glob('TEST-*ArchitectureDialogueVllmLiveTest.xml')
+          root = ET.parse(path).getroot()
+          assert root.get('tests') == '1' and all(root.get(k) == '0' for k in ('errors','failures','skipped')), root.attrib
+          PY
+      - name: Collect application and CPU server evidence
+        if: always()
+        run: |
+          mkdir -p evidence
+          docker logs qa-vllm > evidence/vllm.log 2>&1 || true
+          cp app/taxonomy-app/target/surefire-reports/*ArchitectureDialogueVllmLiveTest*.txt evidence/ 2>/dev/null || true
+
+          python - <<'PYTHON'
+          import os, pathlib, re
+          keys = ('BOOTSTRAP_PASSWORD', 'QA_PASSWORD', 'QA_PASSWORD_MOBILE')
+          for file in pathlib.Path('evidence').rglob('*'):
+              if file.suffix not in {'.log', '.txt', '.json'}:
+                  continue
+              value = file.read_text(errors='replace')
+              for name in keys:
+                  secret = os.environ.get(name)
+                  if secret:
+                      value = value.replace(secret, '[redacted]')
+              value = re.sub(r'(?im)^(\s*(?:Authorization|Set-Cookie|Cookie)\s*:\s*).+$', r'\1[redacted]', value)
+              file.write_text(value)
+          PYTHON
+      - name: Preserve run evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: novice-vllm-${{ github.run_id }}-${{ github.run_attempt }}
+          path: evidence/
+          retention-days: 7
+      - name: Report outcome
+        if: always()
+        run: test "${{ steps.browser.outcome }}" = success && test "${{ steps.dialogue.outcome }}" = success

@@ -635,8 +635,10 @@
         diagnosticField(body, text('LLM-Antwort', 'LLM response'), detail.response, 'llm-log-response',
             detail.responseLength, text('Keine Antwort im Diagnosepuffer vorhanden.',
                 'No response retained in the diagnostic buffer.'), true);
-        diagnosticField(body, 'Prompt', detail.prompt, 'llm-log-prompt', detail.promptLength,
-            text('Kein Prompt im Diagnosepuffer vorhanden.', 'No prompt retained in the diagnostic buffer.'), false);
+        body.append(window.TaxonomyPromptDisplay.render(detail.prompt, {
+            originalLength: detail.promptLength,
+            emptyMessage: text('Kein Prompt im Diagnosepuffer vorhanden.', 'No prompt retained in the diagnostic buffer.')
+        }));
         if (detail.truncated) {
             body.append(node('div', text('Die Diagnosevorschau ist gekürzt; sie enthält nicht den vollständigen Austausch.',
                 'This diagnostic preview is truncated; it does not contain the complete exchange.'), 'text-muted'));

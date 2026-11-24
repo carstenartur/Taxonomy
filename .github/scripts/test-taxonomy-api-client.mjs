@@ -1040,6 +1040,7 @@ test('the live context-bar back action handles canonical authorization failure w
   app.context.TaxonomyI18n = {t: (key, value) => value || key};
   app.context.TaxonomyUtils = {escapeHtml: String};
   app.context.document.getElementById = () => null;
+  app.context.document.addEventListener = () => {};
   app.context.fetch = () => { throw new Error('legacy fetch bypass'); };
   vm.runInContext(await readFile(new URL('../../taxonomy-app/src/main/resources/static/js/versioning/taxonomy-context-bar.js', import.meta.url), 'utf8'), app.context);
   await w.TaxonomyContextBar.back();

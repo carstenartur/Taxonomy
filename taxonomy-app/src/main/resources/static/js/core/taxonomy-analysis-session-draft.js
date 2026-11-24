@@ -20,6 +20,7 @@
     var showStaleActions = C.showStaleActions;
     var inputEditRevision = 0;
     var statusRead = null;
+    var serverStateGeneration = 0;
     var loadEpoch = 0;
     var referenceEpoch = 0;
     var DECISION_CONTROL_SELECTOR = [
@@ -156,9 +157,9 @@
         return finishMutation(operation);
     }
 
-    function performResetDraft() {
+    function performResetDraft(observation) {
         var endpoint = draftEndpoint();
-        if (!endpoint) {
+        if (!endpoint || observation !== serverStateGeneration) {
             runtime.resetting = false;
             notifyDraftState();
             return Promise.resolve(null);
@@ -169,11 +170,12 @@
             method: 'POST',
             body: JSON.stringify({ analysisOptions: options })
         }).then(function (view) {
-            confirmDraft(view);
+            var current = confirmDraft(view, observation);
             runtime.version = view.version;
             runtime.restoredPayload = view.payload;
             runtime.lastSavedComparable = comparable(view.payload);
             runtime.lastObservedComparable = runtime.lastSavedComparable;
+            if (!current) return null;
             runtime.conflict = false;
             document.dispatchEvent(new CustomEvent('taxonomy:analysis-draft-reset', {
                 detail: { workspaceId: runtime.workspaceId, version: runtime.version }
@@ -192,6 +194,7 @@
      * resurrecting the discarded requirement text.
      */
     function resetDraft() {
+        var observation = serverStateGeneration;
         referenceEpoch += 1;
         runtime.analysisReference = null; runtime.analysisEvidence = null;
         window.clearTimeout(runtime.saveTimer);
@@ -201,9 +204,9 @@
         notifyDraftState();
         if (runtime.saveInFlight) {
             return runtime.saveInFlight.catch(function () { return null; })
-                .then(performResetDraft);
+                .then(function () { return performResetDraft(observation); });
         }
-        return performResetDraft();
+        return performResetDraft(observation);
     }
 
     function saveDraft() {
@@ -222,6 +225,7 @@
         var payload = currentPayload();
         var serialized = comparable(payload);
         var observedAtSave = runtime.observedDraftComparable;
+        var observation = serverStateGeneration;
         runtime.lastObservedComparable = serialized;
         if (serialized === runtime.lastSavedComparable) return Promise.resolve(true);
 
@@ -238,18 +242,18 @@
                 expectedVersion: runtime.version
             })
         }).then(function (view) {
-            confirmDraft(view);
+            var current = confirmDraft(view, observation);
             runtime.version = view.version;
             runtime.lastSavedComparable = serialized;
             // Retire only the observation this write captured or actually saved.
             // A newer independent observation may have arrived while the PUT ran.
             if (runtime.observedDraftComparable === observedAtSave || runtime.observedDraftComparable === serialized)
                 runtime.observedDraftComparable = null;
-            runtime.conflict = false;
+            if (current) runtime.conflict = false;
             document.dispatchEvent(new CustomEvent('taxonomy:analysis-draft-saved', {
                 detail: { workspaceId: runtime.workspaceId, version: runtime.version }
             }));
-            return true;
+            return current;
         }).catch(function (error) {
             if (error.status === 409) {
                 showDraftConflict();
@@ -278,11 +282,15 @@
             view.branch || null, view.version, view.updatedAt || null] : null);
     }
 
-    function confirmDraft(view) {
+    function confirmDraft(view, observation = serverStateGeneration) {
         if (!view) runtime.acknowledgedDraftWrites = [];
         runtime.confirmedDraftRevision = revision(view);
         runtime.confirmedBusinessText = view?.payload?.businessText || '';
+        // A committed write still advances its revision, but its older receipt
+        // cannot clear a newer observation that paused saving.
+        if (observation !== serverStateGeneration) return false;
         runtime.serverUnconfirmed = false;
+        return true;
     }
 
     function unsavedInput() {
@@ -315,12 +323,17 @@
     }
 
     function serverUnavailable(error) {
+        serverStateGeneration++;
+        var supersededRead = statusRead;
+        statusRead = null;
+        supersededRead?.controller.abort();
         runtime.serverUnconfirmed = true;
         window.clearTimeout(runtime.saveTimer);
         runtime.saveTimer = null;
         setDraftDecisionPending(true);
         if (runtime.restoring || runtime.conflict) return;
-        showActionAlert('warning', text('serverUnavailableTitle'), text('serverUnavailableBody'), [
+        var conflictDetail = error?.status === 409 && (error.detail || error.title || error.message);
+        showActionAlert('warning', text('serverUnavailableTitle'), conflictDetail || text('serverUnavailableBody'), [
             { id: 'check-server', label: text('checkServer'), className: 'btn btn-sm btn-primary',
                 handler: function () { return retryServerState(); } }
         ], 'server-unconfirmed');
@@ -349,7 +362,7 @@
     // Triggered by the existing server observation and browser lifecycle events.
     // Only revision metadata is read while the saved draft is unchanged.
     function reconcileDraft() {
-        if (statusRead) return statusRead;
+        if (statusRead) return statusRead.result;
         var endpoint = draftEndpoint();
         if (!endpoint || !runtime.workspaceResolved || runtime.restoring || runtime.invalidating
                 || runtime.resetting || runtime.conflict || runtime.saveInFlight) return Promise.resolve(false);
@@ -357,8 +370,10 @@
         var version = runtime.version;
         var generation = runtime.analysisGeneration;
         var confirmed = runtime.confirmedDraftRevision;
+        var read = {controller: new AbortController()};
+        statusRead = read;
         function current() {
-            return runtime.workspaceId === workspace && runtime.version === version
+            return statusRead === read && runtime.workspaceId === workspace && runtime.version === version
                 && runtime.analysisGeneration === generation && runtime.confirmedDraftRevision === confirmed
                 && !runtime.resetting && !runtime.invalidating;
         }
@@ -368,7 +383,7 @@
             serverUnavailable(error);
             return false;
         }
-        statusRead = jsonRequest(endpoint + '/status', { method: 'GET', cache: 'no-store' })
+        read.result = jsonRequest(endpoint + '/status', {method:'GET', cache:'no-store', signal:read.controller.signal})
             .then(function (status) {
                 if (!current() || runtime.saveInFlight) return false;
                 if (revision(status) === confirmed && !runtime.restorationPending) {
@@ -391,8 +406,8 @@
             }).catch(function (error) {
                 if (current()) return failedObservation(error);
                 return false;
-            }).finally(function () { statusRead = null; });
-        return statusRead;
+            }).finally(function () { if (statusRead === read) statusRead = null; });
+        return read.result;
     }
 
     function localStateIsPristine() {
@@ -448,12 +463,16 @@
         var epoch = ++referenceEpoch;
         if (!view?.payload?.analysisReference || view.payload.draftState === 'EMPTY') return applyResolvedDraft(view);
         var workspace = runtime.workspaceId, generation = runtime.analysisGeneration, editRevision = inputEditRevision;
+        var observation = serverStateGeneration;
         var originalInput = businessTextElement()?.value;
         var originalPayload = comparable(currentPayload(true));
         runtime.restoring = true; setDraftDecisionPending(true);
         function current() {
-            return epoch === referenceEpoch && workspace === runtime.workspaceId
-                && generation === runtime.analysisGeneration && !runtime.resetting && !runtime.invalidating;
+            if (epoch !== referenceEpoch || workspace !== runtime.workspaceId
+                    || generation !== runtime.analysisGeneration || runtime.resetting || runtime.invalidating) return false;
+            if (observation === serverStateGeneration) return true;
+            runtime.restoring = false;
+            return false;
         }
         return Promise.resolve().then(function () {
             return C.resolveAnalysisReference(view.payload);
@@ -559,6 +578,10 @@
 
     function restoreRenderedState(payload, attempt) {
         if (runtime.restoredPayload !== payload) return;
+        if (runtime.serverUnconfirmed) {
+            runtime.restoring = false;
+            return;
+        }
         try {
             observeDraftChanges(function () { renderRestoredState(payload, attempt); });
         } catch (error) {
@@ -643,8 +666,9 @@
         var workspaceAtStart = runtime.workspaceId;
         var versionAtStart = runtime.version;
         var generationAtStart = runtime.analysisGeneration;
+        var observation = serverStateGeneration;
         function stillCurrent() {
-            return epoch === loadEpoch && workspaceAtStart === runtime.workspaceId
+            return observation === serverStateGeneration && epoch === loadEpoch && workspaceAtStart === runtime.workspaceId
                 && generationAtStart === runtime.analysisGeneration;
         }
         function abandon() {
@@ -705,11 +729,12 @@
                 // This transaction owns that invalidation. Its rendering failures
                 // must not be mistaken for a response superseded by another task.
                 generationAtStart = runtime.analysisGeneration;
-                if (inputUnchanged && reloadStillAuthorized && !preserveInput) return Promise.resolve(applyDraft(view)).then(function () { return view; });
+                if (inputUnchanged && reloadStillAuthorized && !preserveInput)
+                    return Promise.resolve(applyDraft(view)).then(function () { return stillCurrent() ? view : abandon(); });
                 else showResumeChoice(view);
             } else if (inputUnchanged && reloadStillAuthorized
                     && (options.force || localStateIsPristine())) {
-                return Promise.resolve(applyDraft(view)).then(function () { return view; });
+                return Promise.resolve(applyDraft(view)).then(function () { return stillCurrent() ? view : abandon(); });
             } else {
                 // Keep restoring=true until the user chooses the authoritative
                 // state; background polling and task actions remain blocked.

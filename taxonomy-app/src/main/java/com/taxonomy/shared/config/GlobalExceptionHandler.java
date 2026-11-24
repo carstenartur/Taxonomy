@@ -16,6 +16,8 @@ import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.context.request.ServletWebRequest;
 import org.springframework.web.context.request.WebRequest;
+import org.springframework.web.method.HandlerMethod;
+import org.springframework.web.servlet.HandlerMapping;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 import org.springframework.web.util.DisconnectedClientHelper;
 
@@ -72,7 +74,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     public ResponseEntity<Map<String, Object>> handleBadRequest(
             IllegalArgumentException exception,
             WebRequest request) {
-        log.warn("Bad request: status=400, type=BAD_REQUEST");
+        logFailure(exception, HttpStatus.BAD_REQUEST, "BAD_REQUEST", request);
         return buildErrorResponse(
                 HttpStatus.BAD_REQUEST,
                 clientErrorMessage(exception, HttpStatus.BAD_REQUEST),
@@ -87,7 +89,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     public ResponseEntity<Map<String, Object>> handleAccessDenied(
             AccessDeniedException exception,
             WebRequest request) {
-        log.warn("Access denied: status=403, type=ACCESS_DENIED");
+        logFailure(exception, HttpStatus.FORBIDDEN, "ACCESS_DENIED", request);
         Locale locale = LocaleContextHolder.getLocale();
         String message = messageSource.getMessage(
                 "error.forbidden", null, "Access denied.", locale);
@@ -109,7 +111,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         if (cause instanceof AccessDeniedException denied && !responseCommitted(request)) {
             return handleAccessDenied(denied, request);
         }
-        log.error("Unhandled exception: status=500, type=INTERNAL_ERROR");
+        logFailure(exception, HttpStatus.INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", request);
         if (responseCommitted(request)) {
             return null;
         }
@@ -154,10 +156,10 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
         String message;
         if (status.is5xxServerError()) {
-            log.error("Spring MVC exception: status={}, type=MVC_SERVER_ERROR", status.value());
+            logFailure(exception, status, "MVC_SERVER_ERROR", request);
             message = internalErrorMessage();
         } else {
-            log.warn("Spring MVC exception: status={}, type=MVC_CLIENT_ERROR", status.value());
+            logFailure(exception, status, "MVC_CLIENT_ERROR", request);
             message = clientErrorMessage(exception, status);
         }
 
@@ -173,13 +175,71 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         errorBody.put("error", status.getReasonPhrase());
         errorBody.put("message", message);
         errorBody.put("path", request.getDescription(false).replace("uri=", ""));
-        if (status == HttpStatus.GONE && exception instanceof org.springframework.web.ErrorResponse response
-                && response.getBody().getProperties() != null
-                && "ANALYSIS_EXPIRED".equals(response.getBody().getProperties().get("code"))) {
-            errorBody.put("code", "ANALYSIS_EXPIRED");
+        String code = safeErrorCode(exception, status);
+        if (!"NONE".equals(code)) {
+            errorBody.put("code", code);
+        }
+        String workspaceStatus = safeWorkspaceStatus(exception, code);
+        if (!"NONE".equals(workspaceStatus)) {
+            errorBody.put("workspaceStatus", workspaceStatus);
         }
         // Retain Spring's uncommitted-response handling and servlet error attributes.
         return super.handleExceptionInternal(exception, errorBody, headers, status, request);
+    }
+
+    /** Log application identities only: even route patterns can contain request-derived values. */
+    private static void logFailure(Exception exception, HttpStatus status, String type, WebRequest request) {
+        String code = safeErrorCode(exception, status);
+        boolean readinessConflict = status == HttpStatus.CONFLICT
+                && ("WORKSPACE_NOT_READY".equals(code) || "INITIAL_SOURCE_PENDING".equals(code));
+        var level = status.is5xxServerError() ? org.slf4j.event.Level.ERROR
+                : readinessConflict ? org.slf4j.event.Level.DEBUG : org.slf4j.event.Level.WARN;
+        var handler = request.getAttribute(HandlerMapping.BEST_MATCHING_HANDLER_ATTRIBUTE, WebRequest.SCOPE_REQUEST);
+        String handlerName = handler instanceof HandlerMethod method
+                ? method.getBeanType().getSimpleName() + "." + method.getMethod().getName() : "UNMAPPED";
+        String methodName = "UNKNOWN";
+        if (request instanceof ServletWebRequest servlet) {
+            methodName = switch (servlet.getRequest().getMethod()) {
+                case "GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "TRACE", "CONNECT" ->
+                    servlet.getRequest().getMethod();
+                case null, default -> "OTHER";
+            };
+        }
+        log.atLevel(level).log(
+                "Request failure: status={}, type={}, method={}, handler={}, exception={}, code={}, workspaceStatus={}",
+                status.value(), readinessConflict ? "MVC_STATE_CONFLICT" : type, methodName, handlerName,
+                exception.getClass().getSimpleName(), code, safeWorkspaceStatus(exception, code));
+    }
+
+    private static @Nullable Object errorProperty(Exception exception, String name) {
+        if (exception instanceof org.springframework.web.ErrorResponse response
+                && response.getBody().getProperties() != null) {
+            return response.getBody().getProperties().get(name);
+        }
+        return null;
+    }
+
+    private static String safeErrorCode(Exception exception, HttpStatus status) {
+        Object code = errorProperty(exception, "code");
+        if (status == HttpStatus.GONE && "ANALYSIS_EXPIRED".equals(code)) {
+            return "ANALYSIS_EXPIRED";
+        }
+        if (status == HttpStatus.CONFLICT) {
+            if ("WORKSPACE_NOT_READY".equals(code)) return "WORKSPACE_NOT_READY";
+            if ("INITIAL_SOURCE_PENDING".equals(code)) return "INITIAL_SOURCE_PENDING";
+        }
+        return "NONE";
+    }
+
+    private static String safeWorkspaceStatus(Exception exception, String code) {
+        if (!"WORKSPACE_NOT_READY".equals(code)) return "NONE";
+        Object value = errorProperty(exception, "workspaceStatus");
+        String state = value instanceof Enum<?> lifecycle ? lifecycle.name()
+                : value instanceof String text ? text : "NONE";
+        return switch (state) {
+            case "NOT_PROVISIONED", "PROVISIONING", "FAILED" -> state;
+            default -> "NONE";
+        };
     }
 
     private static boolean logClientDisconnect(Exception exception) {
