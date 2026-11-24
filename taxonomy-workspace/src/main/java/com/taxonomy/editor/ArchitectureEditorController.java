@@ -210,6 +210,7 @@ public class ArchitectureEditorController {
     public ResponseEntity<ArchitectureChangeSet.Preview> previewChangeSet(@RequestBody ArchitectureChangeSet.Request request,
             @Parameter(description = "Required exact semantic revision ETag", required = true)
             @RequestHeader(value = HttpHeaders.IF_MATCH, required = false) String ifMatch,
+            @Parameter(description = "Not supported for architecture change sets; supplying this header is rejected")
             @RequestHeader(value = HttpHeaders.IF_NONE_MATCH, required = false) String ifNoneMatch) throws IOException {
         requireRevision(request.context(), ifMatch, ifNoneMatch);
         var result = service.previewChangeSet(resolver.resolveCurrentRepositoryContextForRead(), request);
@@ -223,6 +224,7 @@ public class ArchitectureEditorController {
     public ResponseEntity<CheckpointAccepted> acceptChangeSet(@RequestBody ArchitectureChangeSet.Request request,
             @Parameter(description = "Required exact semantic revision ETag", required = true)
             @RequestHeader(value = HttpHeaders.IF_MATCH, required = false) String ifMatch,
+            @Parameter(description = "Not supported for architecture change sets; supplying this header is rejected")
             @RequestHeader(value = HttpHeaders.IF_NONE_MATCH, required = false) String ifNoneMatch) throws IOException {
         requireRevision(request.context(), ifMatch, ifNoneMatch);
         var result = service.acceptChangeSet(resolver.resolveCurrentRepositoryContext(), request);
