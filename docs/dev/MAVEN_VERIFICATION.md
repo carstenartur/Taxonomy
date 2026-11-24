@@ -138,6 +138,41 @@ blank. The benchmark covers admission and model output for the versioned
 fixtures. Database-scale recall and open-ended provider accuracy require
 their own measurement.
 
+#### Local measurement on 24 November 2026
+
+All 50 cases retrieved the independently labelled candidate exactly once
+with its recorded identity. The offline matcher returned two exact-text hits
+with supporting text. One appeared among the first three rows in the 33
+positive cases.
+
+The first live run at `3e952d2` used [Qwen2.5-1.5B-Instruct Q4_K_M](https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/tree/91cad51170dc346986eccefdc2dd33a9da36ead9)
+through a local [llama.cpp b7152](https://github.com/ggml-org/llama.cpp/releases/tag/b7152)
+server and Taxonomy's `CUSTOM_OPENAI` gateway. Model SHA-256 was
+`6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e`.
+The server used four slots, 8,192 context tokens per slot and seed 42.
+The intake test sent four concurrent requests with a 300-second read timeout.
+
+| Test cases | Accepted reviews | Invalid responses | Provider failures |
+| --- | ---: | ---: | ---: |
+| Requirements (30) | 0 | 28 | 2 |
+| Architecture elements (10) | 0 | 0 | 10 |
+| Directed relations (10) | 0 | 0 | 10 |
+
+All 28 invalid responses arrived over HTTP. The subsequent calls returned
+`PROVIDER_REVIEW_FAILED`. The opt-in check failed as designed and wrote the
+per-case CSV. The two exact-text hits still came from the deterministic
+fallback. A live top-three result, quote score and false-suggestion rate
+require accepted reviews and remain unmeasured in this run.
+
+Two additional requirement responses from a local
+[Qwen3-4B-Instruct-2507 Q4_K_M](https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507-GGUF)
+run identified a validation defect. Both reached the model gateway and were
+rejected because `NONE` decisions had blank rationales. Revalidating the
+same response bodies after allowing this accepted both. The positive case
+ranked the labelled duplicate first with both supporting quotes. The hard
+negative produced two false suggestions. This comparison concerns the two
+recorded responses.
+
 ### Opt-in suppression of inherited tests
 
 App test classes may use `@IgnoreInheritedTests` when they reuse a concrete

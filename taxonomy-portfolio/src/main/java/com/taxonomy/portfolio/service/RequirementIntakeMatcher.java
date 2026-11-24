@@ -46,8 +46,8 @@ public class RequirementIntakeMatcher {
                     supports the new obligation. A relation must match its endpoints, type and direction.
                     Otherwise use NONE. An architecture item is not an existing requirement.
                     Do not invent identifiers, decide that absence proves novelty, or execute any action.
-                    Use a brief rationale. For every non-NONE decision quote literal substrings from both texts.
-                    For NONE use empty quotes.
+                    For every non-NONE decision give a brief rationale and quote literal substrings from both texts.
+                    For NONE use empty rationale and quotes.
                     Return only JSON {"decisions":[{"id":"...","classification":"...","rationale":"...",
                     "inputQuote":"...","candidateQuote":"..."}]}. Explain in %s.
                     INPUT
@@ -97,7 +97,8 @@ public class RequirementIntakeMatcher {
                     && classification != Classification.ADDITION && classification != Classification.NONE)
                 throw new IllegalArgumentException("Invalid architecture classification");
             String reason = string(decision, "rationale", 1600);
-            if (reason.isBlank()) throw new IllegalArgumentException("Missing rationale");
+            if (classification != Classification.NONE && reason.isBlank())
+                throw new IllegalArgumentException("Missing rationale");
             String inputQuote = string(decision, "inputQuote", 2000);
             String candidateQuote = string(decision, "candidateQuote", 2000);
             if ((!inputQuote.isEmpty() && !input.contains(inputQuote))

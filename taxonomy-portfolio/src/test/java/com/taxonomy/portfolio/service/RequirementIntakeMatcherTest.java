@@ -127,6 +127,24 @@ class RequirementIntakeMatcherTest {
         assertThat(result.candidates()).containsExactly(architecture);
     }
 
+    @Test void emptyNoMatchRationaleDoesNotDiscardGroundedMatches() {
+        var unrelated = candidate("r2", "Retain records for five years");
+        ready("""
+                {"decisions":[
+                  {"id":"r1","classification":"CHANGE","rationale":"The time limit changes.",
+                   "inputQuote":"two seconds","candidateQuote":"five seconds"},
+                  {"id":"r2","classification":"NONE","rationale":"","inputQuote":"","candidateQuote":""}
+                ]}
+                """);
+
+        var result = matcher.review(INPUT, List.of(candidate(), unrelated), null);
+
+        assertThat(result.status()).isEqualTo(Status.COMPLETE);
+        assertThat(result.candidates()).containsExactly(
+                candidate().assessed(Classification.CHANGE, "The time limit changes.", List.of("two seconds", "five seconds")),
+                unrelated.assessed(Classification.NONE, "", List.of()));
+    }
+
     @ParameterizedTest
     @NullAndEmptySource
     @ValueSource(strings = {" \n\t"})
