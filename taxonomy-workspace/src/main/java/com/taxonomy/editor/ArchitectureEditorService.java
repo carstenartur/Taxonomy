@@ -219,9 +219,6 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
                 request.previewFingerprint(), changeSetInput(request, commands), before -> changeSet(before, commands)));
     }
 
-    public record SnapshotCheckpointReview(Context context, String fingerprint) {}
-    public record SnapshotAdoptionReview(Preview semanticPreview, SnapshotCheckpointReview checkpointReview) {}
-
     /** A clean workspace can review a frozen snapshot as a version using the same computed semantic diff. */
     public SnapshotAdoptionReview previewSnapshotAdoption(RepositoryContext context, Context expected, Metadata metadata,
             AdoptAnalysisSnapshot adoption, String sourceProof) throws IOException {

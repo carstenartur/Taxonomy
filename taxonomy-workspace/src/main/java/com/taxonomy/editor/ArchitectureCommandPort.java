@@ -46,6 +46,8 @@ public interface ArchitectureCommandPort {
     }
     record CheckpointAccepted(Context context, String commandId, String commitId,
                               long fromRevision, long throughRevision, boolean commitCreated, boolean replayed) {}
+    record SnapshotCheckpointReview(Context context, String fingerprint) {}
+    record SnapshotAdoptionReview(Preview semanticPreview, SnapshotCheckpointReview checkpointReview) {}
 
     record Metadata(String commandId, String correlationId, String causationId, String rationale) {
         public Metadata {

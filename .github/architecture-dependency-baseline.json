@@ -531,7 +531,7 @@
       "fromPackage": "com.taxonomy.composition.architecture",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.editor",
-      "classDependencyCount": 54
+      "classDependencyCount": 58
     },
     {
       "fromContext": "app-composition",
@@ -1917,7 +1917,7 @@
       "fromPackage": "com.taxonomy.portfolio.workbench",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
-      "classDependencyCount": 5
+      "classDependencyCount": 11
     },
     {
       "fromContext": "provenance",

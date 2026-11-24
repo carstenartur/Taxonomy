@@ -203,10 +203,11 @@ class ArchitectureContextDependencyRatchetTest {
             }
         }
         // Composition reads retained portfolio evidence and workspace authorization, then
-        // uses the editor command boundary. A same-count substitution must not admit
-        // portfolio repositories, direct journal writes, storage or model execution.
+        // uses the editor command boundary and its reviewed checkpoint receipts. A same-count
+        // substitution must not admit portfolio repositories, direct journal writes, storage or model execution.
         assertThat(pairs).containsExactly(
                 "AnalysisSnapshotAdoptionController -> com.taxonomy.editor.ArchitectureCommandPort$Accepted",
+                "AnalysisSnapshotAdoptionController -> com.taxonomy.editor.ArchitectureCommandPort$CheckpointAccepted",
                 "AnalysisSnapshotAdoptionController -> com.taxonomy.editor.ArchitectureCommandPort$Context",
                 "AnalysisSnapshotAdoptionController -> com.taxonomy.editor.ArchitectureCommandPort$Preview",
                 "AnalysisSnapshotAdoptionController -> com.taxonomy.editor.persistence.EditorJournal$RevisionConflict",
@@ -217,6 +218,7 @@ class ArchitectureContextDependencyRatchetTest {
                 "AnalysisSnapshotAdoptionService -> com.taxonomy.editor.ArchitectureCommandPort$Context",
                 "AnalysisSnapshotAdoptionService -> com.taxonomy.editor.ArchitectureCommandPort$Metadata",
                 "AnalysisSnapshotAdoptionService -> com.taxonomy.editor.ArchitectureCommandPort$SemanticCommand",
+                "AnalysisSnapshotAdoptionService -> com.taxonomy.editor.ArchitectureCommandPort$SnapshotAdoptionReview",
                 "AnalysisSnapshotAdoptionService -> com.taxonomy.editor.ArchitectureEditorService",
                 "AnalysisSnapshotAdoptionService -> com.taxonomy.editor.ArchitectureEditorService$Document",
                 "AnalysisSnapshotAdoptionService -> com.taxonomy.portfolio.dto.PortfolioDtos$RequirementVersionView",
@@ -235,7 +237,9 @@ class ArchitectureContextDependencyRatchetTest {
                 "AnalysisSnapshotAdoptionService -> com.taxonomy.workspace.service.WorkspaceActorAccess",
                 "AnalysisSnapshotAdoptionService -> com.taxonomy.workspace.service.WorkspaceContext",
                 "AnalysisSnapshotAdoptionService$Adopted -> com.taxonomy.editor.ArchitectureCommandPort$Accepted",
+                "AnalysisSnapshotAdoptionService$Adopted -> com.taxonomy.editor.ArchitectureCommandPort$CheckpointAccepted",
                 "AnalysisSnapshotAdoptionService$PreviewResult -> com.taxonomy.editor.ArchitectureCommandPort$Preview",
+                "AnalysisSnapshotAdoptionService$PreviewResult -> com.taxonomy.editor.ArchitectureCommandPort$SnapshotCheckpointReview",
                 "AnalysisSnapshotAdoptionService$Request -> com.taxonomy.editor.ArchitectureCommandPort$Context",
                 "AnalysisSnapshotAdoptionService$Request -> com.taxonomy.editor.ArchitectureCommandPort$Metadata");
     }

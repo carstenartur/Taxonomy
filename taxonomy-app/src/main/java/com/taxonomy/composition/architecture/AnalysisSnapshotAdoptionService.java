@@ -13,7 +13,6 @@ import com.taxonomy.dsl.model.CatalogueReference;
 import com.taxonomy.dsl.model.CatalogueDefinitionResolver;
 import com.taxonomy.editor.ArchitectureCommandPort.*;
 import com.taxonomy.editor.ArchitectureEditorService;
-import com.taxonomy.editor.ArchitectureEditorService.SnapshotCheckpointReview;
 import com.taxonomy.identity.StableIdentityHash;
 import com.taxonomy.model.WorkspaceOverlayScope;
 import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
@@ -91,7 +90,7 @@ public class AnalysisSnapshotAdoptionService {
 
     public PreviewResult preview(RepositoryContext target, Request request) throws IOException {
         Prepared prepared = prepare(target, request, false);
-        ArchitectureEditorService.SnapshotAdoptionReview review;
+        SnapshotAdoptionReview review;
         try {
             review = editor.previewSnapshotAdoption(target, request.context(), request.metadata(), prepared.adoption(), prepared.fingerprint());
         }
