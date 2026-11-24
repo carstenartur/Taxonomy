@@ -239,7 +239,11 @@ Er liefert deterministisch vorbereitete Bewertungen, benötigt keinen API-Key un
 
 ## Prompt-Vorlagen-Editor
 
-Im Prompt-Vorlagen-Editor können Administratoren die an den aktiven Provider gesendeten Anweisungen ohne neues Deployment ändern. Gespeicherte Änderungen gelten für die nächste Analyse.
+Im **Admin-Modus → Prompt-Vorlagen** können Administratoren die fachlichen Anweisungen ohne neues Deployment ändern. Das umfasst auch die Wiederverwendungsprüfung, die Relationssuche, den Architekturdialog, Vorschläge zum Architekturfokus, die Reformulierung mit Abgleich und die Einordnung von E-Mail-Betreffzeilen.
+
+Taxonomy speichert die Änderungen in der gemeinsamen Datenbank. Sie gelten nach einem Neustart und auf weiteren Instanzen derselben Installation. Mit **Zurücksetzen** wird wieder die ausgelieferte Vorlage verwendet. Neue Reformulierungen übernehmen die zu diesem Zeitpunkt gültigen Vorlagen für Synthese und Abgleich. Eine bereits gespeicherte Reformulierung verwendet bei der Wiederaufnahme ihre eingefrorenen Vorlagen.
+
+Die Anwendung ergänzt technische Vorgaben zum Antwortformat und validiert Kandidatenidentitäten und Belegstellen. In der Wiederverwendungsprüfung bewertet der Anbieter kleine Gruppen gleichartiger Kandidaten und wählt Belegstellen aus dem vorgegebenen Text. Taxonomy übernimmt die ausgewählten Textstellen aus den Originalen.
 
 ---
 

@@ -3,6 +3,7 @@ package com.taxonomy.analysis.service;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 import org.springframework.stereotype.Service;
@@ -10,11 +11,14 @@ import org.springframework.stereotype.Service;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -33,6 +37,10 @@ public class PromptTemplateService {
     private static final Pattern PLACEHOLDER = Pattern.compile("\\{\\{[A-Z_]+\\}\\}");
 
     private static final Logger log = LoggerFactory.getLogger(PromptTemplateService.class);
+    private static final Set<String> HISTORICAL_CODES = Set.of("reformulation-node", "reformulation-reconcile-v2");
+    private static final Set<String> RELATION_CODES = Set.of("relation-sources", "relation-navigate", "relation-verify");
+    private static final Set<String> INDEPENDENT_CODES = Set.of(
+            "requirement-intake", "architecture-dialogue", "architecture-focus", "mail-analysis-command");
 
     /**
      * Categorizes prompt templates into logical families.
@@ -64,14 +72,32 @@ public class PromptTemplateService {
         m.put("extract-default", "Document Extraction (General)");
         m.put("extract-regulation", "Document Extraction (Regulations)");
         m.put("reg-map-default", "Regulation \u2192 Architecture Mapping");
+        m.put("reformulation-node-v3", "Requirement Reformulation");
+        m.put("reformulation-reconcile", "Reformulation Reconciliation");
+        m.put("requirement-intake", "Requirement Reuse Review");
+        m.put("relation-sources", "Relation Search (Sources)");
+        m.put("relation-navigate", "Relation Search (Navigation)");
+        m.put("relation-verify", "Relation Search (Verification)");
+        m.put("architecture-dialogue", "Architecture Dialogue");
+        m.put("architecture-focus", "Architecture Focus");
+        m.put("mail-analysis-command", "Mail Analysis Command");
         TAXONOMY_NAMES = Collections.unmodifiableMap(m);
     }
 
     /** File-based defaults loaded at startup (key = taxonomy code or "default"). */
     private final Map<String, String> defaults = new HashMap<>();
 
-    /** In-memory runtime overrides (survive the request but not a restart). */
-    private final Map<String, String> overrides = new ConcurrentHashMap<>();
+    private final PromptTemplateOverrideStore overrideStore;
+
+    /** Standalone analysis, without application storage. */
+    public PromptTemplateService() {
+        this(Optional.empty());
+    }
+
+    @Autowired
+    public PromptTemplateService(Optional<PromptTemplateOverrideStore> overrideStore) {
+        this.overrideStore = overrideStore.orElseGet(StandaloneOverrides::new);
+    }
 
     @PostConstruct
     public void loadDefaults() {
@@ -98,15 +124,23 @@ public class PromptTemplateService {
         }
     }
 
+    /** Reads the shipped text without changing whitespace or consulting runtime overrides. */
+    public static String shippedTemplate(String code) {
+        try (InputStream stream = PromptTemplateService.class.getResourceAsStream("/prompts/" + code + ".txt")) {
+            if (stream == null) throw new IllegalStateException("Missing shipped prompt template: " + code);
+            return new String(stream.readAllBytes(), StandardCharsets.UTF_8);
+        } catch (IOException failure) {
+            throw new IllegalStateException("Could not read shipped prompt template: " + code, failure);
+        }
+    }
+
     /**
      * Returns the effective template for a taxonomy code:
      * override → taxonomy-specific default → "default" fallback.
      */
     public String getTemplate(String taxonomyCode) {
-        if (overrides.containsKey(taxonomyCode)) {
-            return overrides.get(taxonomyCode);
-        }
-        return getDefaultTemplate(taxonomyCode);
+        String override = overrideStore.snapshot().get(taxonomyCode);
+        return override != null ? override : getDefaultTemplate(taxonomyCode);
     }
 
     /**
@@ -122,17 +156,57 @@ public class PromptTemplateService {
 
     /** Stores a runtime override for the given taxonomy code. */
     public void setTemplate(String taxonomyCode, String template) {
-        overrides.put(taxonomyCode, template);
+        requireEditable(taxonomyCode);
+        if (template == null || template.isBlank()) throw new IllegalArgumentException("Prompt template is blank");
+        overrideStore.save(taxonomyCode, template);
     }
 
     /** Removes the runtime override; subsequent calls revert to the file-based default. */
     public void resetTemplate(String taxonomyCode) {
-        overrides.remove(taxonomyCode);
+        overrideStore.reset(taxonomyCode);
     }
 
     /** Returns {@code true} if a runtime override exists for this taxonomy code. */
     public boolean isOverridden(String taxonomyCode) {
-        return overrides.containsKey(taxonomyCode);
+        return overrideStore.snapshot().containsKey(taxonomyCode);
+    }
+
+    public boolean isEditable(String code) {
+        return !HISTORICAL_CODES.contains(code);
+    }
+
+    public Map<String, String> overrideSnapshot() {
+        return overrideStore.snapshot();
+    }
+
+    /** Captures all effective texts from one revision of the override store. */
+    public Map<String, String> effectiveTemplates() {
+        return effectiveTemplates(overrideSnapshot());
+    }
+
+    public Map<String, String> effectiveTemplates(Map<String, String> overrides) {
+        var templates = new TreeMap<>(defaults);
+        templates.putAll(overrides);
+        return Collections.unmodifiableMap(templates);
+    }
+
+    /**
+     * Preserves the identity of existing scoring checkpoints and portfolio jobs with shipped prompts.
+     * Portfolio analyses also account for customized relation guidance.
+     */
+    public Map<String, String> analysisFingerprintTemplates(boolean includeRelationOverrides) {
+        var templates = new TreeMap<>(effectiveTemplates());
+        INDEPENDENT_CODES.forEach(templates::remove);
+        for (String code : RELATION_CODES) {
+            if (!includeRelationOverrides || Objects.equals(templates.get(code), defaults.get(code))) {
+                templates.remove(code);
+            }
+        }
+        return Collections.unmodifiableMap(templates);
+    }
+
+    private void requireEditable(String code) {
+        if (!isEditable(code)) throw new IllegalArgumentException("Historical prompt templates cannot be edited");
     }
 
     /**
@@ -282,7 +356,7 @@ public class PromptTemplateService {
      */
     public String renderLeafJustificationPrompt(String businessText, String leafCode,
                                                 String pathDescription, String crossRefs) {
-        String template = overrides.getOrDefault("justify-leaf", defaults.getOrDefault("justify-leaf", ""));
+        String template = overrideSnapshot().getOrDefault("justify-leaf", defaults.getOrDefault("justify-leaf", ""));
         if (template.isBlank()) {
             // Fallback inline template if the file is missing
             template = "You are an expert in C3 taxonomy classification.\n"
@@ -306,14 +380,17 @@ public class PromptTemplateService {
      * Returns a list of all known template codes (both defaults and any that only have overrides).
      */
     public List<String> getAllTemplateCodes() {
-        List<String> codes = new ArrayList<>(defaults.keySet());
-        for (String code : overrides.keySet()) {
-            if (!codes.contains(code)) {
-                codes.add(code);
-            }
-        }
-        Collections.sort(codes);
-        return codes;
+        return List.copyOf(effectiveTemplates().keySet());
+    }
+
+    private static final class StandaloneOverrides implements PromptTemplateOverrideStore {
+        private final Map<String, String> values = new ConcurrentHashMap<>();
+
+        @Override public Map<String, String> snapshot() { return Map.copyOf(values); }
+
+        @Override public void save(String code, String template) { values.put(code, template); }
+
+        @Override public void reset(String code) { values.remove(code); }
     }
 
     /** Returns the human-readable taxonomy name for a code, or the code itself if unknown. */

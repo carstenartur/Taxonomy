@@ -3,6 +3,7 @@ package com.taxonomy.portfolio.service;
 import com.taxonomy.analysis.service.LlmGatewayRegistry;
 import com.taxonomy.analysis.service.LlmProvider;
 import com.taxonomy.analysis.service.LlmProviderConfig;
+import com.taxonomy.analysis.service.PromptTemplateService;
 import com.taxonomy.dto.AnalysisLanguage;
 import com.taxonomy.model.WorkspaceOverlayScope;
 import com.taxonomy.portfolio.dto.RequirementIntakeDtos.Candidate;
@@ -39,6 +40,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -192,10 +194,12 @@ class RequirementIntakeCorpusTest {
             requestFactory.setConnectTimeout(Duration.ofSeconds(10));
             requestFactory.setReadTimeout(Duration.ofSeconds(Long.getLong("taxonomy.intake.liveReadTimeoutSeconds", 180L)));
             var gateways = new LlmGatewayRegistry(config, new RestTemplate(requestFactory), JSON, null, requestFactory, null, null);
-            var service = new RequirementIntakeService(candidates, new RequirementIntakeMatcher(config, gateways, JSON));
+            var templates = new PromptTemplateService();
+            templates.loadDefaults();
+            var service = new RequirementIntakeService(candidates, new RequirementIntakeMatcher(config, gateways, JSON, templates));
             int parallelism = live ? Integer.getInteger("taxonomy.intake.liveParallelism", 1) : 1;
             assertThat(parallelism).as("Live evaluation parallelism").isBetween(1, 4);
-            observations = reviewCases(corpus, service, model, parallelism);
+            observations = reviewCases(corpus, live ? selectedLiveCases(corpus) : corpus.cases(), service, model, parallelism);
         }
         verify(documents, never()).resolveRepository(hiddenContext);
         verify(document, never()).getDslAtHead(any());
@@ -203,11 +207,21 @@ class RequirementIntakeCorpusTest {
         return observations;
     }
 
-    private static List<Observation> reviewCases(Corpus corpus, RequirementIntakeService service, String model, int parallelism) {
+    private static List<Example> selectedLiveCases(Corpus corpus) {
+        String selection = System.getProperty("taxonomy.intake.liveCases");
+        if (selection == null) return corpus.cases();
+        var ids = Arrays.stream(selection.split(",", -1)).map(String::strip).toList();
+        var examples = corpus.cases().stream().filter(example -> ids.contains(example.id())).toList();
+        assertThat(examples).extracting(Example::id).containsExactlyInAnyOrderElementsOf(ids);
+        return examples;
+    }
+
+    private static List<Observation> reviewCases(Corpus corpus, List<Example> examples, RequirementIntakeService service,
+                                                 String model, int parallelism) {
         if (parallelism == 1) {
-            return corpus.cases().stream().map(example -> reviewCase(corpus, service, example, model)).toList();
+            return examples.stream().map(example -> reviewCase(corpus, service, example, model)).toList();
         }
-        var tasks = corpus.cases().stream().<Callable<Observation>>map(example ->
+        var tasks = examples.stream().<Callable<Observation>>map(example ->
                 () -> reviewCase(corpus, service, example, model)).toList();
         // The fixtures are fully stubbed before review. Every worker reads the same
         // immutable rows/commit through the shared, normally concurrent service.

@@ -2880,6 +2880,15 @@
     // Authentication and CSRF handling are supplied by the shared request layer.
     function getAdminHeaders() { return {}; }
 
+    function readPromptResponse(response) {
+        if (!response.ok) {
+            const error = new Error(response.status === 503 ? t('browse.prompt.store.unavailable') : 'HTTP ' + response.status);
+            error.status = response.status;
+            throw error;
+        }
+        return response.json();
+    }
+
     let promptEditorInitialized = false;
     function initPromptEditor() {
         if (promptEditorInitialized || !isAdminMode()) return;
@@ -2893,12 +2902,12 @@
         window.TaxonomyReferenceApi.promptCategories(getAdminHeaders())
             .then(r => {
                 if (r.status === 401) { return null; }
-                if (!r.ok) {
+                if (!r.ok && r.status !== 503) {
                     // Fall back to flat list if categories endpoint unavailable
                     return window.TaxonomyReferenceApi.prompts(getAdminHeaders())
-                        .then(r2 => r2.ok ? r2.json().then(list => ({ _flat: list })) : null);
+                        .then(readPromptResponse).then(list => ({ _flat: list }));
                 }
-                return r.json();
+                return readPromptResponse(r);
             })
             .then(function (data) {
                 if (!data) { return; }
@@ -2941,8 +2950,8 @@
                     loadPromptIntoEditor(promptTemplates[0].code);
                 }
             })
-            .catch(function () {
-                setPromptStatus('danger', t('browse.prompt.load.failed'));
+            .catch(function (error) {
+                setPromptStatus('danger', error.status === 503 ? error.message : t('browse.prompt.load.failed'));
             });
 
         select.addEventListener('change', function () {
@@ -2953,10 +2962,7 @@
             const code     = select.value;
             const template = document.getElementById('promptTextarea').value;
             window.TaxonomyReferenceApi.savePrompt(code, template, getAdminHeaders())
-            .then(function (r) {
-                if (!r.ok) throw new Error('HTTP ' + r.status);
-                return r.json();
-            })
+            .then(readPromptResponse)
             .then(function () {
                 setPromptStatus('success', t('browse.prompt.saved'));
                 updateOverrideBadge(code, true);
@@ -2973,13 +2979,10 @@
         resetBtn.addEventListener('click', function () {
             const code = select.value;
             window.TaxonomyReferenceApi.deletePrompt(code, getAdminHeaders())
-            .then(function (r) {
-                if (!r.ok) throw new Error('HTTP ' + r.status);
-                return r.json();
-            })
+            .then(readPromptResponse)
             .then(function () {
                 // Reload to get the file-based default
-                return window.TaxonomyReferenceApi.prompt(code, getAdminHeaders()).then(r => r.json());
+                return window.TaxonomyReferenceApi.prompt(code, getAdminHeaders()).then(readPromptResponse);
             })
             .then(function (data) {
                 document.getElementById('promptTextarea').value = data.template;
@@ -2999,7 +3002,7 @@
         window.TaxonomyReferenceApi.prompt(code, getAdminHeaders())
             .then(r => {
                 if (r.status === 401) { return null; }
-                return r.json();
+                return readPromptResponse(r);
             })
             .then(function (data) {
                 if (!data) { return; }
@@ -3007,8 +3010,8 @@
                 updateOverrideBadge(code, data.overridden);
                 setPromptStatus('', '');
             })
-            .catch(function () {
-                setPromptStatus('danger', t('browse.prompt.load.template.failed', code));
+            .catch(function (error) {
+                setPromptStatus('danger', error.status === 503 ? error.message : t('browse.prompt.load.template.failed', code));
             });
     }
 

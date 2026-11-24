@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.util.*;
 public class ReconcilePromptBuilder {
     public static final String PROMPT_VERSION="reformulation-reconcile-v3", SCHEMA_VERSION="reconcile-response-v1";
+    static final String TEMPLATE_CODE = "reformulation-reconcile";
     /** Frozen v1 proposals keep their exact original node-context encoding (no compaction). */
     static final String LEGACY_PROMPT_VERSION="reformulation-reconcile-v1";
     private static final String PREVIOUS_PROMPT_VERSION="reformulation-reconcile-v2";
@@ -33,7 +34,7 @@ public class ReconcilePromptBuilder {
     private final ObjectMapper json;
     public ReconcilePromptBuilder(ObjectMapper json){this.json=json;}
     public static String template() {
-        return template("/prompts/reformulation-reconcile.txt");
+        return template("/prompts/" + TEMPLATE_CODE + ".txt");
     }
     private static String template(String resource) {
         try(var stream=ReconcilePromptBuilder.class.getResourceAsStream(resource)) {

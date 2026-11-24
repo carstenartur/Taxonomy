@@ -26,12 +26,40 @@ public final class RelationSearchProtocol {
         Do not infer edges from term similarity or distribute percentages.
         Return one JSON object; no prose, extra fields or duplicate keys.
         """;
+    private static final String SOURCES_TASK = PromptTemplateService.shippedTemplate("relation-sources");
+    private static final String NAVIGATE_TASK = PromptTemplateService.shippedTemplate("relation-navigate");
+    private static final String VERIFY_TASK = PromptTemplateService.shippedTemplate("relation-verify");
+
+    /** Only changed instructions are retained in a frozen relation plan. */
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+    public record Templates(String sources, String navigate, String verify) {
+        private static final Templates DEFAULT = new Templates(null, null, null);
+
+        static Templates capture(Map<String, String> effective) {
+            var changed = new Templates(override(effective.get("relation-sources"), SOURCES_TASK),
+                    override(effective.get("relation-navigate"), NAVIGATE_TASK),
+                    override(effective.get("relation-verify"), VERIFY_TASK));
+            return DEFAULT.equals(changed) ? null : changed;
+        }
+
+        private static String override(String saved, String shipped) {
+            String resolved = instruction(saved, shipped);
+            return shipped.equals(resolved) ? null : resolved;
+        }
+    }
+
+    private static String instruction(String override, String shipped) {
+        if (override == null || override.isBlank()) return shipped;
+        return override.endsWith("\n") ? override : override + "\n";
+    }
+
     @FunctionalInterface
     public interface Completion { String complete(Step step, List<String> nodes, String prompt); }
     private final Completion complete;
     private final String provider;
     private final java.util.function.BiConsumer<Step, List<String>> admission;
     private final int maxPromptCharacters;
+    private final Templates templates;
 
     public RelationSearchProtocol(Function<String, String> complete) {
         this((step, nodes, prompt) -> complete.apply(prompt), "unspecified");
@@ -45,16 +73,22 @@ public final class RelationSearchProtocol {
     }
     RelationSearchProtocol(Completion complete, String provider,
                            java.util.function.BiConsumer<Step, List<String>> admission, int maxPromptCharacters) {
+        this(complete, provider, admission, maxPromptCharacters, null);
+    }
+    RelationSearchProtocol(Completion complete, String provider,
+                           java.util.function.BiConsumer<Step, List<String>> admission, int maxPromptCharacters,
+                           Templates templates) {
         this.complete = Objects.requireNonNull(complete);
         this.provider = Objects.requireNonNull(provider);
         this.admission = Objects.requireNonNull(admission);
         this.maxPromptCharacters = maxPromptCharacters;
+        this.templates = templates == null ? Templates.DEFAULT : templates;
     }
 
     public List<SourceAssessment> contributions(String original, List<Node> nodes) {
         nodes = List.copyOf(nodes);
         List<String> candidateIds = ChildAssessmentContract.validateCandidates(nodes.stream().map(Node::id).toList());
-        String prompt = sourcePrompt(original, nodes, Map.of());
+        String prompt = sourcePrompt(original, nodes, Map.of(), templates);
         List<Node> offeredNodes = nodes;
         return exchange(Step.SOURCES, candidateIds, prompt,
                 raw -> parseContributions(original, offeredNodes, candidateIds, raw),
@@ -63,21 +97,17 @@ public final class RelationSearchProtocol {
     }
 
     static String sourcePrompt(String original, List<Node> nodes, Map<String, String> errors) {
-        return PREAMBLE + com.taxonomy.analysis.service.AnalysisLanguageContext.promptContract() + PromptTemplateService.functionalScopeContract() + """
-            Extract ONLY each source element's contribution grounded in a requested function.
-            Return exactly one selection per offered node:
-            {"selections":[{"nodeId":"offered ID","outcome":"EXPLICIT|REJECT|UNRESOLVED",
-            "contributions":[{"text":"specific contribution","requirementQuote":"substring of INPUT.original","condition":""}],
-            "rationale":"why this is or is not required","question":""}]}
-            EXPLICIT covers direct or necessary scoped contributions and needs 1 to 4 distinct entries.
-            REJECT and UNRESOLVED need an empty list. UNRESOLVED needs a concrete question.
-            All keys are mandatory; only condition and question may be empty.
-            Keep read/write contributions, roles, conditions and alternatives distinct; do not invent an implementation choice.
-            A request to read does not request editing. Explain the functional interpretation separately from its exact quote.
-            requirementQuote MUST come from INPUT.original, never a node description or translation.
-            validationErrors, when present, identifies rejected entries. Reassess only the offered nodes.
-            INPUT
-            """ + JSON.writeValueAsString(input(original, nodes, errors));
+        return sourcePrompt(original, nodes, errors, Templates.DEFAULT);
+    }
+
+    private static String sourcePrompt(String original, List<Node> nodes, Map<String, String> errors, Templates templates) {
+        return PREAMBLE + com.taxonomy.analysis.service.AnalysisLanguageContext.promptContract()
+                + PromptTemplateService.functionalScopeContract() + instruction(templates.sources(), SOURCES_TASK)
+                + "INPUT\n" + JSON.writeValueAsString(input(original, nodes, errors));
+    }
+
+    int sourceRequestCharacters(String original, List<Node> nodes) {
+        return requestCharacters(sourcePrompt(original, nodes, Map.of(), templates));
     }
 
     private static Map<String, Object> input(String original, List<Node> nodes, Map<String, String> errors) {
@@ -106,7 +136,7 @@ public final class RelationSearchProtocol {
 
     /** Supplies the selected phase's schema to capable transports; validation remains authoritative. */
     public static com.taxonomy.analysis.service.LlmCompletionOptions completionOptions(String prompt, int maxOutputTokens) {
-        int marker = prompt.indexOf("INPUT\n");
+        int marker = prompt.lastIndexOf("INPUT\n");
         if (marker < 0) throw new IllegalArgumentException("Missing relation input");
         JsonNode input = JSON.readTree(prompt.substring(marker + 6));
         boolean source = input.has("nodes");
@@ -185,7 +215,7 @@ public final class RelationSearchProtocol {
     public List<Decision> evaluate(Query query) {
         List<String> candidateIds = ChildAssessmentContract.validateCandidates(
                 query.candidates().stream().map(Node::id).toList());
-        String prompt = decisionPrompt(query, Map.of());
+        String prompt = decisionPrompt(query, Map.of(), templates);
         return exchange(query.phase() == Phase.VERIFY ? Step.VERIFY : Step.NAVIGATE,
                 candidateIds, prompt, raw -> parseDecisions(query, candidateIds, raw),
                 answers -> answers.stream().filter(d -> d.outcome() == Outcome.UNRESOLVED)
@@ -193,28 +223,12 @@ public final class RelationSearchProtocol {
     }
 
     static String decisionPrompt(Query query, Map<String, String> errors) {
-        String task = query.phase() == Phase.VERIFY ? """
-            VERIFY: check original and endpoints for the proposal's direction, function, necessity and conditions.
-            Verify the endpoints' own scoped functions. A shared topic or ancestor category is insufficient.
-            REJECT an unsupported proposal with an empty question. Use UNRESOLVED for an open question.
-            Return all keys: {"decisions":[{"targetId":"offered ID","outcome":"VERIFIED|REJECT|UNRESOLVED","rationale":"justification","question":""}]}.
-            VERIFIED accepts exactly the unchanged proposal.
-            """ : """
-            NAVIGATE: find a counterpart for this source contribution, type and direction.
-            DESCEND explores without asserting an edge. Use it for a relevant container or a category whose own scope is too broad.
-            MATCH only an endpoint whose own function supports the claim. A scoped non-leaf may match; never guess a leaf.
-            Containers and the source itself cannot be endpoints.
-            REJECT only irrelevant candidates with empty claim fields and no question. Use UNRESOLVED for an open question.
-            Return one decision per candidate, all keys mandatory:
-            {"decisions":[{"targetId":"offered ID","outcome":"DESCEND|MATCH|REJECT|UNRESOLVED",
-            "contribution":"target contribution or empty","requirementQuote":"substring of INPUT.original or empty",
-            "necessity":"REQUIRED|OPTIONAL|ALTERNATIVE or null","condition":"","alternativeGroup":"",
-            "rationale":"justification","question":""}]}.
-            MATCH needs contribution, requirementQuote and necessity. Copy the quote from original, never catalogue or translation.
-            For REQUIRED, connect the quote to necessity under the scope policy.
-            OPTIONAL needs a grounded condition; ALTERNATIVE a stable named choice group. Otherwise use UNRESOLVED.
-            Keep joint necessities distinct from alternatives. Positive decisions cannot carry an open question or a choice group outside ALTERNATIVE.
-            """;
+        return decisionPrompt(query, errors, Templates.DEFAULT);
+    }
+
+    private static String decisionPrompt(Query query, Map<String, String> errors, Templates templates) {
+        String task = query.phase() == Phase.VERIFY ? instruction(templates.verify(), VERIFY_TASK)
+                : instruction(templates.navigate(), NAVIGATE_TASK);
         Map<String, Object> input = new TreeMap<>();
         input.put("original", query.original()); input.put("contribution", promptContribution(query.contribution()));
         input.put("type", query.type()); input.put("direction", query.direction()); input.put("phase", query.phase());
@@ -227,6 +241,10 @@ public final class RelationSearchProtocol {
                 + "INCOMING = candidate -> source contribution. Apply this also during VERIFY.\n"
                 + task + "validationErrors lists entries to correct.\nINPUT\n"
                 + JSON.writeValueAsString(input);
+    }
+
+    int decisionRequestCharacters(Query query) {
+        return requestCharacters(decisionPrompt(query, Map.of(), templates));
     }
 
     /** Domain conventions are explicit: similarly named UML verbs are not an authoritative substitute. */
@@ -302,8 +320,8 @@ public final class RelationSearchProtocol {
     SourceBatch contributionsRecovering(String original, List<Node> nodes,
                                        java.util.function.Consumer<SourceAssessment> accepted) {
         var result = recover(Step.SOURCES, nodes, "selections", "nodeId",
-                offered -> sourcePrompt(original, offered, Map.of()),
-                (node, error) -> sourcePrompt(original, List.of(node), Map.of(node.id(), error)),
+                offered -> sourcePrompt(original, offered, Map.of(), templates),
+                (node, error) -> sourcePrompt(original, List.of(node), Map.of(node.id(), error), templates),
                 (offered, raw) -> parseContributions(original, offered, offered.stream().map(Node::id).toList(), raw),
                 SourceAssessment::question, accepted);
         return new SourceBatch(List.copyOf(result.accepted().values()), result.failures());
@@ -312,8 +330,8 @@ public final class RelationSearchProtocol {
     List<Decision> evaluateRecovering(Query query) {
         Step step = query.phase() == Phase.VERIFY ? Step.VERIFY : Step.NAVIGATE;
         var result = recover(step, query.candidates(), "decisions", "targetId",
-                offered -> decisionPrompt(withCandidates(query, offered), Map.of()),
-                (node, error) -> decisionPrompt(withCandidates(query, List.of(node)), Map.of(node.id(), error)),
+                offered -> decisionPrompt(withCandidates(query, offered), Map.of(), templates),
+                (node, error) -> decisionPrompt(withCandidates(query, List.of(node)), Map.of(node.id(), error), templates),
                 (offered, raw) -> parseDecisions(withCandidates(query, offered), offered.stream().map(Node::id).toList(), raw),
                 decision -> decision.outcome() == Outcome.UNRESOLVED ? decision.question() : "", decision -> { });
         List<Decision> decisions = new ArrayList<>();
@@ -375,7 +393,7 @@ public final class RelationSearchProtocol {
             if (saved.nodes().size() != 1 || saved.prompt() == null || saved.prompt().equals(currentCorrection)) return false;
             Node node = covered.get(saved.nodes().getFirst());
             if (node == null) return false;
-            int input = saved.prompt().indexOf("INPUT\n");
+            int input = saved.prompt().lastIndexOf("INPUT\n");
             if (input < 0) return false;
             try {
                 JsonNode data = JSON.readTree(saved.prompt().substring(input + 6));

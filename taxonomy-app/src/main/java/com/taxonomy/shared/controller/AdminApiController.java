@@ -10,6 +10,7 @@ import com.taxonomy.catalog.service.TaxonomyService;
 import com.taxonomy.dto.AiStatusResponse;
 import com.taxonomy.shared.service.HealthSummaryService;
 import com.taxonomy.shared.service.LogRingBufferService;
+import com.taxonomy.analysis.service.PromptTemplateOverrideStore;
 import com.taxonomy.analysis.service.PromptTemplateService;
 import com.taxonomy.analysis.service.PromptTemplateService.PromptCategory;
 import io.swagger.v3.oas.annotations.Operation;
@@ -20,6 +21,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -101,16 +103,7 @@ public class AdminApiController {
         if (!isAdminAuthorized(request)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
-        List<Map<String, Object>> result = new ArrayList<>();
-        for (String code : promptTemplateService.getAllTemplateCodes()) {
-            Map<String, Object> entry = new LinkedHashMap<>();
-            entry.put("code", code);
-            entry.put("name", promptTemplateService.getTaxonomyName(code));
-            entry.put("template", promptTemplateService.getTemplate(code));
-            entry.put("overridden", promptTemplateService.isOverridden(code));
-            result.add(entry);
-        }
-        return ResponseEntity.ok(result);
+        return ResponseEntity.ok(editablePrompts());
     }
 
     @Operation(summary = "Get prompt template",
@@ -123,12 +116,11 @@ public class AdminApiController {
         if (!isAdminAuthorized(request)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("code", code);
-        result.put("name", promptTemplateService.getTaxonomyName(code));
-        result.put("template", promptTemplateService.getTemplate(code));
-        result.put("defaultTemplate", promptTemplateService.getDefaultTemplate(code));
-        result.put("overridden", promptTemplateService.isOverridden(code));
+        Map<String, String> overrides = promptTemplateService.overrideSnapshot();
+        String defaultTemplate = promptTemplateService.getDefaultTemplate(code);
+        Map<String, Object> result = promptEntry(code, overrides.getOrDefault(code, defaultTemplate), overrides.containsKey(code));
+        result.put("defaultTemplate", defaultTemplate);
+        result.put("editable", promptTemplateService.isEditable(code));
         return ResponseEntity.ok(result);
     }
 
@@ -144,8 +136,8 @@ public class AdminApiController {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
         String template = body.get("template");
-        if (template == null) {
-            return ResponseEntity.badRequest().build();
+        if (template == null || template.isBlank() || !promptTemplateService.isEditable(code)) {
+            return ResponseEntity.badRequest().body(Map.of("error", "A nonblank, editable prompt template is required"));
         }
         promptTemplateService.setTemplate(code, template);
         return ResponseEntity.ok(Map.of("code", code, "overridden", true));
@@ -160,6 +152,9 @@ public class AdminApiController {
             HttpServletRequest request) {
         if (!isAdminAuthorized(request)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+        if (!promptTemplateService.isEditable(code)) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Historical prompt templates cannot be edited"));
         }
         promptTemplateService.resetTemplate(code);
         return ResponseEntity.ok(Map.of("code", code, "overridden", false));
@@ -176,18 +171,36 @@ public class AdminApiController {
         }
         Map<String, List<Map<String, Object>>> categorized = new LinkedHashMap<>();
         for (PromptCategory category : PromptCategory.values()) {
-            List<Map<String, Object>> entries = new ArrayList<>();
-            for (String code : promptTemplateService.getTemplateCodesByCategory(category)) {
-                Map<String, Object> entry = new LinkedHashMap<>();
-                entry.put("code", code);
-                entry.put("name", promptTemplateService.getTaxonomyName(code));
-                entry.put("template", promptTemplateService.getTemplate(code));
-                entry.put("overridden", promptTemplateService.isOverridden(code));
-                entries.add(entry);
-            }
-            categorized.put(category.name(), entries);
+            categorized.put(category.name(), new ArrayList<>());
+        }
+        for (Map<String, Object> entry : editablePrompts()) {
+            var category = promptTemplateService.categorizeCode((String) entry.get("code"));
+            categorized.get(category.name()).add(entry);
         }
         return ResponseEntity.ok(categorized);
+    }
+
+    @ExceptionHandler(PromptTemplateOverrideStore.UnavailableException.class)
+    public ResponseEntity<Map<String, String>> promptStoreUnavailable() {
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(Map.of("error", "Prompt template storage is unavailable"));
+    }
+
+    private List<Map<String, Object>> editablePrompts() {
+        var overrides = promptTemplateService.overrideSnapshot();
+        return promptTemplateService.effectiveTemplates(overrides).entrySet().stream()
+                .filter(entry -> promptTemplateService.isEditable(entry.getKey()))
+                .map(entry -> promptEntry(entry.getKey(), entry.getValue(), overrides.containsKey(entry.getKey())))
+                .toList();
+    }
+
+    private Map<String, Object> promptEntry(String code, String template, boolean overridden) {
+        Map<String, Object> entry = new LinkedHashMap<>();
+        entry.put("code", code);
+        entry.put("name", promptTemplateService.getTaxonomyName(code));
+        entry.put("template", template);
+        entry.put("overridden", overridden);
+        return entry;
     }
 
     private boolean isAdminAuthorized(HttpServletRequest request) {

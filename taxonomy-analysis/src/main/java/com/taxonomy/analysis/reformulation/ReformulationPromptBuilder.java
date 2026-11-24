@@ -4,6 +4,8 @@ import com.taxonomy.reformulation.NodeSynthesisInput;
 import tools.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.Map;
+import java.util.Objects;
 
 public class ReformulationPromptBuilder {
     public static final String PROMPT_VERSION="reformulation-node-v1";
@@ -23,6 +25,20 @@ public class ReformulationPromptBuilder {
     public ReformulationPromptBuilder(ObjectMapper json) { this.json=json; }
     public static String template() {return readTemplate("/prompts/reformulation-node.txt");}
     public static String interactiveTemplate() {return readTemplate("/prompts/reformulation-node-v3.txt");}
+
+    /** Capture both phases of a new interactive proposal from the same effective template snapshot. */
+    public static Map<String, String> freezeInteractive(Map<String, String> templates) {
+        return Map.of(
+                "reformulationPrompt", Objects.requireNonNullElseGet(templates.get(INTERACTIVE_PROMPT_VERSION),
+                        ReformulationPromptBuilder::interactiveTemplate),
+                "reformulationPromptVersion", INTERACTIVE_PROMPT_VERSION,
+                "reformulationSchemaVersion", INTERACTIVE_SCHEMA_VERSION,
+                "reconcilePrompt", Objects.requireNonNullElseGet(templates.get(ReconcilePromptBuilder.TEMPLATE_CODE),
+                        ReconcilePromptBuilder::template),
+                "reconcilePromptVersion", ReconcilePromptBuilder.PROMPT_VERSION,
+                "reconcileSchemaVersion", ReconcilePromptBuilder.SCHEMA_VERSION);
+    }
+
     private static String readTemplate(String path) {
         try(var stream=ReformulationPromptBuilder.class.getResourceAsStream(path)) {
             if(stream==null) throw new IllegalStateException("Missing reformulation prompt");

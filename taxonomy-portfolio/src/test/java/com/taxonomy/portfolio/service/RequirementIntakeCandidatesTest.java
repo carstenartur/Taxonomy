@@ -211,7 +211,7 @@ class RequirementIntakeCandidatesTest {
 
     @Test void sourceMembershipRevokedDuringProviderWorkPreventsDisclosure() {
         var setup=privateWorkspace();
-        when(setup.matcher().review(anyString(),anyList(),any())).thenAnswer(call->{
+        when(setup.matcher().review(anyString(),anyList(),any(),any())).thenAnswer(call->{
             List<Candidate> evidence=call.getArgument(1);
             assertThat(evidence).singleElement().satisfies(candidate->assertThat(candidate.text()).isEqualTo("Stored text"));
             when(membership.canRead(setup.repository(),"alice")).thenReturn(false);
@@ -219,18 +219,18 @@ class RequirementIntakeCandidatesTest {
         });
         assertThatThrownBy(()->setup.service().review(new Request(7L,null,"Incoming text",null),"alice",setup.context()))
                 .isInstanceOfSatisfying(PortfolioException.class,error->assertThat(error.getKind()).isEqualTo(PortfolioException.Kind.NOT_FOUND));
-        verify(setup.matcher()).review(anyString(),anyList(),any());
+        verify(setup.matcher()).review(anyString(),anyList(),any(),any());
     }
 
     @Test void sourceArchivedDuringProviderWorkPreventsDisclosure() {
         var setup=privateWorkspace();
-        when(setup.matcher().review(anyString(),anyList(),any())).thenAnswer(call->{
+        when(setup.matcher().review(anyString(),anyList(),any(),any())).thenAnswer(call->{
             setup.repository().setLifecycleState(RepositoryLifecycleState.ARCHIVED);
             return new RequirementIntakeMatcher.Result(Status.COMPLETE,null,"fixture",call.getArgument(1));
         });
         assertThatThrownBy(()->setup.service().review(new Request(7L,null,"Incoming text",null),"alice",setup.context()))
                 .isInstanceOfSatisfying(PortfolioException.class,error->assertThat(error.getKind()).isEqualTo(PortfolioException.Kind.NOT_FOUND));
-        verify(setup.matcher()).review(anyString(),anyList(),any());
+        verify(setup.matcher()).review(anyString(),anyList(),any(),any());
     }
 
     private WorkspacePortfolioDocumentPort.DocumentHandle readable(String dsl) throws Exception {
@@ -250,7 +250,7 @@ class RequirementIntakeCandidatesTest {
         var guarded=spy(candidates);
         doReturn(frozen()).when(guarded).freeze(null,"alice",context);
         var matcher=mock(RequirementIntakeMatcher.class);
-        when(matcher.review(anyString(),anyList(),any())).thenAnswer(call->{
+        when(matcher.review(anyString(),anyList(),any(),any())).thenAnswer(call->{
             providerAction.run();
             return new RequirementIntakeMatcher.Result(Status.COMPLETE,null,"fixture",call.getArgument(1));
         });
@@ -277,7 +277,7 @@ class RequirementIntakeCandidatesTest {
         when(requirements.findIntakeRows(anyString(),eq(7L),any())).thenReturn(new SliceImpl<>(List.of(row)));
         when(requirements.findReadRowByIdAndProjectIdAndScopeKey(eq(2L),eq(7L),anyString())).thenReturn(Optional.of(row));
         var matcher=mock(RequirementIntakeMatcher.class);
-        when(matcher.review(anyString(),anyList(),any())).thenAnswer(call->
+        when(matcher.review(anyString(),anyList(),any(),any())).thenAnswer(call->
                 new RequirementIntakeMatcher.Result(Status.COMPLETE,null,"fixture",call.getArgument(1)));
         return new PrivateSetup(repository,context,matcher,new RequirementIntakeService(candidates,matcher));
     }

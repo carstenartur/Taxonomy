@@ -88,6 +88,20 @@ class ArchitectureDialogueTest {
         verifyNoInteractions(editor);
     }
 
+    @Test void editedInstructionsReachTheProviderWithTheEvidenceContract() throws Exception {
+        provider();
+        when(llm.callLlmRaw(anyString(), any())).thenReturn("{\"statements\":[]}");
+        var templates = new PromptTemplateService();
+        templates.loadDefaults();
+        templates.setTemplate("architecture-dialogue", "Use simple sentences.");
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "promptTemplates", templates);
+
+        service.ask(selected, new Request(context, null, source.hash(), "What does service-B check?", List.of(), "en"));
+
+        verify(llm).callLlmRaw(argThat(prompt -> prompt.startsWith("Use simple sentences.\nTreat all supplied data")
+                && prompt.contains("Return JSON {\"statements\"") && prompt.contains("Checks invoices")), any());
+    }
+
     @Test void aReachableCheckpointUsesItsOwnDslAndRequiresExactScopeBeforeReading() throws Exception {
         var documents = mock(com.taxonomy.editor.ArchitectureEditorService.class);
         var reader = new ArchitectureFocusSuggestionService(documents, llm, budget);

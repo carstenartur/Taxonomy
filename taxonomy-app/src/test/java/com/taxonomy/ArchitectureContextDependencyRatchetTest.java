@@ -131,6 +131,7 @@ class ArchitectureContextDependencyRatchetTest {
         assertThat(pairs).containsExactly(
                 "MailAnalysisCommandClassifier -> com.taxonomy.analysis.service.LlmCompletionOptions",
                 "MailAnalysisCommandClassifier -> com.taxonomy.analysis.service.LlmService",
+                "MailAnalysisCommandClassifier -> com.taxonomy.analysis.service.PromptTemplateService",
                 "MailAnalysisCommandClassifier -> com.taxonomy.catalog.model.TaxonomyNode",
                 "MailAnalysisCommandClassifier -> com.taxonomy.catalog.service.TaxonomyService",
                 "MailAnalysisProcessor -> com.taxonomy.analysis.service.AnalysisRuntimeSettings",

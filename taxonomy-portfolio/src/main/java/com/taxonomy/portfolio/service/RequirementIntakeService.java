@@ -23,7 +23,11 @@ public class RequirementIntakeService {
         var frozen = candidates.discover(candidates.freeze(request.projectId(), username, context), username);
         // Authorization may have changed while canonical documents were being captured.
         candidates.recheck(frozen, username, context);
-        var result = frozen.providerAllowed() ? matcher.review(request.text(), frozen.candidates(), request.analysisLanguage())
+        var result = frozen.providerAllowed()
+                ? matcher.review(request.text(), frozen.candidates(), request.analysisLanguage(), () -> {
+                    candidates.recheck(frozen, username, context);
+                    candidates.recheckSources(frozen, username);
+                })
                 : new RequirementIntakeMatcher.Result(Status.UNAVAILABLE, "PROJECT_PROVIDER_BOUND", null, frozen.candidates());
         candidates.recheckSources(frozen, username);
         candidates.recheck(frozen, username, context);

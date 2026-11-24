@@ -24,6 +24,8 @@ public class RequirementRelationSearchService {
 
     @Autowired(required = false)
     private RelationSearchBudgetSettings budgetSettings;
+    @Autowired(required = false)
+    private PromptTemplateService promptTemplates;
 
     @Value("${taxonomy.analysis.relations.hierarchical.enabled:true}")
     private boolean enabled = true;
@@ -102,8 +104,9 @@ public class RequirementRelationSearchService {
         // must allow all funded work while the original per-section limits stay visible.
         int work = policy.automatic() ? Math.max(policy.workItemsPerSlice(), calls) : policy.workItemsPerSlice();
         var limits = configured.limits();
+        var templates = promptTemplates == null ? null : RelationSearchProtocol.Templates.capture(promptTemplates.effectiveTemplates());
         return new RequirementRelationSearch.Options(new Limits(calls, limits.maxDepth(), limits.batchSize(), work),
-                policy.sourcesPerSlice(), configured.maxPromptCharacters(), policy);
+                policy.sourcesPerSlice(), configured.maxPromptCharacters(), policy, null, templates);
     }
 
     public RelationSearchReport search(String original, Map<String,Double> scores) {

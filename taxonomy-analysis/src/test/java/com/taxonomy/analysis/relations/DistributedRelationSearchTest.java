@@ -1,5 +1,6 @@
 package com.taxonomy.analysis.relations;
 
+import com.taxonomy.analysis.service.PromptTemplateService;
 import com.taxonomy.dto.RelationSearchReport;
 import com.taxonomy.dsl.model.CatalogueDefinition;
 import com.taxonomy.dto.RelationSearchProgress;
@@ -124,6 +125,46 @@ class DistributedRelationSearchTest {
         reversed.add(reversed.getFirst());
         RelationSearchDistribution.validateResults(plan, reversed);
         assertThat(RelationSearchDistribution.combine(plan, reversed)).isEqualTo(report);
+    }
+
+    @Test
+    void editedInstructionsAreFrozenInTheSavedPlanAndIncludedInRequestPacking() {
+        var prompts = new PromptTemplateService();
+        prompts.loadDefaults();
+        assertThat(RelationSearchProtocol.Templates.capture(prompts.effectiveTemplates())).isNull();
+        prompts.setTemplate("relation-sources", "Source review instructions");
+        prompts.setTemplate("relation-navigate", "Navigation instructions\nINPUT\n" + "a".repeat(7_500));
+        prompts.setTemplate("relation-verify", "Verification instructions");
+        var edited = new RequirementRelationSearch.Options(OPTIONS.limits(), OPTIONS.maxSources(), 16_000, null,
+                OPTIONS.standaloneBatchSchedule(), RelationSearchProtocol.Templates.capture(prompts.effectiveTemplates()));
+        var first = new Node("evidence-a", "IP", "First", "a".repeat(4_000), false);
+        var last = new Node("evidence-z", "IP", "Last", "z".repeat(4_000), false);
+        var catalogue = new RequirementRelationSearch.InputCatalogue() {
+            public Node find(String id) { return SOURCE.id().equals(id) ? SOURCE : null; }
+            public List<Node> roots() { return List.of(ROOT); }
+            public List<Node> children(Node node) { return node.equals(ROOT) ? List.of(first, last) : List.of(); }
+        };
+        var calls = new ArrayList<String>();
+        var engine = search(catalogue, prompt -> {
+            assertThat(RelationSearchProtocol.requestCharacters(prompt)).isLessThanOrEqualTo(16_000);
+            calls.add(prompt);
+            return answer(prompt);
+        });
+        var plan = engine.prepare("edited-template", READ, Map.of(SOURCE.id(), 90d), List.of("scored-BP"), edited, true);
+        assertThat(calls).singleElement().asString().contains("Source review instructions\nINPUT\n");
+        var stored = JSON.readValue(JSON.writeValueAsString(plan), RelationSearchDistribution.Plan.class);
+        prompts.resetTemplate("relation-navigate");
+        prompts.resetTemplate("relation-verify");
+        calls.clear();
+
+        var report = RelationSearchDistribution.combine(stored, execute(engine, stored, READ));
+
+        assertThat(report.result().edges()).extracting(Edge::targetId).containsExactlyInAnyOrder(first.id(), last.id());
+        assertThat(calls).anyMatch(prompt -> prompt.contains("Verification instructions\nvalidationErrors"));
+        assertThat(calls.stream().filter(prompt -> prompt.contains("Navigation instructions"))
+                .filter(prompt -> prompt.contains(first.id()) || prompt.contains(last.id())).toList())
+                .hasSize(2)
+                .noneMatch(prompt -> prompt.contains(first.id()) && prompt.contains(last.id()));
     }
 
     @Test

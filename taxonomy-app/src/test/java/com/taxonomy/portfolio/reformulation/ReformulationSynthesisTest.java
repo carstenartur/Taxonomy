@@ -1,5 +1,6 @@
 package com.taxonomy.portfolio.reformulation;
 
+import com.taxonomy.analysis.service.PromptTemplateService;
 import com.taxonomy.portfolio.RetainedPortfolioCatalogue;
 
 import org.junit.jupiter.api.Tag;
@@ -41,6 +42,7 @@ class ReformulationSynthesisTest extends RetainedPortfolioCatalogue {
     @Autowired ProjectPortfolioService projects;
     @Autowired PortfolioAnalysisPersistenceService analyses;
     @Autowired SystemRepositoryService repositories;
+    @Autowired PromptTemplateService prompts;
     @Autowired WorkspaceManager workspaces;
     @Autowired WorkspaceArchitectureReadPort architecture;
     @Autowired org.springframework.jdbc.core.JdbcTemplate jdbc;
@@ -324,8 +326,25 @@ class ReformulationSynthesisTest extends RetainedPortfolioCatalogue {
     }
 
     @Test void sourceResolvedDecisionAndNewDiscoveryPublishWithStablePriorIdentityAndFrozenRunPrompt() throws Exception {
-        var proposal=reformulations.create(project.id(),requirement.id(),new ReformulationDtos.CreateRequest(requirement.currentVersionId(),snapshot,"de"),"architect",context);
-        assertThat(proposal.baseline().frozenContext()).doesNotContainKey("reconcilePrompt"); // Existing offer: per-run fallback must be persisted.
+        String nodeCode = "reformulation-node-v3";
+        String reconcileCode = "reformulation-reconcile";
+        String nodePrompt = "Reviewed synthesis instructions.\n" + prompts.getDefaultTemplate(nodeCode);
+        String reconcilePrompt = "Reviewed reconciliation instructions.\n" + prompts.getDefaultTemplate(reconcileCode);
+        ReformulationDtos.Proposal proposal;
+        try {
+            prompts.setTemplate(nodeCode, nodePrompt);
+            prompts.setTemplate(reconcileCode, reconcilePrompt);
+            proposal = reformulations.create(project.id(), requirement.id(),
+                    new ReformulationDtos.CreateRequest(requirement.currentVersionId(), snapshot, "de"), "architect", context);
+        } finally {
+            prompts.resetTemplate(nodeCode);
+            prompts.resetTemplate(reconcileCode);
+        }
+        assertThat(proposal.baseline().frozenContext()).containsEntry("reformulationPrompt", nodePrompt)
+                .containsEntry("reconcilePrompt", reconcilePrompt);
+        var capturedTemplates = json.readTree(proposal.baseline().frozenContext().get("promptTemplatesAtCapture"));
+        assertThat(capturedTemplates.path(nodeCode).asText()).isEqualTo(nodePrompt);
+        assertThat(capturedTemplates.path(reconcileCode).asText()).isEqualTo(reconcilePrompt);
         var server=org.springframework.test.web.client.MockRestServiceServer.bindTo(restTemplate).build();
         var seen=new java.util.concurrent.atomic.AtomicInteger();var questionId=new java.util.concurrent.atomic.AtomicReference<String>();
         server.expect(org.springframework.test.web.client.ExpectedCount.times(4),org.springframework.test.web.client.match.MockRestRequestMatchers.anything()).andRespond(request->{
@@ -333,14 +352,17 @@ class ReformulationSynthesisTest extends RetainedPortfolioCatalogue {
             String prompt=json.readTree(((org.springframework.mock.http.client.MockClientHttpRequest)request).getBodyAsString()).at("/messages/0/content").asText();
             assertThat(prompt).contains(ORIGINAL).doesNotContain("workspaceDsl","snapshotPayload");int call=seen.incrementAndGet();String content;
             var run=reformulations.runs(project.id(),requirement.id(),proposal.id(),"architect",context).getLast();
-            assertThat(run.reconcileContext()).containsKeys("reconcilePrompt","reconcilePromptVersion","reconcileSchemaVersion");
+            assertThat(run.promptContent()).isEqualTo(nodePrompt);
+            assertThat(run.reconcileContext()).containsEntry("reconcilePrompt", reconcilePrompt)
+                    .containsKeys("reconcilePromptVersion", "reconcileSchemaVersion");
             if(prompt.contains("RECONCILIATION_DATA_JSON\n")) {
-                assertThat(prompt).startsWith(run.reconcileContext().get("reconcilePrompt"));
+                assertThat(prompt).startsWith(reconcilePrompt);
                 var input=json.readTree(prompt.substring(prompt.indexOf("RECONCILIATION_DATA_JSON\n")+"RECONCILIATION_DATA_JSON\n".length()));
                 assertThat(input.path("questions")).hasSize(1);String q=input.path("questions").get(0).path("id").asText();
                 if(questionId.get()==null)questionId.set(q);else assertThat(q).isEqualTo(questionId.get());
                 content=json.writeValueAsString(Map.of("affectedSectionIds",List.of(),"findings",List.of(),"sourceResolutions",List.of(Map.of("questionId",q,"values",List.of("Terminal"),"rationale","Explicit terminal-only original", "sourceSpans",List.of(Map.of("start",0,"end",ORIGINAL.length(),"exactText",ORIGINAL))))));
             }else {
+                assertThat(prompt).startsWith(nodePrompt);
                 var input=json.readTree(prompt.substring(prompt.indexOf("INPUT_DATA_JSON\n")+16));
                 var ids=new ArrayList<String>();input.path("directContributions").forEach(v->ids.add(v.path("id").asText()));
                 var qids=new ArrayList<String>();input.path("openDecisions").forEach(v->qids.add(v.path("id").asText()));

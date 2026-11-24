@@ -27,7 +27,7 @@ final class MockRelationReplies {
         if (prompt == null || !prompt.startsWith(PREFIX)) {
             return "[]";
         }
-        int input = prompt.indexOf("INPUT\n");
+        int input = prompt.lastIndexOf("INPUT\n");
         if (input < 0) {
             throw new IllegalArgumentException("Missing mock relation input");
         }

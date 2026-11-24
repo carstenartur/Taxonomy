@@ -1,6 +1,8 @@
 package com.taxonomy;
 
 import com.taxonomy.analysis.service.PromptTemplateService;
+import com.taxonomy.preferences.storage.GitPromptOverrideStore;
+import io.github.carstenartur.jgit.storage.hibernate.HibernateRepositoryFactory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -9,6 +11,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+import tools.jackson.databind.ObjectMapper;
 
 import java.util.List;
 
@@ -29,10 +32,16 @@ class PromptTemplateTests {
     @Autowired
     private MockMvc mockMvc;
 
+    @Autowired
+    private HibernateRepositoryFactory repositoryFactory;
+
+    @Autowired
+    private ObjectMapper json;
+
     @BeforeEach
     void resetOverrides() {
         // Clean up any overrides from previous tests
-        for (String code : List.copyOf(promptTemplateService.getAllTemplateCodes())) {
+        for (String code : promptTemplateService.overrideSnapshot().keySet()) {
             promptTemplateService.resetTemplate(code);
         }
     }
@@ -49,6 +58,23 @@ class PromptTemplateTests {
     void taxonomySpecificTemplatesAreLoaded() {
         List<String> codes = promptTemplateService.getAllTemplateCodes();
         assertThat(codes).contains("BP", "BR", "CP", "CI", "CO", "CR", "IP", "IP-product", "UA");
+    }
+
+    @Test
+    void analysisFingerprintsPreserveDefaultsAndIncludeRelevantOverridesOnly() {
+        var baseline = promptTemplateService.analysisFingerprintTemplates(false);
+        assertThat(baseline).containsKeys("default", "reformulation-node", "reformulation-node-v3")
+                .doesNotContainKeys("architecture-dialogue", "architecture-focus", "mail-analysis-command",
+                        "requirement-intake", "relation-sources", "relation-navigate", "relation-verify");
+        assertThat(promptTemplateService.analysisFingerprintTemplates(true)).isEqualTo(baseline);
+
+        promptTemplateService.setTemplate("requirement-intake", "Independent classification instructions");
+        promptTemplateService.setTemplate("relation-verify", "Custom relation verification instructions");
+        assertThat(promptTemplateService.analysisFingerprintTemplates(false)).isEqualTo(baseline);
+        assertThat(promptTemplateService.analysisFingerprintTemplates(true))
+                .containsAllEntriesOf(baseline)
+                .containsEntry("relation-verify", "Custom relation verification instructions")
+                .hasSize(baseline.size() + 1);
     }
 
     @Test
@@ -199,10 +225,14 @@ class PromptTemplateTests {
     }
 
     @Test
-    void putPromptReturnsBadRequestWhenMissingTemplate() throws Exception {
+    void putPromptReturnsBadRequestWhenTemplateIsMissingOrBlank() throws Exception {
         mockMvc.perform(put("/api/prompts/BP")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{}"))
+                .andExpect(status().isBadRequest());
+        mockMvc.perform(put("/api/prompts/requirement-intake")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"template\":\" \"}"))
                 .andExpect(status().isBadRequest());
     }
 
@@ -218,6 +248,42 @@ class PromptTemplateTests {
                 .andExpect(jsonPath("$.overridden").value(false));
 
         assertThat(promptTemplateService.isOverridden("BP")).isFalse();
+    }
+
+    @Test
+    void editorOverrideIsVisibleToIndependentDatabaseBackedNodesAndCanBeReset() throws Exception {
+        String customCode = "department-routing";
+        try (var peer = new GitPromptOverrideStore(repositoryFactory, json)) {
+            assertThat(peer.snapshot()).doesNotContainKey(customCode);
+            mockMvc.perform(put("/api/prompts/{code}", customCode).contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"template\":\"Saved on a different node\"}"))
+                    .andExpect(status().isOk());
+            assertThat(peer.snapshot()).containsEntry(customCode, "Saved on a different node");
+            assertThat(promptTemplateService.getAllTemplateCodes()).contains(customCode);
+        }
+        try (var reopened = new GitPromptOverrideStore(repositoryFactory, json)) {
+            assertThat(reopened.snapshot()).containsEntry(customCode, "Saved on a different node");
+            reopened.reset(customCode);
+        }
+        assertThat(promptTemplateService.isOverridden(customCode)).isFalse();
+    }
+
+    @Test
+    void historicalPromptDefaultsRemainReadableOutsideTheEditor() throws Exception {
+        assertThat(promptTemplateService.getAllTemplateCodes()).contains("reformulation-node", "reformulation-reconcile-v2");
+        assertThat(promptTemplateService.getDefaultTemplate("reformulation-node"))
+                .isEqualTo(PromptTemplateService.shippedTemplate("reformulation-node"));
+        mockMvc.perform(get("/api/prompts")).andExpect(status().isOk())
+                .andExpect(jsonPath("$[?(@.code=='reformulation-node-v3')]").isNotEmpty())
+                .andExpect(jsonPath("$[?(@.code=='reformulation-reconcile')]").isNotEmpty())
+                .andExpect(jsonPath("$[?(@.code=='requirement-intake')]").isNotEmpty())
+                .andExpect(jsonPath("$[?(@.code=='reformulation-node')]").isEmpty())
+                .andExpect(jsonPath("$[?(@.code=='reformulation-reconcile-v2')]").isEmpty());
+        mockMvc.perform(get("/api/prompts/reformulation-node"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.editable").value(false));
+        mockMvc.perform(put("/api/prompts/reformulation-node").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"template\":\"Unsupported historical edit\"}"))
+                .andExpect(status().isBadRequest());
     }
 
     // ── Tests for new prompt categories and templates ──────────────────────────
