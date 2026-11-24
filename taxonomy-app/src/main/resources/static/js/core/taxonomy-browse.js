@@ -2875,152 +2875,157 @@
 
     // ── Prompt template editor ────────────────────────────────────────────────
 
-    let promptTemplates = [];
-
-    // Authentication and CSRF handling are supplied by the shared request layer.
-    function getAdminHeaders() { return {}; }
-
-    function readPromptResponse(response) {
-        if (!response.ok) {
-            const error = new Error(response.status === 503 ? t('browse.prompt.store.unavailable') : 'HTTP ' + response.status);
-            error.status = response.status;
-            throw error;
-        }
-        return response.json();
-    }
-
     let promptEditorInitialized = false;
     function initPromptEditor() {
         if (promptEditorInitialized || !isAdminMode()) return;
-        const select   = document.getElementById('promptSelect');
-        const saveBtn  = document.getElementById('promptSaveBtn');
-        const resetBtn = document.getElementById('promptResetBtn');
-        if (!select || !saveBtn || !resetBtn) return;
+        const select = document.getElementById('promptSelect');
+        const textarea = document.getElementById('promptTextarea');
+        const save = document.getElementById('promptSaveBtn');
+        const reset = document.getElementById('promptResetBtn');
+        const retry = document.getElementById('promptRetryBtn');
+        if (!select || !textarea || !save || !reset || !retry) return;
         promptEditorInitialized = true;
 
-        // Try categorized endpoint first, fall back to flat list
-        window.TaxonomyReferenceApi.promptCategories(getAdminHeaders())
-            .then(r => {
-                if (r.status === 401) { return null; }
-                if (!r.ok && r.status !== 503) {
-                    // Fall back to flat list if categories endpoint unavailable
-                    return window.TaxonomyReferenceApi.prompts(getAdminHeaders())
-                        .then(readPromptResponse).then(list => ({ _flat: list }));
-                }
-                return readPromptResponse(r);
-            })
-            .then(function (data) {
-                if (!data) { return; }
+        const api = window.TaxonomyReferenceApi;
+        const writes = new Map();
+        let selection = null;
 
-                if (data._flat) {
-                    // Flat list fallback
-                    promptTemplates = data._flat;
-                    data._flat.forEach(function (t) {
-                        const opt = document.createElement('option');
-                        opt.value = t.code;
-                        opt.textContent = t.code + ' — ' + t.name;
-                        select.appendChild(opt);
-                    });
+        function renderControls() {
+            const loaded = selection?.loaded;
+            const writable = loaded && loaded.editable !== false && !writes.has(selection.code);
+            textarea.disabled = !writable;
+            save.disabled = !writable || !textarea.value.trim() || textarea.value === loaded.template;
+            reset.disabled = !writable || !loaded.overridden;
+            document.getElementById('promptOverrideBadge').classList.toggle('d-none', !loaded?.overridden);
+            document.getElementById('promptDefaultBadge').classList.toggle('d-none', !loaded || loaded.overridden);
+        }
+
+        function readResponse(response) {
+            if (!response.ok) {
+                const error = new Error('HTTP ' + response.status);
+                error.status = response.status;
+                throw error;
+            }
+            return response.json();
+        }
+
+        function errorMessage(error, fallback) {
+            if (error.status === 503) return t('browse.prompt.store.unavailable');
+            if (error.status === 401 || error.status === 403) return t('browse.prompt.access');
+            return fallback;
+        }
+
+        async function loadPrompt(code, successMessage) {
+            const current = {code, loaded: null};
+            selection = current;
+            textarea.value = '';
+            retry.hidden = true;
+            renderControls();
+            setPromptStatus('secondary', t('browse.prompt.loading'));
+            try {
+                // A new visit to this code must observe the result of its outstanding write.
+                const pending = writes.get(code);
+                if (pending) await pending.catch(() => {});
+                if (selection !== current) return;
+                const data = await api.prompt(code).then(readResponse);
+                if (selection !== current) return;
+                if (data.code !== code || typeof data.template !== 'string') throw new Error('Unexpected template');
+                current.loaded = data;
+                textarea.value = data.template;
+                renderControls();
+                setPromptStatus(successMessage ? 'success' : 'secondary',
+                    successMessage || t('browse.prompt.edit.help'));
+            } catch (error) {
+                if (selection !== current) return;
+                retry.hidden = false;
+                setPromptStatus('danger', errorMessage(error, t('browse.prompt.load.template.failed', code)));
+            }
+        }
+
+        async function loadChoices() {
+            retry.hidden = true;
+            select.disabled = true;
+            renderControls();
+            setPromptStatus('secondary', t('browse.prompt.loading'));
+            try {
+                const response = await api.promptCategories();
+                const groups = response.status === 404
+                    ? {'': await api.prompts().then(readResponse)} : await readResponse(response);
+                select.replaceChildren();
+                let firstCode;
+                const labels = {
+                    SCORING: '📊 Scoring', EXTRACTION: '📄 Extraction',
+                    REGULATION_MAPPING: '🏛️ Regulation Mapping', JUSTIFICATION: '📋 Justification'
+                };
+                for (const [category, entries] of Object.entries(groups)) {
+                    if (!entries.length) continue;
+                    let group = select;
+                    if (category) {
+                        group = document.createElement('optgroup');
+                        group.label = labels[category] || category;
+                        select.appendChild(group);
+                    }
+                    for (const entry of entries) {
+                        const option = document.createElement('option');
+                        option.value = entry.code;
+                        option.textContent = entry.code + ' — ' + entry.name;
+                        group.appendChild(option);
+                        firstCode ??= entry.code;
+                    }
+                }
+                if (!firstCode) {
+                    setPromptStatus('secondary', t('browse.prompt.empty'));
+                    return;
+                }
+                select.disabled = false;
+                select.value = firstCode;
+                await loadPrompt(firstCode);
+            } catch (error) {
+                retry.hidden = false;
+                setPromptStatus('danger', errorMessage(error, t('browse.prompt.load.failed')));
+            }
+        }
+
+        async function changePrompt(isReset) {
+            const current = selection;
+            if (!current?.loaded || current.code !== select.value || (isReset ? reset.disabled : save.disabled)) return;
+            const text = textarea.value;
+            const operation = (isReset ? api.deletePrompt(current.code) : api.savePrompt(current.code, text))
+                .then(readResponse);
+            writes.set(current.code, operation);
+            renderControls();
+            setPromptStatus('secondary', t('browse.prompt.updating'));
+            let reload = false;
+            try {
+                await operation;
+                if (selection !== current) return;
+                if (isReset) {
+                    reload = true;
                 } else {
-                    // Categorized display
-                    promptTemplates = [];
-                    var categoryLabels = {
-                        'SCORING': '\uD83D\uDCCA Scoring',
-                        'EXTRACTION': '\uD83D\uDCC4 Extraction',
-                        'REGULATION_MAPPING': '\uD83C\uDFDB\uFE0F Regulation Mapping',
-                        'JUSTIFICATION': '\uD83D\uDCDD Justification'
-                    };
-                    Object.keys(data).forEach(function (category) {
-                        var entries = data[category];
-                        if (entries.length === 0) return;
-                        var optgroup = document.createElement('optgroup');
-                        optgroup.label = categoryLabels[category] || category;
-                        entries.forEach(function (t) {
-                            var opt = document.createElement('option');
-                            opt.value = t.code;
-                            opt.textContent = t.code + ' — ' + t.name;
-                            optgroup.appendChild(opt);
-                            promptTemplates.push(t);
-                        });
-                        select.appendChild(optgroup);
-                    });
+                    current.loaded = {...current.loaded, template: text, overridden: true};
+                    setPromptStatus('success', t('browse.prompt.saved'));
                 }
-
-                if (promptTemplates.length > 0) {
-                    loadPromptIntoEditor(promptTemplates[0].code);
+            } catch (error) {
+                if (selection === current) {
+                    setPromptStatus('danger', errorMessage(error,
+                        t(isReset ? 'browse.prompt.reset.failed' : 'browse.prompt.save.failed', error.message)));
                 }
-            })
-            .catch(function (error) {
-                setPromptStatus('danger', error.status === 503 ? error.message : t('browse.prompt.load.failed'));
-            });
+            } finally {
+                writes.delete(current.code);
+                if (selection === current) renderControls();
+            }
+            if (reload) await loadPrompt(current.code, t('browse.prompt.reset.success'));
+        }
 
-        select.addEventListener('change', function () {
-            loadPromptIntoEditor(select.value);
+        select.addEventListener('change', () => loadPrompt(select.value));
+        retry.addEventListener('click', () => selection ? loadPrompt(select.value) : loadChoices());
+        textarea.addEventListener('input', () => {
+            renderControls();
+            setPromptStatus('secondary', t(textarea.value.trim() ? 'browse.prompt.edit.help' : 'browse.prompt.blank'));
         });
-
-        saveBtn.addEventListener('click', function () {
-            const code     = select.value;
-            const template = document.getElementById('promptTextarea').value;
-            window.TaxonomyReferenceApi.savePrompt(code, template, getAdminHeaders())
-            .then(readPromptResponse)
-            .then(function () {
-                setPromptStatus('success', t('browse.prompt.saved'));
-                updateOverrideBadge(code, true);
-                // Update local cache
-                const entry = promptTemplates.find(t => t.code === code);
-                if (entry) { entry.template = template; entry.overridden = true; }
-            })
-            .catch(function (e) {
-                if (e?.code === 'ABORTED') return;
-                setPromptStatus('danger', t('browse.prompt.save.failed', e.message));
-            });
-        });
-
-        resetBtn.addEventListener('click', function () {
-            const code = select.value;
-            window.TaxonomyReferenceApi.deletePrompt(code, getAdminHeaders())
-            .then(readPromptResponse)
-            .then(function () {
-                // Reload to get the file-based default
-                return window.TaxonomyReferenceApi.prompt(code, getAdminHeaders()).then(readPromptResponse);
-            })
-            .then(function (data) {
-                document.getElementById('promptTextarea').value = data.template;
-                updateOverrideBadge(code, false);
-                setPromptStatus('success', t('browse.prompt.reset.success'));
-                const entry = promptTemplates.find(t => t.code === code);
-                if (entry) { entry.template = data.template; entry.overridden = false; }
-            })
-            .catch(function (e) {
-                if (e?.code === 'ABORTED') return;
-                setPromptStatus('danger', t('browse.prompt.reset.failed', e.message));
-            });
-        });
-    }
-
-    function loadPromptIntoEditor(code) {
-        window.TaxonomyReferenceApi.prompt(code, getAdminHeaders())
-            .then(r => {
-                if (r.status === 401) { return null; }
-                return readPromptResponse(r);
-            })
-            .then(function (data) {
-                if (!data) { return; }
-                document.getElementById('promptTextarea').value = data.template;
-                updateOverrideBadge(code, data.overridden);
-                setPromptStatus('', '');
-            })
-            .catch(function (error) {
-                setPromptStatus('danger', error.status === 503 ? error.message : t('browse.prompt.load.template.failed', code));
-            });
-    }
-
-    function updateOverrideBadge(code, overridden) {
-        const over = document.getElementById('promptOverrideBadge');
-        const def  = document.getElementById('promptDefaultBadge');
-        if (!over || !def) return;
-        over.classList.toggle('d-none', !overridden);
-        def.classList.toggle('d-none', overridden);
+        save.addEventListener('click', () => changePrompt(false));
+        reset.addEventListener('click', () => changePrompt(true));
+        loadChoices();
     }
 
     function setPromptStatus(type, msg) {

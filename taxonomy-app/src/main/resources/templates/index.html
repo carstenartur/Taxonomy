@@ -1301,19 +1301,20 @@
                     <div class="mt-2">
                         <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
                             <label for="promptSelect" class="form-label mb-0 text-nowrap" th:text="#{prompt.taxonomy.label}">Taxonomy:</label>
-                            <select id="promptSelect" class="form-select form-select-sm" style="max-width:220px;"></select>
+                            <select id="promptSelect" disabled class="form-select form-select-sm" style="max-width:220px;"></select>
                             <span id="promptOverrideBadge" class="badge bg-warning text-dark d-none" th:text="#{prompt.badge.overridden}">Overridden</span>
                             <span id="promptDefaultBadge" class="badge bg-secondary d-none" th:text="#{prompt.badge.default}">Default</span>
                         </div>
                         <div class="mb-1 text-muted small" th:text="#{prompt.placeholders}">
                             Placeholders: {{BUSINESS_TEXT}}, {{NODE_LIST}}, {{TAXONOMY_NAME}}
                         </div>
-                        <textarea id="promptTextarea" class="form-control font-monospace mb-2" rows="10" style="font-size:0.82em;"></textarea>
+                        <textarea id="promptTextarea" disabled class="form-control font-monospace mb-2" rows="10" style="font-size:0.82em;"></textarea>
                         <div class="d-flex gap-2 flex-wrap">
-                            <button id="promptSaveBtn" class="btn btn-sm btn-primary" th:text="#{prompt.btn.save}">&#128190; Save</button>
-                            <button id="promptResetBtn" class="btn btn-sm btn-outline-secondary" th:text="#{prompt.btn.reset}">&#8617;&#65039; Reset to Default</button>
+                            <button id="promptSaveBtn" disabled class="btn btn-sm btn-primary" th:text="#{prompt.btn.save}">&#128190; Save</button>
+                            <button id="promptResetBtn" disabled class="btn btn-sm btn-outline-secondary" th:text="#{prompt.btn.reset}">&#8617;&#65039; Reset to Default</button>
                         </div>
-                        <div id="promptStatusMsg" class="mt-2 small"></div>
+                        <div id="promptStatusMsg" class="mt-2 small" role="status" aria-live="polite"></div>
+                        <button type="button" id="promptRetryBtn" class="btn btn-sm btn-outline-primary mt-1" hidden th:text="#{prompt.btn.retry}">Retry loading</button>
                     </div>
                 </details>
 
