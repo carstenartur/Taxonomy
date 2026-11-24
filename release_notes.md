@@ -6,6 +6,18 @@ validator and the architecture editor share the rules for permitted relations.
 The application also verifies ADMBw and Sparx QEA exchange and uses
 jgit-storage-hibernate 0.12.2 from Maven Central.
 
+Incoming requirements can be checked for reuse against existing requirements and
+readable architecture elements and directed relations. Reviewers can open the
+source checkpoint and check the quoted passages before deciding how to save the
+requirement. In the architecture editor, reviewers can accept an element, its
+directed relation and its requirement allocation together in one Git checkpoint.
+
+Administrators can save prompt changes across application restarts and instances.
+New reformulations capture the current synthesis and reconciliation instructions.
+Resuming a saved proposal uses the instructions captured for that proposal.
+See the [intake guide](docs/en/PROJECT_REQUIREMENT_PORTFOLIO.md#requirement-intake)
+and the [prompt editor guide](docs/en/AI_PROVIDERS.md#prompt-template-editor).
+
 ## Earlier changes in the 1.5.3 source
 
 Taxonomy 1.5.3 develops the path from retained requirements and analysis results

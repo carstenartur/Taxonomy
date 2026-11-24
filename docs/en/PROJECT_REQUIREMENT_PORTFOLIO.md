@@ -131,6 +131,12 @@ directed relations from readable central architectures. Each suggestion shows
 the existing model identity and opens its Git checkpoint read-only. Relation
 links select the source element of the directed connection.
 
+The provider reviews up to four candidates of the same kind per request. For a
+suggested match, Taxonomy displays the selected passages from the original texts.
+For a relation, compare both endpoints, the direction and the purpose. Two
+programs can use the same information for different decisions. With a
+`PARTIAL` result, check which candidates received an assessment before saving.
+
 Retrieval and provider assessment are bounded. Inspect the displayed coverage and
 provider status; an unassessed candidate, unavailable provider, timeout or failed
 response is not a finding that no duplicate or conflict exists. Exact text equality

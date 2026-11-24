@@ -2040,10 +2040,13 @@ Click **Refresh** to update the statistics. Click **Test Connection** to send a 
 
 The **Prompt Templates Editor** (admin only, collapsible) allows you to customise the instructions sent to the LLM without redeploying the application.
 
-1. Use the **taxonomy selector** dropdown to choose the prompt template you want to edit.
-2. The current template text appears in the **template textarea**.
-3. Edit the text as needed.
-4. Click **Save** to save your changes, or **Reset** to restore the built-in default.
+1. Open **Prompt Templates** and select the instructions to change, for example **Requirement Reuse Review**.
+2. Edit the displayed text and choose **Save**. The change applies across instances using the same database and survives a restart.
+3. Choose **Reset to Default** to restore the shipped text for the selected template.
+
+New reformulations capture the current instructions for synthesis and reconciliation.
+A saved proposal keeps its captured instructions when you resume it.
+See the [provider guide](AI_PROVIDERS.md#prompt-template-editor) for the editable operations and backup scope.
 
 ![Prompt Template Editor](../images/25-prompt-template-editor.png)
 

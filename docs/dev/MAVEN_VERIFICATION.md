@@ -117,9 +117,12 @@ The offline run writes `offline.csv` and `offline-summary.csv` under
 identity through production discovery and the exact-text fallback.
 Add `-Dtaxonomy.intake.evaluateLive=true` and set `LLM_PROVIDER` explicitly
 using the application's provider settings to write `live.csv` and
-`live-summary.csv`. It sends one review per case to the selected generative
-provider. Set `-Dtaxonomy.intake.liveReadTimeoutSeconds` when a local provider
-needs more than the default 180 seconds per request.
+`live-summary.csv`. Each case can send several requests, with up to four
+candidates of the same kind per request. The live run defaults to all 50 cases.
+Pass a comma-separated list of corpus IDs in `-Dtaxonomy.intake.liveCases` to
+repeat a subset. The offline check still evaluates the full corpus. Set
+`-Dtaxonomy.intake.liveReadTimeoutSeconds` when a local provider needs more
+than the default 180 seconds per request.
 For a locally provisioned provider that accepts parallel requests, set
 `-Dtaxonomy.intake.liveParallelism` to a value from 1 to 4. The default is 1.
 
@@ -173,6 +176,26 @@ ranked the labelled duplicate first with both supporting quotes. The hard
 negative produced two false suggestions. This comparison concerns the two
 recorded responses.
 
+#### Five-case vLLM comparison after the intake prompt change
+
+The same five cases completed 0 of 5 provider reviews with the earlier prompt
+and 5 of 5 with the batched prompt and indexed evidence. Taxonomy sent the
+requests through its custom OpenAI-compatible gateway. Local vLLM 0.34.0
+generated the Qwen2.5-0.5B-Instruct (BF16, CPU) replies, which were replayed
+through the production matcher. All three expected positives had supporting
+passages. The exact duplicate used the deterministic equality check.
+
+| Corpus ID for `taxonomy.intake.liveCases` | Result with the batched prompt |
+|---|---|
+| `duplicate-exact-alarm` | Expected duplicate at rank 2 |
+| `negative-access` | No false requirement suggestions |
+| `element-parking-permit-register` | Expected element at rank 1 |
+| `relation-building-case-number` | Expected directed relation at rank 2 |
+| `relation-negative-subsidy-different-program` | Four false relation suggestions |
+
+The updated live comparison covers these five fixtures. A completed review can
+still propose a relation between the wrong programs.
+
 ### Opt-in suppression of inherited tests
 
 App test classes may use `@IgnoreInheritedTests` when they reuse a concrete
@@ -195,7 +218,9 @@ The Maven-owned scope classifier checks the complete base-to-head change and
 binds its decision to the source commit/tree. Full verification remains required
 for main, tags, manual runs, unknown or empty diffs, and mixed changes. It also
 remains required for public help, executable architecture/performance documents,
-and deleted or renamed files.
+and deleted or renamed files. If the PR event names a different base from the
+first parent of the tested merge commit, both the planner and the final gate
+select full verification for that commit.
 
 Only a ready PR containing additions/modifications of ordinary `100644` Markdown
 files from this explicit allowlist may use documentation scope:
@@ -204,8 +229,10 @@ files from this explicit allowlist may use documentation scope:
 - Markdown under `docs/internal/`, `docs/dev/` and `docs/superpowers/`;
 - plugin-root `README.md` and `README_DE.md` files.
 
-Root `README.md` and `docs/dev/OBSERVABILITY_PERFORMANCE.md` are explicit
-exceptions requiring full verification because they carry executable contracts.
+A prose-only edit within the root README’s Quick start section can also use
+documentation scope when it preserves the module inventory and architecture
+showcase. Changes elsewhere in the root README or to
+`docs/dev/OBSERVABILITY_PERFORMANCE.md` require full verification.
 Malformed paths, symlinks, non-regular files and unavailable base information
 cannot authorize documentation scope. A rename is conservatively detected as a
 delete/add and requires full verification.
