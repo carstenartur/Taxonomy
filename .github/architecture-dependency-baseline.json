@@ -1847,7 +1847,7 @@
       "fromPackage": "com.taxonomy.portfolio.service",
       "toContext": "analysis",
       "toPackage": "com.taxonomy.analysis.service",
-      "classDependencyCount": 23
+      "classDependencyCount": 21
     },
     {
       "fromContext": "portfolio",
