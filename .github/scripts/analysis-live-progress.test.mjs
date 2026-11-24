@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 
 const source = readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-progress.js', import.meta.url), 'utf8');
+const promptDisplaySource = readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/core/taxonomy-prompt-display.js', import.meta.url), 'utf8');
 const statisticsSource = readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/core/taxonomy-result-statistics.js', import.meta.url), 'utf8');
 const clientSource = readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/api/taxonomy-api-client.js', import.meta.url), 'utf8');
 const apiSource = readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/api/analysis-session-api.js', import.meta.url), 'utf8');
@@ -84,6 +85,7 @@ function fixture(fetcher, workspaceId = 'workspace-a', withView = false) {
     vm.runInContext(clientSource, sandbox);
     vm.runInContext(apiSource, sandbox);
     vm.runInContext(routingSource, sandbox);
+    vm.runInContext(promptDisplaySource, sandbox);
     vm.runInContext(source, sandbox);
     const monitor = withView ? window.TaxonomyAnalysisProgress.start(id, value => snapshots.push({ value }))
         : window.TaxonomyAnalysisProgress.createMonitor({

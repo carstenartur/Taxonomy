@@ -14,9 +14,9 @@ window.TaxonomyWorkspaceSync = (function () {
     var escapeHtml = TaxonomyUtils.escapeHtml;
 
     var syncState = null;
-    var POLL_INTERVAL = 15000; // 15 seconds
-    var pollTimer = null;
+    var pollTimer = window.TaxonomyApiClient.createPollTimer(15000, pollSyncState);
     var pendingRead = null;
+    var ownsPolledSource = null;
     var planRead = null;
     var planTag = null;
     var planCheck = null;
@@ -24,28 +24,27 @@ window.TaxonomyWorkspaceSync = (function () {
 
     // ── Initialization ──────────────────────────────────────────────
 
-    function startPolling() {
-        if (!pageActive || pollTimer !== null) return;
-        pollSyncState();
-        pollTimer = setInterval(pollSyncState, POLL_INTERVAL);
-    }
-    document.addEventListener('DOMContentLoaded', startPolling);
+    document.addEventListener('DOMContentLoaded', pollSyncState);
     document.addEventListener('click', function (event) {
         if (event.target.closest?.('#workspaceRebasePlanButton')) showRebasePlan();
     });
     document.addEventListener('taxonomy-api-auth-failure', clearRebasePlan);
     window.addEventListener('pagehide', function () {
         clearRebasePlan();
-        pageActive = false; clearInterval(pollTimer); pollTimer = null;
+        pageActive = false;
+        pollTimer.cancel();
         if (pendingRead) pendingRead.abort();
+        pendingRead = null;
     });
     window.addEventListener('pageshow', function (event) {
         if (!event.persisted || pageActive) return;
-        pageActive = true; startPolling();
+        pageActive = true;
+        pollSyncState();
     });
 
     function selectedContext() {
-        return window.TaxonomyContextBar?.getCurrentContext?.();
+        var bar = window.TaxonomyContextBar;
+        return bar?.getContextForWorkspaceSource ? bar.getContextForWorkspaceSource() : bar?.getCurrentContext?.();
     }
 
     function editable() {
@@ -53,13 +52,30 @@ window.TaxonomyWorkspaceSync = (function () {
     }
 
     document.addEventListener('taxonomy:repository-context-changed', function (event) {
+        if (!pageActive) return;
+        if (event.detail?.selectionChanged || (ownsPolledSource && !ownsPolledSource())) {
+            pollSyncState(event.detail);
+        } else {
+            updateWorkspaceActions();
+        }
+    });
+    document.addEventListener('taxonomy:architecture-source-changed', function () {
+        if (ownsPolledSource && !ownsPolledSource()) pollSyncState();
+    });
+
+    function updateWorkspaceActions() {
         var actions = document.getElementById('workspaceSyncActions');
         if (actions) {
-            var moveFocus = actions.contains(document.activeElement) && !editable();
-            actions.disabled = !editable();
+            var context = selectedContext();
+            var disabled = !context || context.mode === 'READ_ONLY';
+            var moveFocus = disabled && actions.contains(document.activeElement);
+            actions.disabled = disabled;
             if (moveFocus) document.getElementById('contextBarBranch')?.focus({preventScroll: true});
         }
-        if (!event.detail?.selectionChanged) return;
+    }
+
+    function clearSyncPresentation() {
+        updateWorkspaceActions();
         clearRebasePlan();
         var planButton = document.getElementById('workspaceRebasePlanButton');
         if (planButton) planButton.hidden = true;
@@ -73,44 +89,62 @@ window.TaxonomyWorkspaceSync = (function () {
             local.classList.add('d-none');
         }
         renderDirtyIndicator();
-        pollSyncState();
-    });
+        window.TaxonomyContextBar?.updateSyncInfoInBar?.();
+    }
 
     // ── Polling ─────────────────────────────────────────────────────
 
-    function pollSyncState() {
+    function pollSyncState(options) {
         if (!pageActive) return;
+        if (options?.selectionChanged || (ownsPolledSource && !ownsPolledSource())) {
+            clearSyncPresentation();
+            pollTimer.reset();
+        }
+        if (pollTimer.isStopped()) return;
+        pollTimer.cancel();
         if (pendingRead) pendingRead.abort();
         var controller = new AbortController();
         pendingRead = controller;
+        var ownsWorkspace = window.TaxonomyApiClient.captureWorkspaceSource();
+        ownsPolledSource = ownsWorkspace;
+        var ownsSource = window.TaxonomyApiClient.captureContext();
+        var pending = false;
+        var error;
         function current() {
-            return pageActive && pendingRead === controller && !controller.signal.aborted;
+            return pageActive && pendingRead === controller && !controller.signal.aborted && ownsWorkspace();
         }
-        window.TaxonomyWorkspaceApi.syncState({ signal: controller.signal })
+        return window.TaxonomyWorkspaceApi.syncState({ signal: controller.signal })
             .then(function (state) {
-                if (!current() || !state) return;
+                if (!current() || !ownsSource() || !state) return;
                 var context = selectedContext();
-                var repository = window.TaxonomyArchitectureWorkflow?.getScope?.()?.repositoryId;
+                var scope = window.TaxonomyArchitectureWorkflow?.getScope?.();
                 var workspace = window.__TaxonomyAnalysisSessionContext?.runtime?.workspaceId;
-                if ((state.branch && context?.branch && state.branch !== context.branch)
-                        || (state.repositoryId && repository && state.repositoryId !== repository)
+                var branch = context?.branch || scope?.branch;
+                if ((state.branch && branch && state.branch !== branch)
+                        || (state.repositoryId && scope?.repositoryId && state.repositoryId !== scope.repositoryId)
                         || (state.workspaceId && workspace && state.workspaceId !== workspace)) return;
                 // A later observation may advance Git refs without changing the selected branch.
                 // Treat any changed sync observation as a new plan authority; do not show a stale plan.
                 if (syncState && JSON.stringify(state) !== JSON.stringify(syncState)) clearRebasePlan();
                 syncState = state;
-                window.TaxonomyBranchAdoption?.select(state, context, Object.hasOwn(lifecycleLabels, state.syncStatus));
+                pending = Object.hasOwn(lifecycleLabels, state.syncStatus);
+                window.TaxonomyBranchAdoption?.select(state, context, pending);
                 checkVisibleRebasePlan(state);
                 var planButton = document.getElementById('workspaceRebasePlanButton');
                 if (planButton) planButton.hidden = !state.repositoryId || !state.branch
-                    || (context?.mode === 'READ_ONLY' && context.commitId != null) || Object.hasOwn(lifecycleLabels, state.syncStatus);
+                    || (context?.mode === 'READ_ONLY' && context.commitId != null) || pending;
                 renderSyncIndicator(state);
                 renderDirtyIndicator();
                 renderSyncStatePanel(state);
                 window.TaxonomyContextBar?.updateSyncInfoInBar?.();
             })
-            .catch(function () {
-                // silently ignore — non-critical
+            .catch(function (err) {
+                error = err;
+                if (current() && ownsSource() && err.status === 409) renderSyncConflict(err);
+            }).finally(function () {
+                if (pendingRead !== controller) return;
+                pendingRead = null;
+                if (pageActive) pollTimer.schedule(ownsWorkspace() ? {error, pending} : {});
             });
     }
 
@@ -122,17 +156,33 @@ window.TaxonomyWorkspaceSync = (function () {
         FAILED: 'workspace.sync.lifecycle.failed'
     };
 
-    function renderSyncIndicator(state) {
+    function renderSyncConflict(error) {
+        syncState = null;
+        clearRebasePlan();
+        window.TaxonomyBranchAdoption?.clear();
+        var planButton = document.getElementById('workspaceRebasePlanButton');
+        if (planButton) planButton.hidden = true;
+        var panel = document.getElementById('syncStatePanel');
+        var message = error.detail || error.title || error.message;
+        if (panel) panel.textContent = message;
+        renderSyncIndicator(null, message);
+        window.TaxonomyContextBar?.updateSyncInfoInBar?.();
+    }
+
+    function renderSyncIndicator(state, conflict) {
         var bar = document.getElementById('gitStatusBar');
         if (!bar) return;
 
         var existing = document.getElementById('syncStatusIndicator');
         if (existing) existing.remove();
 
-        var status = state.syncStatus || 'UP_TO_DATE';
+        var status = state?.syncStatus || 'UP_TO_DATE';
         var dot = 'fresh';
         var label = t('workspace.sync.status.synced');
-        if (Object.hasOwn(lifecycleLabels, status)) {
+        if (conflict) {
+            dot = 'stale';
+            label = conflict;
+        } else if (Object.hasOwn(lifecycleLabels, status)) {
             dot = status === 'FAILED' ? 'error' : 'stale';
             label = t(lifecycleLabels[status]);
         } else if (status === 'BEHIND') {
@@ -539,6 +589,8 @@ window.TaxonomyWorkspaceSync = (function () {
     // ── Helpers ──────────────────────────────────────────────────────
 
     function refresh() {
+        if (!pageActive) return;
+        if (pollTimer.isStopped()) pollTimer.reset();
         pollSyncState();
     }
 

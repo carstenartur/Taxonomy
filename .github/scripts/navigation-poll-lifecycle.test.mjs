@@ -11,12 +11,12 @@ assert.ok(statusBar >= 0);
 const statusStart = index.indexOf('<script>', statusBar) + '<script>'.length;
 const statusEnd = index.indexOf('</script>', statusStart);
 assert.ok(statusStart >= '<script>'.length && statusEnd > statusStart);
-const workspaceApi = readFileSync(new URL('static/js/api/workspace-api.js', resources), 'utf8');
 const sources = {
     system: index.slice(statusStart, statusEnd),
     sync: readFileSync(new URL('static/js/workspace/taxonomy-workspace-sync.js', resources), 'utf8'),
     browse: readFileSync(new URL('static/js/core/taxonomy-browse.js', resources), 'utf8'),
-    git: readFileSync(new URL('static/js/workspace/taxonomy-git-status.js', resources), 'utf8')
+    git: readFileSync(new URL('static/js/workspace/taxonomy-git-status.js', resources), 'utf8'),
+    context: readFileSync(new URL('static/js/versioning/taxonomy-context-bar.js', resources), 'utf8')
 };
 const settle = () => new Promise(resolve => setImmediate(resolve));
 function deferred() {
@@ -30,7 +30,8 @@ function deferred() {
 // accepted response/body can arrive after pagehide or a restored page's new read.
 function harness(kind, { translationsPending = false, proposals = false, forms = false } = {}) {
     const dom = new EventTarget(), lifecycle = new EventTarget(), translations = deferred();
-    const nodes = new Map(), reads = [], timers = new Map(), errors = [];
+    const nodes = new Map(), reads = [], timers = new Map(), errors = [], contacts = [];
+    dom.addEventListener('taxonomy:server-contact', event => contacts.push(event.detail));
     let nextTimer = 0;
     class Element extends EventTarget {
         constructor() {
@@ -50,6 +51,7 @@ function harness(kind, { translationsPending = false, proposals = false, forms =
         setAttribute(name, value) { this.attributes.set(name, String(value)); }
         getAttribute(name) { return this.attributes.get(name) ?? null; }
         removeAttribute(name) { this.attributes.delete(name); }
+        querySelector(selector) { return this.children.find(child => child.id === selector.slice(1)) || null; }
         querySelectorAll(selector) {
             return this.children.flatMap(child => [
                 ...(child.classList.contains(selector.slice(1)) ? [child] : []),
@@ -57,6 +59,7 @@ function harness(kind, { translationsPending = false, proposals = false, forms =
             ]);
         }
         appendChild(child) { this.children.push(child); child.parentElement = this; if (child.id) nodes.set(child.id, child); }
+        replaceChildren() { this.children.slice().forEach(child => child.remove()); this.innerHTML = ''; this.textContent = ''; }
         remove() {
             if (this.parentElement) this.parentElement.children = this.parentElement.children.filter(child => child !== this);
             if (nodes.get(this.id) === this) nodes.delete(this.id);
@@ -105,16 +108,19 @@ function harness(kind, { translationsPending = false, proposals = false, forms =
         reads.push(read); return response.promise;
     };
     window.fetch = fetch;
-    window.TaxonomyVersioningApi = {state: (branch, {signal}) => fetch('http://taxonomy.test/api/git/state?branch=' + encodeURIComponent(branch), {signal})};
     const scope = { window, document, fetch, ...clock, AbortController, Headers,
+        CustomEvent,
         TaxonomyI18n: { t: (key, ...values) => [key, ...values].join(' '), ready: () => translations.promise },
-        TaxonomyUtils: { escapeHtml: String }, console: { ...console, error: (...values) => errors.push(values) } };
+        TaxonomyUtils: { escapeHtml: value => String(value).replaceAll('<', '&lt;').replaceAll('>', '&gt;') },
+        console: { ...console, error: (...values) => errors.push(values) } };
     canonicalFixture.install(scope, ['api/analysis-api.js', 'api/workspace-api.js', 'api/reference-api.js', 'api/search-api.js', 'api/proposals-api.js']);
     if (kind === 'browse') vm.runInNewContext(readFileSync(new URL('static/js/shared/taxonomy-startup-progress.js', resources), 'utf8'), scope);
     vm.runInNewContext(sources[kind], scope, { filename: `production-${kind}-poll.js` });
     if (!translationsPending) translations.resolve();
-    return { window, nodes, reads, state, timers, translations, errors,
+    return { window, nodes, reads, state, timers, translations, errors, contacts,
         sourceChanged() { dom.dispatchEvent(new Event('taxonomy:entity-context-changed')); },
+        architectureSourceChanged() { dom.dispatchEvent(new Event('taxonomy:architecture-source-changed')); },
+        contextChanged() { dom.dispatchEvent(new CustomEvent('taxonomy:repository-context-changed', {detail:{selectionChanged:true}})); },
         sourceReady() { dom.dispatchEvent(new Event('taxonomy:analysis-source-ready')); },
         start() { dom.dispatchEvent(new Event('DOMContentLoaded')); },
         hide() { lifecycle.dispatchEvent(Object.assign(new Event('pagehide'), { persisted: true })); },
@@ -135,15 +141,228 @@ test('Git polling stops at beforeunload, before a departing WebKit document can 
     const h = harness('git'); h.start(); await settle();
     const old = h.requests('/api/git/state')[0];
     assert.ok(old, 'The real Git poll must have started');
+    h.tick(10000); await settle();
+    assert.equal(h.requests('/api/git/state').length, 1, 'A pending poll owns its response through the body');
+    assert.equal(old.init.signal.aborted, false);
+    old.answer({ currentBranch: 'draft' }); await settle();
     assert.equal(h.timerCount(10000), 1);
+    h.tick(10000); await settle();
+    const departing = h.requests('/api/git/state').at(-1);
+    assert.notEqual(departing, old);
     h.beforeUnload();
-    assert.equal(old.init.signal.aborted, true, 'The active request is cancelled before pagehide');
-    assert.equal(h.timerCount(10000), 0, 'No periodic request may be scheduled while navigating');
+    assert.equal(departing.init.signal.aborted, true, 'The active request is cancelled before pagehide');
+    h.hide();
+    assert.equal(h.timerCount(10000), 0, 'No periodic request may be scheduled after departure');
     const count = h.requests('/api/git/state').length;
     h.tick(10000); h.window.TaxonomyGitStatus.refresh(); await settle();
     assert.equal(h.requests('/api/git/state').length, count);
     h.hide();
     assert.equal(h.timerCount(10000), 0);
+});
+
+test('Git polling resumes when navigation is cancelled before pagehide', async () => {
+    const h = harness('git'); h.start(); await settle();
+    const endpoint = '/api/git/state';
+    h.requests(endpoint)[0].answer({currentBranch:'draft'}); await settle();
+    h.beforeUnload();
+    h.tick(10000); await settle();
+    assert.equal(h.requests(endpoint).length, 2);
+});
+
+for (const [kind, endpoint, panel, accepted] of [
+    ['git', '/api/git/state', 'gitStatusBar', {currentBranch:'old-draft'}],
+    ['sync', '/api/workspace/sync-state', 'syncStatePanel', {syncStatus:'AHEAD', unpublishedCommitCount:4}]
+]) {
+    test(`${kind} discards the stopped workspace status as soon as the bound source changes`, async () => {
+        const h = harness(kind);
+        const runtime = {workspaceId:'first'};
+        let scope = {repositoryId:'repo-a', workspaceId:'first', branch:'old-draft'};
+        h.window.__TaxonomyAnalysisSessionContext = {runtime};
+        h.window.TaxonomyArchitectureWorkflow = {getScope: () => scope};
+        const actions = {disabled:false, contains: () => false};
+        if (kind === 'sync') h.nodes.set('workspaceSyncActions', actions);
+        h.start(); await settle();
+        h.requests(endpoint)[0].answer(accepted); await settle();
+        const node = h.nodes.get(panel);
+        assert.ok(node.innerHTML.length > 0);
+        h.tick(kind === 'git' ? 10000 : 15000); await settle();
+        h.requests(endpoint).at(-1).answer({detail:'First workspace forbidden'}, 403); await settle();
+        const before = h.requests(endpoint).length;
+        h.architectureSourceChanged(); await settle();
+        assert.equal(h.requests(endpoint).length, before, 'Same-source publication does not restart denied polling');
+        runtime.workspaceId = 'second';
+        scope = {repositoryId:'repo-b', workspaceId:'second', branch:'new-draft'};
+        h.architectureSourceChanged(); await settle();
+        assert.equal(node.innerHTML, '', 'The previous workspace must disappear before a new read succeeds');
+        assert.equal(h.requests(endpoint).length, before + 1);
+        const newRead = new URL(h.requests(endpoint).at(-1).url, h.window.location.href);
+        assert.equal(newRead.searchParams.get('workspaceId'), 'second');
+        if (kind === 'git') assert.equal(newRead.searchParams.get('branch'), 'new-draft');
+        else {
+            assert.equal(h.nodes.has('syncStatusIndicator'), false);
+            assert.equal(actions.disabled, true, 'The old source cannot authorize workspace controls');
+        }
+    });
+}
+
+for (const [body, label] of [
+    [{code:'WORKSPACE_NOT_READY', workspaceStatus:'PROVISIONING', detail:'Preparing working copy <b>on disk</b>'},
+        /workspace\.sync\.lifecycle\.provisioning/],
+    [{code:'INITIAL_SOURCE_PENDING', detail:'Waiting for the initial architecture checkpoint'},
+        /startup\.ui\.sourcePending/],
+    [{message:'Workspace repository is not ready; complete provisioning before using it'}, /complete provisioning/]
+]) {
+    test(`Git displays the ${body.code || 'legacy'} conflict while reporting successful server contact`, async () => {
+        const h = harness('git'); h.start(); await settle();
+        h.requests('/api/git/state')[0].answer(body, 409); await settle();
+        assert.equal(h.contacts[0]?.available, true);
+        assert.equal(h.contacts[0]?.status, 409);
+        const html = h.nodes.get('gitStatusBar').innerHTML;
+        assert.match(html, label);
+        if (body.workspaceStatus) {
+            assert.match(html, /Preparing working copy &lt;b&gt;on disk&lt;\/b&gt;/);
+            assert.doesNotMatch(html, /<b>/);
+        }
+    });
+}
+
+test('Git retries persistent workspace conflicts at a bounded delay and returns to the usual cadence on recovery', async () => {
+    const h = harness('git'); h.start(); await settle();
+    const endpoint = '/api/git/state';
+    const conflict = {code:'WORKSPACE_NOT_READY', workspaceStatus:'NOT_PROVISIONED'};
+    for (const delay of [20000, 40000, 60000, 60000]) {
+        const requests = h.requests(endpoint);
+        requests.at(-1).answer(conflict, 409); await settle();
+        h.tick(10000); await settle();
+        assert.equal(h.requests(endpoint).length, requests.length);
+        h.tick(delay); await settle();
+        assert.equal(h.requests(endpoint).length, requests.length + 1);
+    }
+    h.requests(endpoint).at(-1).answer({currentBranch:'recovered'}); await settle();
+    assert.match(h.nodes.get('gitStatusBar').innerHTML, /recovered/);
+    const before = h.requests(endpoint).length;
+    h.tick(10000); await settle();
+    assert.equal(h.requests(endpoint).length, before + 1);
+});
+
+test('Git restarts at the normal cadence for a new context without publishing the old read', async () => {
+    const h = harness('git');
+    let context = {contextId:'first', branch:'draft'};
+    h.window.TaxonomyContextBar = {getCurrentContext: () => context};
+    h.start(); await settle();
+    const endpoint = '/api/git/state';
+    h.requests(endpoint)[0].answer({detail:'Old workspace is pending'}, 409); await settle();
+    h.tick(20000); await settle();
+    const old = h.requests(endpoint).at(-1);
+    const oldBody = old.bodyPending(); await settle();
+    context = {contextId:'second', branch:'variant'};
+    h.contextChanged(); await settle();
+    const current = h.requests(endpoint).at(-1);
+    assert.notEqual(current, old);
+    assert.equal(old.init.signal.aborted, true);
+    assert.equal(new URL(current.url, h.window.location.href).searchParams.get('branch'), 'variant');
+    current.answer({detail:'New workspace is pending'}, 409); await settle();
+    oldBody.resolve({currentBranch:'obsolete draft'}); await settle();
+    assert.match(h.nodes.get('gitStatusBar').innerHTML, /New workspace is pending/);
+    assert.equal(h.timerCount(20000), 1, 'A new source starts its own retry delay');
+    assert.equal(h.timerCount(40000), 0);
+});
+
+test('a successful sync response with provisioning metadata still slows passive observations', async () => {
+    const h = harness('sync'); h.start(); await settle();
+    const endpoint = '/api/workspace/sync-state';
+    h.requests(endpoint)[0].answer({syncStatus:'PROVISIONING', branch:'draft'}); await settle();
+    assert.match(h.nodes.get('syncStatePanel').innerHTML, /workspace\.sync\.lifecycle\.provisioning/);
+    h.tick(15000); await settle();
+    assert.equal(h.requests(endpoint).length, 1);
+    h.tick(30000); await settle();
+    h.requests(endpoint).at(-1).answer({syncStatus:'UP_TO_DATE', branch:'draft'}); await settle();
+    assert.match(h.nodes.get('syncStatePanel').innerHTML, /workspace\.sync\.panel\.uptodate/);
+    h.tick(15000); await settle();
+    assert.equal(h.requests(endpoint).length, 3);
+});
+
+test('sync shows the original readiness explanation when an older server returns a conflict', async () => {
+    const h = harness('sync'); h.start(); await settle();
+    h.requests('/api/workspace/sync-state')[0].answer({message:'Workspace repository is not ready; complete provisioning before using it'}, 409);
+    await settle();
+    assert.match(h.nodes.get('syncStatePanel').textContent, /complete provisioning/);
+});
+
+test('the context bar waits for the current read and backs off on a readiness conflict', async () => {
+    const h = harness('context');
+    const endpoint = '/api/context/current';
+    const result = h.window.TaxonomyContextBar.init('contextBar'); await settle();
+    assert.equal(h.timerCount(10000), 0);
+    const first = h.requests(endpoint)[0];
+    first.answer({code:'WORKSPACE_NOT_READY', workspaceStatus:'PROVISIONING'}, 409);
+    assert.equal(await result, null, 'Readiness consumers continue to fail closed');
+    h.tick(10000); await settle();
+    assert.equal(h.requests(endpoint).length, 1);
+    h.tick(20000); await settle();
+    h.requests(endpoint).at(-1).answer({contextId:'ctx', branch:'draft', mode:'EDITABLE'}); await settle();
+    assert.equal(h.window.TaxonomyContextBar.getCurrentContext().contextId, 'ctx');
+    h.tick(10000); await settle();
+    assert.equal(h.requests(endpoint).length, 3);
+});
+
+test('the context bar resumes a stopped poll when the bound workspace changes', async () => {
+    const h = harness('context');
+    const endpoint = '/api/context/current';
+    const runtime = {workspaceId:'first'};
+    h.window.__TaxonomyAnalysisSessionContext = {runtime};
+    h.window.TaxonomyContextBar.init('contextBar'); await settle();
+    h.requests(endpoint)[0].answer({detail:'First workspace forbidden'}, 403); await settle();
+    h.architectureSourceChanged(); await settle();
+    assert.equal(h.requests(endpoint).length, 1);
+    runtime.workspaceId = 'second';
+    h.architectureSourceChanged(); await settle();
+    assert.equal(h.requests(endpoint).length, 2);
+    assert.equal(new URL(h.requests(endpoint)[1].url, h.window.location.href).searchParams.get('workspaceId'), 'second');
+});
+
+for (const [kind, endpoint] of [
+    ['git', '/api/git/state'], ['sync', '/api/workspace/sync-state'], ['context', '/api/context/current']
+]) {
+    test(`${kind} stops automatic requests after an authority failure, including on BFCache return`, async () => {
+        const h = harness(kind);
+        if (kind === 'context') h.window.TaxonomyContextBar.init('contextBar');
+        else h.start();
+        await settle();
+        h.requests(endpoint)[0].answer({detail:'Session ended'}, 403); await settle();
+        for (const delay of [10000, 15000, 20000, 30000, 60000]) h.tick(delay);
+        h.hide();
+        if (kind === 'git') h.window.TaxonomyGitStatus.refresh();
+        if (kind === 'sync') h.window.TaxonomyWorkspaceSync.refresh();
+        h.show(); await settle();
+        assert.equal(h.requests(endpoint).length, 1);
+    });
+}
+
+test('system status starts once and leaves its pending request alone until it settles', async () => {
+    const h = harness('system');
+    h.start(); await settle();
+    const endpoint = '/api/status/startup';
+    const reads = h.requests(endpoint);
+    assert.equal(reads.length, 1, 'Script execution and DOM readiness share the initial read');
+    h.tick(15000); await settle();
+    assert.equal(h.requests(endpoint).length, 1);
+    assert.equal(reads[0].init.signal.aborted, false);
+    h.hide();
+    assert.equal(reads[0].init.signal.aborted, true);
+});
+
+test('an unrelated authority failure cancels the current system read without ending its poll', async () => {
+    const h = harness('system'); h.start(); await settle();
+    const endpoint = '/api/status/startup';
+    const first = h.requests(endpoint)[0];
+    const denied = assert.rejects(h.window.TaxonomyReferenceApi.aiStatus(), {status:403});
+    h.requests('/api/ai-status')[0].answer({detail:'AI status forbidden'}, 403);
+    await denied; await settle();
+    assert.equal(first.init.signal.aborted, true);
+    assert.equal(h.nodes.get('systemStatusBar').textContent, 'retained system status');
+    h.tick(15000); await settle();
+    assert.equal(h.requests(endpoint).length, 2);
 });
 
 for (const [kind, endpoint, nodeId, field, result] of [
@@ -189,8 +408,15 @@ for (const [kind, endpoint, nodeId, field, result] of [
     test(`${kind} polling still refreshes after an ordinary network error`, async () => {
         const h = harness(kind); h.start(); await settle();
         h.requests(endpoint).at(-1).reject(new TypeError('network unavailable')); await settle();
-        h.tick(15000); await settle(); h.requests(endpoint).at(-1).answer(result); await settle();
+        const before = h.requests(endpoint).length;
+        h.tick(15000); await settle();
+        assert.equal(h.requests(endpoint).length, before, 'A failed read does not repeat at the normal cadence');
+        h.tick(30000); await settle();
+        assert.equal(h.requests(endpoint).length, before + 1);
+        h.requests(endpoint).at(-1).answer(result); await settle();
         assert.notEqual(h.nodes.get(nodeId)[field], kind === 'system' ? 'retained system status' : 'retained sync status');
+        h.tick(15000); await settle();
+        assert.equal(h.requests(endpoint).length, before + 2, 'Recovery restores the normal cadence');
     });
 }
 
@@ -210,6 +436,30 @@ async function loadingTaxonomy() {
     assert.equal(h.timerCount(5000), 1, 'An unavailable catalogue must schedule startup retry');
     return h;
 }
+
+test('catalogue startup backs off a failed progress read and restores the normal cadence after a progress update', async () => {
+    const h = await loadingTaxonomy();
+    const endpoint = '/api/status/startup';
+    h.tick(5000); await settle();
+    h.requests(endpoint)[0].reject(new TypeError('network unavailable')); await settle();
+    h.tick(5000); await settle();
+    assert.equal(h.requests(endpoint).length, 1);
+    h.tick(10000); await settle();
+    h.requests(endpoint).at(-1).answer({initialized:false, phase:'BUILDING_INDEX'}); await settle();
+    h.tick(5000); await settle();
+    assert.equal(h.requests(endpoint).length, 3);
+});
+
+test('catalogue startup never rearms a forbidden progress read on BFCache return', async () => {
+    const h = await loadingTaxonomy();
+    const endpoint = '/api/status/startup';
+    h.tick(5000); await settle();
+    h.requests(endpoint)[0].answer({detail:'Session ended'}, 401); await settle();
+    for (const delay of [5000, 10000, 20000, 30000, 60000]) h.tick(delay);
+    h.hide(); h.show(); await settle();
+    assert.equal(h.requests(endpoint).length, 1);
+    assert.equal(h.requests('/api/taxonomy').length, 1);
+});
 
 test('catalogue and provider readiness never enable Analyze before the selected source is confirmed', async () => {
     const h = harness('browse');
@@ -328,7 +578,11 @@ test('an ordinary taxonomy load failure retries without prematurely enabling ana
     assert.match(h.nodes.get('taxonomyTree').textContent, /startup.ui.connectionRetry/);
     assert.equal(h.nodes.get('startupBanner').classList.contains('d-none'), false);
     assert.equal(h.nodes.get('analyzeBtn').disabled, true);
-    assert.equal(h.timerCount(5000), 1);
+    assert.equal(h.timerCount(10000), 1);
+    h.tick(10000); await settle();
+    h.requests('/api/status/startup').at(-1).answer({initialized: true}); await settle();
+    h.requests('/api/taxonomy').at(-1).reject(new TypeError('catalogue still unavailable')); await settle();
+    assert.equal(h.timerCount(20000), 1, 'A ready status snapshot does not erase a repeated catalogue read failure');
 });
 
 test('catalogue startup resumes after BFCache and retains its network retry until ready', async () => {
@@ -340,8 +594,8 @@ test('catalogue startup resumes after BFCache and retains its network retry unti
     old.answer({ initialized: true }); await settle();
     assert.equal(h.requests('/api/taxonomy').length, 2, 'A pre-navigation status cannot trigger another reload');
     h.tick(5000); h.requests('/api/status/startup').at(-1).reject(new TypeError('network unavailable')); await settle();
-    assert.equal(h.timerCount(5000), 1);
-    h.tick(5000); h.requests('/api/status/startup').at(-1).answer({ initialized: true }); await settle();
+    assert.equal(h.timerCount(10000), 1);
+    h.tick(10000); h.requests('/api/status/startup').at(-1).answer({ initialized: true }); await settle();
     h.requests('/api/taxonomy').at(-1).answer([]); await settle();
     h.tick(5000); h.requests('/api/status/startup').at(-1).answer({initialized: true}); await settle();
     assert.equal(h.nodes.get('startupBanner').classList.contains('d-none'), true);

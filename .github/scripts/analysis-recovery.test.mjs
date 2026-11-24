@@ -8,6 +8,7 @@ import { createRejectedAnalysisFixture } from './ui-rejected-analysis-fixture.mj
 const analysisSource = readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis.js', import.meta.url), 'utf8');
 const analysisApiSource = readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/api/analysis-api.js', import.meta.url), 'utf8');
 const source = readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-recovery.js', import.meta.url), 'utf8');
+const promptDisplaySource = readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/core/taxonomy-prompt-display.js', import.meta.url), 'utf8');
 function node() {
   const listeners = new Map();
   return { textContent:'', hidden:false, disabled:false, style:{}, dataset:{}, value:'', children:[], classList:{ toggle(){}, add(){}, remove(){} },
@@ -21,7 +22,8 @@ function harness(language = 'en') {
   const fields = { businessText: Object.assign(node(),{value:'Hospital communications'}),
     copilotBtn:node(),analyzeBtn:node(),copilotSpinner:node(),providerSelect:Object.assign(node(),{value:'CUSTOM_OPENAI'}) };
   const S = {}, runtime = {workspaceId:'ws-a', analysisGeneration:0};
-  const requests=[], analyses=[], saved=[], panels=[], renderedReports=[], derivedRequests=[], derivedBodies=[], readResponses=[]; let openOptions=[], snapshot;
+  const requests=[], analyses=[], saved=[], panels=[], renderedReports=[], derivedRequests=[], derivedBodies=[], readResponses=[], copied=[];
+  let openOptions=[], snapshot;
   const ui = { update(message){ this.message=message; }, close(){ this.opened=false; }, error(message){ this.errorText=message; },
     isOpen(){return Boolean(this.opened);}, isDismissed(){return false;},
     open(title,message,build,options){
@@ -30,6 +32,7 @@ function harness(language = 'en') {
       for(const option of options) fields[option.id]=Object.assign(node(),{disabled:Boolean(option.disabled)});
     } };
   const window = { TaxonomyState:S,__TaxonomyAnalysisSessionContext:{S,runtime,language:()=> language},
+    TaxonomyUtils:{async copyText(value){copied.push(value);}},
     TaxonomyRecoveryViewport:{mount:()=>ui},
     TaxonomyAnalysisSession:{state:()=>({ready:true,workspaceId:runtime.workspaceId}),saveNow:async()=>{saved.push(JSON.parse(JSON.stringify(S)));return true;}},
     TaxonomyAnalysisSessionApi:{request:async(url,options,workspace)=>{
@@ -41,9 +44,11 @@ function harness(language = 'en') {
     TaxonomyScoring:{renderArchitectureView(){},renderSuggestedRelations(){},
       runAnalysis(options){analyses.push(options.continuation);return new Promise((resolve,reject)=>{pending=resolve;rejectPending=reject;});}},
     TaxonomyAnalysis:{runCopilotFlow:async()=>{followups++;},renderCopilotResult:value=>renderedReports.push(value),renderPartialCopilot:message=>panels.push(message)} };
-  const document={getElementById:id=>fields[id]||null,addEventListener:(name,fn)=>{if(!listeners.has(name))listeners.set(name,[]);listeners.get(name).push(fn);}};
+  const document={documentElement:{lang:language},createElement:tagName=>Object.assign(node(),{tagName}),
+    getElementById:id=>fields[id]||null,addEventListener:(name,fn)=>{if(!listeners.has(name))listeners.set(name,[]);listeners.get(name).push(fn);}};
   const context={window,document,crypto:webcrypto,sessionStorage:{getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
     setTimeout:fn=>{timers.set(++timer,fn);return timer;},clearTimeout:id=>timers.delete(id), URLSearchParams, console};
+  vm.runInNewContext(promptDisplaySource,context);
   vm.runInNewContext(source,context);
   function complete(state='PAUSED', additions={}) {
     const q={key:'question-a',nodes:['BP-1327','BP-1481'],error:'Invalid JSON',attempts:1,skipped:state==='COMPLETED_WITH_GAPS'||state==='STOPPED'};
@@ -86,7 +91,7 @@ function harness(language = 'en') {
     for(const id of ['analysisRelationsExtension','extendAnalysisRelationsBtn','analysisRelationsExtensionHint'])fields[id]=node();
     vm.runInNewContext(readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/core/taxonomy-relations-extension.js',import.meta.url),'utf8'),context);
   }
-  return {S,runtime,ui,analyses,requests,saved,panels,fields,timers,storage,window,document,complete,loadAnalysis,loadRelationsExtension,derivedRequests,derivedBodies,readResponses,
+  return {S,runtime,ui,analyses,requests,saved,panels,fields,timers,storage,window,document,complete,loadAnalysis,loadRelationsExtension,derivedRequests,derivedBodies,readResponses,copied,
     snapshot:()=>snapshot,
     followups:()=>followups,renderedReports,options:()=>openOptions,
     act:id=>openOptions.find(o=>o.id===id).handler(),emit:(name,detail={})=>(listeners.get(name)||[]).forEach(fn=>fn({detail})),
@@ -709,6 +714,25 @@ test('interrupted unvisited catalogue rows are explicitly labelled unassessed',(
 
 const renderedText = element => [element.textContent, ...element.children.map(renderedText)].join(' ');
 const descendants = element => [element, ...element.children.flatMap(descendants)];
+test('recovery renders structured prompt paragraphs and copies the retained prompt exactly', async () => {
+ const h = harness(); h.recovery.startCopilot(); h.complete(); await settle(); h.recovery.open();
+ const details = descendants(h.ui.body).find(el => el.tagName === 'details'
+  && el.children.some(child => child.textContent === 'Show prompt and response'));
+ const original = 'First requirement.\n\nSecond requirement with literal \\n.';
+ const prompt = 'Review the affected nodes.\nINPUT\n' + JSON.stringify({ original });
+ const rawResponse = 'The recorded provider answer.';
+ h.readResponses.push({ ok: true, json: async () => ({ prompt, rawResponse }) });
+ assert.ok(details);
+ details.open = true; await details.fire('toggle');
+ const elements = descendants(details);
+ assert.ok(elements.some(el => el.tagName === 'pre' && el.textContent === original));
+ assert.ok(elements.some(el => el.tagName === 'pre' && el.textContent === rawResponse));
+ const copy = elements.find(el => el.tagName === 'button' && el.textContent === 'Copy raw prompt');
+ assert.ok(copy);
+ await copy.fire('click');
+ assert.deepEqual(h.copied, [prompt]);
+});
+
 test('an unknown node-only source cannot allocate a relation extension identity', async()=>{
  const h=harness();h.window.TaxonomyAnalysisScope={read:()=>({taxonomyRoots:['CP'],mode:'TAXONOMIES_ONLY'}),restrictsGlobalAnalysis:()=>true};
  h.recovery.startCopilot();h.complete('COMPLETED');await settle();h.loadRelationsExtension();

@@ -54,12 +54,15 @@ class WorkspaceDefaultBootstrapReadinessTest {
             assertNull(fixture.factory.getSystemRepository().getHeadCommit("draft"));
 
             for (int request = 0; request < 2; request++) {
-                var failure = assertThrows(RuntimeException.class,
+                var failure = assertThrows(ResponseStatusException.class,
                         () -> fixture.resolver.resolveRepositoryContextForUser(USER));
                 assertEquals(WorkspaceProvisioningStatus.NOT_PROVISIONED,
                         fixture.saved.get().getProvisioningStatus(),
                         "A source awaiting bootstrap must not poison the automatic workspace as FAILED");
-                assertEquals(409, assertInstanceOf(ResponseStatusException.class, failure).getStatusCode().value());
+                assertEquals(409, failure.getStatusCode().value());
+                var properties = failure.getBody().getProperties();
+                assertNotNull(properties);
+                assertEquals("INITIAL_SOURCE_PENDING", properties.get("code"));
                 assertEquals(workspaceId, fixture.saved.get().getWorkspaceId());
                 assertNull(fixture.saved.get().getProvisioningError());
                 assertNull(fixture.saved.get().getCurrentCommit());

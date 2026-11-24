@@ -797,7 +797,10 @@
                 try {
                     var evidence = await request(c, '/questions/' + encodeURIComponent(key));
                     if (!inScope(c) || key !== selected.key) return;
-                    detailBody.replaceChildren(el('h3', 'Prompt'), el('pre', evidence.prompt || text('Nicht gespeichert.', 'Not retained.')),
+                    detailBody.replaceChildren(window.TaxonomyPromptDisplay.render(evidence.prompt, {
+                        headingTag: 'h3', originalLength: evidence.promptLength,
+                        emptyMessage: text('Nicht gespeichert.', 'Not retained.')
+                    }),
                         el('h3', text('Antwort', 'Response')), el('pre', evidence.rawResponse || text('Keine Antwort erhalten.', 'No response received.')));
                 } catch (error) { if (!inScope(c) || key !== selected.key) return; loadedKey = null; detailBody.textContent = error.message; }
             });

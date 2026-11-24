@@ -21,6 +21,7 @@
 
     // ── Bootstrap ─────────────────────────────────────────────────────────────
     document.addEventListener('DOMContentLoaded', function () {
+        startupRetry = window.TaxonomyApiClient.createPollTimer(5000, readStartupStatus);
         loadTaxonomy();
         checkAiStatus();
         // Poll AI status every 30 seconds to keep the indicator current
@@ -622,14 +623,14 @@
     var startupRead = null;
     var proposalRead = null;
     var proposalSource = null;
-    var startupRetryTimer = null;
+    var startupRetry = null;
     var taxonomyLoading = false;
     var taxonomyLoaded = false;
     var startupMonitoring = false;
 
     window.addEventListener('pagehide', function () {
         startupPageActive = false;
-        clearTimeout(startupRetryTimer); startupRetryTimer = null;
+        startupRetry?.cancel();
         if (startupRead) startupRead.abort();
         if (proposalRead) proposalRead.abort();
     });
@@ -675,8 +676,8 @@
     }
 
     function loadTaxonomy() {
-        if (!startupPageActive) return;
-        clearTimeout(startupRetryTimer); startupRetryTimer = null;
+        if (!startupPageActive || startupRetry.isStopped()) return;
+        startupRetry.cancel();
         taxonomyLoading = true;
         taxonomyLoaded = false;
         setStartupBanner(true);
@@ -712,58 +713,59 @@
                 pollStartupStatus();
             })
             .catch(function (err) {
-                if (err?.code === 'ABORTED') return;
                 if (!currentStartupRead(controller)) return;
-                setStartupBanner(true, t('startup.ui.connectionRetry'));
-                document.getElementById('taxonomyTree').textContent = t('startup.ui.connectionRetry');
-                pollStartupStatus();
+                if (err.code !== 'ABORTED' && err.status !== 401 && err.status !== 403) {
+                    var message = err.status === 409 && (err.detail || err.title)
+                        || t('startup.ui.connectionRetry');
+                    setStartupBanner(true, message);
+                    document.getElementById('taxonomyTree').textContent = message;
+                }
+                pollStartupStatus({error: err});
             });
     }
 
     /** Polls measured catalogue/vector progress; terminal failures remain visible. */
-    function pollStartupStatus() {
+    function pollStartupStatus(options) {
         if (!startupPageActive) return;
-        startupMonitoring = true;
-        clearTimeout(startupRetryTimer);
-        var timer = setTimeout(function () {
-            if (!startupPageActive || startupRetryTimer !== timer) return;
-            startupRetryTimer = null;
-            var controller = beginStartupRead();
-            window.TaxonomyReferenceApi.startup(controller.signal)
-                .then(function (r) { return currentStartupRead(controller) ? r.json() : null; })
-                .then(function (s) {
-                    if (!currentStartupRead(controller)) return;
-                    var presentation = s?.initialized && !taxonomyLoaded ? null
-                        : window.TaxonomyStartupProgress?.render(s || {initialized: false});
-                    if (s && s.phase === 'FAILED') {
-                        startupMonitoring = false;
-                        taxonomyLoading = false;
-                        var failedTree = document.getElementById('taxonomyTree');
-                        failedTree.textContent = t('startup.ui.failedHelp');
-                        return;
-                    }
-                    if (s && s.initialized) {
-                        if (!taxonomyLoaded) {
-                            loadTaxonomy();
-                        } else if (presentation && presentation.pending) {
-                            pollStartupStatus();
-                        } else {
-                            startupMonitoring = false;
-                        }
-                    } else {
-                        var statusMsg = s && s.phaseMessage
-                            ? ' — ' + s.phaseMessage
-                            : (s && s.status ? ' (status: ' + s.status + ')' : '');
-                        if (!presentation) setStartupBanner(true, statusMsg.trim());
-                        document.getElementById('taxonomyTree').textContent = LOADING_MSG + statusMsg;
+        startupRetry.schedule(options);
+        startupMonitoring = !startupRetry.isStopped();
+        if (!startupMonitoring) taxonomyLoading = false;
+    }
+
+    function readStartupStatus() {
+        if (!startupPageActive) return;
+        var controller = beginStartupRead();
+        window.TaxonomyReferenceApi.startup(controller.signal)
+            .then(function (r) { return currentStartupRead(controller) ? r.json() : null; })
+            .then(function (s) {
+                if (!currentStartupRead(controller)) return;
+                var presentation = s?.initialized && !taxonomyLoaded ? null
+                    : window.TaxonomyStartupProgress?.render(s || {initialized: false});
+                if (s?.phase === 'FAILED') {
+                    startupMonitoring = false;
+                    taxonomyLoading = false;
+                    document.getElementById('taxonomyTree').textContent = t('startup.ui.failedHelp');
+                    return;
+                }
+                if (s?.initialized) {
+                    if (!taxonomyLoaded) {
+                        loadTaxonomy();
+                    } else if (presentation?.pending) {
                         pollStartupStatus();
+                    } else {
+                        startupMonitoring = false;
                     }
-                })
-                .catch(function () {
-                    if (currentStartupRead(controller)) pollStartupStatus(); // retry on network error
-                });
-        }, 5000);
-        startupRetryTimer = timer;
+                } else {
+                    var statusMsg = s?.phaseMessage ? ' — ' + s.phaseMessage
+                        : (s?.status ? ' (status: ' + s.status + ')' : '');
+                    if (!presentation) setStartupBanner(true, statusMsg.trim());
+                    document.getElementById('taxonomyTree').textContent = LOADING_MSG + statusMsg;
+                    pollStartupStatus();
+                }
+            })
+            .catch(function (error) {
+                if (currentStartupRead(controller)) pollStartupStatus({error: error});
+            });
     }
 
     function populateTreeRootSelect(data) {

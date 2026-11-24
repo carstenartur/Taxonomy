@@ -50,6 +50,50 @@ class GlobalExceptionHandlerTest {
         assertThat(responseBody(response)).containsEntry("code", "ANALYSIS_EXPIRED").doesNotContainKey("privateContext");
     }
 
+    @Test
+    void workspaceConflictIncludesOnlyTheKnownLifecycleMetadata() {
+        var failure = new org.springframework.web.server.ResponseStatusException(HttpStatus.CONFLICT,
+                "Workspace repository is not ready; complete provisioning before using it");
+        failure.getBody().setProperty("code", "WORKSPACE_NOT_READY");
+        failure.getBody().setProperty("workspaceStatus", com.taxonomy.workspace.model.WorkspaceProvisioningStatus.FAILED);
+        failure.getBody().setProperty("privateContext", "secret-body");
+
+        var response = handler(SAFE_INTERNAL_MESSAGE).frameworkException(failure, HttpStatus.CONFLICT,
+                request("/api/git/state"));
+
+        assertThat(responseBody(response)).containsEntry("code", "WORKSPACE_NOT_READY")
+                .containsEntry("workspaceStatus", "FAILED").doesNotContainKey("privateContext");
+    }
+
+    @Test
+    void initialSourceConflictRetainsItsMachineReadableReason() {
+        var failure = new org.springframework.web.server.ResponseStatusException(HttpStatus.CONFLICT,
+                "Source repository is still initializing");
+        failure.getBody().setProperty("code", "INITIAL_SOURCE_PENDING");
+
+        var response = handler(SAFE_INTERNAL_MESSAGE).frameworkException(failure, HttpStatus.CONFLICT,
+                request("/api/git/state"));
+
+        assertThat(responseBody(response)).containsEntry("code", "INITIAL_SOURCE_PENDING")
+                .doesNotContainKey("workspaceStatus");
+    }
+
+    @Test
+    void unknownLifecyclePropertiesAndCodesForAnotherStatusAreNotReflected() {
+        var failure = new org.springframework.web.server.ResponseStatusException(HttpStatus.CONFLICT, "Not ready");
+        failure.getBody().setProperty("code", "WORKSPACE_NOT_READY");
+        failure.getBody().setProperty("workspaceStatus", "private-state");
+
+        var response = handler(SAFE_INTERNAL_MESSAGE).frameworkException(failure, HttpStatus.CONFLICT,
+                request("/api/git/state"));
+        assertThat(responseBody(response)).containsEntry("code", "WORKSPACE_NOT_READY")
+                .doesNotContainKey("workspaceStatus");
+
+        response = handler(SAFE_INTERNAL_MESSAGE).frameworkException(failure, HttpStatus.INTERNAL_SERVER_ERROR,
+                request("/api/git/state"));
+        assertThat(responseBody(response)).doesNotContainKeys("code", "workspaceStatus");
+    }
+
     @AfterEach
     void resetLocale() {
         LocaleContextHolder.resetLocaleContext();

@@ -604,7 +604,7 @@
         }));
         window.TaxonomyOnboarding?.syncTaskProgress?.();
     }
-    function confirmInitialSource(retry) {
+    function confirmInitialSource(retry, automatic) {
         if (runtime.sourceReady !== false || !runtime.workspaceResolved) {
             if (runtime.workspaceResolved) notifySourceReady();
             return Promise.resolve(true);
@@ -613,17 +613,35 @@
         if (sourceRead && sourceRead.workspace === workspace) return sourceRead.promise;
         var task = {workspace:workspace};
         sourceRead = task;
+        var bar = window.TaxonomyContextBar;
+        var passive = automatic === true && typeof bar?.readiness === 'function';
+        function observeContext() {
+            return bar?.readiness?.('contextBar', {passive: true});
+        }
         // These initial publications change the same source identity captured by
         // the canonical transport. Finish them before admitting an analysis,
         // rather than letting an initial context read revoke its full response.
         task.promise = Promise.resolve()
-            .then(function () { return window.TaxonomyArchitectureLifecycle?.ready?.(); })
-            .then(function () { return window.TaxonomyArchitectureWorkspace?.ready?.(retry === true); })
-            .then(function (ready) {
-                if (ready === false) throw new Error('Initial architecture source is unavailable');
-                return window.TaxonomyContextBar?.fetchAndRender?.('contextBar', {joinCurrent: true});
-            }).then(function (context) {
-                if (window.TaxonomyContextBar?.fetchAndRender && !context) {
+            .then(async function () {
+                // Architecture readiness can itself call ContextBar. Check the
+                // poll observation before letting automatic recovery enter it.
+                if (passive && !(await observeContext())?.context) return false;
+                await window.TaxonomyArchitectureLifecycle?.ready?.();
+                var ready = await window.TaxonomyArchitectureWorkspace?.ready?.(retry === true);
+                if (ready === false) {
+                    var failed = await observeContext();
+                    throw failed?.error || new Error('Initial architecture source is unavailable');
+                }
+                var context;
+                if (bar?.readiness) {
+                    var result = await bar.readiness('contextBar', {passive: passive});
+                    if (result?.error) throw result.error;
+                    context = result?.context;
+                } else {
+                    context = await bar?.fetchAndRender?.('contextBar', {joinCurrent: true});
+                }
+                if (bar?.fetchAndRender && !context) {
+                    if (passive) return false;
                     throw new Error('Initial repository context is unavailable');
                 }
                 if (workspace !== runtime.workspaceId || sourceRead !== task) return false;
@@ -794,7 +812,7 @@
         var checked = !runtime.workspaceResolved && !runtime.restoring
             ? resolveWorkspaceAndLoad({ reconcile: true }) : C.reconcileDraft();
         return Promise.resolve(checked).then(function (value) {
-            return confirmInitialSource(true).then(function () { return value; });
+            return confirmInitialSource(true, automatic).then(function () { return value; });
         });
     }
 
@@ -862,6 +880,10 @@
         });
         document.addEventListener('taxonomy:server-contact', function (event) {
             if (document.visibilityState === 'hidden') return;
+            if (event.detail?.status === 409) {
+                C.serverUnavailable(event.detail);
+                return;
+            }
             if (event.detail?.available === false) {
                 C.serverUnavailable(event.detail);
                 // An unavailable pin can mean that the server restarted with an
@@ -869,6 +891,9 @@
                 // a temporary transport failure without submitting any work.
                 if (event.detail.status === 403 || event.detail.status === 404) retryServerState(true);
             } else retryServerState(true);
+        });
+        document.addEventListener('taxonomy:repository-context-changed', function () {
+            if (window.TaxonomyContextBar?.readiness) confirmInitialSource(true, true);
         });
         window.addEventListener('online', function () { return retryServerState(true); });
         window.addEventListener('pageshow', function (event) {
