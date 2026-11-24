@@ -6,6 +6,7 @@
 
     var S = window.TaxonomyState;
     var diagramContextGeneration = 0;
+    var STARTUP_POLL_INTERVAL = 5000;
     // SC (scoring functions) resolved lazily — script may load before taxonomy-scoring.js
     function SC() { return window.TaxonomyScoring || {}; }
 
@@ -21,7 +22,7 @@
 
     // ── Bootstrap ─────────────────────────────────────────────────────────────
     document.addEventListener('DOMContentLoaded', function () {
-        startupRetry = window.TaxonomyApiClient.createPollTimer(5000, readStartupStatus);
+        startupRetry = window.TaxonomyApiClient.createPollTimer(STARTUP_POLL_INTERVAL, readStartupStatus);
         loadTaxonomy();
         checkAiStatus();
         // Poll AI status every 30 seconds to keep the indicator current
@@ -628,17 +629,36 @@
     var taxonomyLoaded = false;
     var startupMonitoring = false;
 
-    window.addEventListener('pagehide', function () {
-        startupPageActive = false;
+    var startupResumeTimer = null;
+
+    function pauseStartupReads() {
+        clearTimeout(startupResumeTimer);
         startupRetry?.cancel();
         if (startupRead) startupRead.abort();
+    }
+
+    function resumeStartupReads() {
+        if (taxonomyLoading) loadTaxonomy();
+        else if (startupMonitoring) pollStartupStatus();
+    }
+
+    // WebKit can run a due poll between beforeunload and pagehide. If the
+    // navigation is cancelled, the document still needs its outstanding work.
+    window.addEventListener('beforeunload', function () {
+        pauseStartupReads();
+        if (startupPageActive && (taxonomyLoading || startupMonitoring)) {
+            startupResumeTimer = setTimeout(resumeStartupReads, STARTUP_POLL_INTERVAL);
+        }
+    });
+    window.addEventListener('pagehide', function () {
+        startupPageActive = false;
+        pauseStartupReads();
         if (proposalRead) proposalRead.abort();
     });
     window.addEventListener('pageshow', function (event) {
         if (!event.persisted || startupPageActive) return;
         startupPageActive = true;
-        if (taxonomyLoading) loadTaxonomy();
-        else if (startupMonitoring) pollStartupStatus();
+        resumeStartupReads();
         loadProposals(S.currentProposalFilter);
     });
 

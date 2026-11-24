@@ -532,6 +532,32 @@ test('a periodic AI status refresh cannot release a running analysis after catal
     assert.equal(h.nodes.get('analyzeBtn').disabled, true);
 });
 
+test('a departing catalogue does not start another status read before pagehide', async () => {
+    const h = harness('browse'); h.start();
+    h.requests('/api/taxonomy')[0].answer([]); await settle();
+    h.beforeUnload();
+    h.tick(5000);
+    assert.equal(h.requests('/api/status/startup').length, 0);
+    h.hide(); h.tick(5000);
+    assert.equal(h.requests('/api/status/startup').length, 0);
+    h.show(); h.tick(5000);
+    assert.equal(h.requests('/api/status/startup').length, 1);
+});
+
+test('a cancelled departure restores the catalogue poll and discards the aborted reply', async () => {
+    const h = harness('browse'); h.start();
+    h.requests('/api/taxonomy')[0].answer([]); await settle();
+    h.tick(5000);
+    const previous = h.requests('/api/status/startup')[0];
+    h.beforeUnload();
+    assert.equal(previous.init.signal.aborted, true);
+    previous.answer({initialized: false, phaseMessage: 'obsolete phase'}); await settle();
+    assert.doesNotMatch(h.nodes.get('taxonomyTree').textContent, /obsolete phase/);
+    h.tick(5000); h.tick(5000);
+    assert.equal(h.requests('/api/status/startup').length, 2);
+    assert.equal(h.requests('/api/taxonomy').length, 1);
+});
+
 test('catalogue startup cancels a scheduled retry when the page is hidden', async () => {
     const h = await loadingTaxonomy(); h.hide(); h.tick(5000); await settle();
     assert.equal(h.requests('/api/status/startup').length, 0);
