@@ -25,6 +25,9 @@ import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.context.request.ServletWebRequest;
 import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
+import org.springframework.web.method.HandlerMethod;
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.web.servlet.HandlerMapping;
 import org.springframework.web.util.WebUtils;
 import org.slf4j.LoggerFactory;
 
@@ -224,6 +227,55 @@ class GlobalExceptionHandlerDiagnosticPrivacyTest {
         assertSafeDiagnostic(Level.WARN, "405");
     }
 
+    @Test
+    void conflictDiagnosticsIdentifyTheControllerWithoutRequestValuesOrExceptionText() throws Exception {
+        var request = request(new MockHttpServletResponse());
+        request.getRequest().setAttribute(HandlerMapping.BEST_MATCHING_HANDLER_ATTRIBUTE,
+                new HandlerMethod(new DiagnosticController(), DiagnosticController.class.getDeclaredMethod("status")));
+        request.getRequest().setAttribute(HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE, PRIVATE_PATH);
+        request.getRequest().setAttribute("requestId", PRIVATE_CAUSE);
+        var failure = new ResponseStatusException(HttpStatus.CONFLICT, PRIVATE_MESSAGE);
+
+        handler.frameworkException(failure, HttpStatus.CONFLICT, request);
+
+        assertSafeDiagnostic(Level.WARN, "409");
+        assertThat(events.list.getFirst().getFormattedMessage()).contains(
+                "type=MVC_CLIENT_ERROR", "method=GET", "handler=DiagnosticController.status",
+                "exception=ResponseStatusException", "code=NONE");
+    }
+
+    @Test
+    void unmatchedRequestsAndUnknownErrorPropertiesCannotInjectDiagnosticValues() {
+        var servletRequest = new MockHttpServletRequest(PRIVATE_METHOD, PRIVATE_PATH);
+        servletRequest.setAttribute(HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE, PRIVATE_PATH);
+        servletRequest.addHeader("X-Request-ID", PRIVATE_CAUSE);
+        var failure = new ResponseStatusException(HttpStatus.CONFLICT, PRIVATE_MESSAGE);
+        failure.getBody().setProperty("code", PRIVATE_CAUSE);
+        failure.getBody().setProperty("workspaceStatus", PRIVATE_MESSAGE);
+
+        handler.frameworkException(failure, HttpStatus.CONFLICT,
+                new ServletWebRequest(servletRequest, new MockHttpServletResponse()));
+
+        assertSafeDiagnostic(Level.WARN, "409");
+        assertThat(events.list.getFirst().getFormattedMessage())
+                .contains("method=OTHER", "handler=UNMAPPED", "code=NONE")
+                .doesNotContain(PRIVATE_METHOD);
+    }
+
+    @Test
+    void expectedReadinessConflictsRemainDiagnosableWithoutRepeatedClientWarnings() {
+        var failure = new ResponseStatusException(HttpStatus.CONFLICT, PRIVATE_MESSAGE);
+        failure.getBody().setProperty("code", "WORKSPACE_NOT_READY");
+        failure.getBody().setProperty("workspaceStatus", "PROVISIONING");
+        failure.getBody().setProperty("privateContext", PRIVATE_CAUSE);
+
+        handler.frameworkException(failure, HttpStatus.CONFLICT, request(new MockHttpServletResponse()));
+
+        assertSafeDiagnostic(Level.DEBUG, "409");
+        assertThat(events.list.getFirst().getFormattedMessage()).contains(
+                "type=MVC_STATE_CONFLICT", "code=WORKSPACE_NOT_READY", "workspaceStatus=PROVISIONING");
+    }
+
     @ParameterizedTest
     @EnumSource(value = FailureKind.class, names = {"GENERIC", "FRAMEWORK_SERVER"})
     void disconnectDiagnosticsAtTraceDoNotExposeTheirExceptionPayloads(FailureKind kind) {
@@ -291,6 +343,10 @@ class GlobalExceptionHandlerDiagnosticPrivacyTest {
             this.status = status;
             this.message = message;
         }
+    }
+
+    private static final class DiagnosticController {
+        public void status() { }
     }
 
     private static final class ExposedHandler extends GlobalExceptionHandler {

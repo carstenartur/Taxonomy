@@ -1,6 +1,7 @@
 package com.taxonomy.workspace.service;
 
 import com.taxonomy.dsl.merge.TaxDslMergeResult;
+import com.taxonomy.workspace.controller.WorkspaceController;
 import com.taxonomy.workspace.storage.DslGitRepository;
 import com.taxonomy.workspace.storage.CommitProvenance;
 import com.taxonomy.workspace.storage.GitHistoryTransfer;
@@ -16,10 +17,19 @@ import com.taxonomy.workspace.model.WorkspaceBranchSyncState;
 import com.taxonomy.workspace.model.WorkspaceSyncScope;
 import com.taxonomy.workspace.model.SystemRepository;
 import com.taxonomy.workspace.model.UserWorkspace;
+import com.taxonomy.workspace.model.WorkspaceProvisioningStatus;
 import com.taxonomy.workspace.repository.SyncStateRepository;
 import com.taxonomy.workspace.repository.UserWorkspaceRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.EnumSource;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.io.IOException;
 import java.util.List;
@@ -30,11 +40,16 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 class GitNativeSyncIntegrationServiceTest {
     private static final WorkspaceArchitectureVersionPort DIRECT_VERSIONS = new WorkspaceArchitectureVersionPort() {
@@ -68,6 +83,7 @@ class GitNativeSyncIntegrationServiceTest {
     void closeProvenanceCapture() {
         if (provenanceCapture != null) provenanceCapture.close();
         if (historyTransfer != null) historyTransfer.close();
+        SecurityContextHolder.clearContext();
     }
 
     @BeforeEach
@@ -155,33 +171,60 @@ class GitNativeSyncIntegrationServiceTest {
         verify(syncStateRepository, never()).save(any());
     }
 
-    @org.junit.jupiter.params.ParameterizedTest
-    @org.junit.jupiter.params.provider.EnumSource(value=com.taxonomy.workspace.model.WorkspaceProvisioningStatus.class,
-            mode=org.junit.jupiter.params.provider.EnumSource.Mode.EXCLUDE, names="READY")
-    void earlyStatusPollReadsOnlyTheSelectedWorkingCopyLifecycle(com.taxonomy.workspace.model.WorkspaceProvisioningStatus lifecycle)
+    @ParameterizedTest
+    @EnumSource(value = WorkspaceProvisioningStatus.class, mode = EnumSource.Mode.EXCLUDE, names = "READY")
+    void earlyStatusPollReadsOnlyTheSelectedWorkingCopyLifecycle(WorkspaceProvisioningStatus lifecycle)
             throws Exception {
         var manager = mock(WorkspaceManager.class);
         workspace.setDefault(true);
         workspace.setProvisioningStatus(lifecycle);
         when(manager.findActiveWorkspace("alice")).thenReturn(workspace);
         when(manager.mayProvisionDefaultWorkspace("alice")).thenReturn(true);
-        var memberships = mock(RepositoryMembershipService.class, invocation -> true);
-        var resolver = new WorkspaceContextResolver(manager,systemRepositoryService,workspaceRepository,memberships);
-        var synchronization = new GitNativeSyncIntegrationService(syncStateRepository,workspaceRepository,
-                systemRepositoryService,repositoryFactory,semanticMergeService,portfolioGitPort,resolver,DIRECT_VERSIONS,memberships);
-        var identity = mock(WorkspaceResolver.class);
-        when(identity.resolveCurrentUsername()).thenReturn("alice");
-        var controller = new com.taxonomy.workspace.controller.WorkspaceController(null,identity,null,null,null,synchronization,null,systemRepositoryService);
-        var mvc = org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(controller).build();
-        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/workspace/sync-state"))
-                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
-                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.workspaceId").value("workspace-a"))
-                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.repositoryId").value("repo-a"))
-                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.syncStatus").value(lifecycle.name()))
-                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.lastPublishedCommitId").isEmpty());
-        verify(manager, never()).provisionDefaultWorkspaceRepository(any(),any());
+        when(manager.getWorkspaceById("workspace-a")).thenReturn(workspace);
+        var memberships = mock(RepositoryMembershipService.class);
+        when(memberships.canRead(sourceMetadata, "alice")).thenReturn(true);
+        var mvc = syncStatusMvc(manager, memberships);
+        for (var request : List.of(get("/api/workspace/sync-state"), get("/api/workspace/sync-state")
+                .header(WorkspaceContextResolver.WORKSPACE_HEADER, "workspace-a"))) {
+            mvc.perform(request).andExpect(status().isOk())
+                    .andExpect(jsonPath("$.workspaceId").value("workspace-a"))
+                    .andExpect(jsonPath("$.repositoryId").value("repo-a"))
+                    .andExpect(jsonPath("$.branch").value("feature/alice"))
+                    .andExpect(jsonPath("$.syncStatus").value(lifecycle.name()))
+                    .andExpect(jsonPath("$.lastPublishedCommitId").isEmpty());
+        }
+        verify(manager, never()).provisionDefaultWorkspaceRepository(any(), any());
         verify(syncStateRepository, never()).readScope(any());
-        verify(repositoryFactory, never()).openWorkspaceRepository(any());
+        verifyNoInteractions(repositoryFactory);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"alice, false", "bob, true"})
+    void pinnedSyncStatusRequiresWorkspaceOwnershipAndCurrentSourceReadAccess(String workspaceOwner, boolean canReadSource) {
+        var manager = mock(WorkspaceManager.class);
+        workspace.setUsername(workspaceOwner);
+        workspace.setProvisioningStatus(WorkspaceProvisioningStatus.PROVISIONING);
+        when(manager.getWorkspaceById("workspace-a")).thenReturn(workspace);
+        var memberships = mock(RepositoryMembershipService.class);
+        when(memberships.canRead(sourceMetadata, "alice")).thenReturn(canReadSource);
+        var mvc = syncStatusMvc(manager, memberships);
+
+        assertThatThrownBy(() -> mvc.perform(get("/api/workspace/sync-state")
+                .header(WorkspaceContextResolver.WORKSPACE_HEADER, "workspace-a")))
+                .hasRootCauseInstanceOf(AccessDeniedException.class);
+        verifyNoInteractions(repositoryFactory, syncStateRepository);
+    }
+
+    private MockMvc syncStatusMvc(WorkspaceManager manager, RepositoryMembershipService memberships) {
+        var contexts = new WorkspaceContextResolver(manager, systemRepositoryService, workspaceRepository, memberships);
+        var resolver = new WorkspaceResolver(contexts);
+        var synchronization = new GitNativeSyncIntegrationService(syncStateRepository, workspaceRepository,
+                systemRepositoryService, repositoryFactory, semanticMergeService, portfolioGitPort, contexts, DIRECT_VERSIONS, memberships);
+        clearInvocations(repositoryFactory);
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken("alice", "unused", List.of()));
+        return MockMvcBuilders.standaloneSetup(new WorkspaceController(manager, resolver,
+                null, null, null, synchronization, null, systemRepositoryService))
+                .addInterceptors(new ExplicitWorkspacePinValidationInterceptor(resolver)).build();
     }
 
     @Test

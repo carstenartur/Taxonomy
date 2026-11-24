@@ -5,6 +5,7 @@
     if (!C || !window.TaxonomyRecoveryViewport) throw new Error('Recovery requires session and viewport modules');
     var S = C.S, busy = false, decisionBusy = false, poll = null, reading = false, liveWork = '';
     var generation = C.runtime.analysisGeneration || 0;
+    var rejectedStartObservation = null;
     var STORAGE = 'taxonomy.recovery.active.v1';
     function text(de, en) { return C.language() === 'de' ? de : en; }
     var ui = window.TaxonomyRecoveryViewport.mount({ text: text, open: open, cancel: cancel,
@@ -463,11 +464,14 @@
         // that fresh start has a saved run before interrupting navigation with a
         // recovery dialog. The identity and unknown-outcome guards stay intact.
         var deferDialog = Boolean(ordinaryStart && context.rejectionStatus && !context.confirmed);
+        var startObservation = deferDialog ? {id: context.id, workspaceId: context.workspaceId, generation: generation} : null;
+        rejectedStartObservation = startObservation;
         context.syncState = 'CHECKING'; update();
         if (!deferDialog) open();
         // Confirm the same identity without resubmitting the decision.
         await refresh({ afterDecision: true, deferDialog: deferDialog });
         var noSavedStart = deferDialog && !context.confirmed && context.observationStatus === 404;
+        if (startObservation) startObservation.missing = noSavedStart;
         if (inScope(context) && !noSavedStart) open();
     }
     async function run(action, question, newOperation) {
@@ -479,6 +483,7 @@
         if (!window.TaxonomyAnalysisSession?.state?.().ready) {
             ui.error(text('Arbeitsbereich ist noch nicht bereit.', 'Workspace is not ready.')); return;
         }
+        rejectedStartObservation = null;
         var body = Object.assign({}, c.request, { resumable: true, continuationId: c.id,
             analysisScope: requestedScope(c.request),
             continuationAction: action || 'START', continuationVersion: S.analysisRecovery?.version,
@@ -571,6 +576,7 @@
     async function cancel() {
         var c = current();
         if (!inScope(c) || decisionBusy) return;
+        rejectedStartObservation = null;
         decisionBusy = true;
         try {
             var snapshot = await request(c, '/cancel', 'POST');
@@ -797,7 +803,10 @@
                 try {
                     var evidence = await request(c, '/questions/' + encodeURIComponent(key));
                     if (!inScope(c) || key !== selected.key) return;
-                    detailBody.replaceChildren(el('h3', 'Prompt'), el('pre', evidence.prompt || text('Nicht gespeichert.', 'Not retained.')),
+                    detailBody.replaceChildren(window.TaxonomyPromptDisplay.render(evidence.prompt, {
+                        headingTag: 'h3', originalLength: evidence.promptLength,
+                        emptyMessage: text('Nicht gespeichert.', 'Not retained.')
+                    }),
                         el('h3', text('Antwort', 'Response')), el('pre', evidence.rawResponse || text('Keine Antwort erhalten.', 'No response received.')));
                 } catch (error) { if (!inScope(c) || key !== selected.key) return; loadedKey = null; detailBody.textContent = error.message; }
             });
@@ -1057,8 +1066,18 @@
         generation = C.runtime.analysisGeneration || 0;
         var pointer;
         try { pointer = JSON.parse(sessionStorage.getItem(STORAGE)); } catch (ignored) { return; }
-        if (inScope(current()) && (!pointer || pointer.id === current().id || pointer.workspaceId !== C.runtime.workspaceId)) {
-            update(); await refresh(); return;
+        var retained = current();
+        if (inScope(retained) && (!pointer || pointer.id === retained.id || pointer.workspaceId !== C.runtime.workspaceId)) {
+            update();
+            // Only a rejected START checked on this page can skip a repeated
+            // observation. Persisted diagnostics still get a fresh status read.
+            var missingRejectedStart = rejectedStartObservation?.missing
+                && rejectedStartObservation.id === retained.id
+                && rejectedStartObservation.workspaceId === retained.workspaceId
+                && rejectedStartObservation.generation === generation && !retained.confirmed
+                && retained.syncState === 'UNAVAILABLE' && retained.observationStatus === 404;
+            if (!missingRejectedStart) await refresh();
+            return;
         }
         if (!pointer || pointer.workspaceId !== C.runtime.workspaceId) return;
         if (pointer.pendingRequest?.businessText === input()) {

@@ -360,6 +360,22 @@ window.TaxonomyApiClient = (function () {
         };
     }
 
+    // Workspace polls use the selected repository source as the owner of their
+    // retry state. An authentication failure must not create a new owner.
+    function captureWorkspaceSource() {
+        var runtime = window.__TaxonomyAnalysisSessionContext?.runtime;
+        var workspace = runtime?.workspaceId;
+        function scopeKey() {
+            var scope = window.TaxonomyArchitectureWorkflow?.getScope?.();
+            return JSON.stringify([scope?.repositoryId, observedWorkspace(scope), scope?.branch, scope?.commitId]);
+        }
+        var selected = scopeKey();
+        return function () {
+            return runtime === window.__TaxonomyAnalysisSessionContext?.runtime
+                && workspace === runtime?.workspaceId && selected === scopeKey();
+        };
+    }
+
     function cancelled(context) {
         return new ApiError('Request context was superseded', 0, context.url, null,
             {code: 'ABORTED', requestId: context.requestId});
@@ -803,6 +819,41 @@ window.TaxonomyApiClient = (function () {
         return requestJson(url, { method: 'DELETE' }, options);
     }
 
+    // A passive reader schedules its next observation after the current one settles.
+    // The reader still owns cancellation and decides which results it can publish.
+    function createPollTimer(intervalMillis, callback) {
+        var timer = null;
+        var delay = intervalMillis;
+        var stopped = false;
+
+        function cancel() {
+            if (timer !== null) clearTimeout(timer);
+            timer = null;
+        }
+
+        return {
+            cancel: cancel,
+            reset: function () {
+                cancel();
+                delay = intervalMillis;
+                stopped = false;
+            },
+            schedule: function ({error, pending} = {}) {
+                cancel();
+                if (error?.status === 401 || error?.status === 403) stopped = true;
+                if (stopped) return;
+                var failed = error && error.code !== 'ABORTED' && error.name !== 'AbortError';
+                delay = failed || pending ? Math.min(delay * 2, 60000) : intervalMillis;
+                timer = setTimeout(function () {
+                    timer = null;
+                    callback();
+                }, delay);
+                if (typeof timer?.unref === 'function') timer.unref();
+            },
+            isStopped: function () { return stopped; }
+        };
+    }
+
     if (typeof window.addEventListener === 'function') window.addEventListener('pagehide', function () {
         pageGeneration++;
         activeScopes.forEach(function (scope) { if (!scope.keepalive) scope.abort('pagehide'); });
@@ -829,7 +880,9 @@ window.TaxonomyApiClient = (function () {
         requestJson: requestJson,
         installTransportAdapter: installTransportAdapter,
         captureContext: function (options) { return captureContext(options || {}, null); },
+        captureWorkspaceSource: captureWorkspaceSource,
         requestBlob: requestBlob,
+        createPollTimer: createPollTimer,
         getJson: getJson,
         getAccountContext: getAccountContext,
         sendJson: sendJson,

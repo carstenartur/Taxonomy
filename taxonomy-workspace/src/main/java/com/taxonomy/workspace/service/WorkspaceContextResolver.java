@@ -247,10 +247,14 @@ public class WorkspaceContextResolver {
         if (provisionDefault && unusedDefault(workspace)) {
             workspace = workspaceManager.provisionDefaultWorkspaceRepository(username,workspace.getWorkspaceId());
         }
-        if (workspace != null
-                && workspace.getProvisioningStatus() != WorkspaceProvisioningStatus.READY) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Workspace repository is not ready; complete provisioning before using it");
+        if (workspace != null) {
+            var status = workspace.getProvisioningStatus();
+            if (status == null) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, WorkspaceNotReadyException.REASON);
+            }
+            if (status != WorkspaceProvisioningStatus.READY) {
+                throw new WorkspaceNotReadyException(status);
+            }
         }
         return workspace;
     }

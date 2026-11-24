@@ -348,10 +348,6 @@ test(method + ' retains its key across reload and a different workspace gets its
       sessionStorage:{getItem:key => storage.get(key), setItem:(key,value) => storage.set(key,value), removeItem:key => storage.delete(key)},
       __TaxonomyAnalysisSessionContext:{runtime},
       TaxonomyContextBar:{getCurrentContext:() => ({branch:'draft'})},
-      TaxonomyApiClient:{captureContext:() => {
-        const owner = runtime.workspaceId;
-        return () => owner === runtime.workspaceId;
-      }},
       TaxonomyWorkspaceApi:{
         [method]: async (branch,options) => {
           calls.push([runtime.workspaceId,branch,options.idempotencyKey]);
@@ -366,8 +362,10 @@ test(method + ' retains its key across reload and a different workspace gets its
       }
     };
     const document = {addEventListener(){},getElementById:() => null};
-    vm.runInNewContext(syncSource,{window,document,AbortController,TaxonomyI18n:{t:(key,...args) => [key,...args].join(' ')},
-      TaxonomyUtils:{escapeHtml:String}});
+    const context = {window,document,AbortController,TaxonomyI18n:{t:(key,...args) => [key,...args].join(' ')},
+      TaxonomyUtils:{escapeHtml:String}, fetch: () => { throw new Error('Unexpected HTTP request'); }};
+    canonicalFixture.install(context);
+    vm.runInContext(syncSource, context);
     return window.TaxonomyWorkspaceSync;
   }
   await load()[method]();
@@ -396,10 +394,6 @@ test('a late ' + outcome + ' receipt only settles the originating repository and
     __TaxonomyAnalysisSessionContext: {runtime: {workspaceId: 'shared-workspace'}},
     TaxonomyContextBar: {getCurrentContext: () => ({branch:'draft'})},
     TaxonomyArchitectureWorkflow: {getScope: () => ({repositoryId:repository})},
-    TaxonomyApiClient: {captureContext: () => {
-      const original = repository;
-      return () => original === repository;
-    }},
     TaxonomyWorkspaceApi: {publish: (_, options) => new Promise((resolve, reject) => {
       requests.push({key:options.idempotencyKey, resolve, reject});
     })},
@@ -409,8 +403,10 @@ test('a late ' + outcome + ' receipt only settles the originating repository and
     }
   };
   const document = {addEventListener() {}, getElementById: () => null};
-  vm.runInNewContext(syncSource, {window, document, AbortController,
-    TaxonomyI18n:{t:key => key}, TaxonomyUtils:{escapeHtml:String}});
+  const context = {window, document, AbortController, TaxonomyI18n:{t:key => key},
+    TaxonomyUtils:{escapeHtml:String}, fetch: () => { throw new Error('Unexpected HTTP request'); }};
+  canonicalFixture.install(context);
+  vm.runInContext(syncSource, context);
   const a = window.TaxonomyWorkspaceSync.publish();
   repository = 'B';
   const b = window.TaxonomyWorkspaceSync.publish();

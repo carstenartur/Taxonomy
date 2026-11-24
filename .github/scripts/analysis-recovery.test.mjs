@@ -8,6 +8,7 @@ import { createRejectedAnalysisFixture } from './ui-rejected-analysis-fixture.mj
 const analysisSource = readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis.js', import.meta.url), 'utf8');
 const analysisApiSource = readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/api/analysis-api.js', import.meta.url), 'utf8');
 const source = readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-recovery.js', import.meta.url), 'utf8');
+const promptDisplaySource = readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/core/taxonomy-prompt-display.js', import.meta.url), 'utf8');
 function node() {
   const listeners = new Map();
   return { textContent:'', hidden:false, disabled:false, style:{}, dataset:{}, value:'', children:[], classList:{ toggle(){}, add(){}, remove(){} },
@@ -21,7 +22,8 @@ function harness(language = 'en') {
   const fields = { businessText: Object.assign(node(),{value:'Hospital communications'}),
     copilotBtn:node(),analyzeBtn:node(),copilotSpinner:node(),providerSelect:Object.assign(node(),{value:'CUSTOM_OPENAI'}) };
   const S = {}, runtime = {workspaceId:'ws-a', analysisGeneration:0};
-  const requests=[], analyses=[], saved=[], panels=[], renderedReports=[], derivedRequests=[], derivedBodies=[], readResponses=[]; let openOptions=[], snapshot;
+  const requests=[], analyses=[], saved=[], panels=[], renderedReports=[], derivedRequests=[], derivedBodies=[], readResponses=[], copied=[];
+  let openOptions=[], snapshot;
   const ui = { update(message){ this.message=message; }, close(){ this.opened=false; }, error(message){ this.errorText=message; },
     isOpen(){return Boolean(this.opened);}, isDismissed(){return false;},
     open(title,message,build,options){
@@ -30,6 +32,7 @@ function harness(language = 'en') {
       for(const option of options) fields[option.id]=Object.assign(node(),{disabled:Boolean(option.disabled)});
     } };
   const window = { TaxonomyState:S,__TaxonomyAnalysisSessionContext:{S,runtime,language:()=> language},
+    TaxonomyUtils:{async copyText(value){copied.push(value);}},
     TaxonomyRecoveryViewport:{mount:()=>ui},
     TaxonomyAnalysisSession:{state:()=>({ready:true,workspaceId:runtime.workspaceId}),saveNow:async()=>{saved.push(JSON.parse(JSON.stringify(S)));return true;}},
     TaxonomyAnalysisSessionApi:{request:async(url,options,workspace)=>{
@@ -41,9 +44,11 @@ function harness(language = 'en') {
     TaxonomyScoring:{renderArchitectureView(){},renderSuggestedRelations(){},
       runAnalysis(options){analyses.push(options.continuation);return new Promise((resolve,reject)=>{pending=resolve;rejectPending=reject;});}},
     TaxonomyAnalysis:{runCopilotFlow:async()=>{followups++;},renderCopilotResult:value=>renderedReports.push(value),renderPartialCopilot:message=>panels.push(message)} };
-  const document={getElementById:id=>fields[id]||null,addEventListener:(name,fn)=>{if(!listeners.has(name))listeners.set(name,[]);listeners.get(name).push(fn);}};
+  const document={documentElement:{lang:language},createElement:tagName=>Object.assign(node(),{tagName}),
+    getElementById:id=>fields[id]||null,addEventListener:(name,fn)=>{if(!listeners.has(name))listeners.set(name,[]);listeners.get(name).push(fn);}};
   const context={window,document,crypto:webcrypto,sessionStorage:{getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
     setTimeout:fn=>{timers.set(++timer,fn);return timer;},clearTimeout:id=>timers.delete(id), URLSearchParams, console};
+  vm.runInNewContext(promptDisplaySource,context);
   vm.runInNewContext(source,context);
   function complete(state='PAUSED', additions={}) {
     const q={key:'question-a',nodes:['BP-1327','BP-1481'],error:'Invalid JSON',attempts:1,skipped:state==='COMPLETED_WITH_GAPS'||state==='STOPPED'};
@@ -86,7 +91,7 @@ function harness(language = 'en') {
     for(const id of ['analysisRelationsExtension','extendAnalysisRelationsBtn','analysisRelationsExtensionHint'])fields[id]=node();
     vm.runInNewContext(readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/core/taxonomy-relations-extension.js',import.meta.url),'utf8'),context);
   }
-  return {S,runtime,ui,analyses,requests,saved,panels,fields,timers,storage,window,document,complete,loadAnalysis,loadRelationsExtension,derivedRequests,derivedBodies,readResponses,
+  return {S,runtime,ui,analyses,requests,saved,panels,fields,timers,storage,window,document,complete,loadAnalysis,loadRelationsExtension,derivedRequests,derivedBodies,readResponses,copied,
     snapshot:()=>snapshot,
     followups:()=>followups,renderedReports,options:()=>openOptions,
     act:id=>openOptions.find(o=>o.id===id).handler(),emit:(name,detail={})=>(listeners.get(name)||[]).forEach(fn=>fn({detail})),
@@ -208,6 +213,134 @@ for (const schedule of ['immediate rejection', 'explicit read in flight', 'expli
    await settle();
   }
  });
+}
+
+function missingContinuation() {
+  return {ok:false, status:404, json:async () => ({detail:'Unknown continuation'})};
+}
+
+function runningContinuation(id, request) {
+  return {ok:true, json:async () => ({request, recovery:{id, version:7, state:'RUNNING'}})};
+}
+
+for (const event of ['taxonomy:analysis-source-ready', 'taxonomy:analysis-draft-restored']) {
+  test(`a rejected START with a missing receipt does not repeat its GET on ${event}`, async () => {
+    const h = harness();
+    h.readResponses.push(missingContinuation());
+    const start = h.recovery.startManagedAnalysis();
+    h.reject(Object.assign(new Error('Provider unavailable'), {httpStatus:503}));
+    await start;
+    const context = h.S.recoveryContext;
+    assert.equal(context.observationStatus, 404);
+    const observed = {url:'/api/analysis-continuations/' + context.id, method:'GET', workspace:'ws-a'};
+    assert.deepEqual(h.requests, [observed]);
+
+    h.readResponses.push(runningContinuation(context.id, context.request));
+    if (event === 'taxonomy:analysis-draft-restored') h.S.recoveryContext = JSON.parse(JSON.stringify(context));
+    h.emit(event);
+    await settle();
+    assert.deepEqual(h.requests, [observed], 'A passive event does not repeat the settled observation');
+    assert.equal(h.S.recoveryContext.observationStatus, 404, 'The original diagnostics remain visible');
+
+    assert.equal(await h.recovery.refresh(), true, 'An explicit refresh still lets the user recheck the receipt');
+    assert.deepEqual(h.requests, [observed, observed]);
+    assert.equal(h.S.recoveryContext.confirmed, true);
+    assert.equal(h.analyses.length, 1);
+  });
+}
+
+for (const startStatus of [null, 503]) {
+  test(`source readiness still observes after a cancellation fails following a ${startStatus ? 'rejected' : 'disconnected'} START`, async () => {
+    const h = harness();
+    h.readResponses.push(missingContinuation());
+    const start = h.recovery.startManagedAnalysis();
+    h.reject(startStatus ? Object.assign(new Error('Provider unavailable'), {httpStatus:startStatus})
+      : new TypeError('Failed to fetch'));
+    await start;
+    const context = h.S.recoveryContext;
+    const read = h.window.TaxonomyAnalysisSessionApi.request;
+    h.window.TaxonomyAnalysisSessionApi.request = async (url, options, workspace) => {
+      if (options.method !== 'POST') return read(url, options, workspace);
+      h.requests.push({url, method:options.method, workspace});
+      return missingContinuation();
+    };
+    h.readResponses.push(missingContinuation());
+    await h.recovery.cancel();
+    assert.equal(h.S.recoveryContext.rejectionStatus, 404);
+    assert.equal(h.S.recoveryContext.observationStatus, 404);
+    h.readResponses.push(runningContinuation(context.id, context.request));
+
+    h.emit('taxonomy:analysis-source-ready');
+    await settle();
+    assert.deepEqual(h.requests.map(request => request.method), ['GET', 'POST', 'GET', 'GET']);
+    assert.equal(h.S.recoveryContext.confirmed, true);
+  });
+}
+
+test('a newly loaded page rechecks a persisted START rejection with a missing receipt', async () => {
+  const rejected = harness();
+  rejected.readResponses.push(missingContinuation());
+  const start = rejected.recovery.startManagedAnalysis();
+  rejected.reject(Object.assign(new Error('Provider unavailable'), {httpStatus:503}));
+  await start;
+
+  const reloaded = harness();
+  for (const key of ['recoveryContext', 'analysisRecovery']) {
+    reloaded.S[key] = JSON.parse(JSON.stringify(rejected.S[key]));
+  }
+  const context = reloaded.S.recoveryContext;
+  const storageKey = 'taxonomy.recovery.active.v1';
+  reloaded.storage.set(storageKey, rejected.storage.get(storageKey));
+  reloaded.readResponses.push(runningContinuation(context.id, context.request));
+  reloaded.emit('taxonomy:analysis-draft-restored');
+  await settle();
+  assert.deepEqual(reloaded.requests, [{url:'/api/analysis-continuations/' + context.id, method:'GET', workspace:'ws-a'}]);
+  assert.equal(reloaded.S.recoveryContext.confirmed, true);
+});
+
+test('a different retained continuation is observed after an earlier START was rejected without a receipt', async () => {
+  const h = harness();
+  h.readResponses.push(missingContinuation());
+  const start = h.recovery.startManagedAnalysis();
+  h.reject(Object.assign(new Error('Provider unavailable'), {httpStatus:503}));
+  await start;
+  const unavailable = h.S.recoveryContext;
+  const id = webcrypto.randomUUID();
+  h.storage.set('taxonomy.recovery.active.v1', JSON.stringify({
+    id, workspaceId:'ws-a', pendingRequest:unavailable.request
+  }));
+  h.readResponses.push(runningContinuation(id, unavailable.request));
+
+  h.emit('taxonomy:analysis-draft-restored');
+  await settle();
+  assert.deepEqual(h.requests.map(request => request.url), [
+    '/api/analysis-continuations/' + unavailable.id, '/api/analysis-continuations/' + id
+  ]);
+  assert.equal(h.S.recoveryContext.id, id);
+  assert.equal(h.S.recoveryContext.confirmed, true);
+});
+
+for (const [description, rejection, absent] of [
+  ['a connection failure and a missing continuation', new TypeError('Failed to fetch'), true],
+  ['a known rejection and an unavailable receipt endpoint', Object.assign(new Error('Provider unavailable'), {httpStatus:503}), false]
+]) {
+  test(`source recovery still checks an unresolved START after ${description}`, async () => {
+    const h = harness();
+    h.readResponses.push(absent ? missingContinuation()
+      : {ok:false, status:503, json:async () => ({detail:'Journal temporarily unavailable'})});
+    const start = h.recovery.startManagedAnalysis();
+    h.reject(rejection);
+    await start;
+    const context = h.S.recoveryContext;
+    assert.equal(context.observationStatus, absent ? 404 : 503);
+    h.readResponses.push(runningContinuation(context.id, context.request));
+
+    h.emit('taxonomy:analysis-source-ready');
+    await settle();
+    assert.equal(h.requests.length, 2);
+    assert.equal(h.S.recoveryContext.confirmed, true);
+    assert.equal(h.analyses.length, 1);
+  });
 }
 
 for(const action of ['startCopilot','startManagedAnalysis']) for(const refresh of [false,true])
@@ -709,6 +842,25 @@ test('interrupted unvisited catalogue rows are explicitly labelled unassessed',(
 
 const renderedText = element => [element.textContent, ...element.children.map(renderedText)].join(' ');
 const descendants = element => [element, ...element.children.flatMap(descendants)];
+test('recovery renders structured prompt paragraphs and copies the retained prompt exactly', async () => {
+ const h = harness(); h.recovery.startCopilot(); h.complete(); await settle(); h.recovery.open();
+ const details = descendants(h.ui.body).find(el => el.tagName === 'details'
+  && el.children.some(child => child.textContent === 'Show prompt and response'));
+ const original = 'First requirement.\n\nSecond requirement with literal \\n.';
+ const prompt = 'Review the affected nodes.\nINPUT\n' + JSON.stringify({ original });
+ const rawResponse = 'The recorded provider answer.';
+ h.readResponses.push({ ok: true, json: async () => ({ prompt, rawResponse }) });
+ assert.ok(details);
+ details.open = true; await details.fire('toggle');
+ const elements = descendants(details);
+ assert.ok(elements.some(el => el.tagName === 'pre' && el.textContent === original));
+ assert.ok(elements.some(el => el.tagName === 'pre' && el.textContent === rawResponse));
+ const copy = elements.find(el => el.tagName === 'button' && el.textContent === 'Copy raw prompt');
+ assert.ok(copy);
+ await copy.fire('click');
+ assert.deepEqual(h.copied, [prompt]);
+});
+
 test('an unknown node-only source cannot allocate a relation extension identity', async()=>{
  const h=harness();h.window.TaxonomyAnalysisScope={read:()=>({taxonomyRoots:['CP'],mode:'TAXONOMIES_ONLY'}),restrictsGlobalAnalysis:()=>true};
  h.recovery.startCopilot();h.complete('COMPLETED');await settle();h.loadRelationsExtension();

@@ -1,5 +1,28 @@
 # LLM JSON failures and diagnostic visibility
 
+## Readable prompt previews
+
+The relationship-search protocol embeds an `INPUT` JSON object after its plain
+instructions. JSON correctly escapes line breaks inside string values. The
+Copilot diagnostic view now renders complete structured input values as safe text,
+so requirements and node descriptions retain their paragraphs. Standalone JSON
+objects and arrays receive the same presentation. Instructions remain visible.
+
+The expandable **Unchanged raw prompt** / **Unveränderter Rohprompt** retains the
+exact stored prompt. **Copy raw prompt** / **Rohprompt kopieren** always copies
+that original, not a reconstructed prompt. The provider request is unchanged.
+An intentionally literal backslash followed by `n` is retained: decoding happens
+only through a successful JSON parse, never through a global escape replacement.
+
+The progress log, legacy scoring log and recovered question details share this
+renderer. Malformed, truncated or excessively nested structured data falls back to
+the retained text. Existing truncation lengths remain explicit. Prompt data is
+never interpreted as HTML, and failed preview formatting never changes the
+analysis outcome. The [QA record](../qa/2026-11-24-copilot-diagnostics.md) documents
+regressions and browser verification limits.
+
+## Model response validation
+
 The score parser already validates the extracted JSON on the server. A second
 browser-side parser is not the authority: diagnostic responses may be truncated
 by the existing retention limits, and valid model answers may be wrapped in a

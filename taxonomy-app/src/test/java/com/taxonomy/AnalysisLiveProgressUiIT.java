@@ -316,7 +316,8 @@ class AnalysisLiveProgressUiIT {
                     </head><body><div id="statusArea"></div><div id="partialScores"></div><div id="llmCommLogContent"></div>
                     <script src="/api-client.js"></script><script src="/analysis-session-api.js"></script>
                     <script>window.__TaxonomyAnalysisSessionContext={runtime:{workspaceId:'workspace-a',analysisGeneration:1}};</script>
-                    <script src="/analysis-session-routing.js"></script><script src="/progress.js"></script><script>
+                    <script src="/analysis-session-routing.js"></script><script src="/prompt-display.js"></script>
+                    <script src="/progress.js"></script><script>
                     window.progressObservations=0;
                     document.addEventListener('taxonomy:analysis-progress',function(){window.progressObservations++;});
                     window.monitor=TaxonomyAnalysisProgress.start('%s',function(s){
@@ -326,6 +327,7 @@ class AnalysisLiveProgressUiIT {
             return;
         }
         String script = switch (path) {
+            case "/prompt-display.js" -> "static/js/core/taxonomy-prompt-display.js";
             case "/progress.js" -> "static/js/core/taxonomy-analysis-progress.js";
             case "/api-client.js" -> "static/js/api/taxonomy-api-client.js";
             case "/analysis-session-api.js" -> "static/js/api/analysis-session-api.js";
