@@ -26,6 +26,16 @@ This README describes the current `main` branch. For a released installation,
 use the [published assets](https://github.com/carstenartur/Taxonomy/releases/latest)
 and the documentation for its tag.
 
+## Explore an architecture example
+
+| What would you like to see? | Where to start |
+| --- | --- |
+| Inspect a model | [Flood information and subscriptions](#requirement-based-architecture-example) traces a published warning through subscriptions, delivery channels, routing and audit. The saved partial result contains 50 nodes and 36 directed relationships. |
+| Try the workflow | [Working-time recording](docs/en/EXAMPLES.md#working-time-demo) starts from one sentence. Enter `produktdemo` in the analysis field to see how five decisions change the architecture with replayed model replies. |
+| Follow an architecture delivery | [Training portal](docs/features/admbw-conformance-de.md#bildfolge-zum-ausbildungsportal) shows six screenshots from an open audit-access question to a C1–S1 delivery view. Its four elements are a selection from a 40-element checkpoint. |
+
+[Fallbeispiele auf Deutsch](docs/de/EXAMPLES.md#architecture-case-studies) · [Case studies in English](docs/en/EXAMPLES.md#architecture-case-studies)
+
 ## Why use Taxonomy?
 
 Taxonomy connects architecture prototyping with **requirement clarification**:
