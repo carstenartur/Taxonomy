@@ -1,0 +1,10 @@
+name: Novice QA with native vLLM
+on: workflow_dispatch
+permissions:
+  contents: read
+jobs:
+  reserved:
+    if: ${{ false }}
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo 'Awaiting merged application revision'
