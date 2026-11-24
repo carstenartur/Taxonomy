@@ -1,15 +1,26 @@
 package com.taxonomy.composition.plugins;
 
+import com.taxonomy.composition.analysis.PromptTemplateStorageConfiguration;
 import com.taxonomy.composition.architecture.ArchitectureSummaryApiController;
 import com.taxonomy.composition.architecture.ArchitectureLifecycleExceptionHandler;
 import com.taxonomy.shared.features.FeatureAssembly;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
+import org.springframework.boot.test.context.FilteredClassLoader;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import java.util.Set;
 import static org.assertj.core.api.Assertions.*;
 
 class FeatureAssemblyPartialContextTest {
+    @Test void absentAnalysisDoesNotRegisterPromptOverrideStorage() {
+        new ApplicationContextRunner()
+                .withClassLoader(new FilteredClassLoader("com.taxonomy.analysis"))
+                .withInitializer(context -> context.getBeanFactory().registerSingleton(
+                        "featureSet", FeatureAssembly.validate(Set.of())))
+                .withUserConfiguration(PromptTemplateStorageConfiguration.class)
+                .run(context -> assertThat(context).hasNotFailed().doesNotHaveBean("promptTemplateOverrideStore"));
+    }
+
     @Test void absentArchitectureDoesNotRegisterSummaryHttpBridge() {
         new ApplicationContextRunner()
                 .withInitializer(context -> context.getBeanFactory().registerSingleton(

@@ -333,6 +333,13 @@
     {
       "fromContext": "app-composition",
       "fromPackage": "com.taxonomy.composition.analysis",
+      "toContext": "preferences",
+      "toPackage": "com.taxonomy.preferences.storage",
+      "classDependencyCount": 1
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.composition.analysis",
       "toContext": "provenance",
       "toPackage": "com.taxonomy.provenance.service",
       "classDependencyCount": 1
