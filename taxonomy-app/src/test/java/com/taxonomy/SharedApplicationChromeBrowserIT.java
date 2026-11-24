@@ -818,10 +818,11 @@ class SharedApplicationChromeBrowserIT {
                     .as("The first opening frame fits before the asynchronous positioning handler, including a closed viewport resize: %s", firstFrame)
                     .isEqualTo(true);
             assertThat(geometry.get("valid")).as("The export popup fits the viewport independently of the wrapped trigger: %s", geometry).isEqualTo(true);
-            var controls = disclosure.findElements(By.cssSelector("select, button:not([disabled])"));
-            assertThat(controls).extracting(control -> control.getDomAttribute("id")).contains(
+            var controls = disclosure.findElements(By.cssSelector(":is(select, input, button):enabled"));
+            assertThat(controls).extracting(control -> control.getDomAttribute("id")).containsExactly(
                     "workbenchDocumentLanguage", "downloadArchitectureSvg", "downloadArchitecturePdf",
-                    "downloadArchitectureWord", "downloadDecisionWord", "downloadArchitectureArchiMate", "downloadArchitectureVisio");
+                    "downloadArchitectureWord", "downloadDecisionWord", "sourceCoverageCheckpoint", "downloadSourceCoverage",
+                    "downloadArchitectureArchiMate", "downloadArchitectureVisio");
             for (var control : controls) {
                 new Actions(page.driver()).sendKeys(Keys.TAB).perform();
                 assertThat(page.driver().switchTo().activeElement()).isEqualTo(control);

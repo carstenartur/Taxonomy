@@ -222,6 +222,18 @@ class ApiPermissionsSecurityTest {
                 .andExpect(status().isForbidden());
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"/api/architecture/editor/change-sets/preview", "/api/architecture/editor/change-sets/accept"})
+    void reviewedChangesRequireArchitectureWritingAuthorityAndBrowserCsrf(String path) throws Exception {
+        mvc.perform(post(path).with(user("architect").roles("ARCHITECT"))).andExpect(status().isForbidden());
+        mvc.perform(post(path).with(csrf()).with(user("operator").roles("ADMIN"))).andExpect(status().isForbidden());
+        mvc.perform(post(path).with(csrf()).with(jwt().authorities(new SimpleGrantedAuthority("ROLE_ARCHITECT"),
+                new SimpleGrantedAuthority("SCOPE_architecture:read")))).andExpect(status().isForbidden());
+        mvc.perform(post(path).with(csrf()).with(jwt().authorities(new SimpleGrantedAuthority("ROLE_ARCHITECT"),
+                new SimpleGrantedAuthority("SCOPE_architecture:write")))).andExpect(status().isOk());
+        mvc.perform(post(path).with(csrf()).with(user("architect").roles("ARCHITECT"))).andExpect(status().isOk());
+    }
+
     @Test
     void authenticatedAccountIntrospectionDoesNotGrantBusinessDataAccess() throws Exception {
         var token = jwt().authorities(new SimpleGrantedAuthority("SCOPE_openid"));
@@ -312,6 +324,7 @@ class ApiPermissionsSecurityTest {
             "/api/projects/p/architecture-workbench/s.archimate.zip",
             "/api/projects/p/architecture-workbench/s.vsdx",
             "/api/projects/p/architecture-workbench/s.visio.zip",
+            "/api/projects/p/architecture-workbench/s.source-coverage.json",
             "/api/projects/p/requirements/r/reformulations/f/revisions/1/export",
             "/api/projects/p/requirements/r/reformulations/f/adoptions/c/export"
     })
@@ -451,6 +464,7 @@ class ApiPermissionsSecurityTest {
                 "/api/projects/p/**", "/api/architecture/editor.svg", "/api/architecture/editor.pdf",
                 "/api/architecture/editor.admbw.json", "/api/architecture/editor.admbw.qea", "/api/architecture/editor.admbw.qea/preflight", "/api/dsl/export",
                 "/api/architecture/editor/admbw/operations/operation", "/api/architecture/editor/admbw/operations/operation/resume",
+                "/api/architecture/editor/change-sets/preview", "/api/architecture/editor/change-sets/accept",
                 "/api/projects/git/export", "/api/documents/**", "/api/architecture/focus/suggestions",
                 "/api/architecture/editor/focus/suggestions", "/api/architecture/dialogue", "/api/diagram/**", "/api/scores/export",
                 "/api/integrations/c/publish", "/api/integrations/c/operations/o/retry"})

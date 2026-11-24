@@ -1,6 +1,11 @@
 package com.taxonomy.portfolio.service;
 
+import com.taxonomy.dsl.ast.BlockAst;
+import com.taxonomy.dsl.ast.BlockIdentity;
+import com.taxonomy.dsl.ast.DocumentAst;
+import com.taxonomy.dsl.command.ArchitectureCommand.RelationKey;
 import com.taxonomy.dsl.parser.TaxDslParser;
+import com.taxonomy.dsl.validation.DslValidator;
 import com.taxonomy.model.WorkspaceOverlayScope;
 import com.taxonomy.portfolio.dto.RequirementIntakeDtos.*;
 import com.taxonomy.portfolio.model.ArchitectureProject;
@@ -89,6 +94,8 @@ public class RequirementIntakeCandidates {
     /** Canonical central documents are immutable observations, never another workspace's projections. */
     public Frozen discover(Frozen frozen, String username) {
         var budget = new Budget(frozen);
+        var elements = new ArrayList<Candidate>();
+        var relations = new ArrayList<Candidate>();
         List<Repository> observations = new ArrayList<>();
         for (var source : frozen.repositories()) {
             // A second authorization precedes repository content access, after the initial DB snapshot.
@@ -113,6 +120,7 @@ public class RequirementIntakeCandidates {
                             Objects.toString(block.property("title"), identity), text, RequirementIntakeService.inputHash(text),
                             null, null, List.of(), List.of("VIEW", "NEW"), head, block.property("x-version")));
                 }
+                captureArchitecture(document, observed, budget, elements, relations);
             } catch (java.io.IOException | IllegalArgumentException unavailable) { budget.partial = true; }
             finally {
                 if (!canRead(source.id(), username)) throw PortfolioException.notFound("Architecture is unavailable");
@@ -122,7 +130,64 @@ public class RequirementIntakeCandidates {
                         null, null, null, List.of(), List.of("VIEW", "NEW"), observed.sourceCommit(), null));
             }
         }
+        // Preserve the existing requirement/destination pool. Share the remaining budget between
+        // the two architecture kinds so a document with many elements can still surface relations.
+        for (int i = 0; i < Math.max(elements.size(), relations.size()); i++) {
+            if (i < elements.size()) budget.admit(elements.get(i));
+            if (i < relations.size()) budget.admit(relations.get(i));
+        }
         return new Frozen(frozen.scope(), frozen.projectId(), budget.candidates, observations, budget.coverage(), frozen.providerAllowed());
+    }
+
+    private static void captureArchitecture(DocumentAst document, Repository source, Budget budget,
+                                            List<Candidate> elements, List<Candidate> relations) {
+        Map<String, BlockAst> elementBlocks = unambiguousBlocks(document, "element", budget);
+        for (var block : elementBlocks.values()) {
+            String identity = block.getHeaderTokens().getFirst();
+            String title = block.property("title");
+            String text = join(title, block.property("description"));
+            if (!text.isBlank()) budget.defer(elements,
+                    architectureObject(source, "ARCHITECTURE_ELEMENT", identity, title, text));
+        }
+        for (var block : unambiguousBlocks(document, "relation", budget).values()) {
+            if (!"accepted".equals(block.property("status"))) continue;
+            var tokens = block.getHeaderTokens();
+            var from = elementBlocks.get("element:" + tokens.get(0));
+            var to = elementBlocks.get("element:" + tokens.get(2));
+            if (from == null || to == null || !DslValidator.relationTypes().contains(tokens.get(1))) {
+                budget.partial = true;
+                continue;
+            }
+            var key = new RelationKey(tokens.get(0), tokens.get(1), tokens.get(2));
+            String text = join(key.id(), from.property("title"), to.property("title"), block.property("provenance"));
+            budget.defer(relations, architectureObject(source, "ARCHITECTURE_RELATION", key.id(), key.id(), text));
+        }
+    }
+
+    private static Map<String, BlockAst> unambiguousBlocks(DocumentAst document, String kind, Budget budget) {
+        Map<String, BlockAst> blocks = new LinkedHashMap<>();
+        Set<String> duplicates = new HashSet<>();
+        for (var block : document.blocksOfKind(kind)) {
+            var tokens = block.getHeaderTokens();
+            if (tokens.isEmpty() || "relation".equals(kind) && tokens.size() != 3) {
+                budget.partial = true;
+                continue;
+            }
+            String key = BlockIdentity.key(block);
+            if (blocks.putIfAbsent(key, block) != null) duplicates.add(key);
+        }
+        if (!duplicates.isEmpty()) {
+            budget.partial = true;
+            duplicates.forEach(blocks::remove);
+        }
+        return blocks;
+    }
+
+    private static Candidate architectureObject(Repository source, String kind, String identity, String title, String text) {
+        String prefix = kind.toLowerCase(Locale.ROOT).replace('_', '-');
+        return new Candidate(prefix + ":" + source.id() + ":" + identity, kind, source.id(), null, source.branch(),
+                null, null, null, null, null, title, text, RequirementIntakeService.inputHash(text), null, null,
+                List.of(), List.of("VIEW"), source.sourceCommit(), null, identity);
     }
 
     /** Mutable branch heads are checked outside DB transactions; response links retain their immutable commit. */
@@ -187,6 +252,14 @@ public class RequirementIntakeCandidates {
         }
         private void add(Candidate candidate) {
             scanned++;
+            admit(candidate);
+        }
+        private void defer(List<Candidate> queue, Candidate candidate) {
+            scanned++;
+            if (queue.size() < MAXIMUM_CANDIDATES) queue.add(candidate);
+            else partial = true;
+        }
+        private void admit(Candidate candidate) {
             if (candidates.size() >= MAXIMUM_CANDIDATES || characters + candidate.text().length() > MAXIMUM_EVIDENCE_CHARACTERS) {
                 partial = true; return;
             }

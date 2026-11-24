@@ -110,6 +110,42 @@ class RequirementIntakeMatcherTest {
     }
 
     @ParameterizedTest
+    @CsvSource({
+            "ARCHITECTURE_ELEMENT,DUPLICATE", "ARCHITECTURE_ELEMENT,CHANGE", "ARCHITECTURE_ELEMENT,CONFLICT",
+            "ARCHITECTURE_RELATION,DUPLICATE", "ARCHITECTURE_RELATION,CHANGE", "ARCHITECTURE_RELATION,CONFLICT"})
+    void architectureObjectsCannotBeClassifiedAsExistingObligations(String kind, String classification) {
+        var architecture = new Candidate("existing-object", kind, "shared-repo", null, "main",
+                null, null, null, null, null, "Dispatch", "Respond within five seconds", "source-hash",
+                null, null, List.of(), List.of("VIEW"), "a".repeat(40), null, "dispatch");
+        ready(JSON.writeValueAsString(Map.of("decisions", List.of(
+                decision("existing-object", classification, "two seconds", "five seconds")))));
+
+        var result = matcher.review(INPUT, List.of(architecture), null);
+
+        assertThat(result.status()).isEqualTo(Status.FAILED);
+        assertThat(result.code()).isEqualTo("INVALID_MODEL_RESPONSE");
+        assertThat(result.candidates()).containsExactly(architecture);
+    }
+
+    @Test void emptyNoMatchRationaleDoesNotDiscardGroundedMatches() {
+        var unrelated = candidate("r2", "Retain records for five years");
+        ready("""
+                {"decisions":[
+                  {"id":"r1","classification":"CHANGE","rationale":"The time limit changes.",
+                   "inputQuote":"two seconds","candidateQuote":"five seconds"},
+                  {"id":"r2","classification":"NONE","rationale":"","inputQuote":"","candidateQuote":""}
+                ]}
+                """);
+
+        var result = matcher.review(INPUT, List.of(candidate(), unrelated), null);
+
+        assertThat(result.status()).isEqualTo(Status.COMPLETE);
+        assertThat(result.candidates()).containsExactly(
+                candidate().assessed(Classification.CHANGE, "The time limit changes.", List.of("two seconds", "five seconds")),
+                unrelated.assessed(Classification.NONE, "", List.of()));
+    }
+
+    @ParameterizedTest
     @NullAndEmptySource
     @ValueSource(strings = {" \n\t"})
     void missingTransportBodyIsFailureAndNeverACompletedNoMatch(String raw) {

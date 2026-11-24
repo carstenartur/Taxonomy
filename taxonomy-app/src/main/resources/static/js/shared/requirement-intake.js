@@ -155,7 +155,10 @@
         (response.candidates||[]).forEach(function(candidate){
             if(candidate.classification==='NONE') return;
             var article=node('article');article.className='border-top pt-2 mt-2';
-            article.append(node('strong',[candidate.requirementKey||candidate.projectKey||'',candidate.title||''].filter(Boolean).join(' · ')));
+            var key=candidate.requirementKey||candidate.projectKey||candidate.sourceObjectId;
+            article.append(node('strong',[key,candidate.title].filter(function(value,index,values){
+                return value&&values.indexOf(value)===index;
+            }).join(' · ')));
             if(candidate.sourceCommit) article.append(node('p',[
                 candidate.sourceVersion?label('Source version ','Quellversion ')+candidate.sourceVersion:null,
                 label('Commit ','Commit ')+candidate.sourceCommit.slice(0,12)
@@ -173,6 +176,10 @@
             var url=new URL(window.TaxonomyI18n?.resolveUrl?.(path)||path,window.location.href);
             url.searchParams.set('repositoryId',candidate.repositoryId);url.searchParams.set('workspaceId',candidate.workspaceId||'');url.searchParams.set('branch',candidate.branch);
             if(candidate.sourceCommit) url.searchParams.set('commit',candidate.sourceCommit);
+            if(candidate.kind==='ARCHITECTURE_ELEMENT'&&candidate.sourceObjectId)
+                url.searchParams.set('element',candidate.sourceObjectId);
+            if(candidate.kind==='ARCHITECTURE_RELATION'&&candidate.sourceObjectId)
+                url.searchParams.set('element',candidate.sourceObjectId.split(' ')[0]);
             link.href=url.href;
             article.append(link);state.section.append(article);
         });

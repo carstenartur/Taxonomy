@@ -70,6 +70,8 @@ The workbench controls contain **Displayed architecture**, **Print view** and an
 
 The browser, SVG download and PDF download use the same deterministic server-side scene and coordinates. The interactive browser controls change only visibility, selection and viewport; they do not silently recalculate or mutate the persisted architecture.
 
+**Export → Download source coverage JSON** traces the selected snapshot's recorded source passages and exact requirement version to human mapping decisions and their semantic element IDs in Git. Leave the checkpoint field empty to inspect the commit recorded when the analysis ran. To capture later reviews of the current snapshot, use **Commit reviewed state** in portfolio versioning after the corresponding semantic elements are in Git. Enter the resulting full commit ID from the snapshot's branch. The manifest lists missing or stale links by code and reference. Recorded source coordinates come from the requirement version. Relation reviews without a Git-native decision entry appear as gaps.
+
 ## Complete-run result surface
 
 After a full analysis reaches an authoritative terminal state, Taxonomy reloads the requirement with the selected immutable snapshot. The same page keeps the Copilot operation status, provider, accurate terminal phase, completed verification passes and server-contact evidence visible above the result tabs. The selected snapshot is also shown explicitly and remains available through **Open result**. Snapshot-bound links open the loaded **Analyses** result directly rather than leaving it hidden behind the default text tab.

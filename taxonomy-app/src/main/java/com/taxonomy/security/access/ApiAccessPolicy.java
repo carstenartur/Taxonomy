@@ -193,7 +193,7 @@ public final class ApiAccessPolicy {
                 "/api/projects/*/snapshots/*/decision-report/*", "/api/projects/*/architecture-workbench/*.svg",
                 "/api/projects/*/architecture-workbench/*.pdf", "/api/projects/*/architecture-workbench/*.archimate.xml",
                 "/api/projects/*/architecture-workbench/*.archimate.zip", "/api/projects/*/architecture-workbench/*.vsdx",
-                "/api/projects/*/architecture-workbench/*.visio.zip",
+                "/api/projects/*/architecture-workbench/*.visio.zip", "/api/projects/*/architecture-workbench/*.source-coverage.json",
                 "/api/projects/*/requirements/*/reformulations/*/revisions/*/export",
                 "/api/projects/*/requirements/*/reformulations/*/adoptions/*/export");
         // These complete operations accept model execution, including focus requests with useAi.

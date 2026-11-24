@@ -45,6 +45,24 @@ SVG and vector PDF use the complete deterministic server layout at the displayed
 
 Implementation decision: [ADR 0005](../adr/0005-private-architecture-editor.md). [Deutsche Anleitung](../de/ARCHITECTURE_EDITOR.md).
 
+<a id="architecture-change-set"></a>
+## Review an architecture change set
+
+In the editable working architecture, open **Review an architecture change set**.
+Choose a new element, its directed relation to an existing element, and the
+existing requirement to allocate to the new element. Start from a Git checkpoint
+that includes the current working revision. Enter a reason and preview the three
+changes before accepting them.
+
+The preview shows the Git target and the before and after of each affected
+model block. Acceptance saves the set in one Git checkpoint. If any change is
+invalid or the branch has advanced, the editor requires a new review.
+
+When previewing adoption of a saved analysis from a checkpointed working
+revision, choose **Adopt analysis and create checkpoint** to publish its
+reviewed model changes together. The preview shows the Git target and the
+resulting model changes. The checkpoint retains the exact source analysis.
+
 <a id="shared-editing"></a>
 ## Share a working copy
 

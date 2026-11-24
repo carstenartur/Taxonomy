@@ -15,8 +15,17 @@ public final class RequirementIntakeDtos {
                             Long projectId, String projectKey, Long requirementId, Long requirementVersionId,
                             String requirementKey, String title, String text, String contentHash,
                             Classification classification, String rationale, List<String> quotes,
-                            List<String> actions, String sourceCommit, String sourceVersion) {
+                            List<String> actions, String sourceCommit, String sourceVersion, String sourceObjectId) {
         public Candidate { quotes = List.copyOf(quotes); actions = List.copyOf(actions); }
+        public Candidate(String id, String kind, String repositoryId, String workspaceId, String branch,
+                         Long projectId, String projectKey, Long requirementId, Long requirementVersionId,
+                         String requirementKey, String title, String text, String contentHash,
+                         Classification classification, String rationale, List<String> quotes, List<String> actions,
+                         String sourceCommit, String sourceVersion) {
+            this(id, kind, repositoryId, workspaceId, branch, projectId, projectKey, requirementId,
+                    requirementVersionId, requirementKey, title, text, contentHash, classification, rationale,
+                    quotes, actions, sourceCommit, sourceVersion, null);
+        }
         public Candidate(String id, String kind, String repositoryId, String workspaceId, String branch,
                          Long projectId, String projectKey, Long requirementId, Long requirementVersionId,
                          String requirementKey, String title, String text, String contentHash,
@@ -28,7 +37,7 @@ public final class RequirementIntakeDtos {
         public Candidate assessed(Classification classification, String rationale, List<String> quotes) {
             return new Candidate(id, kind, repositoryId, workspaceId, branch, projectId, projectKey,
                     requirementId, requirementVersionId, requirementKey, title, text, contentHash,
-                    classification, rationale, quotes, actions, sourceCommit, sourceVersion);
+                    classification, rationale, quotes, actions, sourceCommit, sourceVersion, sourceObjectId);
         }
     }
     public record Response(Status status, String code, String inputHash, Scope scope, String provider,

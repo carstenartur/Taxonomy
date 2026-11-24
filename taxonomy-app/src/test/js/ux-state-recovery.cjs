@@ -94,6 +94,80 @@ function dom() {
     return {document, element, all, downloads, revoked, events, urls};
 }
 
+test('a reviewed change set rejects a moved head and saves only after a new preview', async () => {
+    const f = dom(), calls = [];
+    const root = f.element();
+    const ids = Object.fromEntries(['Panel', 'Form', 'Fields', 'Type', 'Id', 'Title', 'Direction', 'Endpoint',
+        'Relation', 'Requirement', 'Rationale', 'Availability', 'Preview', 'Review', 'Target', 'Changes',
+        'Accept', 'Error', 'Receipt'].map(name => [name, f.element()]));
+    root.querySelector = selector => ids[selector.replace('#editorChangeSet', '')];
+    ids.Form.reset = () => {};
+    const commit = 'a'.repeat(40), movedHead = 'b'.repeat(40), contribution = 'c'.repeat(40);
+    const context = {repositoryId: 'registry', workspaceScopeKey: 'office', branch: 'draft', revision: 5, commit};
+    const view = {mayEdit: true, document: {context, source: 'WORKSPACE_REVISION', projectionState: 'READY', checkpointRevision: 5},
+        model: {elements: [{id: 'existing', title: 'Existing element'}], requirements: [{id: 'req-1', title: 'Requirement'}]},
+        schema: {elementTypes: ['Service'], relationTypes: ['SUPPORTS']}};
+    const window = {TaxonomyI18n: {resolveUrl: path => path, t: key => key}, async fetch(url, init) {
+        const endpoint = new URL(url, 'https://example.test'), request = JSON.parse(init.body);
+        const action = endpoint.pathname.split('/').at(-1);
+        assert.equal(init.method, 'POST');
+        assert.equal(endpoint.pathname, '/api/architecture/editor/change-sets/' + action);
+        assert.equal(endpoint.searchParams.get('workspaceId'), 'office');
+        assert.equal(init.headers.get('X-Taxonomy-Workspace-Id'), 'office');
+        assert.equal(init.headers.get('If-Match'), '"workspace-revision-' + request.context.revision + '"');
+        calls.push([action, request]);
+        if (action === 'preview') return Response.json({context: request.context,
+            fingerprint: 'reviewed-' + request.context.revision, changes: [
+                {id: 'element:new-service', after: 'element new-service type Service'},
+                {id: 'relation:new-service SUPPORTS existing', after: 'relation new-service SUPPORTS existing'},
+                {id: 'mapping:req-1 -> new-service', after: 'mapping req-1 -> new-service'}
+            ]});
+        if (request.context.commit === commit) {
+            return Response.json({code:'CHECKPOINT_CONFLICT', detail:'The branch head moved'}, {status:409});
+        }
+        return Response.json({context: {...context, revision: 7, commit: contribution}, commitId: contribution});
+    }};
+    canonicalFixture.install({window,document:f.document},
+        ['api/architecture-editor-api.js','architecture-change-set.js']);
+    const panel = window.TaxonomyArchitectureChangeSet.create({root, api:window.ArchitectureEditorApi,
+        t: (key, ...args) => [key, ...args].join(' '),
+        newMetadata: () => ({commandId: 'preview-operation'}),
+        lock: () => {},
+        report: (error, node) => {node.textContent = error.responseBody.detail;},
+        onAccepted: receipt => calls.push(['accepted', receipt.commitId])
+    });
+    panel.update(view, true);
+    ids.Type.value = 'Service';
+    ids.Id.value = 'new-service';
+    ids.Title.value = 'New service';
+    ids.Direction.value = 'out';
+    ids.Endpoint.value = 'existing';
+    ids.Relation.value = 'SUPPORTS';
+    ids.Requirement.value = 'req-1';
+    ids.Rationale.value = 'Link the new service to the requirement';
+    await ids.Form.fire('submit');
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0][1].context.commit, commit);
+    assert.deepEqual(calls[0][1].relation, {sourceId:'new-service',relationType:'SUPPORTS',targetId:'existing',properties:{}});
+    assert.deepEqual(calls[0][1].allocation, {requirementId:'req-1',elementId:'new-service'});
+    assert.match(ids.Target.textContent, /draft a{40}/);
+    assert.equal(ids.Changes.children.filter(node => node.tagName === 'h3').length, 3);
+    await ids.Accept.click();
+    assert.deepEqual(calls[1][1], {...calls[0][1], previewFingerprint:'reviewed-5'});
+    assert.equal(ids.Review.hidden, true);
+    assert.match(ids.Error.textContent, /branch head moved/);
+    await ids.Accept.click();
+    assert.equal(calls.length, 2);
+    panel.update({...view, document: {...view.document, context:{...context, commit:movedHead, revision:6}, checkpointRevision:6}}, true);
+    await ids.Form.fire('submit');
+    assert.equal(calls[2][1].context.commit, movedHead);
+    await ids.Accept.click();
+    assert.deepEqual(calls[3][1], {...calls[2][1], previewFingerprint:'reviewed-6'});
+    assert.deepEqual(calls[4], ['accepted', contribution]);
+    assert.match(ids.Receipt.textContent, /c{40}/);
+    assert.equal(ids.Review.hidden, true);
+});
+
 function admbwCoverageFixture() {
     const f = dom(), selected = [], window = {};
     vm.runInNewContext(source('architecture-admbw-coverage.js'), {window, document: f.document});

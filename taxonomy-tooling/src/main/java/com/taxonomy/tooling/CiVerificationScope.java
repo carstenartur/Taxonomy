@@ -35,6 +35,16 @@ final class CiVerificationScope {
             return decision("draft", "Draft heads do not satisfy required verification", event, true, base, commit, tree, List.of());
         if (base == null || !base.matches("[0-9a-f]{40}"))
             return decision("full", "Missing or invalid base commit", event, false, base, commit, tree, List.of());
+        // GitHub may attach newer base metadata to an older synthetic merge commit.
+        // Raw parent headers are identical in shallow and full checkouts.
+        List<String> parents = GitSupport.require(root, "cat-file", "commit", commit).lines()
+                .takeWhile(line -> !line.isEmpty())
+                .filter(line -> line.startsWith("parent "))
+                .map(line -> line.substring("parent ".length()))
+                .toList();
+        if (parents.size() > 1 && !base.equals(parents.getFirst()))
+            return decision("full", "Pull request base differs from the tested merge parent",
+                    event, false, base, commit, tree, List.of());
         GitSupport.Result diff = GitSupport.run(root, "diff", "--no-renames", "--name-status", "-z", base, commit, "--");
         if (diff.exitCode() != 0)
             return decision("full", "Changed paths could not be determined", event, false, base, commit, tree, List.of());

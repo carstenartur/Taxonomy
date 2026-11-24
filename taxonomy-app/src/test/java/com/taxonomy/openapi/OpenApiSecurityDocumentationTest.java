@@ -92,6 +92,15 @@ class OpenApiSecurityDocumentationTest {
     }
 
     @ParameterizedTest
+    @ValueSource(strings = {"/api/architecture/editor/change-sets/preview", "/api/architecture/editor/change-sets/accept"})
+    void reviewedChangesDocumentArchitectureWritingAuthority(String path) {
+        var operation = document(true, new Paths().addPathItem(path, new PathItem().post(new Operation())))
+                .getPaths().get(path).getPost();
+        assertThat(operation.getSecurity().getFirst()).containsEntry("keycloak", java.util.List.of("architecture:write"));
+        assertThat(operation.getExtensions().get("x-required-roles")).isEqualTo(java.util.List.of("ARCHITECT"));
+    }
+
+    @ParameterizedTest
     @ValueSource(strings = {
             "/api/projects/{projectId}/analysis-jobs/{jobId}/items/{itemId}/continue",
             "/api/projects/{projectId}/requirements/{requirementId}/reformulations",
@@ -136,6 +145,7 @@ class OpenApiSecurityDocumentationTest {
             "/api/projects/{projectId}/architecture-workbench/{snapshotId}.archimate.zip",
             "/api/projects/{projectId}/architecture-workbench/{snapshotId}.vsdx",
             "/api/projects/{projectId}/architecture-workbench/{snapshotId}.visio.zip",
+            "/api/projects/{projectId}/architecture-workbench/{snapshotId}.source-coverage.json",
             "/api/projects/{projectId}/requirements/{requirementId}/reformulations/{proposalId}/revisions/{revision}/export",
             "/api/projects/{projectId}/requirements/{requirementId}/reformulations/{proposalId}/adoptions/{commandId}/export"
     })

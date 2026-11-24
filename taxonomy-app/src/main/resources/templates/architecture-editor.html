@@ -40,6 +40,53 @@
         <a id="editorSvg" hidden data-i18n="editor.svg">Download SVG</a>
         <a id="editorPdf" hidden data-i18n="editor.pdf">Download PDF</a>
     </div>
+    <details id="editorChangeSetPanel" hidden>
+        <summary data-i18n="editor.changeSet.title">Review an architecture change set</summary>
+        <p id="editorChangeSetAvailability" role="status"></p>
+        <form id="editorChangeSetForm">
+            <fieldset id="editorChangeSetFields" disabled>
+                <div class="editor-change-set-grid">
+                    <fieldset>
+                        <legend data-i18n="editor.changeSet.element">New element</legend>
+                        <label for="editorChangeSetId" data-i18n="editor.identity">Identity</label>
+                        <input id="editorChangeSetId" required maxlength="128" pattern="[A-Za-z0-9][A-Za-z0-9_.\-]{0,127}" autocomplete="off"/>
+                        <label for="editorChangeSetType" data-i18n="editor.type">Type</label>
+                        <select id="editorChangeSetType" required></select>
+                        <label for="editorChangeSetTitle" data-i18n="editor.name">Name</label>
+                        <input id="editorChangeSetTitle" required maxlength="500" autocomplete="off"/>
+                    </fieldset>
+                    <fieldset>
+                        <legend data-i18n="editor.changeSet.relationship">New relation</legend>
+                        <label for="editorChangeSetDirection" data-i18n="editor.changeSet.direction">Direction</label>
+                        <select id="editorChangeSetDirection">
+                            <option value="out" data-i18n="editor.changeSet.outgoing">From the new element</option>
+                            <option value="in" data-i18n="editor.changeSet.incoming">To the new element</option>
+                        </select>
+                        <label for="editorChangeSetEndpoint" data-i18n="editor.changeSet.endpoint">Existing element</label>
+                        <select id="editorChangeSetEndpoint" required></select>
+                        <label for="editorChangeSetRelation" data-i18n="editor.relationType">Relation type</label>
+                        <select id="editorChangeSetRelation" required></select>
+                    </fieldset>
+                    <fieldset>
+                        <legend data-i18n="editor.changeSet.allocation">Requirement allocation</legend>
+                        <label for="editorChangeSetRequirement" data-i18n="editor.changeSet.requirement">Requirement to allocate to the new element</label>
+                        <select id="editorChangeSetRequirement" required></select>
+                    </fieldset>
+                </div>
+                <label for="editorChangeSetRationale" data-i18n="editor.changeSet.rationale">Reason for the change set</label>
+                <textarea id="editorChangeSetRationale" rows="2" maxlength="1000" required></textarea>
+                <button id="editorChangeSetPreview" type="submit" data-i18n="editor.changeSet.preview">Preview change set</button>
+            </fieldset>
+        </form>
+        <section id="editorChangeSetReview" tabindex="-1" aria-labelledby="editorChangeSetReviewTitle" hidden>
+            <h2 id="editorChangeSetReviewTitle" data-i18n="editor.previewTitle">Review semantic changes</h2>
+            <p id="editorChangeSetTarget"></p>
+            <div id="editorChangeSetChanges"></div>
+            <button id="editorChangeSetAccept" type="button" disabled data-i18n="editor.prep.accept">Save reviewed changes and checkpoint</button>
+        </section>
+        <p id="editorChangeSetError" role="alert" tabindex="-1" class="editor-change-set-error"></p>
+        <p id="editorChangeSetReceipt" role="status" tabindex="-1"></p>
+    </details>
     <details id="editorAdmbwOptions" hidden>
         <summary data-i18n="editor.admbw.title">Check ADMBw delivery at this checkpoint</summary>
         <p data-i18n="editor.admbw.help">Check C1–S1 and R7 against the public FFFmLV 2.0 profile. The report includes modeling data and the reviews needed for native delivery.</p>
@@ -161,11 +208,20 @@
             <summary data-i18n="adoption.differences">Review the differing values</summary>
             <pre id="adoptionDifferences"></pre>
         </details>
+        <section id="adoptionCheckpointReview" aria-labelledby="adoptionCheckpointTitle" hidden>
+            <p id="adoptionCheckpointTarget" class="editor-context"></p>
+            <details id="adoptionCheckpointDetails">
+                <summary id="adoptionCheckpointTitle" data-i18n="adoption.checkpointChanges">Review checkpoint changes</summary>
+                <pre id="adoptionCheckpointChanges"></pre>
+            </details>
+        </section>
         <div class="editor-toolbar">
             <button id="adoptionPreview" type="button" data-i18n="adoption.preview">Preview snapshot adoption</button>
             <button id="adoptionAccept" type="button" data-i18n="adoption.accept" hidden>Adopt this frozen snapshot</button>
+            <button id="adoptionAcceptCheckpoint" type="button" data-i18n="adoption.acceptCheckpoint" aria-describedby="adoptionCheckpointTarget" hidden>Adopt and create checkpoint</button>
             <button id="adoptionCancel" type="button" data-i18n="editor.cancel" hidden>Cancel</button>
         </div>
+        <p id="adoptionCheckpointReceipt" role="status" tabindex="-1" class="editor-context" hidden></p>
         <label for="adoptionView" data-i18n="adoption.view">Canonical architecture view</label>
         <select id="adoptionView"></select>
         <details>
@@ -382,6 +438,7 @@
 <script th:src="@{/js/architecture-organization-directory.js}" src="/js/architecture-organization-directory.js"></script>
 <script th:src="@{/js/architecture-admbw-coverage.js}" src="/js/architecture-admbw-coverage.js"></script>
 <script th:src="@{/js/architecture-admbw-preparation.js}" src="/js/architecture-admbw-preparation.js"></script>
+<script th:src="@{/js/architecture-change-set.js}" src="/js/architecture-change-set.js"></script>
 <script th:src="@{/js/architecture-editor.js}" src="/js/architecture-editor.js"></script>
 </body>
 </html>

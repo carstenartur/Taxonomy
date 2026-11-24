@@ -56,6 +56,7 @@ test('the snapshot action opens the read-only preview and waits for a separate a
     assert.equal(previews,1);assert.equal(accepted,0);
     assert.equal(node('adoptionSummary').focused,true);assert.equal(node('adoptionPreview').hidden,true);
     assert.equal(node('adoptionAccept').disabled,false);
+    assert.equal(node('adoptionAcceptCheckpoint').hidden,true);
     node('adoptionCancel').click();assert.equal(node('adoptionPreview').hidden,false);
     assert.equal(node('adoptionSummary').hidden,true);assert.equal(accepted,0);
 });
@@ -97,6 +98,52 @@ test('explicit preview freezes source target metadata and ambiguous retry keeps 
     assert.equal(node('adoptionAccept').disabled,false);await node('adoptionAccept').click();assert.equal(errors.length,1);
     await node('adoptionAccept').click();assert.strictEqual(requests[1],requests[2]);assert.equal(requests[2].previewFingerprint,'frozen');
     assert.equal(accepted[0].viewId,'analysis-view');
+});
+
+test('the Git checkpoint variant reviews the exact diff and retries only the chosen acceptance',async()=>{
+    const {context,node}=boot();
+    const base='a'.repeat(40), commit='b'.repeat(40);
+    const initial={...target,commit:base}, checked={...target,commit,revision:5};
+    const requests=[], errors=[];
+    const panel=context.AnalysisSnapshotAdoption({t:(...parts)=>parts.join(' '),
+        metadata:()=>({commandId:'one',rationale:'Adopt reviewed snapshot'}),report:error=>errors.push(error),
+        api:{
+            previewAdoption:async()=>({
+                fingerprint:'source-review',
+                summary:{addedElements:['new-service'],reusedElements:[],addedRelations:[],reusedRelations:[],differences:[],conflicts:[]},
+                checkpointReview:{context:initial,fingerprint:'git-review'},
+                preview:{change:{changes:[
+                    {id:'element:new-service',before:null,after:'title: "<inherited text>"'},
+                    {id:'view:analysis-view',before:'include before',after:'include new-service'}
+                ]}}
+            }),
+            adoptSnapshot:async request=>{
+                requests.push(request);
+                if(requests.length===1) throw Object.assign(new Error('Server completion unknown'),{status:503});
+                return {viewId:'analysis-view',checkpoint:{context:checked,commitId:commit}};
+            }
+        },
+        onAccepted:()=>panel.update(view(checked))
+    });
+    panel.update(view(initial));
+    await node('adoptionPreview').click();
+    assert.equal(requests.length,0);
+    assert.match(node('adoptionCheckpointTarget').textContent,/draft a{40}/);
+    assert.match(node('adoptionCheckpointChanges').textContent,/element:new-service[\s\S]*<inherited text>[\s\S]*include before[\s\S]*include new-service/);
+    assert.equal(node('adoptionAccept').disabled,false);
+    assert.equal(node('adoptionAcceptCheckpoint').disabled,false);
+    await node('adoptionAcceptCheckpoint').click();
+    assert.equal(errors.length,1);
+    assert.equal(node('adoptionAccept').disabled,true);
+    await node('adoptionAccept').click();
+    assert.equal(requests.length,1);
+    await node('adoptionAcceptCheckpoint').click();
+    assert.equal(requests[0],requests[1]);
+    assert.equal(requests[1].previewFingerprint,'source-review');
+    assert.equal(requests[1].checkpointFingerprint,'git-review');
+    assert.equal(requests[1].context.commit,base);
+    assert.equal(node('adoptionCheckpointReview').hidden,true);
+    assert.match(node('adoptionCheckpointReceipt').textContent,/b{40}/);
 });
 
 test('selecting a recorded adoption view renders its real provenance without throwing',()=>{

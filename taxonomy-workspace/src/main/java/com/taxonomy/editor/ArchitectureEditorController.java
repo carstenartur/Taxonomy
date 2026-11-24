@@ -203,6 +203,34 @@ public class ArchitectureEditorController {
                 result.context()).body(result);
     }
 
+    @PostMapping("/api/architecture/editor/change-sets/preview")
+    @ResponseBody
+    @io.swagger.v3.oas.annotations.Operation(summary = "Review a Git-bound architecture change set",
+            description = "Validates an element, a relationship and a requirement allocation against the exact Git checkpoint and semantic revision. Returns the before and after of each changed block without editing the workspace.")
+    public ResponseEntity<ArchitectureChangeSet.Preview> previewChangeSet(@RequestBody ArchitectureChangeSet.Request request,
+            @Parameter(description = "Required exact semantic revision ETag", required = true)
+            @RequestHeader(value = HttpHeaders.IF_MATCH, required = false) String ifMatch,
+            @Parameter(description = "Not supported for architecture change sets; supplying this header is rejected")
+            @RequestHeader(value = HttpHeaders.IF_NONE_MATCH, required = false) String ifNoneMatch) throws IOException {
+        requireRevision(request.context(), ifMatch, ifNoneMatch);
+        var result = service.previewChangeSet(resolver.resolveCurrentRepositoryContextForRead(), request);
+        return response(HttpStatus.OK, result.context()).body(result);
+    }
+
+    @PostMapping("/api/architecture/editor/change-sets/accept")
+    @ResponseBody
+    @io.swagger.v3.oas.annotations.Operation(summary = "Accept the reviewed architecture change set as one checkpoint",
+            description = "Requires the exact reviewed payload, preview fingerprint, semantic revision and target Git HEAD. Publishes a single audit checkpoint, or returns a conflict when the target branch has moved.")
+    public ResponseEntity<CheckpointAccepted> acceptChangeSet(@RequestBody ArchitectureChangeSet.Request request,
+            @Parameter(description = "Required exact semantic revision ETag", required = true)
+            @RequestHeader(value = HttpHeaders.IF_MATCH, required = false) String ifMatch,
+            @Parameter(description = "Not supported for architecture change sets; supplying this header is rejected")
+            @RequestHeader(value = HttpHeaders.IF_NONE_MATCH, required = false) String ifNoneMatch) throws IOException {
+        requireRevision(request.context(), ifMatch, ifNoneMatch);
+        var result = service.acceptChangeSet(resolver.resolveCurrentRepositoryContext(), request);
+        return response(HttpStatus.OK, result.context()).body(result);
+    }
+
     @PostMapping("/api/architecture/editor/rebuild")
     @ResponseBody
     @io.swagger.v3.oas.annotations.Operation(summary = "Rebuild the editor projection",
@@ -467,7 +495,7 @@ public class ArchitectureEditorController {
             case "NOT_FOUND" -> 404;
             case "READ_ONLY" -> 403;
             case "PORTFOLIO_UNAVAILABLE" -> 503;
-            case "CONTEXT_CHANGED", "UNDO_CONFLICT", "ALREADY_INVERTED", "COMMAND_ID_REUSED", "DEPENDENCIES_EXIST", "CHECKPOINT_PENDING", "CHECKPOINT_CONFLICT", "VERSION_CHANGED", "RECONCILIATION_CONFLICT", "PREVIEW_CHANGED", "NO_RECONCILIATION", "PORTFOLIO_RECONCILIATION_REQUIRED" -> 409;
+            case "CONTEXT_CHANGED", "UNDO_CONFLICT", "ALREADY_INVERTED", "COMMAND_ID_REUSED", "DEPENDENCIES_EXIST", "CHECKPOINT_PENDING", "CHECKPOINT_CONFLICT", "CHECKPOINT_REQUIRED", "VERSION_CHANGED", "RECONCILIATION_CONFLICT", "PREVIEW_CHANGED", "NO_RECONCILIATION", "PORTFOLIO_RECONCILIATION_REQUIRED" -> 409;
             default -> 422;
         };
         return ResponseEntity.status(status).body(Map.of("code", error.code(), "field", error.field(),

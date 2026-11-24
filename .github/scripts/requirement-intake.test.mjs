@@ -145,6 +145,31 @@ test('canonical candidate view opens the exact assessed commit and displays its 
   assert.ok(article.children.some(element=>element.textContent?.includes('Source version 3')&&element.textContent.includes(sourceCommit.slice(0,12))));
   assert.equal(article.children.some(element=>['CHANGE','LINK'].includes(element.dataset.intakeChoice)),false);
 });
+test('reuse candidates retain model identities and open read-only source checkpoints', async () => {
+  const sourceCommit = 'b'.repeat(40), input = 'Retain readings from the station';
+  const source = {repositoryId:'central-repo', workspaceId:null, branch:'main', sourceCommit,
+    classification:'ADDITION', quotes:['Retain readings', 'Retains sensor readings'], actions:['VIEW']};
+  const h = harness(async () => ({status:'COMPLETE', inputHash:createHash('sha256').update(input).digest('hex'),
+    scope:{repositoryId:'repo',workspaceId:'work',branch:'draft'}, candidates:[
+      {...source, kind:'ARCHITECTURE_ELEMENT', sourceObjectId:'readings', title:'Reading archive'},
+      {...source, kind:'ARCHITECTURE_RELATION', sourceObjectId:'readings SUPPORTS station', title:'readings SUPPORTS station'}
+    ]}));
+  h.input.value = input;
+  h.api.attach(h.form, {textElement:h.input, projectId:null});
+  await new Promise(resolve => setImmediate(resolve));
+  const articles = h.form.children[0].children.filter(element => element.tagName === 'article');
+  assert.deepEqual(articles.map(article => article.children[0].textContent),
+    ['readings · Reading archive', 'readings SUPPORTS station']);
+  for (const article of articles) {
+    const anchor = article.children.find(element => element.tagName === 'a');
+    const target = new URL(anchor.href);
+    assert.equal(anchor.target, '_blank');
+    assert.equal(target.pathname, '/architecture/editor');
+    assert.equal(target.searchParams.get('commit'), sourceCommit);
+    assert.equal(target.searchParams.get('element'), 'readings');
+    assert.equal(article.children.some(element => element.dataset.intakeChoice), false);
+  }
+});
 test('a response for another branch cannot display evidence or offer a change despite matching input text',async()=>{
   const h=harness(async()=>({status:'COMPLETE',inputHash:createHash('sha256').update('incoming').digest('hex'),
     scope:{repositoryId:'repo',workspaceId:'work',workspaceScopeKey:'work',branch:'other-branch'},candidates:[{

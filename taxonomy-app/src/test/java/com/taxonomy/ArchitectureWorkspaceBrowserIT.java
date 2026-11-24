@@ -455,10 +455,11 @@ class ArchitectureWorkspaceBrowserIT {
                 const r=document.querySelector('#architectureExportOptions .workbench-export-content').getBoundingClientRect();
                 return r.left>=0 && r.right<=innerWidth;
                 """)).as("Embedded snapshot exports stay inside the viewport").isEqualTo(true);
-        var controls = disclosure.findElements(By.cssSelector("select, button:not([disabled])"));
+        var controls = disclosure.findElements(By.cssSelector(":is(select, input, button):enabled"));
         assertThat(controls).extracting(control -> control.getDomAttribute("id")).containsExactly(
                 "workbenchDocumentLanguage", "downloadArchitectureSvg", "downloadArchitecturePdf", "downloadArchitectureWord",
-                "downloadDecisionWord", "downloadArchitectureArchiMate", "downloadArchitectureVisio");
+                "downloadDecisionWord", "sourceCoverageCheckpoint", "downloadSourceCoverage",
+                "downloadArchitectureArchiMate", "downloadArchitectureVisio");
         for (var control : controls) {
             new Actions(page.driver()).sendKeys(Keys.TAB).perform();
             assertThat(page.driver().switchTo().activeElement()).isEqualTo(control);
