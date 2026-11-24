@@ -86,6 +86,18 @@ public final class ScenarioRelationQuality {
         byte[] snapshotBytes = readBounded(directory.resolve("snapshot.json"), 32 * 1024 * 1024);
         JsonNode snapshot = JSON.readTree(snapshotBytes);
         JsonNode run = JSON.readTree(readBounded(directory.resolve("run.json"), 64 * 1024));
+        return write(directory, snapshot, run, sha256(snapshotBytes));
+    }
+
+    /** Apply the same authored reference directly to the automatic worker's immutable HTTP snapshot. */
+    public static void verifyAutomatic(Path directory, JsonNode snapshot, JsonNode run) throws IOException {
+        clearReports(directory);
+        var result = write(directory, snapshot, run, ScenarioJsonFingerprint.sha256(snapshot));
+        if (result.verdict() != Verdict.PASS)
+            throw new AssertionError("Authored scenario relation evaluation: " + result.verdict());
+    }
+
+    private static Evaluation write(Path directory, JsonNode snapshot, JsonNode run, String snapshotHash) throws IOException {
         JsonNode summary = object(snapshot, "summary");
         JsonNode analysis = object(snapshot, "analysis");
         JsonNode search = object(analysis, "relationSearchReport");
@@ -151,7 +163,7 @@ public final class ScenarioRelationQuality {
         report.put("caseId", caseId);
         report.put("fixtureSha256", fingerprint(run, "fixtureSha256"));
         report.put("snapshotId", text(summary, "id"));
-        report.put("snapshotSha256", sha256(snapshotBytes));
+        report.put("snapshotSha256", snapshotHash);
         report.put("sourceRevision", text(run, "sourceRevision"));
         report.put("originalSha256", ORACLE.originalSha256());
         report.put("taxonomyFingerprint", fingerprint(summary, "taxonomyFingerprint"));
