@@ -216,7 +216,8 @@ async function fixture(messages = {}) {
         window.clearTimeout = id => { if (!window.statusTimers.delete(id)) cancel(id); };
         window.statusReads = [];
         window.fetch = (url, init) => new Promise(resolve => {
-            window.statusReads.push({url: String(url), method: init?.method || 'GET', body: init?.body, pending: true,
+            window.statusReads.push({url: String(url), method: init?.method || 'GET', body: init?.body,
+                signal: init?.signal, pending: true,
                 answer(value, status = 200, headers) {
                     this.pending = false;
                     resolve(new Response(this.method === 'HEAD' ? null : JSON.stringify(value), {status,
@@ -468,8 +469,15 @@ test('changing the selected Git context clears previous sync state and actions b
             await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 0)));
         }
         await select(draft);
+        const syncRequests = await page.evaluate(() => statusReads
+            .filter(read => read.url.split('?')[0] === '/api/workspace/sync-state')
+            .map(read => ({pending:read.pending, aborted:read.signal.aborted})));
+        assert.deepEqual(syncRequests, [{pending:true, aborted:true}, {pending:true, aborted:false}],
+            'First repository confirmation replaces the unscoped sync request');
         await answer(page, '/api/workspace/sync-state', initial);
-        await page.evaluate(() => TaxonomyWorkspaceSync.refresh());
+        await settle();
+        assert.equal(await page.evaluate(() => TaxonomyWorkspaceSync.getSyncState()), null,
+            'A late unscoped response cannot publish sync state for the confirmed repository');
         await syncResponse(page, {branch:draft.branch, syncStatus:'AHEAD', unpublishedCommitCount:3, lastSyncedCommitId:draft.commitId});
         await select(draft);
         assert.equal(await fixedPull.isEnabled(), true);

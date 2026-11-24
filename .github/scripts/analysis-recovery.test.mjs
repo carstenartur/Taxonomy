@@ -215,6 +215,134 @@ for (const schedule of ['immediate rejection', 'explicit read in flight', 'expli
  });
 }
 
+function missingContinuation() {
+  return {ok:false, status:404, json:async () => ({detail:'Unknown continuation'})};
+}
+
+function runningContinuation(id, request) {
+  return {ok:true, json:async () => ({request, recovery:{id, version:7, state:'RUNNING'}})};
+}
+
+for (const event of ['taxonomy:analysis-source-ready', 'taxonomy:analysis-draft-restored']) {
+  test(`a rejected START with a missing receipt does not repeat its GET on ${event}`, async () => {
+    const h = harness();
+    h.readResponses.push(missingContinuation());
+    const start = h.recovery.startManagedAnalysis();
+    h.reject(Object.assign(new Error('Provider unavailable'), {httpStatus:503}));
+    await start;
+    const context = h.S.recoveryContext;
+    assert.equal(context.observationStatus, 404);
+    const observed = {url:'/api/analysis-continuations/' + context.id, method:'GET', workspace:'ws-a'};
+    assert.deepEqual(h.requests, [observed]);
+
+    h.readResponses.push(runningContinuation(context.id, context.request));
+    if (event === 'taxonomy:analysis-draft-restored') h.S.recoveryContext = JSON.parse(JSON.stringify(context));
+    h.emit(event);
+    await settle();
+    assert.deepEqual(h.requests, [observed], 'A passive event does not repeat the settled observation');
+    assert.equal(h.S.recoveryContext.observationStatus, 404, 'The original diagnostics remain visible');
+
+    assert.equal(await h.recovery.refresh(), true, 'An explicit refresh still lets the user recheck the receipt');
+    assert.deepEqual(h.requests, [observed, observed]);
+    assert.equal(h.S.recoveryContext.confirmed, true);
+    assert.equal(h.analyses.length, 1);
+  });
+}
+
+for (const startStatus of [null, 503]) {
+  test(`source readiness still observes after a cancellation fails following a ${startStatus ? 'rejected' : 'disconnected'} START`, async () => {
+    const h = harness();
+    h.readResponses.push(missingContinuation());
+    const start = h.recovery.startManagedAnalysis();
+    h.reject(startStatus ? Object.assign(new Error('Provider unavailable'), {httpStatus:startStatus})
+      : new TypeError('Failed to fetch'));
+    await start;
+    const context = h.S.recoveryContext;
+    const read = h.window.TaxonomyAnalysisSessionApi.request;
+    h.window.TaxonomyAnalysisSessionApi.request = async (url, options, workspace) => {
+      if (options.method !== 'POST') return read(url, options, workspace);
+      h.requests.push({url, method:options.method, workspace});
+      return missingContinuation();
+    };
+    h.readResponses.push(missingContinuation());
+    await h.recovery.cancel();
+    assert.equal(h.S.recoveryContext.rejectionStatus, 404);
+    assert.equal(h.S.recoveryContext.observationStatus, 404);
+    h.readResponses.push(runningContinuation(context.id, context.request));
+
+    h.emit('taxonomy:analysis-source-ready');
+    await settle();
+    assert.deepEqual(h.requests.map(request => request.method), ['GET', 'POST', 'GET', 'GET']);
+    assert.equal(h.S.recoveryContext.confirmed, true);
+  });
+}
+
+test('a newly loaded page rechecks a persisted START rejection with a missing receipt', async () => {
+  const rejected = harness();
+  rejected.readResponses.push(missingContinuation());
+  const start = rejected.recovery.startManagedAnalysis();
+  rejected.reject(Object.assign(new Error('Provider unavailable'), {httpStatus:503}));
+  await start;
+
+  const reloaded = harness();
+  for (const key of ['recoveryContext', 'analysisRecovery']) {
+    reloaded.S[key] = JSON.parse(JSON.stringify(rejected.S[key]));
+  }
+  const context = reloaded.S.recoveryContext;
+  const storageKey = 'taxonomy.recovery.active.v1';
+  reloaded.storage.set(storageKey, rejected.storage.get(storageKey));
+  reloaded.readResponses.push(runningContinuation(context.id, context.request));
+  reloaded.emit('taxonomy:analysis-draft-restored');
+  await settle();
+  assert.deepEqual(reloaded.requests, [{url:'/api/analysis-continuations/' + context.id, method:'GET', workspace:'ws-a'}]);
+  assert.equal(reloaded.S.recoveryContext.confirmed, true);
+});
+
+test('a different retained continuation is observed after an earlier START was rejected without a receipt', async () => {
+  const h = harness();
+  h.readResponses.push(missingContinuation());
+  const start = h.recovery.startManagedAnalysis();
+  h.reject(Object.assign(new Error('Provider unavailable'), {httpStatus:503}));
+  await start;
+  const unavailable = h.S.recoveryContext;
+  const id = webcrypto.randomUUID();
+  h.storage.set('taxonomy.recovery.active.v1', JSON.stringify({
+    id, workspaceId:'ws-a', pendingRequest:unavailable.request
+  }));
+  h.readResponses.push(runningContinuation(id, unavailable.request));
+
+  h.emit('taxonomy:analysis-draft-restored');
+  await settle();
+  assert.deepEqual(h.requests.map(request => request.url), [
+    '/api/analysis-continuations/' + unavailable.id, '/api/analysis-continuations/' + id
+  ]);
+  assert.equal(h.S.recoveryContext.id, id);
+  assert.equal(h.S.recoveryContext.confirmed, true);
+});
+
+for (const [description, rejection, absent] of [
+  ['a connection failure and a missing continuation', new TypeError('Failed to fetch'), true],
+  ['a known rejection and an unavailable receipt endpoint', Object.assign(new Error('Provider unavailable'), {httpStatus:503}), false]
+]) {
+  test(`source recovery still checks an unresolved START after ${description}`, async () => {
+    const h = harness();
+    h.readResponses.push(absent ? missingContinuation()
+      : {ok:false, status:503, json:async () => ({detail:'Journal temporarily unavailable'})});
+    const start = h.recovery.startManagedAnalysis();
+    h.reject(rejection);
+    await start;
+    const context = h.S.recoveryContext;
+    assert.equal(context.observationStatus, absent ? 404 : 503);
+    h.readResponses.push(runningContinuation(context.id, context.request));
+
+    h.emit('taxonomy:analysis-source-ready');
+    await settle();
+    assert.equal(h.requests.length, 2);
+    assert.equal(h.S.recoveryContext.confirmed, true);
+    assert.equal(h.analyses.length, 1);
+  });
+}
+
 for(const action of ['startCopilot','startManagedAnalysis']) for(const refresh of [false,true])
  for(const provider of ['', 'CUSTOM_OPENAI', 'GEMINI']) {
  test(`review provider ${provider||'Server Default'} remains concrete ${refresh?'after':'before'} GET through ${action}`,async()=>{

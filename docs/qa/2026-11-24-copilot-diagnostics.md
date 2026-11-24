@@ -67,8 +67,9 @@ dependency.
 
 Local Chromium startup failed before rendering because the execution host denied
 the browser's Unix socket operation. The provided browser also rejected local
-`file:` navigation under its URL security policy. No screenshot or native visual
-pass is claimed from this environment, and the browser restriction was not bypassed.
+`file:` navigation under its URL security policy. No locally executed native
+browser pass is claimed, and the browser restriction was not bypassed. The later
+hosted screenshots were downloaded and visually inspected as described below.
 The normal hosted browser gates remain required; focused VM tests are not a full
 application/browser or database-matrix result.
 
@@ -76,9 +77,9 @@ application/browser or database-matrix result.
 They load the actual progress UI, prompt renderer, clipboard helper and styles
 with authored API results. The 1280-pixel and 390-pixel cases check readable text,
 raw disclosure/copy, inert markup and wrapping, and capture screenshots. A third
-case checks plain and truncated evidence. Syntax and JUnit discovery succeeded;
-native execution is pending a host that permits the browser. Existing native Git
-and synchronization tests retain their assertions with one-shot timer fixtures.
+case checks plain and truncated evidence. Syntax and JUnit discovery succeeded
+locally; all three cases subsequently passed in hosted Chromium. Existing native
+Git and synchronization tests retain their assertions with one-shot timer fixtures.
 
 In a full ready-for-review PR run, these cases belong to the `CI / CD` job
 `UI shard / forced-colors-special-and-primary-user`. Its
@@ -146,6 +147,54 @@ the pre-integration run came from the updated main branch.
 This verifies the final integrated application source. Native browser execution
 and the complete hosted CI matrix remain separate required checks; they are not
 included in the 3,723-test result.
+
+## Hosted verification and follow-up
+
+[PR #1600](https://github.com/carstenartur/Taxonomy/pull/1600) initially published
+commit `7a57c41adf49793336df0bf340df7c53329b77bd`. Its complete Git tree matches
+the locally verified source tree. The hosted UI contract job passed all 3,607
+non-browser cases with no failures, errors or skips.
+
+The [first hosted browser artifact](https://github.com/carstenartur/Taxonomy/actions/runs/45444472875/artifacts/14945957759)
+contains successful JUnit results for all three prompt cases and the 1280-pixel
+and 390-pixel screenshots. Visual inspection confirmed readable paragraphs,
+wrapping of long identifiers and inert markup displayed as text. Exact raw-copy
+values and plain/truncated fallbacks passed their browser assertions.
+
+The same native browser selection passed 319 of 320 cases. The remaining Git
+sync case answered an already aborted request after an extra fixture refresh;
+the fixture now distinguishes aborted and active requests, explicitly checks
+that the late old response cannot publish, and answers the replacement request.
+Its assertions and timeout are retained.
+
+A separate Firefox role/state scenario identified repeated continuation reads
+after an intentionally rejected START had already returned a missing receipt.
+The follow-up regressions distinguish passive events from explicit refresh,
+another continuation, a new page and an unconfirmed action with an unknown
+outcome. These follow-ups require another hosted run; the first run is not
+reported as a complete successful browser or CI matrix.
+
+The completed recovery correction records the rejected START observation only
+in the current page's module state, scoped by continuation ID, workspace and
+analysis generation. A later decision clears that observation; a late result
+cannot restore it. Saved drafts therefore still receive their first observation
+after a page reload. Explicit refresh and unknown outcomes remain observable.
+The focused four-suite selection passed all 322 cases, and independent review
+confirmed both previously identified boundary cases and found no remaining
+blockers.
+
+After both follow-ups, the complete Maven-owned non-browser contract inventory
+passed **3,615 tests**, with no failures, errors or skipped cases:
+
+```sh
+./mvnw -B -Dmaven.build.cache.enabled=false -pl taxonomy-tooling -am test \
+  -Dtest=JavascriptContractTest -Dsurefire.failIfNoSpecifiedTests=false
+```
+
+The corrected Git-sync browser fixture passes syntax and callback discovery;
+all 27 native cases remain registered and all 64 navigation/polling VM contracts
+pass. The hosted Firefox and native Git-sync reruns remain required for the
+follow-up source revision.
 
 ## Deployment boundary
 

@@ -48,9 +48,11 @@
 - [x] Demonstrate missing actionable safe metadata and typed lifecycle serialization.
 - [x] Include trusted metadata and classify known expected readiness conflicts separately from genuine client errors.
 - [x] Run focused Java/JavaScript suites and obtain independent whole-diff review, including the integrated race fixes.
-- [ ] Verify native desktop/mobile browser cases in hosted CI; the local host/browser policies prevent this execution (see QA record).
+- [x] Verify the three native prompt cases in hosted CI and visually inspect desktop/mobile screenshots; the local host/browser policies prevent local execution (see QA record).
 - [x] Update user/developer documentation and commit the verified fix with evidence and remaining runtime limits.
-- [ ] Publish the reviewed fix and inspect the required hosted checks.
+- [x] Publish the reviewed fix and inspect the required hosted checks in PR #1600.
+- [x] Resolve the hosted recovery and Git-sync-fixture findings, independently review the recovery boundaries and pass all 3,615 non-browser contracts without weakening browser assertions.
+- [ ] Confirm the affected native browser scenarios and full required CI matrix on the follow-up revision.
 
 ## Review focus
 
