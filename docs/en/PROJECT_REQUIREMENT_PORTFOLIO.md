@@ -126,6 +126,11 @@ requirement and the contributing project separately. A candidate in another
 architecture is evidence to inspect, not permission to mutate that architecture.
 The offered actions respect the candidate's scope.
 
+An intake without a selected project can also suggest elements and accepted
+directed relations from readable central architectures. Each suggestion shows
+the existing model identity and opens its Git checkpoint read-only. Relation
+links select the source element of the directed connection.
+
 Retrieval and provider assessment are bounded. Inspect the displayed coverage and
 provider status; an unassessed candidate, unavailable provider, timeout or failed
 response is not a finding that no duplicate or conflict exists. Exact text equality

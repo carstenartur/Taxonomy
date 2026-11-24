@@ -42,6 +42,7 @@
             }
             try {
                 const url = urlFactory(selected.projectId, selected.snapshotId, selected);
+                if (!url) return;
                 const result = await ArchitectureWorkbenchApi.download(url, selected, signal);
                 if (signal.aborted) return;
                 const name = attachmentName(result.response);
@@ -67,6 +68,11 @@
     bind('downloadArchitectureSvg', ArchitectureWorkbenchApi.svgUrl);
     bind('downloadArchitecturePdf', ArchitectureWorkbenchApi.pdfUrl);
     bind('downloadArchitectureWord', ArchitectureWorkbenchApi.architectureWordUrl);
+    bind('downloadSourceCoverage', function (projectId, snapshotId, selected) {
+        const checkpoint = document.getElementById('sourceCoverageCheckpoint');
+        if (!checkpoint.reportValidity()) return null;
+        return ArchitectureWorkbenchApi.sourceCoverageUrl(projectId, snapshotId, selected, checkpoint.value);
+    });
     const decision = document.getElementById('downloadDecisionWord');
     if (decision) decision.addEventListener('click', function () {
         const selected=source();

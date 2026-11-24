@@ -113,6 +113,7 @@ taxonomy-app/src/test/js/contextual-help.cjs
 .github/scripts/architecture-diagram.browser.test.mjs
 .github/scripts/architecture-workspace.test.mjs
 .github/scripts/architecture-editor-lifecycle.browser.test.mjs
+.github/scripts/architecture-change-set.browser.test.mjs
 .github/scripts/architecture-reconciliation.browser.test.mjs
 .github/scripts/architecture-reconciliation.test.mjs
 .github/scripts/architecture-exact-context.test.mjs

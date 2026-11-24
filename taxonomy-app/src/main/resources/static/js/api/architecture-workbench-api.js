@@ -83,6 +83,13 @@ window.ArchitectureWorkbenchApi = (function () {
         pdfUrl: function (projectId, snapshotId, source) {
             return base(projectId, snapshotId, '.pdf', source, true);
         },
+        sourceCoverageUrl: function (projectId, snapshotId, source, checkpoint) {
+            const path = base(projectId, snapshotId, '.source-coverage.json', source);
+            if (!checkpoint) return path;
+            const url = new URL(path, window.location.href);
+            url.searchParams.set('checkpoint', checkpoint);
+            return url.pathname + url.search;
+        },
         archiMateUrl: function (projectId, snapshotId, source) {
             return base(projectId, snapshotId, '.archimate.xml', source);
         },

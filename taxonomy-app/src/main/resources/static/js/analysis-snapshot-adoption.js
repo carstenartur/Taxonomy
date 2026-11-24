@@ -1,7 +1,8 @@
 /* Deliberate frozen-source handoff. The server owns graph retrieval, preview and mutation. */
 window.AnalysisSnapshotAdoption = function (options) {
     'use strict';
-    var view = null, pending = null, busy = false, locked = false, generation = 0;
+    var view = null, pending = null, pendingCheckpoint = null, attempted = null;
+    var busy = false, locked = false, generation = 0;
     var source = window.TaxonomyArchitectureWorkflow?.adoptionSource();
     function el(id) { return document.getElementById(id); }
     function t(key) { return options.t.apply(null, arguments); }
@@ -14,6 +15,11 @@ window.AnalysisSnapshotAdoption = function (options) {
         return JSON.stringify(['repositoryId','workspaceScopeKey','branch','projectId','requirementId','requirementVersionId','snapshotId']
             .map(function (key) { return value?.[key] == null ? null : String(value[key]); }).concat(value && workspaceId(value)));
     }
+    function sameBranch(left, right) {
+        return left && right && left.repositoryId === right.repositoryId && left.branch === right.branch
+            && left.workspaceScopeKey === right.workspaceScopeKey && workspaceId(left) === workspaceId(right);
+    }
+    function canAccept(request) { return view?.mayEdit && !busy && !locked && request && (!attempted || attempted === request); }
     function viewTitle(item) {
         var title = item.title || item.id, prefix = 'archview.policy.title.';
         if (typeof title !== 'string' || !title.startsWith(prefix)) return title;
@@ -25,7 +31,9 @@ window.AnalysisSnapshotAdoption = function (options) {
     function render() {
         el('snapshotAdoption').hidden = !source && !(view?.model.views || []).some(function (item) { return item.extensions?.['x-analysis-snapshot-id']; });
         el('adoptionPreview').disabled = !source || !view?.mayEdit || locked || busy;
-        el('adoptionAccept').disabled = !pending || locked || busy;
+        el('adoptionAccept').disabled = !canAccept(pending);
+        el('adoptionAcceptCheckpoint').disabled = !canAccept(pendingCheckpoint);
+        el('adoptionAcceptCheckpoint').hidden = !pendingCheckpoint;
         el('adoptionCancel').disabled = busy;
         el('adoptionAccept').hidden = !pending;
         el('adoptionCancel').hidden = !pending;
@@ -62,23 +70,50 @@ window.AnalysisSnapshotAdoption = function (options) {
         el('adoptionDifferences').textContent = differences.join('\n\n');
         el('adoptionPreview').hidden = Boolean(pending);
     }
-    function clearSummary() {
+    function showCheckpointReview(review, changes) {
+        el('adoptionCheckpointTarget').textContent = t('adoption.checkpointTarget',
+            review.context.repositoryId, review.context.branch, review.context.commit);
+        el('adoptionCheckpointChanges').textContent = changes.map(function (change) {
+            return [change.id, t('editor.before'), change.before ?? t('editor.absent'),
+                t('editor.after'), change.after ?? t('editor.absent')].join('\n');
+        }).join('\n\n');
+        el('adoptionCheckpointReview').hidden = false;
+    }
+    function showCheckpointReceipt(commit) {
+        var receipt = el('adoptionCheckpointReceipt');
+        receipt.textContent = commit ? t('adoption.checkpointSaved', commit) : '';
+        receipt.hidden = !commit;
+    }
+    function clearPreview() {
+        pending = pendingCheckpoint = attempted = null;
         el('adoptionSummary').hidden = true;
         el('adoptionSummary').textContent = '';
         el('adoptionDifferenceDetails').hidden = true;
         el('adoptionDifferenceDetails').open = false;
         el('adoptionDifferences').textContent = '';
         el('adoptionPreview').hidden = false;
+        el('adoptionCheckpointReview').hidden = true;
+        el('adoptionCheckpointDetails').open = false;
+        el('adoptionCheckpointTarget').textContent = '';
+        el('adoptionCheckpointChanges').textContent = '';
     }
     async function preview(focusSummary) {
         if (busy || locked || !view?.mayEdit || !source) return;
-        pending = null; clearSummary(); setBusy(true); var ticket = generation;
+        clearPreview(); showCheckpointReceipt(); setBusy(true); var ticket = generation;
         try {
             var request = {context:view.document.context,metadata:options.metadata(),source:Object.assign({},source)};
             var result = await options.api.previewAdoption(request);
             if (ticket !== generation) return;
             pending = result.summary.conflicts.length ? null : Object.freeze(Object.assign({},request,{previewFingerprint:result.fingerprint}));
             showSummary(result);
+            var review = result.checkpointReview;
+            var changes = result.preview?.change?.changes;
+            var sameTarget = review?.context?.commit && ['repositoryId', 'workspaceScopeKey', 'branch', 'commit', 'revision', 'actor', 'writeMode']
+                .every(function (key) { return review.context[key] === request.context[key]; });
+            if (pending && review?.fingerprint && sameTarget && changes?.length) {
+                pendingCheckpoint = Object.freeze(Object.assign({}, pending, {checkpointFingerprint:review.fingerprint}));
+                showCheckpointReview(review, changes);
+            }
         } catch (error) { options.report(error); }
         finally {
             setBusy(false);
@@ -86,25 +121,38 @@ window.AnalysisSnapshotAdoption = function (options) {
                 ? 'adoptionSummary' : pending ? 'adoptionAccept' : 'adoptionPreview').focus();
         }
     }
-    async function accept() {
-        if (busy || locked || !pending) return;
+    async function accept(request) {
+        if (!canAccept(request)) return;
+        attempted = request;
+        var ticket = generation, accepted = false, checkpoint = null;
         setBusy(true);
         try {
-            var request = pending;
             var result = await options.api.adoptSnapshot(request);
-            pending = null; clearSummary();
+            if (ticket !== generation) return;
+            checkpoint = result?.checkpoint?.commitId;
+            if (request.checkpointFingerprint && !checkpoint) throw new Error(t('adoption.checkpointUnexpected'));
+            clearPreview();
+            accepted = true;
+            if (checkpoint) showCheckpointReceipt(checkpoint);
             if (options.onAccepted) await options.onAccepted(result, request.context);
         } catch (error) {
+            if (ticket !== generation) return;
             options.report(error);
             // Timeouts and transport/server failures may follow durable acceptance: retain this exact intent.
             if (error.status >= 400 && error.status < 500 && error.status !== 408 && error.status !== 429) {
-                pending = null; clearSummary();
+                clearPreview();
             }
-        } finally { setBusy(false); el(pending ? 'adoptionAccept' : 'adoptionPreview').focus(); }
+        } finally {
+            setBusy(false);
+            if (checkpoint && !el('adoptionCheckpointReceipt').hidden) el('adoptionCheckpointReceipt').focus();
+            else if (accepted || ticket === generation) el(pendingCheckpoint && attempted === pendingCheckpoint
+                ? 'adoptionAcceptCheckpoint' : pending ? 'adoptionAccept' : 'adoptionPreview').focus();
+        }
     }
     el('adoptionPreview').addEventListener('click',preview);
-    el('adoptionAccept').addEventListener('click',accept);
-    el('adoptionCancel').addEventListener('click',function () { if (!busy) { pending = null; clearSummary(); render(); el('adoptionPreview').focus(); } });
+    el('adoptionAccept').addEventListener('click',function () { return accept(pending); });
+    el('adoptionAcceptCheckpoint').addEventListener('click',function () { return accept(pendingCheckpoint); });
+    el('adoptionCancel').addEventListener('click',function () { if (!busy) { clearPreview(); render(); el('adoptionPreview').focus(); } });
     el('adoptionView').addEventListener('change',function () { if (!busy && options.onSelectView) options.onSelectView(el('adoptionView').value || null); });
     return {
         getSource:function () { return source ? Object.assign({},source) : null; },
@@ -112,8 +160,11 @@ window.AnalysisSnapshotAdoption = function (options) {
             var selectedId = options.selectedView ? options.selectedView() : null;
             var selected = next.model.views.find(function (item) { return item.id === selectedId; });
             var nextSource = sourceFromView(selected) || window.TaxonomyArchitectureWorkflow?.adoptionSource();
-            if ((view && JSON.stringify(view.document.context) !== JSON.stringify(next.document.context)) || sourceKey(source) !== sourceKey(nextSource)) {
-                pending = null; generation++; clearSummary();
+            var changedSource = sourceKey(source) !== sourceKey(nextSource);
+            var changedBranch = view && !sameBranch(view.document.context, next.document.context);
+            if (changedBranch || changedSource) showCheckpointReceipt();
+            if (changedBranch || changedSource || (view && JSON.stringify(view.document.context) !== JSON.stringify(next.document.context))) {
+                generation++; clearPreview();
             }
             view = next;
             source = nextSource ? Object.assign({},nextSource) : null;

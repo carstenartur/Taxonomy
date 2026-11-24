@@ -121,6 +121,86 @@ class AnalysisSnapshotAdoptionServiceTest {
         assertThat(service.adopt(target,new AnalysisSnapshotAdoptionService.Request(again.context(),again.metadata(),ref,repeated.fingerprint())).existing()).isTrue();
         assertThat(fixture.journal.read(target).operations()).hasSize(1);
     }
+
+    @Test void reviewedFrozenChangesCreateOneCheckpointAndReplayWithTheOriginalGitBaseline() throws Exception {
+        var git = fixture.repositories.resolveRepository(target);
+        String startingDsl = "// Existing architecture\n";
+        String head = git.commitDsl("draft", startingDsl, "alice", "Initial architecture");
+        var other = new RequirementElementView();
+        other.setNodeCode("UA-1000"); other.setTaxonomySheet("UA"); other.setTitle("Recorded application");
+        var graph = snapshot.analysis().getArchitectureView();
+        graph.setIncludedElements(List.of(graph.getIncludedElements().getFirst(), other));
+        var relation = new RequirementRelationshipView();
+        relation.setSourceCode("CP-1000"); relation.setTargetCode("UA-1000"); relation.setRelationType("RELATED_TO");
+        relation.setDerivationReason("Frozen analysis suggested this relation");
+        graph.setIncludedRelationships(List.of(relation));
+
+        var request = request(ref, null);
+        var preview = service.preview(target, request);
+        assertThat(preview.checkpointReview().context().commit()).isEqualTo(head);
+        assertThat(preview.preview().change().changes()).extracting(com.taxonomy.dsl.command.ArchitectureSemanticPatch.BlockChange::id)
+                .contains("element:CP-1000", "element:UA-1000", "relation:CP-1000 RELATED_TO UA-1000", "view:" + preview.viewId());
+        assertThat(fixture.journal.read(target)).isNull();
+        assertThat(git.getHeadCommit("draft")).isEqualTo(head);
+
+        var reviewed = new AnalysisSnapshotAdoptionService.Request(request.context(), request.metadata(), ref,
+                preview.fingerprint(), preview.checkpointReview().fingerprint());
+        var result = service.adopt(target, reviewed);
+        assertThat(result.checkpoint().commitCreated()).isTrue();
+        assertThat(result.accepted()).isNull();
+        String checkpoint = result.checkpoint().commitId();
+        assertThat(git.getDslAtHead("draft")).startsWith(startingDsl)
+                .contains("Frozen capability", "Recorded application", "Frozen analysis suggested this relation", preview.viewId());
+        assertThat(git.getCommitCount("draft")).isEqualTo(2);
+        assertThat(fixture.journal.read(target).operations()).hasSize(1);
+        assertThat(fixture.journal.checkpoints(target)).singleElement().satisfies(receipt -> {
+            assertThat(receipt.expectedCommit()).isEqualTo(head);
+            assertThat(receipt.fingerprint()).isEqualTo(reviewed.checkpointFingerprint());
+        });
+        assertThat(service.preview(target, request(ref, null)).checkpointReview()).isNull();
+
+        String later = git.commitDsl("draft", git.getDslAtHead("draft") + "// Subsequent change\n", "alice", "Later change");
+        var replay = service.adopt(target, reviewed).checkpoint();
+        assertThat(replay.replayed()).isTrue();
+        assertThat(replay.commitId()).isEqualTo(checkpoint);
+        assertThat(git.getHeadCommit("draft")).isEqualTo(later);
+        assertThat(git.getCommitCount("draft")).isEqualTo(3);
+
+        when(membership.canRead(repositories.getRepository("repo-a"), "alice")).thenReturn(false);
+        assertCode(() -> service.adopt(target, reviewed), "NOT_FOUND");
+    }
+
+    @Test void frozenCheckpointReviewRejectsAnotherHeadWithoutCreatingTheSemanticEdit() throws Exception {
+        var git = fixture.repositories.resolveRepository(target);
+        git.commitDsl("draft", "// Existing architecture\n", "alice", "Initial architecture");
+        var request = request(ref, null);
+        var preview = service.preview(target, request);
+        var reviewed = new AnalysisSnapshotAdoptionService.Request(request.context(), request.metadata(), ref,
+                preview.fingerprint(), preview.checkpointReview().fingerprint());
+
+        String later = git.commitDsl("draft", "// Concurrent architecture\n", "alice", "Another change");
+        assertCode(() -> service.adopt(target, reviewed), "CHECKPOINT_CONFLICT");
+        assertThat(fixture.journal.read(target)).isNull();
+        assertThat(fixture.journal.checkpoints(target)).isEmpty();
+        assertThat(git.getHeadCommit("draft")).isEqualTo(later);
+    }
+
+    @Test void frozenSnapshotStillOffersOrdinaryAdoptionWhenUnrelatedEditsAreUncheckpointed() throws Exception {
+        var git = fixture.repositories.resolveRepository(target);
+        String head = git.commitDsl("draft", "// Existing architecture\n", "alice", "Initial architecture");
+        var edit = request(ref, null);
+        fixture.service.execute(target, new Command(edit.context(), edit.metadata(), new SemanticCommand(
+                new com.taxonomy.dsl.command.ArchitectureCommand.CreateArchitectureElement("local", "System", Map.of("title", "Local edit")))));
+        var request = request(ref, null);
+        var preview = service.preview(target, request);
+        assertThat(preview.checkpointReview()).isNull();
+        assertThat(preview.preview().change().dsl()).contains("Local edit", "Frozen capability");
+        var result = service.adopt(target, new AnalysisSnapshotAdoptionService.Request(request.context(), request.metadata(), ref,
+                preview.fingerprint()));
+        assertThat(result.accepted().context().revision()).isEqualTo(2);
+        assertThat(git.getHeadCommit("draft")).isEqualTo(head);
+    }
+
     @Test void typeCollisionAppearsInPreviewWithoutChangingTheWorkspace() throws Exception {
         fixture.repositories.resolveRepository(target).commitDsl("draft","element CP-1000 type Component {\n title: \"Edited collision\";\n}\n","alice","Fixture");
         var result = service.preview(target,request(ref,null));

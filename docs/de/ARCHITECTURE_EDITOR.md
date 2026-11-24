@@ -48,6 +48,26 @@ SVG und Vektor-PDF verwenden das vollständige deterministische Serverlayout der
 
 Technische Entscheidung: [ADR 0005](../adr/0005-private-architecture-editor.md). [English guide](../en/ARCHITECTURE_EDITOR.md).
 
+<a id="architecture-change-set"></a>
+## Architekturänderungen als Paket prüfen
+
+Öffnen Sie in der bearbeitbaren Arbeitsarchitektur **Architekturänderungen als
+Paket prüfen**. Wählen Sie ein neues Element, seine gerichtete Relation zu einem
+vorhandenen Element und die Anforderung, die dem neuen Element zugeordnet werden
+soll. Ausgangspunkt ist ein Git-Checkpoint, der die aktuelle Arbeitsrevision
+enthält. Erfassen Sie eine Begründung und prüfen Sie die Vorschau vor der Übernahme.
+
+Die Vorschau zeigt den Git-Zielstand sowie den Zustand jedes betroffenen
+Modellblocks vor und nach der Änderung. Die Übernahme speichert das Paket in einem
+Git-Checkpoint. Bei einem ungültigen Teilschritt oder geändertem Branch-Stand
+ist eine neue Prüfung erforderlich.
+
+Bei der Vorschau einer gespeicherten Analyse steht **Analyse übernehmen und
+Checkpoint erstellen** zur Verfügung, wenn die Arbeitsrevision bereits in Git
+gespeichert ist. Prüfen Sie die Modelländerungen und den Git-Zielstand in der
+Vorschau. Die Übernahme hält den Bezug zur gespeicherten Analyse fest und
+schreibt die geprüften Änderungen gemeinsam in Git.
+
 <a id="shared-editing"></a>
 ## Eine Arbeitskopie gemeinsam bearbeiten
 

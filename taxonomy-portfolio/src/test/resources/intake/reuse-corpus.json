@@ -1,13 +1,13 @@
 {
   "requirements": [
-    {"key":"ACCESS","text":"Only payroll administrators may export employee salary records."},
-    {"key":"ALARM","text":"The monitoring service shall page the on-call operator within 60 seconds of a freezer alarm."},
-    {"key":"AUDIT","text":"The service shall retain successful sign-in audit records for at least 365 days."},
-    {"key":"DELETION","text":"The service shall erase expired customer export files within 48 hours."},
-    {"key":"EXPORT","text":"The portal shall offer a CSV export of the current invoice list."},
-    {"key":"PAYMENT","text":"The checkout shall authorize card payments before confirming the order."},
-    {"key":"PUBLICATION","text":"Only the duty editor may publish flood warnings to the public portal."},
-    {"key":"RECOVERY","text":"After a backup restore, the warehouse service shall rebuild its search index within four hours."}
+    {"key":"ACCESS","id":1,"versionId":101,"text":"Only payroll administrators may export employee salary records."},
+    {"key":"ALARM","id":2,"versionId":102,"text":"The monitoring service shall page the on-call operator within 60 seconds of a freezer alarm."},
+    {"key":"AUDIT","id":3,"versionId":103,"text":"The service shall retain successful sign-in audit records for at least 365 days."},
+    {"key":"DELETION","id":4,"versionId":104,"text":"The service shall erase expired customer export files within 48 hours."},
+    {"key":"EXPORT","id":5,"versionId":105,"text":"The portal shall offer a CSV export of the current invoice list."},
+    {"key":"PAYMENT","id":6,"versionId":106,"text":"The checkout shall authorize card payments before confirming the order."},
+    {"key":"PUBLICATION","id":7,"versionId":107,"text":"Only the duty editor may publish flood warnings to the public portal."},
+    {"key":"RECOVERY","id":8,"versionId":108,"text":"After a backup restore, the warehouse service shall rebuild its search index within four hours."}
   ],
   "cases": [
     {"id":"duplicate-exact-alarm","key":"ALARM","expected":"DUPLICATE","input":"The monitoring service shall page the on-call operator within 60 seconds of a freezer alarm.","inputEvidence":"within 60 seconds of a freezer alarm","sourceEvidence":"within 60 seconds of a freezer alarm"},
@@ -29,6 +29,16 @@
     {"id":"negative-alarm","key":"ALARM","expected":"NONE","input":"The monitoring service shall page the on-call operator within 60 seconds of a failed nightly data import."},
     {"id":"negative-audit","key":"AUDIT","expected":"NONE","input":"The service shall retain air quality sensor readings for at least 365 days."},
     {"id":"negative-export","key":"EXPORT","expected":"NONE","input":"The portal shall offer a CSV export of the current list of public meeting dates."},
-    {"id":"negative-recovery","key":"RECOVERY","expected":"NONE","input":"The warehouse service shall print a shipment manifest within four hours of receiving an order."}
+    {"id":"negative-recovery","key":"RECOVERY","expected":"NONE","input":"The warehouse service shall print a shipment manifest within four hours of receiving an order."},
+    {"id":"duplicate-deletion","key":"DELETION","expected":"DUPLICATE","input":"Customer export files must be deleted no later than 48 hours after expiry.","inputEvidence":"no later than 48 hours after expiry","sourceEvidence":"within 48 hours"},
+    {"id":"duplicate-publication","key":"PUBLICATION","expected":"DUPLICATE","input":"Publishing a flood warning on the public portal shall be restricted to the duty editor.","inputEvidence":"restricted to the duty editor","sourceEvidence":"Only the duty editor"},
+    {"id":"change-alarm-deadline","key":"ALARM","expected":"CHANGE","input":"Tighten the freezer alarm paging deadline so the monitoring service pages the on-call operator within 45 seconds.","inputEvidence":"within 45 seconds","sourceEvidence":"within 60 seconds"},
+    {"id":"change-recovery-deadline","key":"RECOVERY","expected":"CHANGE","input":"After a backup restore, the warehouse service shall rebuild its search index within two hours.","inputEvidence":"within two hours","sourceEvidence":"within four hours"},
+    {"id":"addition-access-attempt-log","key":"ACCESS","expected":"ADDITION","input":"Each attempt to export employee salary records shall write a record to the payroll access log, including attempts blocked by the existing payroll administrator rule.","inputEvidence":"write a record to the payroll access log","sourceEvidence":"export employee salary records"},
+    {"id":"addition-audit-user-agent","key":"AUDIT","expected":"ADDITION","input":"Each retained audit record for a successful sign-in shall also contain the user agent reported by the client.","inputEvidence":"also contain the user agent","sourceEvidence":"successful sign-in audit records"},
+    {"id":"conflict-alarm-page-suppression","key":"ALARM","expected":"CONFLICT","input":"The monitoring service shall suppress all pages to the on-call operator when a freezer alarm occurs.","inputEvidence":"suppress all pages","sourceEvidence":"page the on-call operator"},
+    {"id":"conflict-export-csv-ban","key":"EXPORT","expected":"CONFLICT","input":"The portal shall never offer a CSV export of the current invoice list.","inputEvidence":"never offer a CSV export","sourceEvidence":"offer a CSV export"},
+    {"id":"negative-deletion-guest-trial","key":"DELETION","expected":"NONE","input":"The service shall close expired guest trial accounts within 48 hours."},
+    {"id":"negative-publication-office-calendar","key":"PUBLICATION","expected":"NONE","input":"The duty editor shall approve the office holiday calendar before it appears on the staff intranet."}
   ]
 }

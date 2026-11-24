@@ -52,12 +52,7 @@ public class ArchitectureCheckpointWriter {
             commit.setTreeId(inserter.insert(tree));
             commit.setAuthor(actor); commit.setCommitter(actor);
             if (previous != null) commit.setParentId(ObjectId.fromString(previous));
-            commit.setMessage("architecture checkpoint: " + request.rationale()
-                    + "\n\nCheckpoint-Id: " + request.commandId() + "\nCheckpoint-Scope: " + scope
-                    + "\nCheckpoint-Fingerprint: " + request.fingerprint()
-                    + "\nSemantic-Revision: " + request.revision()
-                    + "\nOperations-After: " + request.fromRevision() + "\nOperations-Through: " + request.revision()
-                    + "\nRationale: " + request.rationale());
+            commit.setMessage(message(scope, request));
             String recovered = findPublishedCheckpoint(source, repository, branch, commit);
             if (recovered != null) return new Result(recovered, true);
             source.signCommit(commit, branch);
@@ -84,6 +79,15 @@ public class ArchitectureCheckpointWriter {
             if (recovered != null) return new Result(recovered, true);
             throw new IOException("Checkpoint ref update did not succeed: " + result + "; retry checkpoint " + request.commandId());
         }
+    }
+
+    static String message(String scope, EditorJournal.Checkpoint request) {
+        return "architecture checkpoint: " + request.rationale()
+                + "\n\nCheckpoint-Id: " + request.commandId() + "\nCheckpoint-Scope: " + scope
+                + "\nCheckpoint-Fingerprint: " + request.fingerprint()
+                + "\nSemantic-Revision: " + request.revision()
+                + "\nOperations-After: " + request.fromRevision() + "\nOperations-Through: " + request.revision()
+                + "\nRationale: " + request.rationale();
     }
 
     /** Recover the exact durable payload without requiring deterministic signature bytes. */

@@ -1,0 +1,99 @@
+element parking-permit-register type CoreService {
+  title: "Residential parking permit register";
+  description: "Maintains the authoritative list of active residential parking permits by vehicle registration.";
+}
+
+element library-returns-sorter type Component {
+  title: "Library returns sorter";
+  description: "Sorts checked-in library books by branch shelving code.";
+}
+
+element district-address-index type CoreService {
+  title: "District address index";
+  description: "Validates residential street addresses against the municipal address gazetteer.";
+}
+
+element tree-inspection-scheduler type CoreService {
+  title: "Street tree inspection scheduler";
+  description: "Schedules street tree safety inspections along existing field routes.";
+}
+
+element hearing-caption-service type CoreService {
+  title: "Council hearing caption service";
+  description: "Produces live captions from the audio stream of public council hearings.";
+}
+
+element building-kiosk type UserApplication {
+  title: "Building application kiosk";
+  description: "Accepts paperless building applications at walk-in counters.";
+}
+
+element permit-sequence type CoreService {
+  title: "Building case number service";
+  description: "Allocates sequential identifiers for building application cases.";
+}
+
+element road-closure-feed type CoreService {
+  title: "Road closure feed";
+  description: "Publishes current road closures in a feed for navigation clients.";
+}
+
+element traffic-events-archive type CoreService {
+  title: "Traffic events archive";
+  description: "Stores live and historical traffic events with their expiry times.";
+}
+
+element income-verification type CoreService {
+  title: "Income verification service";
+  description: "Calculates verified household income bands from approved records.";
+}
+
+element subsidy-intake type Process {
+  title: "Heating subsidy intake";
+  description: "Accepts resident applications for seasonal heating subsidies.";
+}
+
+element museum-ticket-terminal type UserApplication {
+  title: "Museum ticket terminal";
+  description: "Sells museum tickets at self-service terminals.";
+}
+
+element museum-capacity type CoreService {
+  title: "Museum capacity service";
+  description: "Tracks and reserves admission slots by time window.";
+}
+
+element dog-license-reminders type CoreService {
+  title: "Dog license reminders";
+  description: "Sends owners notices before their annual dog licenses expire.";
+}
+
+element pet-license-archive type CoreService {
+  title: "Pet license archive";
+  description: "Records the expiry dates of issued city pet licenses.";
+}
+
+relation building-kiosk USES permit-sequence {
+  status: accepted;
+  provenance: "Walk-in building applications obtain their case numbers from the sequence service.";
+}
+
+relation road-closure-feed DEPENDS_ON traffic-events-archive {
+  status: accepted;
+  provenance: "The road closure feed reads active closures from the traffic events archive.";
+}
+
+relation income-verification SUPPORTS subsidy-intake {
+  status: accepted;
+  provenance: "Heating subsidy intake checks eligibility using the verified household income band.";
+}
+
+relation museum-ticket-terminal USES museum-capacity {
+  status: accepted;
+  provenance: "Museum ticket terminals reserve each timed admission through the capacity service.";
+}
+
+relation dog-license-reminders DEPENDS_ON pet-license-archive {
+  status: accepted;
+  provenance: "The dog license reminder service reads upcoming expirations from the pet license archive.";
+}

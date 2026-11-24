@@ -90,31 +90,53 @@ against its manifest and summary before accepting it; no XML counter is repaired
 Root `verify` independently invokes `check-junit-outcomes` after Failsafe to recount
 every original reactor XML, so malformed evidence also fails locally.
 
-### Requirement reuse evaluation
+<a id="requirement-reuse-evaluation"></a>
+### Requirement and architecture reuse evaluation
 
-The [intake corpus](../../taxonomy-portfolio/src/test/resources/intake/reuse-corpus.json)
-contains 20 synthetic examples with independent expectations for duplicates,
-additions, contradictions and superficially similar unrelated requirements.
-Run the existing intake service and matcher with the fixed candidate pool:
+The versioned corpus contains 50 synthetic cases with independently labelled
+sources, expected classifications, and supporting passages. The
+[requirement cases](../../taxonomy-portfolio/src/test/resources/intake/reuse-corpus.json)
+cover duplicates, changes, additions, conflicts, and unrelated requests. The
+[architecture cases](../../taxonomy-portfolio/src/test/resources/intake/architecture-reuse-corpus.json)
+cover 10 element requests and 10 directed relation requests against a
+[canonical TaxDSL fixture](../../taxonomy-portfolio/src/test/resources/intake/architecture-reuse-source.taxdsl).
+Architecture hard negatives include the wrong endpoint, the opposite direction,
+and similar terminology for a different job.
+
+The test runs production intake discovery, scope checks, and matcher code with
+fixed requirement rows and a fixed architecture branch and commit. Run it from
+the repository root.
 
 ```bash
 ./mvnw -B -pl taxonomy-portfolio -am test \
   -Dtest=RequirementIntakeCorpusTest -Dsurefire.failIfNoSpecifiedTests=false
 ```
 
-The baseline writes `taxonomy-portfolio/target/intake-evaluation/offline.csv`.
-It measures exact-text fallback with the provider disabled. Add
-`-Dtaxonomy.intake.evaluateLive=true` and set `LLM_PROVIDER` explicitly using the
-application's normal provider settings to write `live.csv`. That run sends one
-review per example to the selected provider and retains each completion status.
+The offline run writes `offline.csv` and `offline-summary.csv` under
+`taxonomy-portfolio/target/intake-evaluation/`. It measures admission and
+identity through production discovery and the exact-text fallback.
+Add `-Dtaxonomy.intake.evaluateLive=true` and set `LLM_PROVIDER` explicitly
+using the application's provider settings to write `live.csv` and
+`live-summary.csv`. It sends one review per case to the selected generative
+provider. Set `-Dtaxonomy.intake.liveReadTimeoutSeconds` when a local provider
+needs more than the default 180 seconds per request.
+For a locally provisioned provider that accepts parallel requests, set
+`-Dtaxonomy.intake.liveParallelism` to a value from 1 to 4. The default is 1.
 
-The report records the rank in the list shown to the user, the classification,
-and whether the original and candidate quotes contain the independently
-specified passages. Top-three success requires both the correct candidate and
-the correct classification. An unassessed case stays distinct from an explicit
-`NONE` result. These measurements characterize this fixed pool and the intake
-review. Database retrieval coverage and open-ended provider accuracy require
-separate evaluation.
+| Metric | Measurement |
+| --- | --- |
+| Admission | The expected candidate is present in the bounded response from production discovery. |
+| Top-three hit | A positive case has the right candidate and classification among the first three rows the intake panel displays. |
+| Supporting quotes | Both returned quotes include their independently specified passages. The deterministic exact-text fallback can supply one shared quote. |
+| False suggestions | The count of non-`NONE` suggestions of the case's candidate kind on completed negative cases. |
+| Unchanged identity | The exact source ID occurs once and retains its repository, branch and relevant requirement version or architecture commit. |
+
+The per-case report records provider status, classification, displayed rank,
+and source identifiers. The summary reports denominators and results by
+candidate kind. A failed or unassessed negative review leaves its false count
+blank. The benchmark covers admission and model output for the versioned
+fixtures. Database-scale recall and open-ended provider accuracy require
+their own measurement.
 
 ### Opt-in suppression of inherited tests
 

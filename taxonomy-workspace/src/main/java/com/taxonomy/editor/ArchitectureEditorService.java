@@ -3,10 +3,12 @@ package com.taxonomy.editor;
 import com.taxonomy.workspace.service.BranchHeadConflictException;
 import com.taxonomy.backup.BackupScope;
 import com.taxonomy.backup.BackupWriteBarrier;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.AccessDeniedException;
 
+import com.taxonomy.dsl.command.ArchitectureCommand;
 import com.taxonomy.dsl.command.ArchitectureCommand.*;
 import com.taxonomy.dsl.command.ArchitectureDslCommands;
 import com.taxonomy.dsl.command.ArchitectureDslCommands.Change;
@@ -38,10 +40,12 @@ import java.security.MessageDigest;
 import java.security.DigestOutputStream;
 import java.security.NoSuchAlgorithmException;
 import java.util.*;
+import java.util.function.Function;
 
 /** Accepted editing revisions belong to the durable workspace journal. Git contains explicit versions only. */
 @Service
 public class ArchitectureEditorService implements ArchitectureCommandPort, WorkspaceArchitectureVersionPort {
+    private static final org.slf4j.Logger LOG = LoggerFactory.getLogger(ArchitectureEditorService.class);
     private final DslGitRepositoryFactory repositories;
     private final EditorJournal journal;
     private final ArchitectureCheckpointWriter checkpointWriter;
@@ -179,13 +183,244 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
     @Override
     public Preview preview(RepositoryContext context, Command command) throws IOException {
         requireContext(context, command.context()); requireWritable(context);
-        Snapshot snapshot = snapshot(context);
+        return preview(context, command, snapshot(context));
+    }
+
+    private Preview preview(RepositoryContext context, Command command, Snapshot snapshot) throws IOException {
         expect(snapshot.state(), command.context().revision());
         requireInitialVersion(snapshot.state(), command.context());
         verifyVersion(context, snapshot.state());
         return new Preview(Context.of(context, snapshot.state().checkpointCommit(), snapshot.state().revision()),
                 transform(context, command, snapshot.state().dsl(), snapshot.operations(), id -> journal.operation(context, id)),
                 kind(command.operation()), target(command.operation()));
+    }
+
+    /** The baseline is an exact, clean Git checkpoint. Reviewing computes a semantic block diff in memory. */
+    public ArchitectureChangeSet.Preview previewChangeSet(RepositoryContext context, ArchitectureChangeSet.Request request)
+            throws IOException {
+        requireContext(context, request.context());
+        requireWritable(context);
+        var repository = repositories.resolveRepository(context);
+        String expected = request.context().commit();
+        if (!expected.equals(repository.getHeadCommit(context.branch()))) throw changeSetHeadMoved();
+        String before = source(repository, expected);
+        requireChangeSetBaseline(snapshot(context).state(), request.context(), before);
+        var commands = request.commands();
+        Change change = changeSet(before, commands);
+        return new ArchitectureChangeSet.Preview(request.context(),
+                changeSetFingerprint(changeSetInput(request, commands), before, change), change.changes());
+    }
+
+    /** Publish one reviewed change through a Git CAS and retain its semantic operation and checkpoint together. */
+    public CheckpointAccepted acceptChangeSet(RepositoryContext context, ArchitectureChangeSet.Request request)
+            throws IOException {
+        var commands = request.commands();
+        return acceptReviewedCheckpoint(context, new ReviewedCheckpoint(request.context(), request.metadata(),
+                request.previewFingerprint(), changeSetInput(request, commands), before -> changeSet(before, commands)));
+    }
+
+    public record SnapshotCheckpointReview(Context context, String fingerprint) {}
+    public record SnapshotAdoptionReview(Preview semanticPreview, SnapshotCheckpointReview checkpointReview) {}
+
+    /** A clean workspace can review a frozen snapshot as a version using the same computed semantic diff. */
+    public SnapshotAdoptionReview previewSnapshotAdoption(RepositoryContext context, Context expected, Metadata metadata,
+            AdoptAnalysisSnapshot adoption, String sourceProof) throws IOException {
+        requireContext(context, expected);
+        requireWritable(context);
+        var command = new Command(expected, metadata, new SemanticCommand(adoption));
+        var snapshot = snapshot(context);
+        var preview = preview(context, command, snapshot);
+        var state = snapshot.state();
+        if (expected.commit() == null || !expected.commit().equals(state.checkpointCommit())
+                || state.checkpointRevision() != state.revision() || preview.change().changes().isEmpty()) {
+            return new SnapshotAdoptionReview(preview, null);
+        }
+        var repository = repositories.resolveRepository(context);
+        if (!expected.commit().equals(repository.getHeadCommit(context.branch()))) throw changeSetHeadMoved();
+        String baseline = source(repository, expected.commit());
+        requireChangeSetBaseline(state, expected, baseline);
+        var checkpoint = new SnapshotCheckpointReview(expected,
+                changeSetFingerprint(snapshotCheckpointInput(command, sourceProof), baseline, preview.change()));
+        return new SnapshotAdoptionReview(preview, checkpoint);
+    }
+
+    /** The retained snapshot is re-authorized by its owner before this baseline is used to rebuild the proposal. */
+    public String snapshotCheckpointBaseline(RepositoryContext context, Context expected, Metadata metadata) throws IOException {
+        requireContext(context, expected);
+        requireWritable(context);
+        if (expected.commit() == null) {
+            throw problem("CHECKPOINT_REQUIRED", "checkpoint", "Select a Git checkpoint before reviewing a snapshot", List.of());
+        }
+        var repository = repositories.resolveRepository(context);
+        if (matchesChangeSetHead(repository, changeSetPublication(context, metadata), context.branch(), expected.commit())) {
+            return source(repository, expected.commit());
+        }
+        // A completed reviewed request can be replayed after later Git moves, using its own original baseline.
+        String checkpointId = checkpointMetadata("architecture-change-set", metadata).commandId();
+        String baseline = journal.readExistingLocked(context, null, session -> {
+            var checkpoint = session.checkpoint(checkpointId);
+            var operation = session.find(metadata.commandId());
+            if (checkpoint == null || operation == null || !checkpoint.completed()
+                    || !context.username().equals(operation.actor())
+                    || !expected.commit().equals(checkpoint.expectedCommit())
+                    || expected.revision() != checkpoint.fromRevision()) return null;
+            return operation.beforeDsl();
+        });
+        if (baseline == null) throw changeSetHeadMoved();
+        return baseline;
+    }
+
+    /** Only server-built frozen adoption commands enter this optional checkpoint boundary. */
+    public CheckpointAccepted acceptSnapshotCheckpoint(RepositoryContext context, Context expected, Metadata metadata,
+            AdoptAnalysisSnapshot adoption, String sourceProof, String checkpointFingerprint) throws IOException {
+        var command = new Command(expected, metadata, new SemanticCommand(adoption));
+        return acceptReviewedCheckpoint(context, new ReviewedCheckpoint(expected, metadata, checkpointFingerprint,
+                snapshotCheckpointInput(command, sourceProof), before -> transformer(before).apply(before, adoption)));
+    }
+
+    private static String snapshotCheckpointInput(Command command, String sourceProof) {
+        return digest(Arrays.asList("SNAPSHOT_CHECKPOINT", command.context().commit(), command.metadata().commandId(),
+                sourceProof, fingerprint(command)));
+    }
+
+    private record ReviewedCheckpoint(Context context, Metadata metadata, String previewFingerprint,
+                                      String input, Function<String, Change> apply) {}
+
+    private CheckpointAccepted acceptReviewedCheckpoint(RepositoryContext context, ReviewedCheckpoint request) throws IOException {
+        requireContext(context, request.context());
+        requireWritable(context);
+        if (request.context().commit() == null || request.previewFingerprint() == null
+                || !request.previewFingerprint().matches("[a-f0-9]{64}")) {
+            throw problem("PREVIEW_CHANGED", "previewFingerprint", "Preview this exact change set before accepting", List.of());
+        }
+        try (var write = writeBarrier.enter(backupScope(context))) {
+            var repository = repositories.resolveRepository(context);
+            String branch = context.branch();
+            String expected = request.context().commit();
+            String fingerprint = digest(List.of("CHANGE_SET_ACCEPT", request.input(), request.previewFingerprint()));
+            String scope = EditorJournal.scope(context);
+            Metadata checkpointMetadata = checkpointMetadata("architecture-change-set", request.metadata());
+            String publication = changeSetPublication(context, request.metadata());
+            var replay = journal.readExistingLocked(context, null,
+                    session -> changeSetReplay(context, session, request.metadata(), checkpointMetadata, fingerprint));
+            if (replay != null) {
+                releaseChangeSetPin(repository, publication, branch, replay.commitId());
+                return replay;
+            }
+            if (!matchesChangeSetHead(repository, publication, branch, expected)) {
+                // The exact operation may have completed while this retry was reading Git.
+                replay = journal.readExistingLocked(context, null,
+                        session -> changeSetReplay(context, session, request.metadata(), checkpointMetadata, fingerprint));
+                if (replay != null) return replay;
+                throw changeSetHeadMoved();
+            }
+            String before = source(repository, expected);
+            Change change = request.apply().apply(before);
+            if (change.changes().isEmpty() || !request.previewFingerprint().equals(changeSetFingerprint(request.input(), before, change))) {
+                throw problem("PREVIEW_CHANGED", "previewFingerprint", "The change set differs from the reviewed preview", List.of());
+            }
+            var stored = journal.read(context);
+            State initial = stored == null ? new State(before, 0, expected, 0, null) : stored.state();
+            CheckpointAccepted accepted;
+            try {
+                accepted = journal.controlLocked(context, initial, session -> {
+                    var prior = changeSetReplay(context, session, request.metadata(), checkpointMetadata, fingerprint);
+                    if (prior != null) return prior;
+                    requireChangeSetBaseline(session.state(), request.context(), before);
+                    if (session.checkpoint(checkpointMetadata.commandId()) != null) {
+                        throw problem("COMMAND_ID_REUSED", "commandId", "A different operation already uses the checkpoint identity", List.of());
+                    }
+                    String candidate = null;
+                    try {
+                        if (!matchesChangeSetHead(repository, publication, branch, expected)) throw changeSetHeadMoved();
+                        session.append(request.metadata(), context.username(), "VERSION_CHANGE_SET", null, fingerprint,
+                                change.dsl(), List.copyOf(affected(change.changes())));
+                        Checkpoint checkpoint = session.prepare(checkpointMetadata, context.username(), request.previewFingerprint());
+                        String message = ArchitectureCheckpointWriter.message(scope, checkpoint)
+                                + "\nReviewed-Change-Set: " + request.metadata().commandId() + "\nExpected-Head: " + expected;
+                        // Pin the exact candidate so a retry can recover a publication even if the editor transaction was interrupted.
+                        candidate = repository.prepareDslCommit(publication, branch, expected, null, change.dsl(), context.username(), message, null);
+                        String commit = repository.publishPreparedDslCommit(publication, branch, expected, candidate);
+                        return checkpointReceipt(context, session.complete(checkpoint.commandId(), commit, true), false);
+                    } catch (BranchHeadConflictException moved) {
+                        releaseChangeSetPin(repository, publication, branch, candidate);
+                        throw changeSetHeadMoved();
+                    } catch (IOException failure) {
+                        throw new java.io.UncheckedIOException(failure);
+                    }
+                });
+            } catch (java.io.UncheckedIOException failure) {
+                throw failure.getCause();
+            }
+            releaseChangeSetPin(repository, publication, branch, accepted.commitId());
+            return accepted;
+        }
+    }
+
+    private static String changeSetPublication(RepositoryContext context, Metadata metadata) {
+        return "architecture-change-set:" + EditorJournal.scope(context) + ":" + context.username() + ":" + metadata.commandId();
+    }
+
+    private static boolean matchesChangeSetHead(DslGitRepository repository, String publication, String branch,
+                                                String expected) throws IOException {
+        String actual = repository.getHeadCommit(branch);
+        return expected.equals(actual) || actual != null && actual.equals(repository.findPreparedDslCommit(publication, branch));
+    }
+
+    private static CommandProblem changeSetHeadMoved() {
+        return problem("CHECKPOINT_CONFLICT", "commit", "The Git branch changed. Refresh the editor and review the change set again", List.of());
+    }
+
+    private static void requireChangeSetBaseline(State state, Context expected, String before) {
+        expect(state, expected.revision());
+        if (!expected.commit().equals(state.checkpointCommit())) throw changeSetHeadMoved();
+        if (state.checkpointRevision() != state.revision() || !before.equals(state.dsl())) {
+            throw problem("CHECKPOINT_REQUIRED", "checkpoint", "Checkpoint existing edits before reviewing a Git-bound change set", List.of());
+        }
+    }
+
+    private Change changeSet(String before, List<ArchitectureCommand> commands) {
+        var change = transformer(before).applyAll(before, commands);
+        if (change.changes().stream().noneMatch(block -> block.id().startsWith("mapping:"))) {
+            throw problem("NO_CHANGE", "allocation", "The allocation must change in the reviewed change set", List.of());
+        }
+        return change;
+    }
+
+    private static String changeSetInput(ArchitectureChangeSet.Request request, List<ArchitectureCommand> commands) {
+        List<String> parts = new ArrayList<>(List.of("CHANGE_SET_INPUT", request.metadata().commandId(), request.context().commit()));
+        for (ArchitectureCommand command : commands) {
+            parts.add(fingerprint(new Command(request.context(), request.metadata(), new SemanticCommand(command))));
+        }
+        return digest(parts);
+    }
+
+    private static String changeSetFingerprint(String input, String before, Change change) {
+        return digest(List.of("CHANGE_SET_PREVIEW", input, before, change.dsl()));
+    }
+
+    private static CheckpointAccepted changeSetReplay(RepositoryContext context, EditorJournal.Session session,
+            Metadata metadata, Metadata checkpointMetadata, String fingerprint) {
+        Entry prior = session.find(metadata.commandId());
+        if (prior == null) return null;
+        requireFingerprint(fingerprint, prior.fingerprint());
+        Checkpoint checkpoint = session.checkpoint(checkpointMetadata.commandId());
+        if (checkpoint == null || !checkpoint.completed()) throw new IllegalStateException("Reviewed change set has no checkpoint receipt");
+        return checkpointReceipt(context, checkpoint, true);
+    }
+
+    private static CheckpointAccepted checkpointReceipt(RepositoryContext context, Checkpoint checkpoint, boolean replayed) {
+        return new CheckpointAccepted(Context.of(context, checkpoint.commitId(), checkpoint.revision()), checkpoint.commandId(),
+                checkpoint.commitId(), checkpoint.fromRevision(), checkpoint.revision(), checkpoint.commitCreated(), replayed);
+    }
+
+    private static void releaseChangeSetPin(DslGitRepository repository, String publication, String branch, String commit) {
+        if (commit == null) return;
+        try {
+            repository.releasePreparedDslCommit(publication, branch, commit);
+        } catch (IOException failure) {
+            LOG.warn("Could not release a reviewed architecture change set's Git pin", failure);
+        }
     }
 
     @Override
@@ -549,7 +784,7 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
                 throw problem("PREVIEW_CHANGED", "previewFingerprint", "Preview the exact reconciliation before accepting", List.of());
             State initial = snapshot(context).state();
             String fingerprint = digest(reconciliationParts(request, "RECONCILIATION_ACCEPT", request.headCommit(), request.previewFingerprint()));
-            Metadata checkpointMetadata = reconciliationCheckpointMetadata(request.metadata());
+            Metadata checkpointMetadata = checkpointMetadata("architecture-reconciliation", request.metadata());
             ReconciliationIntent prepared;
             try {
                 prepared = journal.locked(context, initial, session -> {
@@ -759,8 +994,8 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
         parts.addAll(Arrays.asList(evidence)); return parts;
     }
 
-    private static Metadata reconciliationCheckpointMetadata(Metadata metadata) {
-        String id = UUID.nameUUIDFromBytes(("architecture-reconciliation:" + metadata.commandId()).getBytes(StandardCharsets.UTF_8)).toString();
+    private static Metadata checkpointMetadata(String kind, Metadata metadata) {
+        String id = UUID.nameUUIDFromBytes((kind + ":" + metadata.commandId()).getBytes(StandardCharsets.UTF_8)).toString();
         return new Metadata(id, metadata.correlationId(), metadata.commandId(), metadata.rationale());
     }
 

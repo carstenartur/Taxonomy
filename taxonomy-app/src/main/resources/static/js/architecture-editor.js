@@ -68,7 +68,7 @@
         onSelectView:async function (id) { selectedView = id; await load(context(),view.document.source === 'GIT_CHECKPOINT' ? context().commit : context().revision,true); },
         onAccepted:async function (result, origin) {
             selectedView = result.viewId;
-            await load(preserveWorkspacePin(result.accepted?.context, origin) || context(), null);
+            await load(preserveWorkspacePin(result.checkpoint?.context || result.accepted?.context, origin) || context(), null);
             renderer.fit({initial:true});
         }
     });
@@ -91,6 +91,13 @@
                     || context().actor !== origin.actor) return;
             selectedView = viewId;
             await load(preserveWorkspacePin(publication.context, origin), null, true);
+        }
+    });
+    var changeSetPanel = window.TaxonomyArchitectureChangeSet?.create({root:root, api:api, t:t, report:report,
+        newMetadata:function (rationale) { return Object.assign(metadata(), {rationale:rationale}); },
+        lock:function (value) { busy = value; permissions(); },
+        onAccepted:async function (accepted, origin) {
+            await load(preserveWorkspacePin(accepted.context, origin), null, hasDraft());
         }
     });
     function el(id) { return id.startsWith('editorLens') ? document.getElementById(id) : root.querySelector('#' + id); }
@@ -282,6 +289,7 @@
         directory?.setEnabled(writable);
         planningPanel.setEnabled(writable);
         preparationPanel?.update(active ? view : null, active && !busy && !loading);
+        changeSetPanel?.update(active ? view : null, writable);
         focusPanel.setLocked(!active || busy || loading);
         renderAdmbwExport();
         el('editorArrange').disabled = busy || loading || !view;
@@ -1017,7 +1025,7 @@
     function canLeave(next, settings) {
         if (busy || dialog.open) { if (dialog.open) dialog.focus(); return false; }
         if (settings?.retain || (sameSelection(next) && (next.element || null) === selected)) return true;
-        return !hasDraft() || window.confirm(t('architecture.workspace.discardDraft'));
+        return (!hasDraft() && !changeSetPanel?.hasDraft()) || window.confirm(t('architecture.workspace.discardDraft'));
     }
     async function previewRequestedAdoption() {
         if (activeSource?.adoption !== 'preview' || !adoptionPanel.getSource()) return;

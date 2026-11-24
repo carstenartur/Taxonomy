@@ -38,6 +38,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.regex.Pattern;
 
 /** Application service for exact-tenant projects and immutable requirement versions. */
@@ -452,6 +453,15 @@ public class ProjectPortfolioService {
                 .findByRequirementIdAndScopeKeyOrderByVersionNumberDesc(
                         requirementId, requirement.getScopeKey())
                 .stream().map(this::toVersionView).toList();
+    }
+
+    /** Reads exactly one immutable version in its authorized project and requirement. */
+    @Transactional(readOnly = true)
+    public Optional<RequirementVersionView> findRequirementVersion(Long projectId, Long requirementId, Long versionId,
+                                                                   String username, WorkspaceContext context) {
+        var requirement = requireRequirement(projectId, requirementId, username, context);
+        return versionRepository.findByIdAndRequirementIdAndScopeKey(versionId, requirementId, requirement.getScopeKey())
+                .map(this::toVersionView);
     }
 
     @Transactional(readOnly = true)

@@ -56,6 +56,15 @@
 .architecture-editor-surface dialog::backdrop { background: #17243aaa; }
 .architecture-editor-surface .editor-diff { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
 .architecture-editor-surface .editor-diff pre { padding: .7rem; background: #f1f4f8; min-width: 0; }
+.architecture-editor-surface .editor-change-set-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr)); gap: 1rem; }
+.architecture-editor-surface #editorChangeSetPanel { max-width: 72rem; overflow-wrap: anywhere; }
+.architecture-editor-surface #editorChangeSetPanel button { margin-block: .6rem; }
+.architecture-editor-surface #editorChangeSetPanel .editor-diff pre {
+    border: 1px solid var(--taxonomy-panel-border, #c8d1dd);
+    background: var(--taxonomy-panel-background, #fff);
+    color: inherit;
+}
+.architecture-editor-surface .editor-change-set-error { color: var(--bs-danger-text-emphasis, #8f210f); white-space: pre-wrap; }
 .architecture-editor-surface .editor-skip, .architecture-editor-surface .editor-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 .architecture-editor-surface .editor-skip:focus { clip-path: none; width: auto; height: auto; padding: 1rem; background: white; z-index: 2; }
 .architecture-editor-surface [hidden] { display: none !important; }

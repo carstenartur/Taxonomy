@@ -20,7 +20,7 @@ public class AnalysisSnapshotAdoptionController {
         this.service = service; this.resolver = resolver;
     }
     @PostMapping("/api/architecture/editor/snapshot-adoptions/preview")
-    @Operation(summary = "Preview adoption of exact retained analysis evidence", description = "Read-only preview. Requires the full source tuple, editor Context/Metadata and exact workspace revision If-Match. No graph payload or review decision is accepted.")
+    @Operation(summary = "Preview adoption of exact retained analysis evidence", description = "Read-only preview. Requires the full source tuple, editor Context/Metadata and exact workspace revision If-Match. A clean Git baseline also yields a review fingerprint for optional checkpoint publication.")
     public ResponseEntity<PreviewResult> preview(@RequestBody Request request,
             @RequestHeader(value=HttpHeaders.IF_MATCH,required=false) String ifMatch,
             @RequestHeader(value=HttpHeaders.IF_NONE_MATCH,required=false) String ifNoneMatch) throws IOException {
@@ -29,13 +29,15 @@ public class AnalysisSnapshotAdoptionController {
         return response(result.preview() == null ? request.context() : result.preview().context()).body(result);
     }
     @PostMapping("/api/architecture/editor/snapshot-adoptions")
-    @Operation(summary = "Adopt a previewed frozen snapshot into the private editor", description = "Rebuilds the source server-side and checks the preview fingerprint before the existing journal accepts one undoable semantic edit. Repeated source adoption opens its canonical view; Git checkpoints remain explicit.")
+    @Operation(summary = "Adopt a previewed frozen snapshot into the private editor", description = "Rebuilds the source server-side and validates the preview fingerprint. By default this is one undoable semantic edit. Supplying the checkpoint review fingerprint additionally requires the original Git HEAD and saves all reviewed changes as one checkpoint.")
     public ResponseEntity<Adopted> adopt(@RequestBody Request request,
             @RequestHeader(value=HttpHeaders.IF_MATCH,required=false) String ifMatch,
             @RequestHeader(value=HttpHeaders.IF_NONE_MATCH,required=false) String ifNoneMatch) throws IOException {
         requireRevision(request.context(),ifMatch,ifNoneMatch);
         var result = service.adopt(resolver.resolveCurrentRepositoryContext(),request);
-        return response(result.accepted() == null ? request.context() : result.accepted().context()).body(result);
+        Context context = result.checkpoint() != null ? result.checkpoint().context()
+                : result.accepted() == null ? request.context() : result.accepted().context();
+        return response(context).body(result);
     }
     private static void requireRevision(Context context,String ifMatch,String ifNoneMatch) {
         if (ifMatch == null) throw new MissingRevision();
@@ -61,7 +63,7 @@ public class AnalysisSnapshotAdoptionController {
         int status = switch(error.code()) {
             case "NOT_FOUND" -> 404;
             case "READ_ONLY" -> 403;
-            case "CONTEXT_CHANGED","COMMAND_ID_REUSED","CHECKPOINT_PENDING","VERSION_CHANGED","SNAPSHOT_IDENTITY_CONFLICT","SNAPSHOT_TYPE_CONFLICT","PREVIEW_CHANGED" -> 409;
+            case "CONTEXT_CHANGED","COMMAND_ID_REUSED","CHECKPOINT_PENDING","CHECKPOINT_CONFLICT","CHECKPOINT_REQUIRED","VERSION_CHANGED","SNAPSHOT_IDENTITY_CONFLICT","SNAPSHOT_TYPE_CONFLICT","PREVIEW_CHANGED" -> 409;
             default -> 422;
         };
         return ResponseEntity.status(status).body(Map.of("code",error.code(),"field",error.field(),"detail",error.getMessage(),"dependencies",error.dependencies()));

@@ -13,6 +13,7 @@ import com.taxonomy.dsl.model.CatalogueReference;
 import com.taxonomy.dsl.model.CatalogueDefinitionResolver;
 import com.taxonomy.editor.ArchitectureCommandPort.*;
 import com.taxonomy.editor.ArchitectureEditorService;
+import com.taxonomy.editor.ArchitectureEditorService.SnapshotCheckpointReview;
 import com.taxonomy.identity.StableIdentityHash;
 import com.taxonomy.model.WorkspaceOverlayScope;
 import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
@@ -72,43 +73,56 @@ public class AnalysisSnapshotAdoptionService {
                 if (id == null || id < 1) throw new IllegalArgumentException("Exact source project, requirement and version are required");
         }
     }
-    public record Request(Context context, Metadata metadata, SourceRef source, String previewFingerprint) {
+    public record Request(Context context, Metadata metadata, SourceRef source, String previewFingerprint,
+                          String checkpointFingerprint) {
         public Request { Objects.requireNonNull(context); Objects.requireNonNull(metadata); Objects.requireNonNull(source); }
+        public Request(Context context, Metadata metadata, SourceRef source, String previewFingerprint) {
+            this(context, metadata, source, previewFingerprint, null);
+        }
     }
     public record Difference(String id, String field, String existingValue, String sourceValue) {}
     public record Summary(List<String> addedElements, List<String> reusedElements, List<String> addedRelations,
                           List<String> reusedRelations, List<Difference> differences, List<String> conflicts) {}
     public record PreviewResult(SourceRef source, String viewId, String fingerprint, Summary summary,
-                                boolean existing, Preview preview) {}
-    public record Adopted(SourceRef source, String viewId, Summary summary, boolean existing, Accepted accepted) {}
+                                boolean existing, Preview preview, SnapshotCheckpointReview checkpointReview) {}
+    public record Adopted(SourceRef source, String viewId, Summary summary, boolean existing, Accepted accepted,
+                          CheckpointAccepted checkpoint) {}
     private record Prepared(AdoptAnalysisSnapshot adoption, Summary summary, boolean existing, String fingerprint) {}
 
     public PreviewResult preview(RepositoryContext target, Request request) throws IOException {
-        Prepared prepared = prepare(target, request);
-        Preview preview;
-        try { preview = editor.preview(target, command(request, prepared)); }
+        Prepared prepared = prepare(target, request, false);
+        ArchitectureEditorService.SnapshotAdoptionReview review;
+        try {
+            review = editor.previewSnapshotAdoption(target, request.context(), request.metadata(), prepared.adoption(), prepared.fingerprint());
+        }
         catch (CommandProblem error) {
             if (!Set.of("SNAPSHOT_TYPE_CONFLICT", "SNAPSHOT_IDENTITY_CONFLICT").contains(error.code())) throw error;
             Summary prior = prepared.summary();
             var summary = new Summary(prior.addedElements(),prior.reusedElements(),prior.addedRelations(),prior.reusedRelations(),
                     prior.differences(),List.of(error.getMessage()));
-            return new PreviewResult(request.source(),prepared.adoption().viewId(),prepared.fingerprint(),summary,prepared.existing(),null);
+            return new PreviewResult(request.source(),prepared.adoption().viewId(),prepared.fingerprint(),summary,prepared.existing(),null,null);
         }
         return new PreviewResult(request.source(), prepared.adoption().viewId(), prepared.fingerprint(),
-                prepared.summary(), prepared.existing(), preview);
+                prepared.summary(), prepared.existing(), review.semanticPreview(), review.checkpointReview());
     }
     public Adopted adopt(RepositoryContext target, Request request) throws IOException {
         // Rebuild from the retained snapshot, never from the browser's preview graph.
-        Prepared prepared = prepare(target, request);
+        boolean checkpointRequested = request.checkpointFingerprint() != null;
+        Prepared prepared = prepare(target, request, checkpointRequested);
         if (!prepared.fingerprint().equals(request.previewFingerprint()))
             throw problem("PREVIEW_CHANGED", "Preview this exact frozen source and target revision again");
+        if (checkpointRequested) {
+            var checkpoint = editor.acceptSnapshotCheckpoint(target, request.context(), request.metadata(), prepared.adoption(),
+                    prepared.fingerprint(), request.checkpointFingerprint());
+            return new Adopted(request.source(), prepared.adoption().viewId(), prepared.summary(), false, null, checkpoint);
+        }
         try {
             Accepted accepted = editor.execute(target, command(request, prepared));
-            return new Adopted(request.source(),prepared.adoption().viewId(),prepared.summary(),false,accepted);
+            return new Adopted(request.source(),prepared.adoption().viewId(),prepared.summary(),false,accepted,null);
         } catch (CommandProblem error) {
             if (!"NO_CHANGE".equals(error.code()) || !prepared.existing()) throw error;
             // A new intent for an already-adopted source opens its canonical view without a duplicate revision.
-            return new Adopted(request.source(),prepared.adoption().viewId(),prepared.summary(),true,null);
+            return new Adopted(request.source(),prepared.adoption().viewId(),prepared.summary(),true,null,null);
         }
     }
     private Command command(Request request, Prepared prepared) {
@@ -122,7 +136,7 @@ public class AnalysisSnapshotAdoptionService {
                 .orElseThrow(() -> problem("NOT_FOUND", "The exact retained requirement version is unavailable")).text();
     }
 
-    private Prepared prepare(RepositoryContext target, Request request) throws IOException {
+    private Prepared prepare(RepositoryContext target, Request request, boolean checkpointRequested) throws IOException {
         SourceRef source = request.source();
         if (target.scope() != RepositoryScope.WORKSPACE) throw problem("READ_ONLY", "Adoption requires an editable working copy");
         var targetWorkspace = owned(target.workspaceId(), target.username(), target.repositoryId());
@@ -214,8 +228,9 @@ public class AnalysisSnapshotAdoptionService {
         put(provenance,"x-analysis-provider",summary.provider()); put(provenance,"x-analysis-model",summary.modelName());
         put(provenance,"x-analysis-status",summary.status().name()); put(provenance,"x-analysis-created-at",Objects.toString(summary.createdAt(),null));
         String title = graph.getViewTitle() == null || graph.getViewTitle().isBlank() ? "Analysis " + summary.requirementKey() : graph.getViewTitle();
-        var document = editor.read(target,null);
-        var model = new ArchitectureDslCommands().model(document.dsl());
+        String targetDsl = checkpointRequested ? editor.snapshotCheckpointBaseline(target, request.context(), request.metadata())
+                : editor.read(target, null).dsl();
+        var model = new ArchitectureDslCommands().model(targetDsl);
         var existingView = model.getViews().stream().filter(v -> v.getId().equals(viewId)).findFirst();
         if (existingView.isEmpty() || existingView.get().getExtensions().containsKey("x-analysis-catalogue-revision"))
             put(provenance, "x-analysis-catalogue-revision", catalogueRevision);

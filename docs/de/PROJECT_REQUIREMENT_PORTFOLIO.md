@@ -133,6 +133,11 @@ und beitragendes Projekt getrennt prüfen. Ein Treffer in einer anderen Architek
 ist ein prüfbarer Hinweis, keine Berechtigung zur Änderung dieser Architektur.
 Die angebotenen Aktionen berücksichtigen den Geltungsbereich des Kandidaten.
 
+Die Prüfung ohne ausgewähltes Projekt kann auch Elemente und akzeptierte
+gerichtete Relationen aus lesbaren zentralen Architekturen vorschlagen. Der
+Vorschlag zeigt die vorhandene Modellidentität und öffnet ihren Git-Checkpoint
+schreibgeschützt. Relationen führen zum Quellelement der gerichteten Verbindung.
+
 Suche und Providerbewertung sind begrenzt. Abdeckung und Providerzustand beachten:
 Ein ungeprüfter Kandidat, nicht verfügbarer Provider, Timeout oder fehlgeschlagene
 Antwort ist kein Nachweis fehlender Duplikate oder Konflikte. Exakte Textgleichheit

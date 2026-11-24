@@ -78,7 +78,11 @@ window.ArchitectureEditorApi = (function () {
             }
         }); },
         previewAdoption: function (request) { return write('/snapshot-adoptions/preview', request, request.context); },
-        adoptSnapshot: function (request) { return write('/snapshot-adoptions', request, request.context); },
+        adoptSnapshot: function (request) {
+            return write('/snapshot-adoptions', request, request.context, {preservePreconditionFailure:Boolean(request.checkpointFingerprint)});
+        },
+        previewChangeSet: function (request) { return write('/change-sets/preview', request, request.context); },
+        acceptChangeSet: function (request) { return write('/change-sets/accept', request, request.context, {preservePreconditionFailure:true}); },
         preview: function (command) { return write('/preview', command, command.context); },
         setSharing: function (context, enabled) { return write('/collaboration', {context:context, enabled:enabled}, context); },
         // Only the command receipt needs a 412 from the preceding revision.

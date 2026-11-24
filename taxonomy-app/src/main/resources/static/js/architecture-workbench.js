@@ -624,7 +624,8 @@
     function setExportsEnabled(enabled) {
         // The print adapter observes Fit readiness before cloning the source SVG.
         fitButton.disabled = !enabled;
-        ['downloadArchitectureSvg','downloadArchitecturePdf','downloadArchitectureWord','downloadDecisionWord','downloadArchitectureArchiMate','downloadArchitectureVisio'].forEach(function(id) { if(el(id))el(id).disabled=!enabled; });
+        ['downloadArchitectureSvg','downloadArchitecturePdf','downloadArchitectureWord','downloadDecisionWord','downloadArchitectureArchiMate','downloadArchitectureVisio',
+            'downloadSourceCoverage','sourceCoverageCheckpoint'].forEach(function(id) { if(el(id))el(id).disabled=!enabled; });
     }
     function normalizeSource(source) {
         const normalized = Object.assign({}, source, {kind:'snapshot'});
@@ -684,6 +685,7 @@
             return true;
         }
         remember();
+        if (el('sourceCoverageCheckpoint')) el('sourceCoverageCheckpoint').value = '';
         active = true;
         activeSource = selectedSource;
         projectId = selectedSource.projectId;

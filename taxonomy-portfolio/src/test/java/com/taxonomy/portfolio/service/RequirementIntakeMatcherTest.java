@@ -110,6 +110,24 @@ class RequirementIntakeMatcherTest {
     }
 
     @ParameterizedTest
+    @CsvSource({
+            "ARCHITECTURE_ELEMENT,DUPLICATE", "ARCHITECTURE_ELEMENT,CHANGE", "ARCHITECTURE_ELEMENT,CONFLICT",
+            "ARCHITECTURE_RELATION,DUPLICATE", "ARCHITECTURE_RELATION,CHANGE", "ARCHITECTURE_RELATION,CONFLICT"})
+    void architectureObjectsCannotBeClassifiedAsExistingObligations(String kind, String classification) {
+        var architecture = new Candidate("existing-object", kind, "shared-repo", null, "main",
+                null, null, null, null, null, "Dispatch", "Respond within five seconds", "source-hash",
+                null, null, List.of(), List.of("VIEW"), "a".repeat(40), null, "dispatch");
+        ready(JSON.writeValueAsString(Map.of("decisions", List.of(
+                decision("existing-object", classification, "two seconds", "five seconds")))));
+
+        var result = matcher.review(INPUT, List.of(architecture), null);
+
+        assertThat(result.status()).isEqualTo(Status.FAILED);
+        assertThat(result.code()).isEqualTo("INVALID_MODEL_RESPONSE");
+        assertThat(result.candidates()).containsExactly(architecture);
+    }
+
+    @ParameterizedTest
     @NullAndEmptySource
     @ValueSource(strings = {" \n\t"})
     void missingTransportBodyIsFailureAndNeverACompletedNoMatch(String raw) {

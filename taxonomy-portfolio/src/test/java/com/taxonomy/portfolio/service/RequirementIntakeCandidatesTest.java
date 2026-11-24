@@ -76,6 +76,62 @@ class RequirementIntakeCandidatesTest {
         assertThat(candidate.requirementVersionId()).isNull();
     }
 
+    @Test void architectureDiscoveryPreservesDirectedIdentityAndOmitsAmbiguousOrUnapprovedObjects() throws Exception {
+        readable("""
+                element pump type CoreService {
+                  title: "Pump";
+                  description: "Provides water pressure";
+                }
+                element station type CoreService {
+                  title: "Station";
+                }
+                element duplicate type CoreService {
+                  title: "First definition";
+                }
+                element duplicate type CoreService {
+                  title: "Second definition";
+                }
+                relation pump DEPENDS_ON station {
+                  status: accepted;
+                  provenance: "Pump pressure depends on the station";
+                }
+                relation station DEPENDS_ON pump {
+                  status: proposed;
+                }
+                relation pump DEPENDS_ON duplicate {
+                  status: accepted;
+                }
+                """);
+        var result = candidates.discover(frozen(), "alice");
+        assertThat(result.coverage().truncated()).isTrue();
+        assertThat(result.candidates()).filteredOn(candidate -> "ARCHITECTURE_ELEMENT".equals(candidate.kind()))
+                .extracting(Candidate::sourceObjectId).containsExactly("pump", "station");
+        assertThat(result.candidates()).filteredOn(candidate -> "ARCHITECTURE_RELATION".equals(candidate.kind()))
+                .singleElement().satisfies(candidate -> {
+                    assertThat(candidate.id()).isEqualTo("architecture-relation:repo:pump DEPENDS_ON station");
+                    assertThat(candidate.sourceObjectId()).isEqualTo("pump DEPENDS_ON station");
+                    assertThat(candidate.text()).contains("Pump pressure depends on the station");
+                    assertThat(candidate.sourceCommit()).isEqualTo(HEAD);
+                    assertThat(candidate.actions()).containsExactly("VIEW");
+                });
+    }
+
+    @Test void architectureEvidenceDoesNotDisplaceExistingCandidatesOrCrowdOutAllRelations() throws Exception {
+        String elements = java.util.stream.IntStream.range(0, 35)
+                .mapToObj(index -> "element service-" + index + " type CoreService {\n  title: \"Service\";\n}\n")
+                .collect(java.util.stream.Collectors.joining());
+        readable(CANONICAL_REQUIREMENT + elements + """
+                relation service-0 DEPENDS_ON service-34 {
+                  status: accepted;
+                }
+                """);
+        var result = candidates.discover(frozen(), "alice");
+        assertThat(result.coverage()).isEqualTo(new Coverage(38, 32, true));
+        assertThat(result.candidates().subList(0, 3)).extracting(Candidate::kind)
+                .containsExactly("ARCHITECTURE_REQUIREMENT", "ARCHITECTURE", "ARCHITECTURE_ELEMENT");
+        assertThat(result.candidates()).anyMatch(candidate -> "service-0 DEPENDS_ON service-34".equals(candidate.sourceObjectId()));
+    }
+
     @Test void centralAdvanceDuringProviderCannotReturnCompleteAdviceForCurrentHead() throws Exception {
         var document=readable(CANONICAL_REQUIREMENT);
         assertThatThrownBy(()->reviewCentral(()->when(document.getHeadCommit("draft")).thenReturn(NEXT_HEAD)))

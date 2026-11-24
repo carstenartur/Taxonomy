@@ -50,6 +50,15 @@
                         th:text="#{workbench.download.architectureWord}">Architecture Word</button>
                 <button id="downloadDecisionWord" class="btn btn-sm btn-outline-light" type="button"
                         th:text="#{workbench.download.decisionWord}">Decision Word</button>
+                <div class="d-grid gap-1">
+                    <label for="sourceCoverageCheckpoint" class="small" th:text="#{workbench.coverage.checkpoint}">Git checkpoint (optional)</label>
+                    <input id="sourceCoverageCheckpoint" class="form-control form-control-sm" type="text"
+                           pattern="[0-9A-Fa-f]{40}" maxlength="40" spellcheck="false" autocomplete="off"
+                           aria-describedby="sourceCoverageCheckpointHelp" disabled/>
+                    <small id="sourceCoverageCheckpointHelp" th:text="#{workbench.coverage.checkpointHelp}">Leave blank to use the Git commit recorded by the analysis.</small>
+                    <button id="downloadSourceCoverage" class="btn btn-sm btn-outline-light" type="button" disabled
+                            th:text="#{workbench.coverage.download}">Download source coverage JSON</button>
+                </div>
                 <div class="d-grid gap-2" role="group"
                      th:attr="aria-label=#{workbench.ui.exports}" aria-label="Experimental architecture export formats">
                     <span id="experimentalExportBadge" class="badge text-bg-secondary" th:text="#{workbench.ui.experimental}">Experimental</span>
