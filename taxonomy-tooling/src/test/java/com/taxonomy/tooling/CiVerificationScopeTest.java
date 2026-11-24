@@ -120,6 +120,32 @@ class CiVerificationScopeTest {
         assertThrows(IllegalArgumentException.class, () -> CiVerificationScope.readAndVerify(root, file, head));
     }
 
+    @Test void staleMergeParentRequiresTheSameFullScopeInShallowAndFullCheckouts() throws Exception {
+        String originalBase = initialize();
+        GitSupport.require(root, "checkout", "-qb", "proposal");
+        write("docs/dev/proposal.md", "# Proposal\n");
+        String proposal = commit();
+        GitSupport.require(root, "checkout", "-qb", "synthetic-merge", originalBase);
+        GitSupport.require(root, "merge", "--no-ff", "--quiet", "--no-edit", proposal);
+        String merge = GitSupport.require(root, "rev-parse", "HEAD").strip();
+        GitSupport.require(root, "checkout", "-qb", "new-base", originalBase);
+        write("docs/dev/base.md", "# New base documentation\n");
+        String eventBase = commit();
+        GitSupport.require(root, "checkout", "--quiet", "synthetic-merge");
+        Path shallow = root.resolve("shallow-checkout");
+        GitSupport.require(root, "clone", "--quiet", "--depth=2", "--branch", "synthetic-merge",
+                root.toUri().toString(), shallow.toString());
+        assertNotEquals(0, GitSupport.run(shallow, "cat-file", "-t", eventBase).exitCode());
+
+        var decision = CiVerificationScope.classify(shallow, "pull_request", false, eventBase, merge);
+        assertEquals("full", decision.scope());
+        Path file = root.resolve("target/scope.json");
+        CiVerificationScope.write(file, decision);
+        assertEquals(decision, CiVerificationScope.readAndVerify(root, file, merge));
+        assertEquals("documentation",
+                CiVerificationScope.classify(shallow, "pull_request", false, originalBase, merge).scope());
+    }
+
     @Test void gateRejectsFailedPlannerUnexpectedSkipsAndDrafts() {
         var full = new LinkedHashMap<String, String>();
         full.put("change-scope", "success");

@@ -12,6 +12,29 @@ import static org.assertj.core.api.Assertions.*;
 class ScenarioLlmPlaybackTest {
     private final ObjectMapper json = new ObjectMapper();
 
+    @Test void compactPlaybackKeepsOrderedExchangeEvidenceAndAuthoredCoverage() throws Exception {
+        var regular = ScenarioLlmPlayback.flood();
+        var compact = ScenarioLlmPlayback.flood();
+        compact.recordCompactCalls();
+        var fixture = regular.fixture();
+        var orderedEvidence = new ArrayList<ScenarioLlmPlayback.AcceptedCall>();
+        for (var rule : fixture.path("replies")) {
+            String request = prompt(regular, rule);
+            String response = compact.respond(request);
+            String pointer = "/choices/0/message/content";
+            assertThat(json.readTree(json.readTree(response).at(pointer).asText()))
+                    .isEqualTo(json.readTree(json.readTree(regular.respond(request)).at(pointer).asText()));
+            orderedEvidence.add(new ScenarioLlmPlayback.AcceptedCall(rule.path("id").asText(),
+                    ScenarioLlmPlayback.sha256(request), ScenarioLlmPlayback.sha256(response), request.length(), response.length()));
+        }
+        compact.verifyCoverage(1);
+        assertThat(compact.callCount()).isEqualTo(regular.callCount());
+        assertThat(compact.calls()).as("compact playback discards accepted prompt and response bodies").isEmpty();
+        assertThat(compact.promptCount()).isEqualTo(regular.promptCount());
+        assertThat(compact.prompts()).isEmpty();
+        assertThat(compact.acceptedCalls()).containsExactlyElementsOf(orderedEvidence);
+    }
+
     @Test void scenarioRepliesRejectUnknownFullSourceChildrenEdgesAndAnswerValues() throws Exception {
         var fixture = ReformulationScenarioCorpus.flood();
         var input = json.createObjectNode().put("nodeId", "BP-1060")

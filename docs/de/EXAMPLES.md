@@ -47,7 +47,7 @@ Geben Sie im Analysefeld `produktdemo` ein und wählen Sie **Analysieren**. Die 
 
 Wer darf die Auditprotokolle lesen? Die Bildfolge beginnt mit dieser offenen Frage. Sie zeigt die Architektur-Lupe, die Übernahme in die Arbeitsarchitektur und die Auswahl der Elemente für die Lieferung. Der gespeicherte Stand R6 enthält 40 Elemente, drei Beziehungen und 21 Anforderungszuordnungen. Die gewählte Liefersicht enthält vier Elemente und eine Beziehung. Für acht von zwölf Anforderungsklauseln sind konkrete Beiträge mit wörtlichen Belegen dokumentiert. Die fachliche Abnahme steht aus.
 
-![Ausgewählte C1–S1-Liefersicht des Ausbildungsportals mit vier Elementen und einer gerichteten Beziehung](../images/admbw-quickstart-06-liefersicht.png)
+![Ausgewählte C1–S1-Liefersicht des Ausbildungsportals mit vier Elementen und einer gerichteten Beziehung](https://raw.githubusercontent.com/carstenartur/Taxonomy/80b8c942062a4d207b849b7e7a930ee4bb9a6fd0/docs/images/admbw-quickstart-06-liefersicht.png)
 
 [Alle sechs Bilder](https://github.com/carstenartur/Taxonomy/blob/main/docs/features/admbw-conformance-de.md#bildfolge-zum-ausbildungsportal) · [Modellumfang und Prüfstatus von R6](https://github.com/carstenartur/Taxonomy/blob/main/docs/features/admbw-conformance-de.md#vergleich-am-ausbildungsportal) · [Schrittfolge im Architektureditor](ARCHITECTURE_EDITOR.md#architecture-delivery-guide)
 

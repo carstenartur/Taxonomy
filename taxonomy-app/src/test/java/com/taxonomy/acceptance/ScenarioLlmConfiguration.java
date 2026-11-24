@@ -22,6 +22,7 @@ public class ScenarioLlmConfiguration {
     ScenarioLlmPlayback scenarioLlmPlayback(RestTemplate restTemplate, org.springframework.core.env.Environment environment) throws Exception {
         var playback = environment.getProperty("scenario.reformulation", Boolean.class, false)
                 ? new ScenarioLlmPlayback(ReformulationScenarioCorpus.scenario(environment.getProperty("scenario.reformulation-case", "flood"))) : ScenarioLlmPlayback.flood();
+        if (environment.getProperty("scenario.compact-playback", Boolean.class, false)) playback.recordCompactCalls();
         var mapper = new ObjectMapper();
         var server = MockRestServiceServer.bindTo(restTemplate).build(new ScenarioRequestExpectationManager());
         server.expect(ExpectedCount.manyTimes(), request -> { }).andRespond(request -> {

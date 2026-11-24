@@ -47,7 +47,7 @@ Enter `produktdemo` in the analysis field and select **Analyze**. A separate dem
 
 Who may read the audit logs? The screenshots begin with this open question and show how to inspect the snapshot with the architecture lens, adopt it into the working model and select elements for delivery. The saved R6 checkpoint contains 40 elements, three relationships and 21 requirement mappings. Its selected delivery view contains four elements and one relationship. Eight of the twelve requirement clauses have element contributions backed by direct quotations. Domain acceptance is pending.
 
-![Selected C1–S1 delivery view of the training portal with four elements and one directed relationship](../images/admbw-quickstart-06-liefersicht.png)
+![Selected C1–S1 delivery view of the training portal with four elements and one directed relationship](https://raw.githubusercontent.com/carstenartur/Taxonomy/80b8c942062a4d207b849b7e7a930ee4bb9a6fd0/docs/images/admbw-quickstart-06-liefersicht.png)
 
 [Six screenshots (German)](https://github.com/carstenartur/Taxonomy/blob/main/docs/features/admbw-conformance-de.md#bildfolge-zum-ausbildungsportal) · [R6 coverage and review status (German)](https://github.com/carstenartur/Taxonomy/blob/main/docs/features/admbw-conformance-de.md#vergleich-am-ausbildungsportal) · [Architecture editor walkthrough](ARCHITECTURE_EDITOR.md#architecture-delivery-guide)
 
