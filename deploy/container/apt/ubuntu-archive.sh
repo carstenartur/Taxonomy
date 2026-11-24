@@ -1,17 +1,21 @@
 #!/usr/bin/env bash
 
-# Probe the signed release once per candidate. Package downloads then use just
-# the chosen origin, instead of retrying an unreachable host for every index.
+# Allow at most two rounds per suite to recover from transient archive failures.
+# Package downloads for the suite use the selected origin.
 select_ubuntu_archive() {
     local directory=$1 suite=$2 keyring=$3
     shift 3
-    local uri probe
+    local round uri probe
     local -a releases
-    for uri; do
-        probe=$(mktemp -d "$directory/probe-$suite.XXXXXXXX") || return 1
-        chmod 755 "$probe" || return 1
-        mkdir -p "$probe/lists/partial" || return 1
-        cat > "$probe/release.sources" <<EOF
+    for round in 1 2; do
+        if ((round == 2)); then
+            printf 'Retrying Ubuntu release probes for %s\n' "$suite" >&2
+        fi
+        for uri; do
+            probe=$(mktemp -d "$directory/probe-$suite.XXXXXXXX") || return 1
+            chmod 755 "$probe" || return 1
+            mkdir -p "$probe/lists/partial" || return 1
+            cat > "$probe/release.sources" <<EOF
 Types: deb
 URIs: $uri
 Suites: $suite
@@ -19,19 +23,20 @@ Components: main
 Targets: InRelease
 Signed-By: $keyring
 EOF
-        # An isolated list directory precludes a cached success. APT checks
-        # the Ubuntu signature and validity period before storing InRelease.
-        if timeout --kill-after=2s 12s apt-get -qq \
-            -o "Dir::Etc::sourcelist=$probe/release.sources" -o Dir::Etc::sourceparts=- \
-            -o "Dir::State::lists=$probe/lists" -o Dir::Cache::pkgcache= -o Dir::Cache::srcpkgcache= \
-            -o Acquire::Retries=0 -o Acquire::https::Timeout=6 -o APT::Update::Error-Mode=any update >&2; then
-            releases=("$probe"/lists/*_InRelease)
-            if ((${#releases[@]} == 1)) && [[ -f ${releases[0]} ]] \
-                && grep -Fxq 'Origin: Ubuntu' "${releases[0]}" && grep -Fxq "Suite: $suite" "${releases[0]}"; then
-                printf '%s\n' "$uri"
-                return 0
+            # An isolated list directory precludes a cached success. APT checks
+            # the Ubuntu signature and validity period before storing InRelease.
+            if timeout --kill-after=2s 12s apt-get -qq \
+                -o "Dir::Etc::sourcelist=$probe/release.sources" -o Dir::Etc::sourceparts=- \
+                -o "Dir::State::lists=$probe/lists" -o Dir::Cache::pkgcache= -o Dir::Cache::srcpkgcache= \
+                -o Acquire::Retries=0 -o Acquire::https::Timeout=6 -o APT::Update::Error-Mode=any update >&2; then
+                releases=("$probe"/lists/*_InRelease)
+                if ((${#releases[@]} == 1)) && [[ -f ${releases[0]} ]] \
+                    && grep -Fxq 'Origin: Ubuntu' "${releases[0]}" && grep -Fxq "Suite: $suite" "${releases[0]}"; then
+                    printf '%s\n' "$uri"
+                    return 0
+                fi
             fi
-        fi
+        done
     done
     printf 'No candidate served a verified Ubuntu release for %s\n' "$suite" >&2
     return 1

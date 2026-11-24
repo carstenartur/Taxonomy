@@ -276,6 +276,7 @@ Effective policy and readiness can be inspected at `GET /api/ai-automation`. Gen
 | `TAXONOMY_PORTFOLIO_ANALYSIS_WORKER_QUEUE_CAPACITY` | `taxonomy.portfolio.analysis-worker-queue-capacity` | `100`, minimum effective `0` | In-memory dispatch queue. Persisted jobs survive rejection and can be resubmitted. |
 | `TAXONOMY_PORTFOLIO_ANALYSIS_WORKER_SHUTDOWN_SECONDS` | `taxonomy.portfolio.analysis-worker-shutdown-seconds` | `30`, minimum effective `0` | Grace period for worker termination. |
 | `TAXONOMY_PORTFOLIO_SNAPSHOT_STALE_AFTER_DAYS` | `taxonomy.portfolio.snapshot-stale-after-days` | `30`, minimum effective `1` | Age threshold used by portfolio stale-snapshot metrics; a snapshot for an old requirement version is stale regardless of age. |
+| `TAXONOMY_PORTFOLIO_SNAPSHOT_PACKED_WRITES` | `taxonomy.portfolio.snapshot.packed-writes` | `false` | Allows v1 frames for eligible new analysis snapshots. Enable only after upgrading every reader of the same database. See the [rollout and rollback procedure](PROJECT_PORTFOLIO_OPERATIONS.md#packed-snapshot-storage-rollout-and-rollback). |
 
 ## Email analysis
 

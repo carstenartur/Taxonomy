@@ -18,17 +18,25 @@ import com.taxonomy.portfolio.service.PortfolioAnalysisPersistenceService;
 import com.taxonomy.portfolio.service.PortfolioAnalysisRecoveryService;
 import com.taxonomy.portfolio.service.PortfolioAnalysisWorkQueue;
 import com.taxonomy.portfolio.service.PortfolioException;
+import com.taxonomy.portfolio.service.PortfolioJsonCodec;
 import com.taxonomy.portfolio.service.PortfolioScope;
 import com.taxonomy.portfolio.service.ProjectPortfolioService;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.AutowiredAnnotationBeanPostProcessor;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.context.annotation.AnnotationConfigUtils;
+import org.springframework.core.env.MapPropertySource;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.util.AopTestUtils;
 
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -38,6 +46,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @SpringBootTest
 @Tag("ci-app-shard-domain-integration")
 class PortfolioAnalysisClaimPersistenceServiceTest extends RetainedPortfolioCatalogue {
+    private static final String PACKED_WRITES = "taxonomy.portfolio.snapshot.packed-writes";
+    private static final String FRAME = "taxonomy-json-payload:v1:";
 
     @Autowired
     private WorkspaceResolver workspaceResolver;
@@ -59,6 +69,97 @@ class PortfolioAnalysisClaimPersistenceServiceTest extends RetainedPortfolioCata
 
     @Autowired
     private RequirementAnalysisJobRepository jobRepository;
+
+    @Autowired
+    private ConfigurableApplicationContext application;
+
+    @Autowired
+    private PortfolioJsonCodec jsonCodec;
+
+    @Autowired
+    private JdbcTemplate jdbc;
+
+    @Test
+    void packedWritesRequireOptInAndTurningThemOffLeavesExistingFramesReadable() {
+        var context = context();
+        var project = createProject(context);
+        AnalysisResult compressible = analysisWithMessage("Unveränderte Evidenz 🌊 ".repeat(4_000));
+        String original = jsonCodec.write(compressible);
+        var defaultWrite = persistSnapshot(project.id(), context, compressible);
+        assertThat(storedAnalysis(defaultWrite)).isEqualTo(original);
+
+        var sources = application.getEnvironment().getPropertySources();
+        String localOverride = "portfolio-snapshot-test-" + UUID.randomUUID();
+        try {
+            bindPackedWrites(localOverride, true);
+            var enabledWrite = persistSnapshot(project.id(), context, compressible);
+            String frame = storedAnalysis(enabledWrite);
+            assertThat(frame).startsWith(FRAME).hasSizeLessThan(original.length());
+
+            var small = successfulAnalysis();
+            assertThat(storedAnalysis(persistSnapshot(project.id(), context, small))).isEqualTo(jsonCodec.write(small));
+
+            var random = new Random(151);
+            var noise = new StringBuilder(70_000);
+            for (int i = 0; i < 70_000; i++) noise.append((char) (32 + random.nextInt(95)));
+            var incompressible = analysisWithMessage(noise.toString());
+            assertThat(storedAnalysis(persistSnapshot(project.id(), context, incompressible)))
+                    .isEqualTo(jsonCodec.write(incompressible));
+
+            var oversized = analysisWithMessage("x".repeat(24_000_001));
+            assertThat(storedAnalysis(persistSnapshot(project.id(), context, oversized)).equals(jsonCodec.write(oversized)))
+                    .as("oversized analysis remains exact plain JSON with packed writes enabled").isTrue();
+
+            bindPackedWrites(localOverride, false);
+            var disabledWrite = persistSnapshot(project.id(), context, compressible);
+            assertThat(storedAnalysis(disabledWrite)).isEqualTo(original);
+            assertThat(storedAnalysis(enabledWrite)).isEqualTo(frame);
+            for (String id : List.of(enabledWrite, disabledWrite)) {
+                var current = persistenceService.getSnapshot(project.id(), id, context.username(), context);
+                assertThat(current.analysis().getErrorMessage()).isEqualTo(compressible.getErrorMessage());
+            }
+        } finally {
+            sources.remove(localOverride);
+            bindPersistenceConfiguration();
+        }
+    }
+
+    private void bindPackedWrites(String sourceName, boolean enabled) {
+        var sources = application.getEnvironment().getPropertySources();
+        sources.addFirst(new MapPropertySource(sourceName, Map.of(PACKED_WRITES, enabled)));
+        bindPersistenceConfiguration();
+    }
+
+    private void bindPersistenceConfiguration() {
+        // Apply Spring's normal @Value injection to the same service to model a configuration restart.
+        application.getBean(AnnotationConfigUtils.AUTOWIRED_ANNOTATION_PROCESSOR_BEAN_NAME,
+                AutowiredAnnotationBeanPostProcessor.class)
+                .processInjection(AopTestUtils.getUltimateTargetObject(persistenceService));
+    }
+
+    private String persistSnapshot(Long projectId, WorkspaceContext context, AnalysisResult analysis) {
+        var requirement = createRequirement(projectId, context);
+        var job = persistenceService.createOrReuseJob(projectId, List.of(requirement.id()), "MOCK", 25,
+                "packed-writes-" + UUID.randomUUID(), context.username(), context);
+        String scope = PortfolioScope.key(context.username(), context);
+        var claim = workQueue.pending(job.id(), projectId, scope).getFirst();
+        persistenceService.markJobRunning(job.id(), projectId, scope);
+        String id = UUID.randomUUID().toString();
+        claimPersistenceService.persistSnapshot(claim, id, "portfolio:" + id, analysis, null, null, null,
+                "MOCK", null, "prompt", "taxonomy", context.username(), context, 1L);
+        return id;
+    }
+
+    private String storedAnalysis(String snapshotId) {
+        return jdbc.queryForObject("select analysis_payload from req_analysis_snapshot where id=?",
+                String.class, snapshotId);
+    }
+
+    private static AnalysisResult analysisWithMessage(String message) {
+        var analysis = successfulAnalysis();
+        analysis.setErrorMessage(message);
+        return analysis;
+    }
 
     @Test
     void expiredWorkerCannotFailOrPersistOverTheNewRetryGeneration() {
@@ -251,7 +352,7 @@ class PortfolioAnalysisClaimPersistenceServiceTest extends RetainedPortfolioCata
         return projectService.createRequirement(
                 projectId,
                 new CreateRequirementRequest(
-                        "REQ-001",
+                        "REQ-" + shortId(),
                         "Claim generation requirement",
                         "Initial requirement text",
                         RequirementStatus.APPROVED,

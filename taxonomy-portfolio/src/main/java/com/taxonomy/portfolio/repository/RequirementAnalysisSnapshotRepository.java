@@ -3,11 +3,13 @@ package com.taxonomy.portfolio.repository;
 import com.taxonomy.portfolio.dto.PortfolioDtos.SnapshotSummary;
 import com.taxonomy.portfolio.model.RequirementAnalysisSnapshot;
 import com.taxonomy.portfolio.model.SnapshotReference;
+import com.taxonomy.portfolio.payload.PortfolioAnalysisPayloads;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -70,7 +72,17 @@ public interface RequirementAnalysisSnapshotRepository
     Optional<AnalysisSnapshotIdentityRow> findIdentityByIdAndProjectIdAndScopeKey(
             @Param("id") String id, @Param("projectId") Long projectId, @Param("scopeKey") String scopeKey);
 
-    /** The immutable analysis alone, bound to the complete work identity checked by continuation eligibility. */
+    /** The immutable analysis JSON, bound to the complete work identity checked by continuation eligibility. */
+    default List<String> findAnalysisPayloadForContinuation(String snapshotId, String jobId, Long requirementId,
+            Long requirementVersionId, Long projectId, String scopeKey) {
+        List<String> stored = findStoredAnalysisPayloadForContinuation(
+                snapshotId, jobId, requirementId, requirementVersionId, projectId, scopeKey);
+        List<String> plain = new ArrayList<>(stored.size());
+        for (String payload : stored) plain.add(PortfolioAnalysisPayloads.plain(payload));
+        return plain;
+    }
+
+    /** Storage-only projection. Its values may contain encoded frames. */
     @Query("""
             select snapshot.analysisPayload
               from RequirementAnalysisSnapshot snapshot
@@ -78,7 +90,7 @@ public interface RequirementAnalysisSnapshotRepository
                and snapshot.requirementId = :requirementId and snapshot.requirementVersionId = :requirementVersionId
                and snapshot.projectId = :projectId and snapshot.scopeKey = :scopeKey
             """)
-    List<String> findAnalysisPayloadForContinuation(
+    List<String> findStoredAnalysisPayloadForContinuation(
             @Param("snapshotId") String snapshotId, @Param("jobId") String jobId,
             @Param("requirementId") Long requirementId, @Param("requirementVersionId") Long requirementVersionId,
             @Param("projectId") Long projectId, @Param("scopeKey") String scopeKey);

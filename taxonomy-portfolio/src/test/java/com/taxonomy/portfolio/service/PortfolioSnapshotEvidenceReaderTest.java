@@ -4,6 +4,7 @@ import com.taxonomy.dto.AnalysisResult;
 import com.taxonomy.dto.ArchitectureRecommendation;
 import com.taxonomy.dto.GapAnalysisView;
 import com.taxonomy.dto.PatternDetectionView;
+import com.taxonomy.exchange.backup.PortableJsonPayloads;
 import jakarta.persistence.EntityManager;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
@@ -45,8 +46,12 @@ class PortfolioSnapshotEvidenceReaderTest {
             "{\"businessText\":\"Original requirement\",\"confidence\":0.6,\"reasoning\":[\"Reasoning\"],\"notes\":[\"Notes\"]}"
     };
 
-    @Test void readsEveryFieldBeforeClosingReadersAndAllLocators() throws Exception {
+    @ParameterizedTest @ValueSource(booleans = {false, true})
+    void readsEveryFieldBeforeClosingReadersAndAllLocators(boolean packed) throws Exception {
         var f = new Fixture();
+        String analysisStored = packed ? packedAnalysis(PAYLOADS[0]) : PAYLOADS[0];
+        f.inputs[0] = new Input(analysisStored);
+        when(f.clobs[0].getCharacterStream()).thenReturn(f.inputs[0]);
         var value = f.reader.read(7L, "snapshot", "scope").orElseThrow();
         Object[] actual = {value.analysis(), value.gapAnalysis(), value.patternDetection(), value.recommendation()};
         Class<?>[] types = {AnalysisResult.class, GapAnalysisView.class, PatternDetectionView.class, ArchitectureRecommendation.class};
@@ -56,7 +61,7 @@ class PortfolioSnapshotEvidenceReaderTest {
             tools.jackson.databind.JsonNode originalFields = json.valueToTree(f.codec.read(PAYLOADS[i], types[i]));
             assertThat(actualFields).isEqualTo(originalFields);
             assertThat(f.inputs[i].closed).isEqualTo(1);
-            assertThat(f.inputs[i].position).isEqualTo(PAYLOADS[i].length());
+            assertThat(f.inputs[i].position).isEqualTo(i == 0 ? analysisStored.length() : PAYLOADS[i].length());
             verify(f.clobs[i]).free();
         }
         verify(f.query).addScalar("analysis_payload", StandardBasicTypes.CLOB);
@@ -133,8 +138,13 @@ class PortfolioSnapshotEvidenceReaderTest {
         for (Clob clob : f.clobs) verifyNoInteractions(clob);
     }
 
-    @Test void continuationAnalysisBindsTheCompleteOwnershipAndPreservesFullEvidence() throws Exception {
+    @ParameterizedTest @ValueSource(booleans = {false, true})
+    void continuationAnalysisBindsTheCompleteOwnershipAndPreservesFullEvidence(boolean packed) throws Exception {
         var f = new Fixture();
+        if (packed) {
+            f.inputs[0] = new Input(packedAnalysis(PAYLOADS[0]));
+            when(f.clobs[0].getCharacterStream()).thenReturn(f.inputs[0]);
+        }
         when(f.query.getSingleResultOrNull()).thenReturn(new Object[] {"snapshot", f.clobs[0]});
         var value = f.reader.readAnalysis(7L, "snapshot", "scope", "job", 11L, 12L).orElseThrow();
         assertThat(value.analysis().getReasons()).containsEntry("BP", "Recorded reason");
@@ -156,14 +166,80 @@ class PortfolioSnapshotEvidenceReaderTest {
         for (Clob clob : f.clobs) verifyNoInteractions(clob);
     }
 
-    @Test void aMatchingContinuationConsumesItsOwnLocatorWithoutBindingAgain() throws Exception {
+    @ParameterizedTest @ValueSource(booleans = {false, true})
+    void aMatchingContinuationConsumesItsOwnLocatorWithoutBindingAgain(boolean packed) throws Exception {
         var f = new ContinuationFixture();
-        var cold = f.read("snapshot", new Input(PAYLOADS[0]));
-        var warm = f.read("snapshot", new Input(PAYLOADS[0]));
+        String stored = packed ? packedAnalysis(PAYLOADS[0]) : PAYLOADS[0];
+        var cold = f.read("snapshot", stored, 1);
+        verify(f.codec).read(any(Reader.class), eq(AnalysisResult.class));
+        clearInvocations(f.codec);
+        var warm = f.read("snapshot", stored, 1);
         assertThat(warm.inputs()).isSameAs(cold.inputs());
         assertThat(warm.inputs().status()).isEqualTo("PARTIAL");
         assertThat(warm.inputs().warnings()).containsExactly("Recorded warning");
-        verify(f.codec).read(any(Reader.class), eq(AnalysisResult.class));
+        verifyNoInteractions(f.codec);
+    }
+
+    @Test void aPackedMismatchFreesTheComparisonBeforeBindingTheNewLocator() throws Exception {
+        var f = new ContinuationFixture();
+        String initial = packedAnalysis(PAYLOADS[0]);
+        String changed = packedAnalysis(PAYLOADS[0].replace("Recorded warning", "Different warning"));
+        f.read("snapshot", initial, 1);
+        clearInvocations(f.codec);
+        var comparison = new Input(changed);
+        var validation = new Input(changed);
+        Clob compared = f.clob(comparison), validated = f.clob(validation);
+        when(f.query.getSingleResultOrNull()).thenReturn(new Object[] {"snapshot", compared},
+                new Object[] {"snapshot", validated});
+        clearInvocations(f.query);
+        var current = f.reader.readContinuation(7L, "snapshot", "scope", "job", 11L, 12L).orElseThrow();
+        assertThat(current.inputs().warnings()).containsExactly("Different warning");
+        var order = inOrder(f.query, compared, validated, f.codec);
+        order.verify(f.query).getSingleResultOrNull();
+        order.verify(compared).free();
+        order.verify(f.query).getSingleResultOrNull();
+        order.verify(f.codec).read(any(Reader.class), eq(AnalysisResult.class));
+        order.verify(validated).free();
+        assertThat(comparison.position).isEqualTo(changed.length());
+        assertThat(validation.position).isEqualTo(changed.length());
+        assertThat(comparison.closed).isEqualTo(1);
+        assertThat(validation.closed).isEqualTo(1);
+        clearInvocations(f.codec);
+        assertThat(f.read("snapshot", changed, 1).inputs()).isSameAs(current.inputs());
+        verifyNoInteractions(f.codec);
+    }
+
+    @Test void equalLengthPackedCorruptionNeverReturnsTheWarmPolicy() throws Exception {
+        var f = new ContinuationFixture();
+        String stored = packedAnalysis(PAYLOADS[0]);
+        String corrupt = corruptFrame(stored);
+        var initial = f.read("snapshot", stored, 1);
+        var comparison = new Input(corrupt);
+        var validation = new Input(corrupt);
+        Clob compared = f.clob(comparison), validated = f.clob(validation);
+        when(f.query.getSingleResultOrNull()).thenReturn(new Object[] {"snapshot", compared},
+                new Object[] {"snapshot", validated});
+        assertThatThrownBy(() -> f.reader.readContinuation(7L, "snapshot", "scope", "job", 11L, 12L))
+                .isInstanceOf(PortfolioException.class).hasRootCauseInstanceOf(IOException.class);
+        for (Input input : List.of(comparison, validation)) {
+            assertThat(input.position).isEqualTo(stored.length());
+            assertThat(input.closed).isEqualTo(1);
+        }
+        verify(compared).free();
+        verify(validated).free();
+        assertThat(f.read("snapshot", stored, 1).inputs()).isSameAs(initial.inputs());
+    }
+
+    static String packedAnalysis(String source) throws IOException {
+        String packed = PortableJsonPayloads.pack(source + " ".repeat(65_536), 24_000_000);
+        assertThat(packed).startsWith("taxonomy-json-payload:v1:");
+        return packed;
+    }
+
+    static String corruptFrame(String frame) {
+        int base64 = frame.lastIndexOf(':') + 1;
+        char changed = frame.charAt(base64) == 'A' ? 'B' : 'A';
+        return frame.substring(0, base64) + changed + frame.substring(base64 + 1);
     }
 
     @ParameterizedTest @ValueSource(strings = {"", " \t\r\n", "null"})
@@ -515,7 +591,16 @@ class PortfolioSnapshotEvidenceReaderTest {
             return clob;
         }
 
+        PortfolioSnapshotEvidenceReader.ContinuationEvidence read(String id, String stored, int reads) throws SQLException {
+            return read(id, new Input(stored), reads);
+        }
+
         PortfolioSnapshotEvidenceReader.ContinuationEvidence read(String id, Input input) throws SQLException {
+            return read(id, input, null);
+        }
+
+        private PortfolioSnapshotEvidenceReader.ContinuationEvidence read(String id, Input input, Integer reads)
+                throws SQLException {
             Clob clob = clob(input);
             // Any replacement triggers a second SELECT with its own locator and reader.
             var replacement = new Input(input.source);
@@ -525,6 +610,7 @@ class PortfolioSnapshotEvidenceReaderTest {
             assertThat(input.position).isEqualTo(input.length);
             assertThat(input.closed).isEqualTo(1);
             verify(clob).free();
+            if (reads != null) assertThat(replacement.closed).isEqualTo(reads - 1);
             if (replacement.closed == 1) {
                 assertThat(replacement.position).isEqualTo(replacement.length);
                 verify(second).free();

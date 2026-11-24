@@ -1,6 +1,7 @@
 package com.taxonomy.portfolio.model;
 
 import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
+import com.taxonomy.portfolio.payload.PortfolioAnalysisPayloads;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -313,7 +314,7 @@ public class RequirementAnalysisSnapshot {
     public long getDurationMs() { return durationMs; }
     public int getWarningCount() { return warningCount; }
     public String getErrorMessage() { return errorMessage; }
-    public String getAnalysisPayload() { return analysisPayload; }
+    public String getAnalysisPayload() { return PortfolioAnalysisPayloads.plain(analysisPayload); }
     public String getGapAnalysisPayload() { return gapAnalysisPayload; }
     public String getPatternDetectionPayload() { return patternDetectionPayload; }
     public String getRecommendationPayload() { return recommendationPayload; }

@@ -1,10 +1,13 @@
 package com.taxonomy.portfolio.backup;
 
 import com.taxonomy.backup.*;
+import com.taxonomy.exchange.backup.PortableJsonPayloads;
 import com.taxonomy.exchange.backup.PortableRows;
 import com.taxonomy.exchange.backup.PortableRows.Query;
 import com.taxonomy.exchange.backup.PrincipalScopeCapture;
 import com.taxonomy.portfolio.model.PortfolioTypes.*;
+import com.taxonomy.portfolio.payload.PortfolioAnalysisPayloads;
+import com.taxonomy.portfolio.service.PortfolioException;
 import com.taxonomy.workspace.backup.BackupRowScope;
 import javax.sql.DataSource;
 import java.io.IOException;
@@ -14,8 +17,20 @@ import static com.taxonomy.exchange.backup.PortableRows.*;
 
 /** Version 1 business records and source-reference mappings. SQL projections and profile closure are explicit. */
 public final class PortfolioBackupContributor implements BackupDataContributor {
+    private static final int MAX_PORTABLE_ANALYSIS_CHARACTERS = 24_000_000;
     private final PortableRows rows;
     public PortfolioBackupContributor(DataSource database) { rows = new PortableRows(database); }
+    private static String portableAnalysisPayload(ResultSet row) throws SQLException, IOException {
+        String stored = textWithOidLocator(row, "analysis_payload", MAX_PORTABLE_ANALYSIS_CHARACTERS);
+        String original;
+        try {
+            original = PortfolioAnalysisPayloads.plain(stored);
+        } catch (PortfolioException failure) {
+            throw new IOException("Could not decode portable analysis snapshot", failure);
+        }
+        return PortableJsonPayloads.pack(original, MAX_PORTABLE_ANALYSIS_CHARACTERS);
+    }
+
     /** The same current ownership rows as the record export; creator/author labels remain historical metadata. */
     public Set<String> principalScopes(SnapshotContext snapshot, BackupCheckpoint checkpoint) throws IOException {
         var scope = new BackupRowScope(snapshot); var queries = new ArrayList<Query>();
@@ -210,7 +225,7 @@ public final class PortfolioBackupContributor implements BackupDataContributor {
                     instant(r,"created_at"),
                     r.getLong("duration_ms"),
                     r.getInt("warning_count"),
-                    com.taxonomy.exchange.backup.PortableJsonPayloads.pack(text(r,"analysis_payload",24_000_000),24_000_000),
+                    portableAnalysisPayload(r),
                     text(r,"gap_payload"),
                     text(r,"pattern_payload"),
                     text(r,"recommendation_payload"));
