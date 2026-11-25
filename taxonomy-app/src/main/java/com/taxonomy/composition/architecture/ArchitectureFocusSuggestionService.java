@@ -10,6 +10,7 @@ import com.taxonomy.analysis.service.AnalysisExecutionFailures;
 import com.taxonomy.analysis.service.AnalysisRunControl;
 import com.taxonomy.analysis.service.LlmCompletionOptions;
 import com.taxonomy.analysis.service.LlmService;
+import com.taxonomy.analysis.service.PromptTemplateService;
 import com.taxonomy.dsl.command.ArchitectureDslCommands;
 import com.taxonomy.dsl.command.ArchitectureDslCommands.CommandProblem;
 import com.taxonomy.dsl.model.CanonicalArchitectureModel;
@@ -50,6 +51,7 @@ import static com.taxonomy.composition.architecture.ArchitectureFocusCandidates.
 /** Bounded read-only hypothesis engine with an exact-editor adapter. No catalogue or proposal writes. */
 @Service
 public class ArchitectureFocusSuggestionService {
+    private static final String DEFAULT_INSTRUCTIONS = PromptTemplateService.shippedTemplate("architecture-focus");
     private static final JsonMapper JSON = JsonMapper.builder()
             .enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION)
             .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS).build();
@@ -60,6 +62,9 @@ public class ArchitectureFocusSuggestionService {
     private final LlmService llm;
     private final AiPromptBudgetPolicy promptBudget;
     private AnalysisChildOperations childOperations;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private PromptTemplateService promptTemplates;
 
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     void useChildOperations(AnalysisChildOperations operations) { this.childOperations = operations; }
@@ -170,16 +175,21 @@ public class ArchitectureFocusSuggestionService {
                            Map<String, String> provenance, Class<T> resultType, Function<EngineResult, T> wrap,
                            BooleanSupplier sourceCurrent) {
         var request = new EngineRequest(sourceId, candidateLimit, useAi, language, Map.copyOf(provenance));
-        var plan = prepare(model, catalogue, excluded, report, original, request, hash);
+        String instructions = !useAi || promptTemplates == null ? DEFAULT_INSTRUCTIONS : promptTemplates.getTemplate("architecture-focus");
+        if (instructions == null || instructions.isBlank()) instructions = DEFAULT_INSTRUCTIONS;
+        if (!instructions.endsWith("\n")) instructions += "\n";
+        var plan = prepare(model, catalogue, excluded, report, original, request, hash, instructions);
         Supplier<T> result = () -> wrap.apply(plan.result().get());
         if (!useAi || childOperations == null) return result.get();
         var fingerprint = AnalysisAdapterStore.digest("focus-evidence-v2", resultType.getName(), sourceId, hash, language,
                 Integer.toString(candidateLimit), JSON.writeValueAsString(new java.util.TreeMap<>(provenance)));
+        if (!DEFAULT_INSTRUCTIONS.equals(instructions))
+            fingerprint = AnalysisAdapterStore.digest(fingerprint, instructions);
         return childOperations.execute("FOCUS_INVESTIGATION", fingerprint, resultType, plan.dispatch(), result, sourceCurrent);
     }
 
     private Execution prepare(CanonicalArchitectureModel model, CatalogueDefinition catalogue, Set<String> excluded,
-                              RelationSearchReport report, String original, EngineRequest request, String hash) {
+                              RelationSearchReport report, String original, EngineRequest request, String hash, String instructions) {
         var source = model.findElement(request.sourceId())
                 .orElseThrow(() -> problem("NOT_FOUND", "sourceId", "The element is not present in this exact source"));
         var displayDescriptions = ArchitectureFocusCandidates.displayDescriptions(model);
@@ -202,7 +212,7 @@ public class ArchitectureFocusSuggestionService {
                 throw new IllegalStateException("Invalid provider identity");
             String method = "AI:" + provider;
             Map<String, String> fields = offeredFields(model, candidates, source.getId(), displayDescriptions);
-            String prompt = prompt(request, candidates, fields);
+            String prompt = prompt(request, candidates, fields, instructions);
             var options = completionOptions(candidates, fields, request.candidateLimit());
             if (options.budgetText(prompt).length() > 60_000) throw new IllegalArgumentException("Focus prompt exceeds its bounded envelope");
             String providerId = llm.isMockMode() ? "MOCK" : llm.getActiveProviderId().value();
@@ -278,7 +288,7 @@ public class ArchitectureFocusSuggestionService {
     private static void putField(Map<String, String> fields, String id, String field, String value) {
         if (value != null && !value.isBlank()) fields.put(id + "\n" + field, clip(value, MAX_QUOTE));
     }
-    private static String prompt(EngineRequest request, List<Triple> candidates, Map<String, String> fields) {
+    private static String prompt(EngineRequest request, List<Triple> candidates, Map<String, String> fields, String instructions) {
         var triples = candidates.stream().map(t -> Map.of("sourceId", t.sourceId(), "targetId", t.targetId(),
                 "relationType", t.relationType(), "basis", t.scope() == null ? t.sharedTerms() : t.scope(), "witnesses", t.evidence())).toList();
         List<Evidence> excerpts = fields.entrySet().stream().map(e -> {
@@ -291,17 +301,7 @@ public class ArchitectureFocusSuggestionService {
                 A title, text similarity or mapped requirement does not prove that a deployed relationship exists.
                 Return only JSON {"suggestions":[{"sourceId":"...","targetId":"...","relationType":"...",
                 "rationale":"...","evidence":[{"elementId":"...","field":"description","quote":"..."}]}]}.
-                Select supported useful hypotheses; an empty array is allowed. No confidence percentages.
-                Each suggestion requires a nonempty rationale and exact nonempty source excerpts from BOTH endpoints.
-                Optional mapped requirement excerpts supplement endpoint evidence. Never invent source quotations.
-                Where a triple supplies scoped witnesses, select it only for its explicit retained conditions and necessity.
-                A rejection in a separate context never proves a global match or global exclusion.
-                Preserve relation direction and meaning: USES denotes usage; DEPENDS_ON denotes dependency;
-                PRODUCES/CONSUMES denote information flow; SUPPORTS denotes support; REALIZES/FULFILLS denote realization;
-                ASSIGNED_TO denotes role assignment; COMMUNICATES_WITH denotes communication; REQUIRES denotes need.
-                RELATED_TO is only suitable when a more specific offered relation does not fit.
-                Rationale must be one paragraph without control characters; write in the requested language.
-                """ + "\nINPUT=" + JSON.writeValueAsString(Map.of("language", request.language(), "focusId", request.sourceId(),
+                """ + instructions + "\nINPUT=" + JSON.writeValueAsString(Map.of("language", request.language(), "focusId", request.sourceId(),
                 "triples", triples, "fields", excerpts));
     }
     private static LlmCompletionOptions completionOptions(List<Triple> candidates, Map<String, String> fields, int limit) {

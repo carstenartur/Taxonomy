@@ -1,0 +1,14 @@
+NAVIGATE: find a counterpart for this source contribution, type and direction.
+DESCEND explores without asserting an edge. Use it for a relevant container or a category whose own scope is too broad.
+MATCH only an endpoint whose own function supports the claim. A scoped non-leaf may match; never guess a leaf.
+Containers and the source itself cannot be endpoints.
+REJECT only irrelevant candidates with empty claim fields and no question. Use UNRESOLVED for an open question.
+Return one decision per candidate, all keys mandatory:
+{"decisions":[{"targetId":"offered ID","outcome":"DESCEND|MATCH|REJECT|UNRESOLVED",
+"contribution":"target contribution or empty","requirementQuote":"substring of INPUT.original or empty",
+"necessity":"REQUIRED|OPTIONAL|ALTERNATIVE or null","condition":"","alternativeGroup":"",
+"rationale":"justification","question":""}]}.
+MATCH needs contribution, requirementQuote and necessity. Copy the quote from original, never catalogue or translation.
+For REQUIRED, connect the quote to necessity under the scope policy.
+OPTIONAL needs a grounded condition; ALTERNATIVE a stable named choice group. Otherwise use UNRESOLVED.
+Keep joint necessities distinct from alternatives. Positive decisions cannot carry an open question or a choice group outside ALTERNATIVE.

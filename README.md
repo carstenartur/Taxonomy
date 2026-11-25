@@ -26,6 +26,16 @@ This README describes the current `main` branch. For a released installation,
 use the [published assets](https://github.com/carstenartur/Taxonomy/releases/latest)
 and the documentation for its tag.
 
+## Explore an architecture example
+
+| What would you like to see? | Where to start |
+| --- | --- |
+| Inspect a model | [Flood information and subscriptions](#requirement-based-architecture-example) traces a published warning through subscriptions, delivery channels, routing and audit. The saved partial result contains 50 nodes and 36 directed relationships. |
+| Try the workflow | [Working-time recording](docs/en/EXAMPLES.md#working-time-demo) starts from one sentence. Enter `produktdemo` in the analysis field to see how five decisions change the architecture with replayed model replies. |
+| Follow an architecture delivery | [Training portal](docs/features/admbw-conformance-de.md#bildfolge-zum-ausbildungsportal) shows six screenshots from an open audit-access question to a C1–S1 delivery view. Its four elements are a selection from a 40-element checkpoint. |
+
+[Fallbeispiele auf Deutsch](docs/de/EXAMPLES.md#architecture-case-studies) · [Case studies in English](docs/en/EXAMPLES.md#architecture-case-studies)
+
 ## Why use Taxonomy?
 
 Taxonomy connects architecture prototyping with **requirement clarification**:
@@ -90,8 +100,9 @@ relationship between requirements, projects and enduring architecture models.
 | Rapid architecture prototyping | Derives candidate cross-layer architecture elements, relations, and views from requirements and source documents |
 | Hierarchical analysis trace | Preserves assessed roots, intermediate nodes, leaves, paths and rationales; unvisited or unselected nodes are not negative findings |
 | Selectable analysis and recovery | Select roots and FULL/TAXONOMIES_ONLY mode; retain scope, completed work and validated answers during compatible continuation |
-| Architecture workbench | Reopens saved analysis snapshots for review and lets architects explicitly adopt them into an editable working copy with source provenance |
+| Architecture workbench | Adopt a saved analysis into a working copy with its source provenance, or preview a new element, its directed relation and its requirement allocation together and save them in one Git checkpoint. [Change-set guide](docs/en/ARCHITECTURE_EDITOR.md#architecture-change-set) |
 | Traceable source import | Extracts bounded candidates from PDF and DOCX sources and links accepted requirements to source versions and fragments |
+| Requirement reuse review | Compare incoming text with existing requirements and, when no project is selected, with architecture elements and directed relations. Inspect the quoted evidence before choosing how to save the requirement. [Intake guide](docs/en/PROJECT_REQUIREMENT_PORTFOLIO.md#requirement-intake) |
 | Requirement reformulation | Produces a saved wording proposal with traceable decision questions, explicit draft adoption and historical JSON/Markdown/HTML/DOCX exports; see the [workflow](docs/features/requirement-reformulation.md) and [verification boundaries](docs/testing/requirement-reformulation.md) |
 | Versioned architecture DSL | Keeps explicit JGit checkpoints and a separate durable journal for editor operations, with branches, diffs, merges, reverts and selective transfer |
 | Shared editing | Owners can share a working copy with authorized repository contributors. Participants work on the same revisions and can undo their own operations |
@@ -101,7 +112,7 @@ relationship between requirements, projects and enduring architecture models.
 | Reviewed tool exchange | Supports scoped ArchiMate and Sparx XMI exchange. The optional Sparx plugin imports QEA snapshots and delivers reviewed native QEA copies within its [documented profile](docs/features/sparx-integration.md) |
 | Inventory and variants | Compares saved analyses with scoped product and inventory evidence. Reviewers can compare existing project solutions and retain their selection reasons |
 | ADMBw delivery preparation | Assesses selected C1–S1 and R7 rules for an exact Git checkpoint under FFFmLV 2.0. The JSON assessment includes modeling data, findings and outstanding reviews. Native EA/MDG acceptance has its own evidence requirements in the [delivery guide](docs/features/admbw-conformance-de.md) |
-| Pluggable AI | Supports configured generative providers and optional local ONNX embeddings for search/scoring; local embeddings are not a generative relationship or reformulation model |
+| Pluggable AI | Use a configured generative provider for relation assessment and reformulation. Local ONNX embeddings support search and scoring. Administrators can customise shared instructions in the [prompt editor](docs/en/AI_PROVIDERS.md#prompt-template-editor). |
 
 ## Typical workflow
 

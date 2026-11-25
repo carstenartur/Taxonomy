@@ -55,7 +55,6 @@ import com.taxonomy.analysis.dag.inprocess.InProcessAnalysisOperation;
  */
 @Service
 public class LlmService {
-
     private static final Logger log = LoggerFactory.getLogger(LlmService.class);
 
     /**
@@ -208,8 +207,7 @@ public class LlmService {
         providerConfig.clearRequestProvider();
     }
 
-    /** Delegates to {@link LlmProviderConfig#getActiveProvider}. */
-    /** Compatibility accessor for existing built-in integrations. */
+    /** Compatibility accessor for built-in integrations, delegated to {@link LlmProviderConfig#getActiveProvider}. */
     public LlmProvider getActiveProvider() { return providerConfig.getActiveProvider(); }
 
     public void setRequestProviderId(ProviderId provider) { providerConfig.setRequestProviderId(provider); }
@@ -970,21 +968,17 @@ public class LlmService {
         if (providerConfig.isScenarioReplay(provider)) {
             // Replay identity is the exact authored reply content, never a live provider configuration.
             var replay = providerConfig.requireScenarioReplay(provider);
-            String templates = promptTemplateService.getAllTemplateCodes().stream().sorted()
-                    .map(code -> code + ":" + promptTemplateService.getTemplate(code)).collect(java.util.stream.Collectors.joining("\n"));
             return com.taxonomy.analysis.recovery.AnalysisCheckpointSession.digest(com.taxonomy.dto.AnalysisPercentages.POLICY, provider.value(), "SCENARIO_REPLAY",
                     replay.contentIdentity(), replay.model(), Integer.toString(productBatchSize),
-                    Integer.toString(minimumProductScore()), templates);
+                    Integer.toString(minimumProductScore()), scoringTemplates());
         }
         String endpoint = provider.equals(LlmProvider.GEMINI.id()) ? providerConfig.getGeminiUrl()
                 : provider.equals(LlmProvider.LOCAL_ONNX.id()) ? "LOCAL_ONNX" : providerConfig.getOpenAiCompatibleUrl(provider);
         String model = provider.equals(LlmProvider.GEMINI.id()) || provider.equals(LlmProvider.LOCAL_ONNX.id()) ? endpoint
                 : providerConfig.getOpenAiCompatibleModel(provider);
-        String templates = promptTemplateService.getAllTemplateCodes().stream().sorted()
-                .map(code -> code + ":" + promptTemplateService.getTemplate(code)).collect(java.util.stream.Collectors.joining("\n"));
         String fingerprint = com.taxonomy.analysis.recovery.AnalysisCheckpointSession.digest(com.taxonomy.dto.AnalysisPercentages.POLICY, provider.value(), endpoint, model,
                 Boolean.toString(providerConfig.isMockMode()), Integer.toString(productBatchSize),
-                Integer.toString(minimumProductScore()), templates);
+                Integer.toString(minimumProductScore()), scoringTemplates());
         String tokenContract = providerConfig.isMockMode() ? null : providerConfig.tokenContractRevision(provider);
         if (tokenContract != null) fingerprint = com.taxonomy.analysis.recovery.AnalysisCheckpointSession.digest(fingerprint, tokenContract);
         String completionConfiguration = providerConfig.isMockMode() ? null : providerConfig.completionConfigurationRevision(provider);
@@ -999,6 +993,13 @@ public class LlmService {
         }
         return fingerprint;
     }
+
+    private String scoringTemplates() {
+        return promptTemplateService.analysisFingerprintTemplates(false).entrySet().stream()
+                .map(entry -> entry.getKey() + ":" + entry.getValue())
+                .collect(java.util.stream.Collectors.joining("\n"));
+    }
+
     private String productQuestionPrompt(String text, List<TaxonomyNode> nodes) {
         return promptTemplateService.renderProductPrompt(text, buildNodeListWithContext(nodes),
                 String.join(", ", nodes.stream().map(TaxonomyNode::getCode).toList()), minimumProductScore());

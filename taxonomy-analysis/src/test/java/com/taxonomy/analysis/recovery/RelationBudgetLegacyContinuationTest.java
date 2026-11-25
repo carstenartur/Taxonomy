@@ -1,6 +1,7 @@
 package com.taxonomy.analysis.recovery;
 
 import com.taxonomy.analysis.relations.RequirementRelationSearchService;
+import com.taxonomy.analysis.relations.RelationSearchProtocol;
 import com.taxonomy.analysis.service.AnalysisReasonContext;
 import com.taxonomy.analysis.service.LlmProviderConfig;
 import com.taxonomy.analysis.service.LlmService;
@@ -57,7 +58,7 @@ class RelationBudgetLegacyContinuationTest {
     private final WorkspaceManager workspaces = mock(WorkspaceManager.class);
     // Exercise the historical resource migration with its original semantics and real compatibility path.
     private final RequirementRelationSearchService relations = new RequirementRelationSearchService(null, null, null, null) {
-        @Override public String recoveryPolicyFingerprint() { return HISTORICAL_V9_POLICY; }
+        @Override public String recoveryPolicyFingerprint(RelationSearchProtocol.Templates templates) { return HISTORICAL_V9_POLICY; }
     };
     private RetainedStore store;
     private AnalysisContinuationService service;

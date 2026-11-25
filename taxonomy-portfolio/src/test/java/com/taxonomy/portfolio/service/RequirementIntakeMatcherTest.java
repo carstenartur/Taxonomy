@@ -4,6 +4,7 @@ import com.taxonomy.analysis.service.*;
 import com.taxonomy.dto.AnalysisLanguage;
 import com.taxonomy.extension.api.llm.ProviderId;
 import com.taxonomy.portfolio.dto.RequirementIntakeDtos.*;
+import com.taxonomy.workspace.service.WorkspaceContext;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -11,14 +12,18 @@ import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.ArgumentCaptor;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.AdditionalMatchers.not;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
@@ -28,23 +33,25 @@ class RequirementIntakeMatcherTest {
     private final LlmProviderConfig config = mock(LlmProviderConfig.class);
     private final LlmGatewayRegistry gateways = mock(LlmGatewayRegistry.class);
     private final LlmGateway gateway = mock(LlmGateway.class);
-    private final RequirementIntakeMatcher matcher = new RequirementIntakeMatcher(config, gateways, new ObjectMapper());
+    private final PromptTemplateService prompts = mock(PromptTemplateService.class);
+    private final RequirementIntakeMatcher matcher = new RequirementIntakeMatcher(config, gateways, JSON, prompts);
 
     @Test void configuredGatewayProducesGroundedDecisionsInsteadOfInventedTargets() {
-        ready("{\"decisions\":[{\"id\":\"r1\",\"classification\":\"CHANGE\",\"rationale\":\"The allowed time changes.\",\"inputQuote\":\"two seconds\",\"candidateQuote\":\"five seconds\"}]}");
-        var result = matcher.review("Respond within two seconds", List.of(candidate()), null);
+        ready(reply(Map.of("A", decision("CHANGE", 1, 1))));
+        var result = matcher.review(INPUT, List.of(candidate()), null);
         assertThat(result.status()).isEqualTo(Status.COMPLETE);
         assertThat(result.candidates().getFirst().classification()).isEqualTo(Classification.CHANGE);
         assertThat(result.candidates().getFirst().requirementId()).isEqualTo(7L);
-        assertThat(result.candidates().getFirst().quotes()).containsExactly("two seconds", "five seconds");
+        assertThat(result.candidates().getFirst().quotes()).containsExactly(INPUT, candidate().text());
+        verify(gateway).sendHttpRequest(startsWith("Edited intake instructions"), eq("fixture"), any(LlmCompletionOptions.class));
     }
 
     @Test void invalidOrMissingAssessmentsNeverBecomeNoMatch() {
-        for (String response : List.of("{\"decisions\":[]}",
-                "{\"decisions\":[{\"id\":\"foreign\",\"classification\":\"NONE\",\"rationale\":\"No\",\"inputQuote\":\"\",\"candidateQuote\":\"\"}]}",
-                "{\"decisions\":[{\"id\":\"r1\",\"classification\":\"CONFLICT\",\"rationale\":\"No\",\"inputQuote\":\"fabricated\",\"candidateQuote\":\"five seconds\"}]}")) {
+        for (String response : List.of(reply(Map.of()),
+                reply(Map.of("other", decision("NONE", 1, 1))),
+                reply(Map.of("A", decision("CONFLICT", 2, 1))))) {
             ready(response);
-            assertThat(matcher.review("Respond within two seconds", List.of(candidate()), null).status()).isEqualTo(Status.FAILED);
+            assertThat(matcher.review(INPUT, List.of(candidate()), null).status()).isEqualTo(Status.FAILED);
         }
     }
 
@@ -91,22 +98,23 @@ class RequirementIntakeMatcherTest {
         }
     }
 
-    @Test void explicitNoRelationshipAndReorderedDecisionsRetainOfferedIdentityAndSourcePins() {
+    @Test void separateCandidateKindsRetainOfferedIdentityAndSourcePins() {
         var architecture = new Candidate("a2", "ARCHITECTURE_REQUIREMENT", "shared-repo", null, "main",
                 null, "SHARED", null, null, "R", "Retention", "Retain records for five years", "source-hash",
                 null, null, List.of(), List.of("VIEW"), "a".repeat(40), "version-4");
-        ready(JSON.writeValueAsString(Map.of("decisions", List.of(
-                decision("a2", "NONE", "", ""), decision("r1", "CHANGE", "two seconds", "five seconds")))));
+        ready(reply(Map.of("A", decision("CHANGE", 1, 1))));
+        when(gateway.extractResponseText("{}")).thenReturn(
+                reply(Map.of("A", decision("CHANGE", 1, 1))), reply(Map.of("A", decision("NONE", 1, 1))));
 
         var result = matcher.review(INPUT, List.of(candidate(), architecture), AnalysisLanguage.GERMAN);
 
         assertThat(result.status()).isEqualTo(Status.COMPLETE);
         assertThat(result.candidates()).containsExactly(
-                candidate().assessed(Classification.CHANGE, "Reviewed evidence", List.of("two seconds", "five seconds")),
-                architecture.assessed(Classification.NONE, "Reviewed evidence", List.of()));
+                candidate().assessed(Classification.CHANGE, "Reviewed evidence", List.of(INPUT, candidate().text())),
+                architecture.assessed(Classification.NONE, "", List.of()));
         assertThat(result.candidates().get(1).sourceCommit()).isEqualTo("a".repeat(40));
         assertThat(result.candidates().get(1).sourceVersion()).isEqualTo("version-4");
-        verify(gateway).sendHttpRequest(contains("Explain in German."), eq("fixture"), any(LlmCompletionOptions.class));
+        verify(gateway, times(2)).sendHttpRequest(contains("Explain in German."), eq("fixture"), any(LlmCompletionOptions.class));
     }
 
     @ParameterizedTest
@@ -117,8 +125,7 @@ class RequirementIntakeMatcherTest {
         var architecture = new Candidate("existing-object", kind, "shared-repo", null, "main",
                 null, null, null, null, null, "Dispatch", "Respond within five seconds", "source-hash",
                 null, null, List.of(), List.of("VIEW"), "a".repeat(40), null, "dispatch");
-        ready(JSON.writeValueAsString(Map.of("decisions", List.of(
-                decision("existing-object", classification, "two seconds", "five seconds")))));
+        ready(reply(Map.of("A", decision(classification, 1, 1))));
 
         var result = matcher.review(INPUT, List.of(architecture), null);
 
@@ -127,22 +134,42 @@ class RequirementIntakeMatcherTest {
         assertThat(result.candidates()).containsExactly(architecture);
     }
 
-    @Test void emptyNoMatchRationaleDoesNotDiscardGroundedMatches() {
+    @Test void noMatchDetailsAreDiscardedWithoutLosingGroundedMatches() {
         var unrelated = candidate("r2", "Retain records for five years");
-        ready("""
-                {"decisions":[
-                  {"id":"r1","classification":"CHANGE","rationale":"The time limit changes.",
-                   "inputQuote":"two seconds","candidateQuote":"five seconds"},
-                  {"id":"r2","classification":"NONE","rationale":"","inputQuote":"","candidateQuote":""}
-                ]}
-                """);
+        var decisions = new LinkedHashMap<String, Object>();
+        decisions.put("B", Map.of("classification", "NONE", "rationale", "Nothing in common",
+                "inputEvidence", 1, "candidateEvidence", 1));
+        decisions.put("A", decision("CHANGE", 1, 1));
+        ready(reply(decisions));
 
         var result = matcher.review(INPUT, List.of(candidate(), unrelated), null);
 
         assertThat(result.status()).isEqualTo(Status.COMPLETE);
         assertThat(result.candidates()).containsExactly(
-                candidate().assessed(Classification.CHANGE, "The time limit changes.", List.of("two seconds", "five seconds")),
+                candidate().assessed(Classification.CHANGE, "Reviewed evidence", List.of(INPUT, candidate().text())),
                 unrelated.assessed(Classification.NONE, "", List.of()));
+    }
+
+    @Test void onlyEmptyEvidenceListsAcceptZeroAndCannotSupportAMatch() {
+        var empty = candidate("r2", "");
+        ready(reply(Map.of("A", decision("NONE", 1, 0))));
+
+        var abstained = matcher.review(INPUT, List.of(empty), null);
+
+        assertThat(abstained.status()).isEqualTo(Status.COMPLETE);
+        assertThat(abstained.candidates()).containsExactly(empty.assessed(Classification.NONE, "", List.of()));
+        var options = ArgumentCaptor.forClass(LlmCompletionOptions.class);
+        verify(gateway).sendHttpRequest(anyString(), eq("fixture"), options.capture());
+        JsonNode schema = JSON.valueToTree(options.getValue().schema());
+        var fields = schema.at("/properties/decisions/properties/A/properties");
+        assertThat(fields.at("/inputEvidence/minimum").intValue()).isEqualTo(1);
+        assertThat(fields.at("/candidateEvidence/minimum").intValue()).isZero();
+
+        ready(reply(Map.of("A", decision("CHANGE", 1, 0))));
+        var unsupported = matcher.review(INPUT, List.of(empty), null);
+
+        assertThat(unsupported.status()).isEqualTo(Status.FAILED);
+        assertThat(unsupported.candidates()).containsExactly(empty);
     }
 
     @ParameterizedTest
@@ -164,7 +191,7 @@ class RequirementIntakeMatcherTest {
             "{\"candidates\":[{\"finishReason\":\"RECITATION\"}]}",
             "{\"status\":\"incomplete\"}"})
     void providerCutoffSignalsRejectEvenAnOtherwiseUsableExtractedAnswer(String raw) {
-        ready(answer("classification", "NONE"));
+        ready(reply(Map.of("A", decision("NONE", 1, 1))));
         when(gateway.sendHttpRequest(anyString(), eq("fixture"), any(LlmCompletionOptions.class))).thenReturn(raw);
         assertUnassessed(matcher.review(INPUT, List.of(candidate()), null), Status.FAILED, "INCOMPLETE_MODEL_RESPONSE");
         verify(gateway, never()).extractResponseText(any());
@@ -184,46 +211,38 @@ class RequirementIntakeMatcherTest {
                 Arguments.of("response exceeds limit", validResponse + " ".repeat(100_001 - validResponse.length())),
                 Arguments.of("root is not an object", "[]"),
                 Arguments.of("root has a substituted field", "{\"other\":[]}"),
-                Arguments.of("decisions is not an array", "{\"decisions\":{}}"),
-                Arguments.of("decision has missing fields", "{\"decisions\":[{}]}"),
-                Arguments.of("identity has wrong JSON type", answer("id", 7)),
+                Arguments.of("decisions is an array", "{\"decisions\":[]}"),
+                Arguments.of("decision has missing fields", reply(Map.of("A", Map.of()))),
                 Arguments.of("classification is unknown", answer("classification", "NOVEL")),
                 Arguments.of("rationale is blank", answer("rationale", " \n")),
                 Arguments.of("rationale exceeds limit", answer("rationale", "r".repeat(1601))),
-                Arguments.of("candidate quote is fabricated", answer("candidateQuote", "six seconds")),
-                Arguments.of("input quote is required for a relationship", answer("inputQuote", "")),
-                Arguments.of("candidate quote is required for a relationship", answer("candidateQuote", "")));
+                Arguments.of("inexact quoted text instead of a position", answer("candidateEvidence", "six seconds")),
+                Arguments.of("input evidence is required for a relationship", answer("inputEvidence", 0)),
+                Arguments.of("candidate evidence must be a listed position", answer("candidateEvidence", 2)),
+                Arguments.of("candidate evidence must be integral", answer("candidateEvidence", 1.5)),
+                Arguments.of("zero is invalid when a source list has evidence", reply(Map.of("A", decision("NONE", 1, 0)))));
     }
 
-    @ParameterizedTest
-    @CsvSource({"id,500,true", "id,501,false", "inputQuote,2000,true", "inputQuote,2001,false",
-            "candidateQuote,2000,true", "candidateQuote,2001,false"})
-    void fieldLengthIsTheOnlyReasonToRejectAnOtherwiseGroundedOfferedDecision(String field, int length, boolean accepted) {
-        String value = "q".repeat(length);
-        String input = field.equals("inputQuote") ? value : INPUT;
-        var offered = candidate(field.equals("id") ? value : "r1",
-                field.equals("candidateQuote") ? value : candidate().text());
-        ready(answer(field, value));
-
-        var result = matcher.review(input, List.of(offered), null);
-
-        if (accepted) {
-            assertThat(result.status()).isEqualTo(Status.COMPLETE);
-            assertThat(result.candidates().getFirst().id()).isEqualTo(offered.id());
-            assertThat(result.candidates().getFirst().classification()).isEqualTo(Classification.CHANGE);
-        } else {
-            assertThat(result.status()).isEqualTo(Status.FAILED);
-            assertThat(result.code()).isEqualTo("INVALID_MODEL_RESPONSE");
-            assertThat(result.candidates()).containsExactly(offered);
-        }
+    @Test void wireLettersRetainLongPersistentIdentityAndSelectLiteralEvidenceWithinLongText() {
+        String id = "opaque-id:".repeat(60);
+        String text = "An opening summary. The " + "prefix ".repeat(85) + "Target evidence.";
+        var offered = candidate(id, text);
+        ready(reply(Map.of("A", decision("CHANGE", 1, 3))));
+        var result = matcher.review(INPUT, List.of(offered), null);
+        assertThat(result.status()).isEqualTo(Status.COMPLETE);
+        var row = result.candidates().getFirst();
+        assertThat(row.id()).isEqualTo(id);
+        assertThat(row.quotes()).hasSize(2);
+        assertThat(row.quotes().get(1)).isNotEmpty().contains("Target evidence.");
+        assertThat(text).contains(row.quotes().get(1));
+        verify(gateway).sendHttpRequest(not(contains(id)), eq("fixture"), any(LlmCompletionOptions.class));
     }
 
     @Test void duplicateDecisionCannotReplaceCoverageOrLeakAnEarlierPartialAssessment() {
-        var second = new Candidate("r2", "REQUIREMENT", "repo", "work", "draft", 2L, "P", 8L, 10L,
-                "OTHER", "Other requirement", "Other text", "other-hash", null, null, List.of(), List.of("VIEW"));
-        var valid = decision("r1", "CHANGE", "two seconds", "five seconds");
-        ready(JSON.writeValueAsString(Map.of("decisions", List.of(valid, valid))));
-        var offered = List.of(candidate(), second);
+        var offered = List.of(candidate(), candidate("r2", "Other text"));
+        String valid = JSON.writeValueAsString(decision("CHANGE", 1, 1));
+        String none = JSON.writeValueAsString(decision("NONE", 1, 1));
+        ready("{\"decisions\":{\"A\":" + valid + ",\"A\":" + valid + ",\"B\":" + none + "}}");
 
         var result = matcher.review(INPUT, offered, null);
 
@@ -233,13 +252,52 @@ class RequirementIntakeMatcherTest {
         assertThat(result.candidates()).allSatisfy(row -> assertThat(row.classification()).isNull());
     }
 
+    @Test void malformedBatchLeavesItsRowsUnclassifiedWithoutLosingAnotherBatch() {
+        var offered = new ArrayList<Candidate>();
+        for (int i = 0; i < 5; i++) offered.add(candidate("r" + i, "Some evidence " + i));
+        var firstBatch = Map.of("A", decision("CHANGE", 1, 1), "B", decision("NONE", 1, 1),
+                "C", decision("NONE", 1, 1), "D", decision("NONE", 1, 1));
+        ready(reply(firstBatch));
+        when(gateway.extractResponseText("{}")).thenReturn(reply(firstBatch), reply(Map.of()));
+        var result = matcher.review(INPUT, offered, null);
+        assertThat(result.status()).isEqualTo(Status.PARTIAL);
+        assertThat(result.code()).isEqualTo("INVALID_MODEL_RESPONSE");
+        assertThat(result.candidates()).extracting(Candidate::id).containsExactly("r0", "r1", "r2", "r3", "r4");
+        assertThat(result.candidates()).extracting(Candidate::classification)
+                .containsExactly(Classification.CHANGE, Classification.NONE, Classification.NONE, Classification.NONE, null);
+        verify(gateway, times(2)).sendHttpRequest(anyString(), eq("fixture"), any(LlmCompletionOptions.class));
+    }
+
+    @Test void revokedSourceAccessAfterFirstBatchStopsBeforeSendingMoreEvidence() {
+        var offered = new ArrayList<Candidate>();
+        for (int i = 0; i < 5; i++) offered.add(candidate("r" + i, "Some evidence " + i));
+        var firstBatch = Map.of("A", decision("CHANGE", 1, 1), "B", decision("NONE", 1, 1),
+                "C", decision("NONE", 1, 1), "D", decision("NONE", 1, 1));
+        ready(reply(firstBatch));
+        var candidates = mock(RequirementIntakeCandidates.class);
+        var context = new WorkspaceContext("alice", "work", "draft", "repo");
+        var scope = new Scope("repo", "work", "work", "draft");
+        var frozen = new RequirementIntakeCandidates.Frozen(scope, null, offered, List.of(), new Coverage(5, 5, false), true);
+        when(candidates.freeze(null, "alice", context)).thenReturn(frozen);
+        when(candidates.discover(frozen, "alice")).thenReturn(frozen);
+        var revoked = PortfolioException.notFound("Architecture is unavailable");
+        doNothing().doThrow(revoked).when(candidates).recheckSources(frozen, "alice");
+        var service = new RequirementIntakeService(candidates, matcher);
+
+        assertThatThrownBy(() -> service.review(new Request(null, null, INPUT, null), "alice", context)).isSameAs(revoked);
+
+        verify(candidates, times(3)).recheck(frozen, "alice", context);
+        verify(candidates, times(2)).recheckSources(frozen, "alice");
+        verify(gateway).sendHttpRequest(anyString(), eq("fixture"), any(LlmCompletionOptions.class));
+    }
+
     @Test void exactResponseAndRationaleLimitsRemainUsable() {
         String response = answer("rationale", "r".repeat(1600));
         ready(response + " ".repeat(100_000 - response.length()));
         var result = matcher.review(INPUT, List.of(candidate()), null);
         assertThat(result.status()).isEqualTo(Status.COMPLETE);
         assertThat(result.candidates().getFirst().rationale()).hasSize(1600);
-        assertThat(result.candidates().getFirst().quotes()).containsExactly("two seconds", "five seconds");
+        assertThat(result.candidates().getFirst().quotes()).containsExactly(INPUT, candidate().text());
     }
 
     @ParameterizedTest
@@ -275,20 +333,26 @@ class RequirementIntakeMatcherTest {
         assertThat(result.candidates().getFirst().quotes()).isEmpty();
     }
 
-    private static Map<String, Object> decision(String id, String classification, String inputQuote, String candidateQuote) {
-        return Map.of("id", id, "classification", classification, "rationale", "Reviewed evidence",
-                "inputQuote", inputQuote, "candidateQuote", candidateQuote);
+    private static Map<String, Object> decision(String classification, int inputIndex, int candidateIndex) {
+        String reason = classification.equals("NONE") ? "" : "Reviewed evidence";
+        return Map.of("classification", classification, "rationale", reason,
+                "inputEvidence", inputIndex, "candidateEvidence", candidateIndex);
+    }
+
+    private static String reply(Map<String, ?> decisions) {
+        return JSON.writeValueAsString(Map.of("decisions", decisions));
     }
 
     private static String answer(String field, Object value) {
-        var decision = new LinkedHashMap<>(decision("r1", "CHANGE", "two seconds", "five seconds"));
+        var decision = new LinkedHashMap<>(decision("CHANGE", 1, 1));
         decision.put(field, value);
-        return JSON.writeValueAsString(Map.of("decisions", List.of(decision)));
+        return reply(Map.of("A", decision));
     }
 
     private void ready(String reply) {
         var provider = new ProviderId("GEMINI");
         when(config.getActiveProviderId()).thenReturn(provider);
+        lenient().when(prompts.getTemplate("requirement-intake")).thenReturn("Edited intake instructions");
         when(config.isProviderConfigured(provider)).thenReturn(true);
         when(config.getApiKey(provider)).thenReturn("fixture");
         when(gateways.getGatewayById(provider)).thenReturn(gateway);

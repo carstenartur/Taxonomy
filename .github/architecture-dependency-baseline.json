@@ -333,6 +333,13 @@
     {
       "fromContext": "app-composition",
       "fromPackage": "com.taxonomy.composition.analysis",
+      "toContext": "preferences",
+      "toPackage": "com.taxonomy.preferences.storage",
+      "classDependencyCount": 1
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.composition.analysis",
       "toContext": "provenance",
       "toPackage": "com.taxonomy.provenance.service",
       "classDependencyCount": 1
@@ -475,7 +482,7 @@
       "fromPackage": "com.taxonomy.composition.architecture",
       "toContext": "analysis",
       "toPackage": "com.taxonomy.analysis.service",
-      "classDependencyCount": 13
+      "classDependencyCount": 15
     },
     {
       "fromContext": "app-composition",
@@ -1049,7 +1056,7 @@
       "fromPackage": "com.taxonomy.mail",
       "toContext": "analysis",
       "toPackage": "com.taxonomy.analysis.service",
-      "classDependencyCount": 3
+      "classDependencyCount": 4
     },
     {
       "fromContext": "app-composition",
@@ -1238,7 +1245,7 @@
       "fromPackage": "com.taxonomy.shared.controller",
       "toContext": "analysis",
       "toPackage": "com.taxonomy.analysis.service",
-      "classDependencyCount": 5
+      "classDependencyCount": 6
     },
     {
       "fromContext": "app-composition",
@@ -1840,7 +1847,7 @@
       "fromPackage": "com.taxonomy.portfolio.service",
       "toContext": "analysis",
       "toPackage": "com.taxonomy.analysis.service",
-      "classDependencyCount": 23
+      "classDependencyCount": 21
     },
     {
       "fromContext": "portfolio",
@@ -1918,6 +1925,13 @@
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
       "classDependencyCount": 11
+    },
+    {
+      "fromContext": "preferences",
+      "fromPackage": "com.taxonomy.preferences.storage",
+      "toContext": "analysis",
+      "toPackage": "com.taxonomy.analysis.service",
+      "classDependencyCount": 2
     },
     {
       "fromContext": "provenance",

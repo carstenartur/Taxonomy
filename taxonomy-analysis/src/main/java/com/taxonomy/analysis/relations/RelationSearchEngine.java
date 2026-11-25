@@ -2,6 +2,7 @@ package com.taxonomy.analysis.relations;
 
 import com.taxonomy.analysis.assessment.ChildAssessmentContract;
 import java.util.*;
+import java.util.function.ToIntFunction;
 import static com.taxonomy.dto.RelationSearchModel.*;
 
 /** Bounded, request-local hierarchy search. Navigation never implies an architectural edge. */
@@ -12,6 +13,7 @@ public final class RelationSearchEngine {
     private final Observer observer;
     private final boolean externalBudget;
     private final int maxPromptCharacters;
+    private final ToIntFunction<Query> requestCharacters;
 
     public interface Observer {
         default void started(Query query, int depth) { }
@@ -29,12 +31,18 @@ public final class RelationSearchEngine {
     }
     public RelationSearchEngine(Catalogue catalogue, Evaluator evaluator, Runnable checkpoint,
                                 Observer observer, boolean externalBudget, int maxPromptCharacters) {
+        this(catalogue, evaluator, checkpoint, observer, externalBudget, maxPromptCharacters,
+                query -> RelationSearchProtocol.requestCharacters(RelationSearchProtocol.decisionPrompt(query, Map.of())));
+    }
+    RelationSearchEngine(Catalogue catalogue, Evaluator evaluator, Runnable checkpoint, Observer observer,
+                         boolean externalBudget, int maxPromptCharacters, ToIntFunction<Query> requestCharacters) {
         this.catalogue = Objects.requireNonNull(catalogue);
         this.evaluator = Objects.requireNonNull(evaluator);
         this.checkpoint = Objects.requireNonNull(checkpoint);
         this.observer = Objects.requireNonNull(observer);
         this.externalBudget = externalBudget;
         this.maxPromptCharacters = maxPromptCharacters;
+        this.requestCharacters = Objects.requireNonNull(requestCharacters);
     }
 
     /** Malformed provider output is distinct from a negative semantic decision. */
@@ -252,7 +260,7 @@ public final class RelationSearchEngine {
             List<Node> ordered = List.copyOf(unique.values());
             List<Query> batches = new ArrayList<>();
             for (List<Node> batch : RelationCandidateBatches.split(ordered, limits.batchSize(), maxPromptCharacters,
-                    offered -> RelationSearchProtocol.requestCharacters(RelationSearchProtocol.decisionPrompt(new Query(original, contribution, type, direction, phase, offered, proposal), Map.of())))) {
+                    offered -> requestCharacters.applyAsInt(new Query(original, contribution, type, direction, phase, offered, proposal)))) {
                 batches.add(new Query(original, contribution, type, direction, phase, batch, proposal));
             }
             return batches;

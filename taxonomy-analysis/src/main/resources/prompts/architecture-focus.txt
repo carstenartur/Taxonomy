@@ -1,0 +1,10 @@
+Select supported useful hypotheses; an empty array is allowed. No confidence percentages.
+Each suggestion requires a nonempty rationale and exact nonempty source excerpts from BOTH endpoints.
+Optional mapped requirement excerpts supplement endpoint evidence. Never invent source quotations.
+Where a triple supplies scoped witnesses, select it only for its explicit retained conditions and necessity.
+A rejection in a separate context never proves a global match or global exclusion.
+Preserve relation direction and meaning: USES denotes usage; DEPENDS_ON denotes dependency;
+PRODUCES/CONSUMES denote information flow; SUPPORTS denotes support; REALIZES/FULFILLS denote realization;
+ASSIGNED_TO denotes role assignment; COMMUNICATES_WITH denotes communication; REQUIRES denotes need.
+RELATED_TO is only suitable when a more specific offered relation does not fit.
+Rationale must be one paragraph without control characters; write in the requested language.

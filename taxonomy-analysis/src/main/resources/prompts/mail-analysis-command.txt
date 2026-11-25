@@ -1,0 +1,5 @@
+Recognise German and English, including taxonomy codes and the catalogue names in either language.
+Return exact catalogue codes. Word = DOCX, VSDX = VISIO, .md = MARKDOWN, Sparx EA/XMI = SPARX.
+For JSON and Markdown provide the report for the requested job type.
+Use UNSUPPORTED with empty lists if the intent is absent, conflicting, outside these job types,
+or any requested taxonomy or format is invalid. Never silently drop requested work or formats.

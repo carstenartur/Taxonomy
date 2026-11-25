@@ -55,12 +55,14 @@ public final class FrozenClusterRelationComputation implements ClusterRelationCo
             throw new IllegalArgumentException("Relation work does not match its persisted grant identity");
         Set<String> required = task.targetRoots().stream().map(TaxonomyShardRoot::code).collect(Collectors.toUnmodifiableSet());
         var diagnostics = store.diagnostics(task, input.deliveryAttempt());
+        // A target grant uses its persisted preparation, even after the editor changes.
+        var templates = plan == null ? relations.captureRelationTemplates() : plan.options().templates();
         try (var provider = providers.withRequestProvider(input.command().provider(), input.command().providerBinding());
              var reasons = AnalysisReasonContext.open(input.command().analysisReasonLength());
              var language = com.taxonomy.analysis.service.AnalysisLanguageContext.open(input.command().analysisLanguage());
              var checkpoint = input.command().continuationBinding() == null ? null : store.checkpointSession(input, task,
                      relations.scoringPolicyFingerprint(input.command().provider()),
-                     com.taxonomy.analysis.recovery.AnalysisCheckpointSession.digest(relations.recoveryPolicyFingerprint()));
+                     com.taxonomy.analysis.recovery.AnalysisCheckpointSession.digest(relations.recoveryPolicyFingerprint(templates)));
              var control = AnalysisRunControl.worker(diagnostics, cancelled, Objects.requireNonNull(guards.get()));
              var transport = LlmTransportMeter.openJournal(diagnostics)) {
             AnalysisRunControl.checkpoint();
@@ -88,7 +90,7 @@ public final class FrozenClusterRelationComputation implements ClusterRelationCo
                     return new ScoreOnly(hypotheses);
                 }
                 var prepared = relations.prepare(context.operationId() + ":relations", input.command().businessText(),
-                        sources.getScores(), task.prerequisiteTasks().stream().map(AnalysisTaskId::value).toList(), catalogue, true);
+                        sources.getScores(), task.prerequisiteTasks().stream().map(AnalysisTaskId::value).toList(), catalogue, true, templates);
                 if (!"SUCCESS".equals(sources.getStatus()) || !sources.getWarnings().isEmpty()) {
                     var warnings = new ArrayList<>(prepared.warnings());
                     warnings.add("SOURCE_RESULTS_PARTIAL: one or more source shards remain unassessed; no negative finding.");

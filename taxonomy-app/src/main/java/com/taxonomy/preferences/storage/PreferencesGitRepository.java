@@ -56,8 +56,13 @@ public class PreferencesGitRepository implements AutoCloseable {
 
     /** Open the persistent preferences repository through the reusable storage library. */
     public PreferencesGitRepository(HibernateRepositoryFactory storageFactory) {
+        this(storageFactory, REPOSITORY_NAME);
+    }
+
+    /** Open an independently scoped settings repository using the same JSON history format. */
+    PreferencesGitRepository(HibernateRepositoryFactory storageFactory, String repositoryName) {
         this(Objects.requireNonNull(storageFactory, "storageFactory")
-                .open(new RepositoryName(REPOSITORY_NAME)));
+                .open(new RepositoryName(repositoryName)));
     }
 
     private PreferencesGitRepository(HibernateGitStorage storageHandle) {
@@ -93,6 +98,14 @@ public class PreferencesGitRepository implements AutoCloseable {
      * @throws IOException if object insertion or the optimistic ref update fails
      */
     public String commit(String jsonContent, String author, String message) throws IOException {
+        ObjectId previous = mainRevision();
+        String committed = commitIfUnchanged(jsonContent, previous, author, message);
+        if (committed == null) throw new IOException("The settings branch changed during commit");
+        return committed;
+    }
+
+    /** Commit against the exact revision used to compute the new settings document. */
+    String commitIfUnchanged(String jsonContent, ObjectId previous, String author, String message) throws IOException {
         PersonIdent personIdent = personIdent(author);
         String commitMessage = message != null ? message : "Preferences update";
 
@@ -105,15 +118,14 @@ public class PreferencesGitRepository implements AutoCloseable {
             ObjectId treeId = inserter.insert(tree);
 
             String refName = Constants.R_HEADS + MAIN_BRANCH;
-            Ref branchRef = gitRepo.getRefDatabase().exactRef(refName);
 
             CommitBuilder commitBuilder = new CommitBuilder();
             commitBuilder.setTreeId(treeId);
             commitBuilder.setAuthor(personIdent);
             commitBuilder.setCommitter(personIdent);
             commitBuilder.setMessage(commitMessage);
-            if (branchRef != null) {
-                commitBuilder.setParentId(branchRef.getObjectId());
+            if (previous != null) {
+                commitBuilder.setParentId(previous);
             }
 
             ObjectId commitId = inserter.insert(commitBuilder);
@@ -121,12 +133,12 @@ public class PreferencesGitRepository implements AutoCloseable {
 
             RefUpdate update = gitRepo.updateRef(refName);
             update.setNewObjectId(commitId);
-            update.setExpectedOldObjectId(
-                    branchRef != null ? branchRef.getObjectId() : ObjectId.zeroId());
+            update.setExpectedOldObjectId(previous != null ? previous : ObjectId.zeroId());
             update.setForceUpdate(false);
             update.setRefLogIdent(personIdent);
             update.setRefLogMessage("commit: " + commitMessage, true);
             RefUpdate.Result result = update.update();
+            if (result == RefUpdate.Result.LOCK_FAILURE) return null;
             requireSuccessfulUpdate(refName, result);
 
             log.info("Committed preferences to '{}': {} (ref update: {})",
@@ -137,14 +149,26 @@ public class PreferencesGitRepository implements AutoCloseable {
 
     /** Read the preferences JSON at the HEAD of {@code main}. */
     public String readHead() throws IOException {
+        return readRevision(mainRevision());
+    }
+
+    /** Refresh DFS caches before reading a settings revision potentially changed by another application node. */
+    ObjectId sharedRevision() throws IOException {
+        gitRepo.scanForRepoChanges();
+        return mainRevision();
+    }
+
+    private ObjectId mainRevision() throws IOException {
         String refName = Constants.R_HEADS + MAIN_BRANCH;
         Ref ref = gitRepo.getRefDatabase().exactRef(refName);
-        if (ref == null) {
-            return null;
-        }
+        return ref == null ? null : ref.getObjectId();
+    }
 
+    /** Read immutable settings content by revision. */
+    String readRevision(ObjectId revision) throws IOException {
+        if (revision == null) return null;
         try (RevWalk walk = new RevWalk(gitRepo)) {
-            return readJsonFromTree(walk.parseCommit(ref.getObjectId()).getTree());
+            return readJsonFromTree(walk.parseCommit(revision).getTree());
         }
     }
 

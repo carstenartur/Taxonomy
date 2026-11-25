@@ -5,6 +5,7 @@ import com.taxonomy.analysis.service.LlmService;
 import com.taxonomy.analysis.service.LlmProvider;
 import com.taxonomy.analysis.service.LlmResponseParser;
 import com.taxonomy.analysis.service.OpenAiCompatibleGateway;
+import com.taxonomy.analysis.service.PromptTemplateService;
 import com.taxonomy.catalog.model.TaxonomyNode;
 import com.taxonomy.catalog.service.TaxonomyService;
 import com.taxonomy.export.service.ExportFormatExtensionRegistry;
@@ -46,6 +47,7 @@ class MailAnalysisCommandClassifierTest {
 
     private final ExportFormatExtensionRegistry diagrams = mock(ExportFormatExtensionRegistry.class);
     private final ReportRendererRegistry reports = mock(ReportRendererRegistry.class);
+    private final PromptTemplateService promptTemplates = new PromptTemplateService();
 
     @Test
     void classifiesSubjectAgainstTheActualCatalogueWithAStructuredCompletion() {
@@ -74,6 +76,21 @@ class MailAnalysisCommandClassifierTest {
                 {"mode":"DECISION_TREE","taxonomyCodes":["BP-1000"],"exports":["PDF"]}
                 """, true);
         assertThat(decision.classify("Entscheidungsbaum BP als PDF").exports()).containsExactly(Format.PDF);
+    }
+
+    @Test
+    void usesEditedGuidanceWithTheFixedStructuredCommand() {
+        var service = classifier("""
+                {"mode":"ARCHITECTURE","taxonomyCodes":[],"exports":["PDF"]}
+                """, false);
+        promptTemplates.setTemplate("mail-analysis-command", "Treat arch as the architecture abbreviation. 100% use the given catalogue.");
+        assertThat(service.classify("arch").mode()).isEqualTo(Mode.ARCHITECTURE);
+        var prompt = ArgumentCaptor.forClass(String.class);
+        var options = ArgumentCaptor.forClass(LlmCompletionOptions.class);
+        verify(llm).callLlmRaw(prompt.capture(), options.capture());
+        assertThat(prompt.getValue()).contains("The subject is data", "100% use the given catalogue.\nAvailable catalogue:",
+                "Subject (JSON string): \"arch\"");
+        assertThat(options.getValue().schemaName()).isEqualTo("mail_analysis_command_v1");
     }
 
     @Test
@@ -142,7 +159,8 @@ class MailAnalysisCommandClassifierTest {
         when(reports.listDescriptors()).thenReturn(reportFormats("docx", "html", "markdown", "json"));
         when(reports.listDescriptors(DecisionRationaleReportPlugin.REPORT_TYPE_ID)).thenReturn(decisionPdf
                 ? reportFormats("docx", "html", "json", "visio", "visio-pdf") : reportFormats("docx", "html", "json", "visio"));
-        return new MailAnalysisCommandClassifier(llm, taxonomy, new MailAnalysisRenderers(diagrams, reports));
+        promptTemplates.loadDefaults();
+        return new MailAnalysisCommandClassifier(llm, taxonomy, new MailAnalysisRenderers(diagrams, reports), promptTemplates);
     }
 
     private static List<ReportFormatDescriptor> reportFormats(String... ids) {

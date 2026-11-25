@@ -32,11 +32,9 @@ public class PortfolioFingerprintService {
 
     public String promptFingerprint() {
         StringBuilder canonical = new StringBuilder();
-        promptTemplateService.getAllTemplateCodes().stream()
-                .sorted()
-                .forEach(code -> canonical
+        promptTemplateService.analysisFingerprintTemplates(true).forEach((code, template) -> canonical
                         .append(code).append('\u001f')
-                        .append(promptTemplateService.getTemplate(code))
+                        .append(template)
                         .append('\n'));
         return sha256(canonical.toString());
     }

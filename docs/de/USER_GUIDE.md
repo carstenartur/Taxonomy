@@ -2067,10 +2067,13 @@ Klicken Sie auf **Refresh**, um die Statistiken zu aktualisieren. Klicken Sie au
 
 Der **Prompt-Vorlagen-Editor** (nur Admin, einklappbar) ermöglicht es Ihnen, die an das LLM gesendeten Anweisungen anzupassen, ohne die Anwendung neu bereitstellen zu müssen.
 
-1. Verwenden Sie das **Taxonomie-Auswahl**-Dropdown, um die Prompt-Vorlage auszuwählen, die Sie bearbeiten möchten.
-2. Der aktuelle Vorlagentext erscheint im **Vorlagen-Textfeld**.
-3. Bearbeiten Sie den Text nach Bedarf.
-4. Klicken Sie auf **Save**, um Ihre Änderungen zu speichern, oder **Reset**, um die integrierte Standardeinstellung wiederherzustellen.
+1. Öffnen Sie **Prompt-Vorlagen** und wählen Sie die gewünschte Vorlage, etwa **Requirement Reuse Review** für die Wiederverwendungsprüfung.
+2. Bearbeiten Sie den angezeigten Text und wählen Sie **Speichern**. Die Änderung gilt für alle Instanzen mit derselben Datenbank und bleibt nach einem Neustart erhalten.
+3. Mit **Auf Standard zurücksetzen** stellen Sie den ausgelieferten Text für die ausgewählte Vorlage wieder her.
+
+Neue Reformulierungen übernehmen die aktuellen Anweisungen für Synthese und Abgleich.
+Ein gespeicherter Vorschlag verwendet bei der Wiederaufnahme seine damaligen Anweisungen.
+Die [Anbieter-Dokumentation](AI_PROVIDERS.md#prompt-vorlagen-editor) beschreibt die bearbeitbaren Vorgänge und die Sicherung der Vorlagen.
 
 ![Prompt-Vorlagen-Editor](../images/25-prompt-template-editor.png)
 

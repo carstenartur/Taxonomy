@@ -1,6 +1,7 @@
 package com.taxonomy.analysis.recovery;
 
 import com.taxonomy.analysis.service.*;
+import com.taxonomy.analysis.relations.RequirementRelationSearchService;
 import com.taxonomy.analysis.usecase.AnalyzeRequirementCommand;
 import com.taxonomy.catalog.service.TaxonomyService;
 import com.taxonomy.dto.*;
@@ -22,6 +23,7 @@ import java.util.UUID;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.*;
+import static com.taxonomy.dto.RelationSearchModel.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
@@ -140,6 +142,46 @@ class AnalysisContinuationAuthoritySecurityTest {
                 .isInstanceOf(ResponseStatusException.class).hasMessageContaining("409");
         verify(store, never()).begin(any(), any(), any(), any());
         verify(llm, never()).analyzeWithBudget(any()); verify(llm, never()).analyzeWithBudget(any(), any());
+    }
+
+    @ParameterizedTest @ValueSource(booleans = {false, true})
+    void changedRelationInstructionsCannotResumePreviouslyVerifiedEdges(boolean distributed) {
+        var prompts = new PromptTemplateService();
+        prompts.loadDefaults();
+        var relations = new RequirementRelationSearchService(null, null, null, null);
+        ReflectionTestUtils.setField(relations, "promptTemplates", prompts);
+        ReflectionTestUtils.setField(service, "relations", relations);
+        when(store.freezeRelationSourceCohort(any(), anyInt())).thenAnswer(call -> call.getArgument(1));
+
+        var first = request();
+        first.setAnalysisScope(AnalysisScope.full());
+        try (var ignored = begin(first, distributed)) { }
+        var captured = ArgumentCaptor.forClass(AnalysisRequest.class);
+        verify(store).begin(captured.capture(), eq(scope), anyString(), anyList());
+
+        var source = new Node("CP-1", "CP", "Capability", "", false);
+        var target = new Node("IP-1", "IP", "Information product", "", false);
+        var contribution = new Contribution(source, "Original requirement", "Original requirement", "");
+        var edge = new Edge(contribution, target, "REQUIRES", Direction.OUTGOING,
+                new Decision("IP-1", Outcome.VERIFIED, "Read the information product", "Original requirement",
+                        Necessity.REQUIRED, "", "", "The requirement needs the product", ""));
+        var previous = new RelationSearchReport(2, AnalysisCheckpointSession.digest(first.getBusinessText()), "relation search",
+                List.of(new SourceAssessment(source, List.of(contribution), "", "")),
+                new Result(List.of(edge), List.of(), List.of(), 1, 1, 0), 1, 1, 0, List.of(), "CALL_BUDGET");
+        when(store.originalRequest(first.getContinuationId(), scope)).thenReturn(java.util.Optional.of(captured.getValue()));
+        when(store.begin(any(), eq(scope), anyString(), anyList())).thenReturn(
+                new AnalysisContinuationStore.Claim(first.getContinuationId(), UUID.randomUUID().toString(), null, previous));
+
+        prompts.setTemplate("relation-verify", "Reject the information product relation.");
+        assertThatThrownBy(() -> { try (var ignored = begin(first, distributed)) { } })
+                .isInstanceOf(ResponseStatusException.class).hasMessageContaining("409");
+        verify(store).begin(any(), eq(scope), anyString(), anyList());
+
+        prompts.resetTemplate("relation-verify");
+        try (var resumed = begin(first, distributed)) {
+            if (distributed) assertThat(resumed.binding()).isNotNull();
+            else assertThat(AnalysisCheckpointSession.previousRelations().result().edges()).containsExactly(edge);
+        }
     }
 
     @ParameterizedTest @ValueSource(booleans = {false, true})

@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 import canonical from './canonical-api-fixture.cjs';
 import { createEvidencePolicy, screenshotStrategy } from './ui-evidence-policy.mjs';
+import { installRoleStateGitPollBarrier } from './ui-role-state-git-polls.mjs';
 
 const source = await readFile(
   new URL(
@@ -23,6 +24,9 @@ const copilotUiSource = await readFile(new URL(
   '../../taxonomy-app/src/main/resources/static/js/core/taxonomy-copilot-session-ui.js',
   import.meta.url), 'utf8');
 const roleEvidenceSource = await readFile(new URL('./ui-role-state-evidence.mjs', import.meta.url), 'utf8');
+const gitStatusSource = await readFile(new URL(
+  '../../taxonomy-app/src/main/resources/static/js/workspace/taxonomy-git-status.js',
+  import.meta.url), 'utf8');
 
 function deferred() {
   let resolve;
@@ -1332,9 +1336,9 @@ test('cancelling during a full draft read cannot acknowledge an unapplied foreig
   assert.equal(h.state.currentScores.NEW, 100);
 });
 
-function evidenceReceiptHarness({ statusResponse } = {}) {
+function evidenceReceiptHarness({ statusResponse, gitResponse, auditFinished } = {}) {
   let now = Date.UTC(2026, 10, 10), nextTimer = 0, server = null, heldBody = false;
-  const timers = new Map(), timerDelays = [], requests = [], failures = [], audits = [];
+  const timers = new Map(), timerDelays = [], requests = [], failures = [], audits = [], gitContacts = [];
   const bodyStarted = deferred(), bodyDelivered = deferred();
   class EvidenceDate extends Date {
     constructor(...args) { super(...(args.length ? args : [now])); }
@@ -1349,7 +1353,8 @@ function evidenceReceiptHarness({ statusResponse } = {}) {
   const clearTimer = id => timers.delete(id);
   function blockingAudit() {
     audits.push({ heldBody, serverVersion: server?.version,
-      acknowledgedVersion: h.runtime.acknowledgedDraftWrites.at(-1)?.version });
+      acknowledgedVersion: h.runtime.acknowledgedDraftWrites.at(-1)?.version,
+      gitContacts: gitContacts.map(contact => contact.available) });
     // Model one long browser task, then delivery of its overdue native timers.
     // The actual canonical transport still owns the unchanged 30-second deadline.
     now += 58_000;
@@ -1366,9 +1371,14 @@ function evidenceReceiptHarness({ statusResponse } = {}) {
       window.clearTimeout = clearTimer;
       window.console = { warn() {} };
       sandbox.Date = EvidenceDate;
+      if (gitResponse) {
+        window.addEventListener = () => {};
+        vm.runInNewContext(`(${installRoleStateGitPollBarrier.toString()})()`, { window, URL });
+      }
       window.fetch = async (input, options = {}) => {
         const url = new URL(input, window.location.href), method = options.method || 'GET';
         requests.push({ method, path: url.pathname, body: options.body });
+        if (url.pathname === '/api/git/state' && gitResponse) return gitResponse();
         assert.match(url.pathname, /^\/api\/analysis-drafts\/ws-1(?:\/status)?$/);
         if (url.pathname.endsWith('/status') && statusResponse) return statusResponse();
         if (method === 'PUT') {
@@ -1401,28 +1411,48 @@ function evidenceReceiptHarness({ statusResponse } = {}) {
         return Response.json(url.pathname.endsWith('/status') ? { ...server, payload: undefined } : server);
       };
       canonical.install({ ...sandbox, window, document, Date: EvidenceDate,
-        setTimeout: setTimer, clearTimeout: clearTimer }, ['api/analysis-session-api.js']);
+        setTimeout: setTimer, clearTimeout: clearTimer },
+      ['api/analysis-session-api.js', 'api/workspace-api.js']);
       context.jsonRequest = (url, options, preserveReceipt) =>
         window.TaxonomyAnalysisSessionApi.request(url, options,
           preserveReceipt ? context.runtime.workspaceId : undefined, preserveReceipt === true)
           .then(response => response.json()).catch(error => { failures.push(error); throw error; });
+      if (gitResponse) {
+        const bar = { innerHTML: '', classList: { remove() {} }, querySelector: () => null };
+        const getElement = document.getElementById;
+        document.getElementById = id => id === 'gitStatusBar' ? bar : getElement(id);
+        const TaxonomyI18n = { t: key => key };
+        const TaxonomyUtils = { escapeHtml: String };
+        vm.runInNewContext(gitStatusSource, { ...sandbox, window, document, TaxonomyI18n,
+          TaxonomyUtils, clearTimeout: clearTimer, setTimeout: setTimer });
+        document.addEventListener('taxonomy:server-contact', event => {
+          gitContacts.push(event.detail);
+          if (event.detail.available === false) context.serverUnavailable(event.detail);
+        });
+      }
     }
   });
   h.window.TaxonomyAnalysisSession = { saveNow: h.context.saveCurrentDraft,
     state: () => ({ workspaceId: h.runtime.workspaceId, version: h.runtime.version,
       ready: !h.runtime.restoring && !h.runtime.invalidating && !h.runtime.resetting
         && !h.runtime.conflict && !h.runtime.serverUnconfirmed }) };
-  const pageGlobals = { window: h.window, document: h.document,
+  const pageGlobals = { window: h.window, document: h.document, URL,
     fetch: (...args) => h.window.fetch(...args) };
-  const page = { evaluate(callback, argument) {
-    return vm.runInNewContext('(' + callback.toString() + ')(__argument)', {
-      ...pageGlobals, __argument: argument
-    });
-  } };
+  const page = {
+    isClosed: () => false,
+    evaluate(callback, argument) {
+      return vm.runInNewContext('(' + callback.toString() + ')(__argument)', {
+        ...pageGlobals, __argument: argument
+      });
+    }
+  };
   const module = { createEvidencePolicy, screenshotStrategy,
     AxeBuilder: class {
       withTags() { return this; }
-      analyze() { return Promise.resolve(blockingAudit()); }
+      analyze() {
+        const result = blockingAudit();
+        return Promise.resolve(auditFinished?.() ?? result);
+      }
     } };
   const start = roleEvidenceSource.indexOf('export function createRoleStateEvidence');
   assert.ok(start >= 0, 'Exercise the existing evidence helper, replacing only its imported Axe boundary');
@@ -1431,7 +1461,82 @@ function evidenceReceiptHarness({ statusResponse } = {}) {
   const checks = [], findings = [];
   const evidence = module.createRoleStateEvidence({ page, outputDir: '/unused-evidence', checks, findings });
   return { h, evidence, pageGlobals, bodyStarted, bodyDelivered, audits, failures, requests, timerDelays,
-    blockingAudit, server: () => server };
+    blockingAudit, gitContacts, startGitPoll: () => h.document.dispatchEvent({ type: 'DOMContentLoaded' }),
+    server: () => server };
+}
+
+test('blocking Axe lets an admitted Git status poll consume its successful response body', async t => {
+  t.after(() => canonical.dispose());
+  const bodyStarted = deferred(), allowBody = deferred();
+  const response = Response.json({ currentBranch: 'draft' });
+  const json = response.json.bind(response);
+  response.json = () => {
+    bodyStarted.resolve();
+    return allowBody.promise.then(json);
+  };
+  let originalPoll = true;
+  const f = evidenceReceiptHarness({ gitResponse() {
+    if (!originalPoll) return Response.json({ currentBranch: 'draft' });
+    originalPoll = false;
+    return response;
+  } });
+  f.startGitPoll();
+  await bodyStarted.promise;
+  const audit = f.evidence.runAxe('analysis-success');
+  await new Promise(resolve => setImmediate(resolve));
+  allowBody.resolve();
+  await audit;
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(f.audits[0].gitContacts, [true],
+    'The real Git poll must report server contact before the blocking audit advances the browser clock');
+  assert.ok(f.gitContacts.every(contact => contact.available));
+  assert.equal(Boolean(f.h.runtime.serverUnconfirmed), false);
+  assert.equal(f.audits.length, 1);
+  assert.ok(f.timerDelays.includes(30_000), 'The canonical response deadline remains active');
+});
+
+test('a real failure from the admitted Git poll blocks the draft audit', async t => {
+  t.after(() => canonical.dispose());
+  const started = deferred(), response = deferred();
+  const f = evidenceReceiptHarness({ gitResponse() {
+    started.resolve();
+    return response.promise;
+  } });
+  f.startGitPoll();
+  await started.promise;
+  const audit = f.evidence.runAxe('analysis-success');
+  await new Promise(resolve => setImmediate(resolve));
+  response.resolve(Response.json({ detail: 'Git service unavailable' }, { status: 503 }));
+  await assert.rejects(audit, /Analysis draft changed or is not ready/);
+  assert.deepEqual(f.gitContacts.map(contact => [contact.available, contact.status]), [[false, 503]]);
+  assert.equal(f.h.runtime.serverUnconfirmed, true);
+  assert.equal(f.audits.length, 0);
+});
+
+for (const scenario of ['superseded signal', 'navigation change']) {
+  test(`an Axe failure releases deferred Git observations after a ${scenario}`, async t => {
+    t.after(() => canonical.dispose());
+    const started = deferred(), finished = deferred();
+    const f = evidenceReceiptHarness({
+      gitResponse: () => Response.json({ currentBranch: 'draft' }),
+      auditFinished() { started.resolve(); return finished.promise; }
+    });
+    const changeContext = variantNavigation(f.h.window);
+    const audit = f.evidence.runAxe('analysis-success');
+    await started.promise;
+    f.startGitPoll();
+    if (scenario === 'superseded signal') f.h.window.TaxonomyGitStatus.refresh();
+    else changeContext();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(f.requests.filter(request => request.path === '/api/git/state').length, 0);
+    finished.reject(new Error('Injected Axe exception'));
+    await assert.rejects(audit, /Injected Axe exception/);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(f.requests.filter(request => request.path === '/api/git/state').length,
+      scenario === 'superseded signal' ? 1 : 0);
+    assert.deepEqual(f.gitContacts.map(contact => contact.available),
+      scenario === 'superseded signal' ? [true] : []);
+  });
 }
 
 async function pendingEvidenceReceipt(fixture) {

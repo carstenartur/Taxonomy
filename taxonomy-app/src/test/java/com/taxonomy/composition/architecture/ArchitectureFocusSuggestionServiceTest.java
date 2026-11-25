@@ -7,6 +7,7 @@ import com.taxonomy.analysis.dto.AiTargetDtos.PromptBudget;
 import com.taxonomy.analysis.service.AiPromptBudgetPolicy;
 import com.taxonomy.analysis.service.LlmCompletionOptions;
 import com.taxonomy.analysis.service.LlmService;
+import com.taxonomy.analysis.service.PromptTemplateService;
 import com.taxonomy.dsl.command.ArchitectureCommand.*;
 import com.taxonomy.dsl.command.ArchitectureDslCommands;
 import com.taxonomy.editor.ArchitectureCommandPort.Context;
@@ -93,6 +94,31 @@ class ArchitectureFocusSuggestionServiceTest {
             }
         });
         assertThat(service.investigate(scope, request(true)).outcome()).isEqualTo("ASSESSED");
+    }
+
+    @Test void editedInstructionsChangeReceiptIdentityAndResetRestoresIt() throws Exception {
+        generative(validReply("Processes and validates customer orders"));
+        var templates = new PromptTemplateService();
+        templates.loadDefaults();
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "promptTemplates", templates);
+        var fingerprints = new java.util.ArrayList<String>();
+        service.useChildOperations(new com.taxonomy.analysis.operation.AnalysisChildOperations() {
+            @Override public <T> T execute(String kind, String fingerprint, Class<T> type, boolean dispatch,
+                    java.util.function.Supplier<T> work, java.util.function.BooleanSupplier sourceCurrent) {
+                fingerprints.add(fingerprint);
+                return work.get();
+            }
+        });
+
+        service.investigate(scope, request(true));
+        templates.setTemplate("architecture-focus", "Use a short rationale.");
+        service.investigate(scope, request(true));
+        templates.resetTemplate("architecture-focus");
+        service.investigate(scope, request(true));
+
+        assertThat(fingerprints.getFirst()).isEqualTo(fingerprints.getLast()).isNotEqualTo(fingerprints.get(1));
+        verify(llm).callLlmRaw(argThat(prompt -> prompt.contains("Use a short rationale.\n\nINPUT=")
+                && prompt.contains("Use only offered directed triples.")), any());
     }
 
     @Test void localCandidatesUseCustomUncheckpointedElementsWithoutProviderAccess() throws Exception {

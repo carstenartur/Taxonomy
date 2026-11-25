@@ -1,0 +1,12 @@
+Extract ONLY each source element's contribution grounded in a requested function.
+Return exactly one selection per offered node:
+{"selections":[{"nodeId":"offered ID","outcome":"EXPLICIT|REJECT|UNRESOLVED",
+"contributions":[{"text":"specific contribution","requirementQuote":"substring of INPUT.original","condition":""}],
+"rationale":"why this is or is not required","question":""}]}
+EXPLICIT covers direct or necessary scoped contributions and needs 1 to 4 distinct entries.
+REJECT and UNRESOLVED need an empty list. UNRESOLVED needs a concrete question.
+All keys are mandatory; only condition and question may be empty.
+Keep read/write contributions, roles, conditions and alternatives distinct; do not invent an implementation choice.
+A request to read does not request editing. Explain the functional interpretation separately from its exact quote.
+requirementQuote MUST come from INPUT.original, never a node description or translation.
+validationErrors, when present, identifies rejected entries. Reassess only the offered nodes.

@@ -1,5 +1,6 @@
 package com.taxonomy.analysis.recovery;
 
+import com.taxonomy.analysis.relations.RelationSearchProtocol;
 import com.taxonomy.analysis.service.AnalysisStoppedException;
 import com.taxonomy.analysis.service.RootAssessmentEvidence;
 import com.taxonomy.dto.LlmCallDetail;
@@ -38,9 +39,14 @@ public final class AnalysisCheckpointSession implements AutoCloseable {
     private static final ThreadLocal<AnalysisCheckpointSession> CURRENT = new ThreadLocal<>();
     private final AnalysisCheckpointSession previous;
     private final Store store;
+    private final RelationSearchProtocol.Templates relationTemplates;
     private boolean closed;
     public AnalysisCheckpointSession(Store store) {
+        this(store, null);
+    }
+    AnalysisCheckpointSession(Store store, RelationSearchProtocol.Templates relationTemplates) {
         this.store = Objects.requireNonNull(store); previous = CURRENT.get(); CURRENT.set(this);
+        this.relationTemplates = relationTemplates;
     }
     public static boolean active() { return CURRENT.get() != null; }
     public static com.taxonomy.dto.RelationSearchReport previousRelations() {
@@ -58,6 +64,10 @@ public final class AnalysisCheckpointSession implements AutoCloseable {
     public static com.taxonomy.analysis.relations.RequirementRelationSearch.BudgetPolicy relationBudget() {
         var current = CURRENT.get();
         return current == null ? null : current.store.relationBudget();
+    }
+    public static RelationSearchProtocol.Templates relationTemplates() {
+        var current = CURRENT.get();
+        return current == null ? null : current.relationTemplates;
     }
     public static void beforeRelationCall(int maximum) {
         var current = CURRENT.get();
@@ -87,7 +97,7 @@ public final class AnalysisCheckpointSession implements AutoCloseable {
             public com.taxonomy.analysis.relations.RequirementRelationSearch.BudgetPolicy relationBudget() { return delegate.relationBudget(); }
             public int relationCallsSpent() { return delegate.relationCallsSpent(); }
             public void beforeRelationCall(int maximum) { delegate.beforeRelationCall(maximum); }
-        });
+        }, owner.relationTemplates);
     }
     /** No provider request was made; the existing question remains ready for explicit continuation. */
     public static final class DeferredException extends RuntimeException {

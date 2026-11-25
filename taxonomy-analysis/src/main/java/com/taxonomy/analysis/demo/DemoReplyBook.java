@@ -148,7 +148,7 @@ public final class DemoReplyBook {
     // ── Relations (relation-downwalk-v1) ────────────────────────────────────
 
     private String relation(String prompt) {
-        int input = prompt.indexOf("INPUT\n");
+        int input = prompt.lastIndexOf("INPUT\n");
         if (input < 0) throw failure(DemoReplayException.Code.UNKNOWN_PROMPT, "relation prompt without input");
         JsonNode query = JSON.readTree(prompt.substring(input + 6));
         String original = query.path("original").asString();

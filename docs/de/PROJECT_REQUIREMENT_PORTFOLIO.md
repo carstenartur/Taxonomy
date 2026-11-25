@@ -138,6 +138,13 @@ gerichtete Relationen aus lesbaren zentralen Architekturen vorschlagen. Der
 Vorschlag zeigt die vorhandene Modellidentität und öffnet ihren Git-Checkpoint
 schreibgeschützt. Relationen führen zum Quellelement der gerichteten Verbindung.
 
+Der Anbieter prüft bis zu vier Kandidaten derselben Art pro Anfrage. Bei einem
+vorgeschlagenen Treffer zeigt Taxonomy die ausgewählten Passagen aus den
+Originaltexten. Bei einer Relation beide Endpunkte, die Richtung und den Zweck
+vergleichen. Zwei Förderprogramme können dieselben Angaben für unterschiedliche
+Entscheidungen nutzen. Bei `PARTIAL` vor dem Speichern prüfen, welche Kandidaten
+eine Bewertung erhalten haben.
+
 Suche und Providerbewertung sind begrenzt. Abdeckung und Providerzustand beachten:
 Ein ungeprüfter Kandidat, nicht verfügbarer Provider, Timeout oder fehlgeschlagene
 Antwort ist kein Nachweis fehlender Duplikate oder Konflikte. Exakte Textgleichheit

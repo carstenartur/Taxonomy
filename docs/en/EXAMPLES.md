@@ -2,9 +2,8 @@
 
 This document shows worked examples of common tasks in the Taxonomy Architecture Analyzer.
 
-Section 1 explains a retained historical architecture with authored model replies.
-The numbers and responses in the other sections are illustrative worked examples,
-not measured results from a current model run. Retained tree/impact-map images
+The case studies cover saved architecture models and an interactive product demo.
+Sections 2 to 9 illustrate individual tasks. Retained tree/impact-map images
 illustrate older example states and may show different scores or controls. The in-page impact map is separate from the immutable
 snapshot workbench. Use the [user guide](USER_GUIDE.md) for current navigation and
 [scenario acceptance](https://github.com/carstenartur/Taxonomy/blob/main/docs/testing/scenario-acceptance.md) for version-bound evidence.
@@ -13,6 +12,7 @@ snapshot workbench. Use the [user guide](USER_GUIDE.md) for current navigation a
 
 ## Table of Contents
 
+- [Explore three architecture examples](#architecture-case-studies)
 - [1. Requirement → Architecture](#1-requirement--architecture)
 - [2. Failure Impact Analysis](#2-failure-impact-analysis)
 - [3. Architecture Gap Analysis](#3-architecture-gap-analysis)
@@ -24,6 +24,32 @@ snapshot workbench. Use the [user guide](USER_GUIDE.md) for current navigation a
 - [9. JSON Export with Source Provenance](#9-json-export-with-source-provenance)
 
 ---
+
+<a id="architecture-case-studies"></a>
+
+## Explore three architecture examples
+
+**Read the flood information model.** Follow the [diagram and decision report](#1-requirement--architecture) to see how the application displays published warnings and how the delivery process uses routing, queueing and audit services. The saved partial run used authored model replies and contains 50 nodes and 36 directed relationships. The identity of the information product in the incoming observation batch remains open.
+
+<a id="working-time-demo"></a>
+
+### Try the working-time recording demo
+
+Enter `produktdemo` in the analysis field and select **Analyze**. A separate demo project opens with one sentence in German asking for a company-wide employee time recording system.
+
+1. Analyze the first version. Answer five questions, including whether staff can record time offline, who approves corrections and how employees sign in. Reject the suggestion to record GPS locations.
+2. Adopt the revised requirement and analyze it again. The reference expects the time recording application to use the HR service in both versions. For the second version it also expects links to authentication and workflow services. Inspect these relationships to see what the answers changed.
+3. Open the reference evaluation to compare the two versions. For either snapshot you can export the diagram as SVG or PDF and the architecture report as a Word file. The demo replays model replies and runs analysis, storage and export through Taxonomy.
+
+[Step-by-step guide](PROJECT_REQUIREMENT_PORTFOLIO.md#product-demo-without-ai-qa-reference) · [Comparison reference with catalogue IDs and relationships](https://github.com/carstenartur/Taxonomy/blob/main/taxonomy-analysis/src/main/resources/demo-scenarios/time-tracking-v1/reference.json)
+
+### Follow the training portal through to ADMBw delivery review
+
+Who may read the audit logs? The screenshots begin with this open question and show how to inspect the snapshot with the architecture lens, adopt it into the working model and select elements for delivery. The saved R6 checkpoint contains 40 elements, three relationships and 21 requirement mappings. Its selected delivery view contains four elements and one relationship. Eight of the twelve requirement clauses have element contributions backed by direct quotations. Domain acceptance is pending.
+
+![Selected C1–S1 delivery view of the training portal with four elements and one directed relationship](https://raw.githubusercontent.com/carstenartur/Taxonomy/80b8c942062a4d207b849b7e7a930ee4bb9a6fd0/docs/images/admbw-quickstart-06-liefersicht.png)
+
+[Six screenshots (German)](https://github.com/carstenartur/Taxonomy/blob/main/docs/features/admbw-conformance-de.md#bildfolge-zum-ausbildungsportal) · [R6 coverage and review status (German)](https://github.com/carstenartur/Taxonomy/blob/main/docs/features/admbw-conformance-de.md#vergleich-am-ausbildungsportal) · [Architecture editor walkthrough](ARCHITECTURE_EDITOR.md#architecture-delivery-guide)
 
 ## 1. Requirement → Architecture
 

@@ -263,10 +263,20 @@ export function createRoleStateEvidence({ page, outputDir, checks, findings }) {
   }
 
   async function runAxe(state) {
-    await persistAnalysisDraftBeforeBlockingEvidence(state);
-    const result = await new AxeBuilder({ page })
-      .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
-      .analyze();
+    // Axe can occupy the main thread longer than the transport deadline. Drain
+    // passive observations before the audit and defer new polls until it finishes.
+    let result;
+    try {
+      await page.evaluate(() => window.__taxonomyRoleStateGitPolls?.pause());
+      await persistAnalysisDraftBeforeBlockingEvidence(state);
+      result = await new AxeBuilder({ page })
+        .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
+        .analyze();
+    } finally {
+      if (!page.isClosed()) {
+        await page.evaluate(() => window.__taxonomyRoleStateGitPolls?.resume());
+      }
+    }
     const blocking = result.violations.filter(violation =>
       ['critical', 'serious', 'moderate'].includes(violation.impact));
     findings.push({ state, violations: result.violations, blocking });

@@ -44,7 +44,12 @@ public final class RequirementRelationSearch {
         }
     }
     public record Options(Limits limits, int maxSources, int maxPromptCharacters, BudgetPolicy budget,
-            @JsonInclude(JsonInclude.Include.NON_NULL) BatchSchedule standaloneBatchSchedule) {
+            @JsonInclude(JsonInclude.Include.NON_NULL) BatchSchedule standaloneBatchSchedule,
+            @JsonInclude(JsonInclude.Include.NON_NULL) RelationSearchProtocol.Templates templates) {
+        public Options(Limits limits, int maxSources, int maxPromptCharacters, BudgetPolicy budget,
+                       BatchSchedule standaloneBatchSchedule) {
+            this(limits, maxSources, maxPromptCharacters, budget, standaloneBatchSchedule, null);
+        }
         public Options(Limits limits, int maxSources, int maxPromptCharacters, BudgetPolicy budget) {
             this(limits, maxSources, maxPromptCharacters, budget, budget == null ? BatchSchedule.FAIR_COHORTS_ORDERED_DESCENT : null);
         }
@@ -167,7 +172,8 @@ public final class RequirementRelationSearch {
             if (options.budget() != null) plan.budget(() -> options.budget().usage(budget.calls, budget.totalSources.size(), budget.newWork));
             budget.plan = plan;
             plan.calls(budget.calls);
-            var protocol = new RelationSearchProtocol(budget::complete, provider, (step, ids) -> {}, options.maxPromptCharacters());
+            var protocol = new RelationSearchProtocol(budget::complete, provider, (step, ids) -> {},
+                    options.maxPromptCharacters(), options.templates());
             assessSources(original, nodes, options, protocol, plan, sources, warnings);
             List<Intent> intents = intents(sources, nodes, roots, warnings);
             Limits l = options.limits();
@@ -178,7 +184,7 @@ public final class RequirementRelationSearch {
                     throw new IllegalStateException("CATALOGUE_ROOT_MISMATCH: child belongs to another taxonomy");
                 }
                 return children;
-            }, protocol::evaluateRecovering, checkpoint, plan, true, options.maxPromptCharacters());
+            }, protocol::evaluateRecovering, checkpoint, plan, true, options.maxPromptCharacters(), protocol::decisionRequestCharacters);
             result = engine.search(original, intents, l, options.hasOrderedBatches());
         } catch (RelationSearchEngine.InterruptedSearchException interrupted) {
             result = interrupted.partialResult();
@@ -307,7 +313,7 @@ public final class RequirementRelationSearch {
                     admittedSources.clear();
                 }
                 charged[0]++; admittedSources.addAll(ids); charged[1] = Math.toIntExact(charged[1] + additional); progress.calls(charged[0]);
-            }, options.maxPromptCharacters());
+            }, options.maxPromptCharacters(), options.templates());
             assessSources(original, nodes, options, protocol, progress, sources, warnings);
             List<Intent> intents = intents(sources, nodes, roots, warnings);
             Map<String, Integer> bounds = new HashMap<>();
@@ -383,7 +389,7 @@ public final class RequirementRelationSearch {
             if (calls[0] >= work.maxCalls()) throw new AnalysisCheckpointSession.DeferredException("CALL_BUDGET");
             if (calls[0] >= work.maxWorkItems()) throw new AnalysisCheckpointSession.DeferredException("WORK_LIMIT");
             calls[0]++; progress.calls(calls[0]);
-        }, plan.options().maxPromptCharacters());
+        }, plan.options().maxPromptCharacters(), plan.options().templates());
         Limits limits = plan.options().limits();
         var engine = new RelationSearchEngine(node -> {
             if (!node.root().equals(work.targetRoot().code())) throw new IllegalArgumentException("Foreign target node");
@@ -391,7 +397,7 @@ public final class RequirementRelationSearch {
             if (children.stream().anyMatch(child -> !child.root().equals(work.targetRoot().code())))
                 throw new IllegalStateException("CATALOGUE_ROOT_MISMATCH: child belongs to another taxonomy");
             return children;
-        }, protocol::evaluateRecovering, checkpoint, progress, true, plan.options().maxPromptCharacters());
+        }, protocol::evaluateRecovering, checkpoint, progress, true, plan.options().maxPromptCharacters(), protocol::decisionRequestCharacters);
         Result result = new Result(List.of(), List.of(), List.of(), 0, 0, 0);
         String stop = "";
         try {
@@ -445,7 +451,7 @@ public final class RequirementRelationSearch {
             var batchesByTaxonomy = new ArrayList<List<List<Node>>>();
             for (List<Node> taxonomy : taxonomies.values()) {
                 batchesByTaxonomy.add(RelationCandidateBatches.split(taxonomy, options.limits().batchSize(), options.maxPromptCharacters(),
-                        offered -> RelationSearchProtocol.requestCharacters(RelationSearchProtocol.sourcePrompt(original, offered, Map.of()))));
+                        offered -> protocol.sourceRequestCharacters(original, offered)));
             }
             if (!options.hasOrderedBatches()) {
                 // A legacy distributed grant must recount its original prefix on redelivery.

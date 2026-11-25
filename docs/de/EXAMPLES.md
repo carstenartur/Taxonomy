@@ -2,10 +2,8 @@
 
 Dieses Dokument zeigt ausgearbeitete Beispiele für häufige Aufgaben im Taxonomy Architecture Analyzer.
 
-Abschnitt 1 erklärt einen gespeicherten, historisch belegten Architekturstand mit
-verfassten Modellantworten. Die Zahlen und Antworten der übrigen Abschnitte sind
-illustrative Anwendungsbeispiele, keine gemessenen Ergebnisse eines aktuellen
-Modelllaufs. Beibehaltene Baum-/Impact-Bilder zeigen ältere Beispielzustände und
+Die Fallbeispiele führen zu gespeicherten Architekturen und zu einer interaktiven Produktdemo.
+Die Abschnitte 2 bis 8 illustrieren einzelne Arbeitsschritte. Beibehaltene Baum-/Impact-Bilder zeigen ältere Beispielzustände und
 können andere Bewertungen oder Bedienelemente enthalten.
 Die eingebettete Impact-Ansicht ist von der Workbench eines unveränderlichen
 Snapshots zu unterscheiden. Aktuelle Navigation steht im [Benutzerhandbuch](USER_GUIDE.md),
@@ -15,6 +13,7 @@ versionsgebundene Nachweise in der [Szenario-Abnahme](https://github.com/carsten
 
 ## Inhaltsverzeichnis
 
+- [Architektur an drei Beispielen erkunden](#architecture-case-studies)
 - [1. Anforderung → Architektur](#1-anforderung--architektur)
 - [2. Ausfallauswirkungsanalyse](#2-ausfallauswirkungsanalyse)
 - [3. Architektur-Lückenanalyse](#3-architektur-lückenanalyse)
@@ -25,6 +24,32 @@ versionsgebundene Nachweise in der [Szenario-Abnahme](https://github.com/carsten
 - [8. Architektur-DSL-Workflow](#8-architektur-dsl-workflow)
 
 ---
+
+<a id="architecture-case-studies"></a>
+
+## Architektur an drei Beispielen erkunden
+
+**Hochwasserinformation eignet sich zum Lesen eines Modells.** Verfolgen Sie im [Diagramm und Entscheidungsbericht](#1-anforderung--architektur), wie veröffentlichte Warnungen zur Anzeige gelangen und wie der Zustellprozess Routing, Warteschlange und Auditspur nutzt. Der gespeicherte Teillauf mit vorgegebenen Modellantworten enthält 50 Knoten und 36 gerichtete Beziehungen. Offen bleibt, welches Informationsprodukt der eingehende Beobachtungsstapel darstellt.
+
+<a id="working-time-demo"></a>
+
+### Arbeitszeiterfassung selbst durchspielen
+
+Geben Sie im Analysefeld `produktdemo` ein und wählen Sie **Analysieren**. Die Anforderung im neuen Demo-Projekt lautet „Wir benötigen unternehmensweit ein System zur Arbeitszeiterfassung der Mitarbeiter.“
+
+1. Analysieren Sie die erste Version. Klären Sie anschließend fünf Fragen, unter anderem zur Online-Erfassung, zur Genehmigung von Korrekturen und zur zentralen Anmeldung. Lehnen Sie den Vorschlag zur GPS-Erfassung ab.
+2. Übernehmen Sie die überarbeitete Anforderung und analysieren Sie sie erneut. Die Referenz erwartet in beiden Ständen eine Verbindung der Zeiterfassungsanwendung zum Personaldienst. Für die zweite Version erwartet sie zusätzlich die Nutzung von Authentifizierung und Workflow. So lässt sich an konkreten Beziehungen prüfen, was Ihre Antworten bewirkt haben.
+3. Öffnen Sie die Referenzbewertung und vergleichen Sie beide Stände. Für jeden Stand können Sie das Diagramm als SVG oder PDF und den Architekturbericht als Word-Datei exportieren. Die Demo verwendet festgelegte Modellantworten und führt Analyse, Speicherung und Export in Taxonomy aus.
+
+[Bedienungsanleitung](PROJECT_REQUIREMENT_PORTFOLIO.md#produktdemo-ohne-ki-qa-referenz) · [Vergleichsreferenz mit Katalogkennungen und Beziehungen](https://github.com/carstenartur/Taxonomy/blob/main/taxonomy-analysis/src/main/resources/demo-scenarios/time-tracking-v1/reference.json)
+
+### Ausbildungsportal bis zur ADMBw-Liefersicht verfolgen
+
+Wer darf die Auditprotokolle lesen? Die Bildfolge beginnt mit dieser offenen Frage. Sie zeigt die Architektur-Lupe, die Übernahme in die Arbeitsarchitektur und die Auswahl der Elemente für die Lieferung. Der gespeicherte Stand R6 enthält 40 Elemente, drei Beziehungen und 21 Anforderungszuordnungen. Die gewählte Liefersicht enthält vier Elemente und eine Beziehung. Für acht von zwölf Anforderungsklauseln sind konkrete Beiträge mit wörtlichen Belegen dokumentiert. Die fachliche Abnahme steht aus.
+
+![Ausgewählte C1–S1-Liefersicht des Ausbildungsportals mit vier Elementen und einer gerichteten Beziehung](https://raw.githubusercontent.com/carstenartur/Taxonomy/80b8c942062a4d207b849b7e7a930ee4bb9a6fd0/docs/images/admbw-quickstart-06-liefersicht.png)
+
+[Alle sechs Bilder](https://github.com/carstenartur/Taxonomy/blob/main/docs/features/admbw-conformance-de.md#bildfolge-zum-ausbildungsportal) · [Modellumfang und Prüfstatus von R6](https://github.com/carstenartur/Taxonomy/blob/main/docs/features/admbw-conformance-de.md#vergleich-am-ausbildungsportal) · [Schrittfolge im Architektureditor](ARCHITECTURE_EDITOR.md#architecture-delivery-guide)
 
 ## 1. Anforderung → Architektur
 

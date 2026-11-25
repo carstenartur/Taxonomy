@@ -235,7 +235,15 @@ Mock mode returns deterministic prepared scores, needs no API key, and is intend
 
 ## Prompt Template Editor
 
-The admin prompt-template editor changes the instructions sent to the active provider without redeploying. Saved changes apply to the next analysis request.
+Administrators can change the domain instructions without redeploying under **Admin mode → Prompt Templates**. This includes reuse review, relation search, architecture dialogue, architecture focus suggestions, reformulation, reconciliation, and classification of mail subjects.
+
+Taxonomy stores overrides in the shared database. They survive restarts and apply across instances of the same installation. Use **Reset to Default** to restore the shipped template. New reformulations capture the effective synthesis and reconciliation templates when they start. Resuming a saved reformulation uses its archived templates.
+
+Saved relation analyses also retain the identity of their instructions. If those instructions have changed, continuation reports a conflict; start a new analysis to apply the changed templates. Already prepared distributed relation tasks finish with their captured instructions. Runs using the shipped defaults remain compatible with earlier saved analyses.
+
+A database backup includes the saved overrides. The application’s settings export omits them. Include the application database when transferring customised prompts to another installation.
+
+The application supplies the technical response contract and validates candidate identities and evidence. For reuse review, the provider evaluates small groups of candidates of the same kind and selects from the supplied evidence spans. Taxonomy copies the selected spans directly from the source texts.
 
 ---
 

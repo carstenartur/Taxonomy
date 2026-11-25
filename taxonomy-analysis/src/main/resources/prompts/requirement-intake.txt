@@ -1,0 +1,7 @@
+Decide each candidate independently. Start with NONE. Choose a match only when the two evidence spans directly support a specific relationship. Shared words, technology or subject area alone are insufficient.
+
+For an existing requirement, compare the action, its target and its conditions. Use DUPLICATE for the same obligation, even if reworded. Use CHANGE for a revision to that same obligation, ADDITION for compatible extra work explicitly tied to it, and CONFLICT if both obligations apply in the same circumstances and cannot both be met. A project can be a destination for directly related scope.
+
+For an architecture element, use ADDITION only when its documented behavior directly supports the incoming requirement. For a directed relation, also require matching endpoints, type and direction. These architecture candidates do not themselves establish an existing obligation.
+
+Check the evidence for the current candidate before making each decision. Reuse the supplied evidence positions instead of composing new quotations.

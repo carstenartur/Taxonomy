@@ -1,6 +1,7 @@
 package com.taxonomy.analysis.recovery;
 
 import com.taxonomy.analysis.relations.RelationRecoveryPolicy;
+import com.taxonomy.analysis.relations.RelationSearchProtocol;
 import com.taxonomy.analysis.relations.RequirementRelationSearch;
 import com.taxonomy.analysis.service.*;
 import com.taxonomy.analysis.usecase.AdmittedCatalogue;
@@ -49,6 +50,7 @@ public class AnalysisContinuationService {
     private WorkspaceViewContextReadPort views;
     private record Authority(String provider, com.taxonomy.extension.api.plugin.PluginInvocation binding,
             String scoringPolicy, String relationPolicy, String catalogueHash) { }
+    private record RelationPromptPolicy(RelationSearchProtocol.Templates templates, String fingerprint) { }
 
     /** Adds selected node work to one immutable, owned source revision. Browser scores are never input. */
     public AnalysisRequest resolveTaxonomiesRequest(AnalysisRequest decision, String username, WorkspaceContext scope) {
@@ -202,17 +204,25 @@ public class AnalysisContinuationService {
     }
     private Authority authority(String provider, com.taxonomy.extension.api.plugin.PluginInvocation binding,
             java.util.List<TaxonomyNodeDto> tree) {
+        return authority(provider, binding, tree, currentRelationFingerprint());
+    }
+    private Authority authority(String provider, com.taxonomy.extension.api.plugin.PluginInvocation binding,
+            java.util.List<TaxonomyNodeDto> tree, String relationFingerprint) {
         return new Authority(provider, binding, llm.recoveryPolicyFingerprint(provider),
-                AnalysisCheckpointSession.digest(relations == null ? "" : relations.recoveryPolicyFingerprint()),
+                AnalysisCheckpointSession.digest(relationFingerprint),
                 AnalysisEvidenceFingerprint.digestJson(mapper, tree));
     }
     private void validateAuthority(Authority saved, java.util.List<TaxonomyNodeDto> tree) {
+        validateAuthority(saved, tree, currentRelationFingerprint());
+    }
+    private RelationRecoveryPolicy.Compatible validateAuthority(Authority saved, java.util.List<TaxonomyNodeDto> tree,
+            String relationFingerprint) {
         var binding = providers == null ? null : providers.captureProviderBinding(saved.provider());
-        var current = authority(saved.provider(), binding, tree);
+        var current = authority(saved.provider(), binding, tree, relationFingerprint);
         if (!Objects.equals(saved.provider(), current.provider()) || !Objects.equals(saved.binding(), current.binding())
                 || !Objects.equals(saved.scoringPolicy(), current.scoringPolicy())
                 || !Objects.equals(saved.catalogueHash(), current.catalogueHash())) throw changedAuthority();
-        relationPolicy(saved);
+        return relationPolicy(saved, relationFingerprint);
     }
     private static void requireProvider(Authority saved, String provider,
             com.taxonomy.extension.api.plugin.PluginInvocation binding) {
@@ -222,11 +232,18 @@ public class AnalysisContinuationService {
         return new ResponseStatusException(HttpStatus.CONFLICT,
                 "Saved provider, catalogue or analysis policy changed; refresh the source context before extending relations");
     }
-    private RelationRecoveryPolicy.Compatible relationPolicy(Authority saved) {
-        String current = relations == null ? "" : relations.recoveryPolicyFingerprint();
+    private String currentRelationFingerprint() {
+        return relations == null ? "" : relations.recoveryPolicyFingerprint();
+    }
+    private RelationPromptPolicy captureRelationPolicy() {
+        if (relations == null) return new RelationPromptPolicy(null, "");
+        var templates = relations.captureRelationTemplates();
+        return new RelationPromptPolicy(templates, relations.recoveryPolicyFingerprint(templates));
+    }
+    private RelationRecoveryPolicy.Compatible relationPolicy(Authority saved, String current) {
         if (saved == null || Objects.equals(saved.relationPolicy(), AnalysisCheckpointSession.digest(current)))
             return new RelationRecoveryPolicy.Compatible(current, 0);
-        var compatible = relations == null ? null : relations.compatibleRecoveryPolicy(saved.relationPolicy());
+        var compatible = relations == null ? null : relations.compatibleRecoveryPolicy(saved.relationPolicy(), current);
         if (compatible == null) throw changedAuthority();
         return compatible;
     }
@@ -332,8 +349,11 @@ public class AnalysisContinuationService {
                  var language = AnalysisLanguageContext.open(frozen.getAnalysisLanguage())) {
             // A claim may authorize execution only after its server-captured authority matches.
             // Standalone local callers without a provider envelope bind their policy in this scope.
-            validateAuthority(authority == null ? authority(frozen.getProvider(), binding, tree) : authority, tree);
-            return new Execution(store.begin(frozen, scope, signature(frozen, tree), tree), null, frozen, binding, scope);
+            var relation = captureRelationPolicy();
+            var compatible = validateAuthority(authority == null
+                    ? authority(frozen.getProvider(), binding, tree, relation.fingerprint()) : authority, tree, relation.fingerprint());
+            var claim = store.begin(frozen, scope, signature(frozen, tree, compatible), tree);
+            return new Execution(claim, null, frozen, binding, scope, captureBudgetPolicy(claim, compatible), relation.templates());
         }
     }
     public Execution beginDistributed(AnalysisRequest request, String username, WorkspaceContext scope, int maxNodes) {
@@ -350,14 +370,16 @@ public class AnalysisContinuationService {
         try (var ignored = providers.withRequestProvider(provider, pluginBinding);
              var reasons = AnalysisReasonContext.open(frozen.getAnalysisReasonLength());
                  var language = AnalysisLanguageContext.open(frozen.getAnalysisLanguage())) {
-            validateAuthority(authority == null ? authority(provider, pluginBinding, tree) : authority, tree);
-            String signature = signature(frozen, tree);
+            var relation = captureRelationPolicy();
+            var compatible = validateAuthority(authority == null
+                    ? authority(provider, pluginBinding, tree, relation.fingerprint()) : authority, tree, relation.fingerprint());
+            String signature = signature(frozen, tree, compatible);
             var claim = store.begin(frozen, scope, signature, tree);
-            var budget = captureBudgetPolicy(claim, frozen);
+            var budget = captureBudgetPolicy(claim, compatible);
             var binding = claim.completedResult() == null ? new AnalysisContinuationBinding(claim.id(), claim.token(), signature,
-                    llm.recoveryPolicyFingerprint(provider), AnalysisCheckpointSession.digest(relations == null ? "" : relations.recoveryPolicyFingerprint()),
+                    llm.recoveryPolicyFingerprint(provider), AnalysisCheckpointSession.digest(relation.fingerprint()),
                     budget == null ? 0 : budget.sourceCohortSize(), budget) : null;
-            return new Execution(claim, binding, frozen, pluginBinding, scope);
+            return new Execution(claim, binding, frozen, pluginBinding, scope, budget, null);
         }
     }
     private AnalysisRequest freezeGenerationContract(AnalysisRequest request, WorkspaceContext scope) {
@@ -381,13 +403,13 @@ public class AnalysisContinuationService {
         }
         return original.orElse(null);
     }
-    private RequirementRelationSearch.BudgetPolicy captureBudgetPolicy(AnalysisContinuationStore.Claim claim, AnalysisRequest request) {
+    private RequirementRelationSearch.BudgetPolicy captureBudgetPolicy(AnalysisContinuationStore.Claim claim,
+            RelationRecoveryPolicy.Compatible compatible) {
         if (claim.completedResult() != null || relations == null) return null;
         var budget = relations.executionBudget();
         var previous = claim.previousRelations();
         int cohort = previous != null && previous.budget() != null ? previous.budget().sourceCohortSize()
-                : relationPolicy(request == null || request.getContinuationAuthority() == null ? null
-                        : mapper.readValue(request.getContinuationAuthority(), Authority.class)).sourceCohortSize();
+                : compatible == null ? 0 : compatible.sourceCohortSize();
         if (cohort == 0) cohort = budget.maxSources();
         cohort = store.freezeRelationSourceCohort(claim, cohort);
         return new RequirementRelationSearch.BudgetPolicy(budget.maxCalls(), budget.maxTotalCalls(), store.relationCallsSpent(claim),
@@ -434,10 +456,14 @@ public class AnalysisContinuationService {
     }
 
     private String signature(AnalysisRequest request, java.util.List<TaxonomyNodeDto> tree) {
+        return signature(request, tree, null);
+    }
+    private String signature(AnalysisRequest request, java.util.List<TaxonomyNodeDto> tree,
+            RelationRecoveryPolicy.Compatible compatible) {
         try (var reasons = AnalysisReasonContext.open(request.getAnalysisReasonLength());
                  var language = AnalysisLanguageContext.open(request.getAnalysisLanguage())) {
-        var relationPolicy = relationPolicy(request.getContinuationAuthority() == null ? null
-                : mapper.readValue(request.getContinuationAuthority(), Authority.class));
+        var relationPolicy = compatible == null ? relationPolicy(request.getContinuationAuthority() == null ? null
+                : mapper.readValue(request.getContinuationAuthority(), Authority.class), currentRelationFingerprint()) : compatible;
         String legacy = AnalysisEvidenceFingerprint.digestJson(mapper, new String[]{"resumable-scoring-v1", request.getBusinessText(),
                 Boolean.toString(request.isIncludeArchitectureView()), String.valueOf(request.getMaxArchitectureNodes()),
                 llm.recoveryPolicyFingerprint(request.getProvider())}, tree,
@@ -482,9 +508,15 @@ public class AnalysisContinuationService {
         Execution(AnalysisContinuationStore.Claim claim) { this(claim, null, null, null, null); }
         Execution(AnalysisContinuationStore.Claim claim, AnalysisContinuationBinding binding, AnalysisRequest request,
                 com.taxonomy.extension.api.plugin.PluginInvocation pluginBinding, WorkspaceContext workspace) {
+            this(claim, binding, request, pluginBinding, workspace,
+                    binding == null ? captureBudgetPolicy(claim, null) : binding.relationBudget(), null);
+        }
+        private Execution(AnalysisContinuationStore.Claim claim, AnalysisContinuationBinding binding, AnalysisRequest request,
+                com.taxonomy.extension.api.plugin.PluginInvocation pluginBinding, WorkspaceContext workspace,
+                RequirementRelationSearch.BudgetPolicy budget, RelationSearchProtocol.Templates templates) {
             this.workspace = workspace;
             this.claim = claim; distributedBinding = binding; frozenRequest = request; providerBinding = pluginBinding;
-            relationBudget = binding == null ? captureBudgetPolicy(claim, request) : binding.relationBudget();
+            relationBudget = budget;
             java.util.function.Predicate<AnalysisCheckpointSession.Question> work = request == null || request.getTaxonomyRequestedScope() == null
                     || claim.completedResult() != null || binding != null ? null : store.taxonomyWork(claim);
             session = claim.completedResult() != null || binding != null ? null : new AnalysisCheckpointSession(new AnalysisCheckpointSession.Store() {
@@ -515,7 +547,7 @@ public class AnalysisContinuationService {
                     if ("CANCELLED".equals(state)) throw new AnalysisStoppedException(AnalysisStoppedException.Reason.CANCELLED);
                     if ("PAUSED".equals(state)) throw new AnalysisStoppedException(AnalysisStoppedException.Reason.AWAITING_DECISION);
                 }
-            });
+            }, templates);
         }
         public AnalysisContinuationBinding binding() { return distributedBinding; }
         public AnalysisLanguage analysisLanguage() {
