@@ -37,6 +37,7 @@
 .github/scripts/catalogue-responsibility-editor.test.mjs
 .github/scripts/context-path-resources.test.mjs
 .github/scripts/copilot-operation-lifecycle.test.mjs
+.github/scripts/copilot-prompt.browser.test.mjs
 .github/scripts/copilot-session-i18n-ready-regression.test.mjs
 .github/scripts/copilot-session-ui-regression.test.mjs
 .github/scripts/copilot-summary-freshness.test.mjs

@@ -1650,6 +1650,7 @@
 <script th:src="@{/webjars/jspdf/4.2.1/dist/jspdf.umd.min.js}" src="/webjars/jspdf/4.2.1/dist/jspdf.umd.min.js"></script>
 <script th:src="@{/webjars/svg2pdf.js/2.2.0/dist/svg2pdf.umd.min.js}" src="/webjars/svg2pdf.js/2.2.0/dist/svg2pdf.umd.min.js"></script>
 <script th:src="@{/js/shared/taxonomy-utils.js}"></script>
+<script th:src="@{/js/core/taxonomy-prompt-display.js}" src="/js/core/taxonomy-prompt-display.js"></script>
 <script th:src="@{/js/shared/architecture-workflow.js}" src="/js/shared/architecture-workflow.js"></script>
 <th:block th:replace="~{fragments/application-chrome :: scripts}"></th:block>
 <script th:src="@{/js/api/analysis-adapter-api.js}" src="/js/api/analysis-adapter-api.js"></script>
@@ -2094,15 +2095,15 @@
 </div>
 <script>
 (function () {
-    var statusTimer = null;
+    var statusTimer = window.TaxonomyApiClient.createPollTimer(15000, updateSystemStatus);
     var pendingStatus = null;
     var statusPageActive = true;
     function currentStatus(controller) {
         return statusPageActive && pendingStatus === controller && !controller.signal.aborted;
     }
     function updateSystemStatus() {
-        if (!statusPageActive) return;
-        if (pendingStatus) pendingStatus.abort();
+        if (!statusPageActive || pendingStatus || statusTimer.isStopped()) return;
+        statusTimer.cancel();
         var controller = new AbortController();
         pendingStatus = controller;
         TaxonomyI18n.ready().then(function () {
@@ -2111,6 +2112,7 @@
             .then(function (r) { return currentStatus(controller) && r ? r.json() : null; })
             .then(function (data) {
                 if (!currentStatus(controller) || !data) return;
+                statusTimer.schedule();
                 var bar = document.getElementById('systemStatusBar');
                 if (!bar) { return; }
                 var mem = data.memory || {};
@@ -2123,21 +2125,31 @@
                     ' | Heap: ' + pct + '% (' + (mem.heapUsedMB || '?') + '/' + (mem.heapMaxMB || '?') + ' MB)' +
                     ' | ' + TaxonomyI18n.t('startup.ui.threads') + ': ' + (mem.threadCount || '?');
             })
-            .catch(function () {});
+            .catch(function (error) {
+                if (!currentStatus(controller)) return;
+                statusTimer.schedule({error: error});
+                if (error.code === 'ABORTED' || error.name === 'AbortError') return;
+                var bar = document.getElementById('systemStatusBar');
+                if (bar) bar.textContent = TaxonomyI18n.t('startup.ui.statusUnavailable');
+            })
+            .finally(function () {
+                if (pendingStatus === controller) pendingStatus = null;
+            });
     }
     window.addEventListener('pagehide', function () {
         statusPageActive = false;
-        clearInterval(statusTimer); statusTimer = null;
+        statusTimer.cancel();
         if (pendingStatus) pendingStatus.abort();
+        pendingStatus = null;
     });
     window.addEventListener('pageshow', function (event) {
         if (!event.persisted || statusPageActive) return;
         statusPageActive = true;
-        updateSystemStatus();
-        statusTimer = setInterval(updateSystemStatus, 15000);
+        if (!statusTimer.isStopped()) {
+            statusTimer.reset();
+            updateSystemStatus();
+        }
     });
-    statusTimer = setInterval(updateSystemStatus, 15000);
-    document.addEventListener('DOMContentLoaded', updateSystemStatus);
     updateSystemStatus();
 }());
 </script>

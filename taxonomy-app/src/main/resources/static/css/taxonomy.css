@@ -306,6 +306,7 @@
     border-bottom: none;
 }
 
+.llm-prompt-field .llm-log-prompt,
 #llmCommLogContent .llm-log-prompt,
 #llmCommLogContent .llm-log-response {
     white-space: pre-wrap;
@@ -318,6 +319,50 @@
     margin-top: 0.25rem;
     font-family: monospace;
     font-size: 0.85em;
+}
+
+.llm-prompt-field h3 {
+    margin: 0;
+}
+
+.llm-prompt-readable pre,
+.llm-prompt-readable dt {
+    color: inherit;
+    font: inherit;
+    margin: 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.llm-prompt-readable dt {
+    font-weight: 600;
+}
+
+.llm-prompt-readable dl,
+.llm-prompt-readable ol {
+    white-space: normal;
+    margin: 0;
+}
+
+.llm-prompt-readable ol {
+    padding-inline-start: 1.25rem;
+}
+
+.llm-prompt-readable dd {
+    margin: 0 0 0.65rem;
+    padding-inline-start: 0.5rem;
+}
+
+.llm-prompt-readable dd:last-child {
+    margin-block-end: 0;
+}
+
+.llm-prompt-readable li + li {
+    margin-block-start: 0.65rem;
+}
+
+.llm-prompt-readable .llm-prompt-instructions {
+    margin-block-end: 0.5rem;
 }
 
 /* ── LLM log error states ────────────────────────────────── */
@@ -1071,6 +1116,7 @@
     color: #9ca3af !important;
 }
 
+[data-bs-theme="dark"] .llm-prompt-field .llm-log-prompt,
 [data-bs-theme="dark"] #llmCommLogContent .llm-log-prompt,
 [data-bs-theme="dark"] #llmCommLogContent .llm-log-response,
 [data-bs-theme="dark"] .llm-log-reasons {

@@ -1,19 +1,13 @@
 package com.taxonomy.composition.analysis;
 
-import com.taxonomy.preferences.storage.GitPromptOverrideStore;
+import com.taxonomy.preferences.storage.PromptOverrideStorageBeans;
 import com.taxonomy.shared.features.ConditionalOnFeature;
-import io.github.carstenartur.jgit.storage.hibernate.HibernateRepositoryFactory;
-import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import tools.jackson.databind.ObjectMapper;
+import org.springframework.context.annotation.Import;
 
-/** Wires the database-backed override store when the optional analysis feature is installed. */
+/** Installs the preferences-owned prompt store only when the analysis feature is present. */
 @Configuration(proxyBeanMethods = false)
 @ConditionalOnFeature("analysis")
+@Import(PromptOverrideStorageBeans.class)
 public class PromptTemplateStorageConfiguration {
-
-    @Bean(destroyMethod = "close")
-    GitPromptOverrideStore promptTemplateOverrideStore(HibernateRepositoryFactory factory, ObjectMapper json) {
-        return new GitPromptOverrideStore(factory, json);
-    }
 }

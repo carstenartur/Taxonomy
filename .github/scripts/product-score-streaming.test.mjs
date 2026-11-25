@@ -7,6 +7,9 @@ import vm from 'node:vm';
 const source = await readFile(new URL(
   '../../taxonomy-app/src/main/resources/static/js/core/taxonomy-scoring.js',
   import.meta.url), 'utf8');
+const promptDisplaySource = await readFile(new URL(
+  '../../taxonomy-app/src/main/resources/static/js/core/taxonomy-prompt-display.js',
+  import.meta.url), 'utf8');
 const matchScale = await readFile(new URL(
   '../../taxonomy-app/src/main/resources/static/js/shared/match-scale.js', import.meta.url), 'utf8');
 const viewsSource = await readFile(new URL(
@@ -48,6 +51,7 @@ function element(className = '') {
       return key.startsWith('data-') ? this.dataset[dataKey(key)] ?? null : attributes.get(key) ?? null;
     },
     appendChild(child) { child.parent = this; this.children.push(child); },
+    append(...children) { children.forEach(child => this.appendChild(child)); },
     insertBefore(child, before) {
       child.parent = this;
       const index = this.children.indexOf(before);
@@ -145,6 +149,7 @@ function harness(locale = 'en') {
   // Keep the real source-summary renderer at this module boundary, not a stubbed area badge.
   browse.refreshContainerSummaries = window.TaxonomyBrowse.refreshContainerSummaries;
   window.TaxonomyBrowse = browse;
+  vm.runInContext(promptDisplaySource, context);
   vm.runInContext(source, context);
   vm.runInContext(viewsSource, context);
   window.TaxonomyScoring.runStreamingAnalysis();
@@ -373,14 +378,20 @@ test('streaming keeps area relevance in the group heading without a catalogue-no
 
 test('legacy LLM log renderer exposes copy controls for prompt and response', async () => {
   const h = harness();
+  const paragraphs = 'First requirement.\n\nSecond requirement.';
+  const prompt = 'Score the node.\nINPUT\n' + JSON.stringify({ original: paragraphs });
   h.api.appendLlmLogEntry('IP', { IP: 80 }, {
-    prompt: 'legacy prompt', rawResponse: '{"IP":80}', provider: 'CUSTOM_OPENAI', durationMs: 25
+    prompt, rawResponse: '{"IP":80}', provider: 'CUSTOM_OPENAI', durationMs: 25
   });
+  function containsParagraphs(node) {
+    return node.textContent === paragraphs || node.children.some(containsParagraphs);
+  }
+  assert.ok(containsParagraphs(h.controls.llmCommLogContent));
   const buttons = h.controls.llmCommLogContent.querySelectorAll('.llm-log-copy');
   assert.equal(buttons.length, 2, 'legacy prompt and response each need a copy action');
   buttons[0].emit('click'); buttons[1].emit('click');
   await Promise.resolve();
-  assert.deepEqual(h.copiedDiagnostics, ['legacy prompt', '{"IP":80}']);
+  assert.deepEqual(h.copiedDiagnostics, [prompt, '{"IP":80}']);
 });
 
 for (const locale of ['de', 'en']) {

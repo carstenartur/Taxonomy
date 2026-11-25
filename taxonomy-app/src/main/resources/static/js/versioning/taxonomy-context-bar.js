@@ -12,8 +12,10 @@ window.TaxonomyContextBar = (function () {
     var t = TaxonomyI18n.t;
 
     var POLL_INTERVAL = 10000; // 10 seconds
-    var pollTimer = null;
+    var pollTimer = window.TaxonomyApiClient.createPollTimer(POLL_INTERVAL, pollContext);
     var currentContext = null;
+    var ownsAcceptedSource = null;
+    var latestReadiness = null;
     var selectionGeneration = 0;
     var selectedWorkspace = null;
     var selectedRepository = null;
@@ -26,10 +28,12 @@ window.TaxonomyContextBar = (function () {
     var pageGeneration = 0;
     var navigationTail = Promise.resolve();
     var activeContainer = null;
+    var pollingReady = false;
     var resumeTimer = null;
+    var ownsPollSource = null;
     window.addEventListener('beforeunload', function () {
         if (!pageActive) return;
-        clearInterval(pollTimer); pollTimer = null;
+        pollTimer.cancel();
         if (pendingRead) pendingRead.abort();
         if (resumeTimer !== null) clearTimeout(resumeTimer);
         // A cancelled navigation keeps this document and its normal polling cadence.
@@ -42,11 +46,16 @@ window.TaxonomyContextBar = (function () {
         pageGeneration++;
         if (resumeTimer !== null) clearTimeout(resumeTimer);
         resumeTimer = null;
-        pageActive = false; clearInterval(pollTimer); pollTimer = null;
+        pageActive = false;
+        pollingReady = false;
+        pollTimer.cancel();
         if (pendingRead) pendingRead.abort();
     });
     window.addEventListener('pageshow', function (event) {
-        if (event.persisted && activeContainer) { pageActive = true; init(activeContainer); }
+        if (event.persisted && !pageActive && activeContainer) { pageActive = true; init(activeContainer); }
+    });
+    document.addEventListener('taxonomy:architecture-source-changed', function () {
+        if (ownsPollSource && !ownsPollSource()) pollContext();
     });
 
     function acceptContext(context) {
@@ -60,6 +69,7 @@ window.TaxonomyContextBar = (function () {
         selectedWorkspace = workspace;
         selectedRepository = repository;
         currentContext = context;
+        ownsAcceptedSource = window.TaxonomyApiClient.captureWorkspaceSource();
         document.dispatchEvent(new CustomEvent('taxonomy:repository-context-changed', {
             detail: {contextId: context.contextId, branch: context.branch,
                 commitId: context.commitId, selectionChanged: changed}
@@ -74,20 +84,44 @@ window.TaxonomyContextBar = (function () {
     function init(containerId) {
         activeContainer = containerId;
         if (resumeTimer !== null) return Promise.resolve(null);
-        if (pollTimer) clearInterval(pollTimer);
-        pollTimer = null;
+        pollTimer.cancel();
         var page = pageGeneration;
         // The first repository publication must follow draft/source hydration;
         // publishing it sooner revokes their protected bootstrap responses.
         return Promise.resolve(window.TaxonomyArchitectureWorkspace?.ready?.()).then(function () {
             if (!pageActive || resumeTimer !== null || page !== pageGeneration || activeContainer !== containerId) return null;
-            var result = fetchAndRender(containerId, {joinCurrent: true});
-            if (pollTimer) clearInterval(pollTimer);
-            pollTimer = setInterval(function () {
-                fetchAndRender(containerId, {joinCurrent: true});
-            }, POLL_INTERVAL);
-            return result;
+            pollingReady = true;
+            var failure = currentReadiness()?.error;
+            if (failure && !pendingResult) {
+                ownsPollSource = window.TaxonomyApiClient.captureWorkspaceSource();
+                pollTimer.schedule({error: failure});
+                return null;
+            }
+            return pollContext();
         });
+    }
+
+    function pollContext() {
+        if (!pollingReady || !pageActive || resumeTimer !== null) return Promise.resolve(null);
+        if (ownsPollSource && !ownsPollSource()) pollTimer.reset();
+        if (pollTimer.isStopped()) return Promise.resolve(null);
+        return fetchAndRender(activeContainer, {joinCurrent: true});
+    }
+
+    function currentReadiness() {
+        return pageActive && latestReadiness?.current() ? latestReadiness.value : null;
+    }
+
+    // Session recovery observes the poll's outcome without starting another GET.
+    // Initial admission and the explicit server check can request a fresh read.
+    function readiness(containerId, options) {
+        if (!pageActive || resumeTimer !== null) return Promise.resolve(null);
+        if (pendingResult && pendingContainer === containerId && pendingOwner() && !pendingRead.signal.aborted) {
+            return pendingResult.then(currentReadiness);
+        }
+        var observed = currentReadiness();
+        if (options?.passive || observed?.context) return Promise.resolve(observed);
+        return fetchAndRender(containerId, {joinCurrent: true}).then(currentReadiness);
     }
 
     /**
@@ -97,26 +131,46 @@ window.TaxonomyContextBar = (function () {
      */
     function fetchAndRender(containerId, options) {
         if (!pageActive || resumeTimer !== null) return Promise.resolve(null);
+        var shouldPoll = pollingReady && activeContainer === containerId;
+        var ownsSource = window.TaxonomyApiClient.captureWorkspaceSource();
+        if (shouldPoll) ownsPollSource = ownsSource;
         if (options?.joinCurrent && pendingResult && pendingContainer === containerId
                 && pendingOwner() && !pendingRead.signal.aborted) return pendingResult;
+        if (shouldPoll) pollTimer.cancel();
         if (pendingRead) pendingRead.abort();
         var controller = new AbortController();
         pendingRead = controller;
         pendingOwner = window.TaxonomyApiClient.captureContext();
         pendingContainer = containerId;
+        var error;
+        function current() {
+            return pageActive && !controller.signal.aborted && pendingRead === controller && ownsSource();
+        }
         pendingResult = window.TaxonomyContextApi.current({ signal: controller.signal })
             .then(function (ctx) {
-                if (!ctx || !pageActive || controller.signal.aborted || pendingRead !== controller) return null;
+                if (!ctx || !current()) return null;
                 acceptContext(ctx);
                 render(containerId, ctx);
+                if (current()) {
+                    var ownsAuthority = window.TaxonomyApiClient.captureContext({contextSensitive: false});
+                    latestReadiness = {current: function () { return ownsSource() && ownsAuthority(); }, value: {context: ctx}};
+                    if (shouldPoll) pollTimer.reset();
+                }
                 return ctx;
             })
-            .catch(function () {
-                // The global git-status bar shows errors; readiness callers must still fail closed.
+            .catch(function (err) {
+                error = err;
+                if (current() && err.code !== 'ABORTED') {
+                    latestReadiness = {current: ownsSource, value: {error: err}};
+                }
                 return null;
             }).finally(function () {
                 if (pendingRead === controller) {
                     pendingRead = null; pendingResult = null; pendingOwner = null; pendingContainer = null;
+                    if (pollingReady && activeContainer === containerId && pageActive && resumeTimer === null
+                            && !controller.signal.aborted) {
+                        pollTimer.schedule(ownsSource() ? {error} : {});
+                    }
                 }
             });
         return pendingResult;
@@ -297,6 +351,11 @@ window.TaxonomyContextBar = (function () {
                 if (pendingRead) pendingRead.abort();
                 acceptContext(ctx);
                 render(activeContainer || 'contextBar', ctx);
+                if (pollingReady) {
+                    ownsPollSource = window.TaxonomyApiClient.captureWorkspaceSource();
+                    pollTimer.reset();
+                    pollTimer.schedule();
+                }
                 return ctx;
             }).catch(function (error) {
                 if (generation !== navigationGeneration) return null;
@@ -421,6 +480,7 @@ window.TaxonomyContextBar = (function () {
     return {
         init: init,
         fetchAndRender: fetchAndRender,
+        readiness: readiness,
         open: open,
         back: back,
         returnToOrigin: returnToOrigin,
@@ -429,6 +489,7 @@ window.TaxonomyContextBar = (function () {
         showCompareDialog: showCompareDialog,
         showTransferDialog: showTransferDialog,
         getCurrentContext: getCurrentContext,
+        getContextForWorkspaceSource: function () { return ownsAcceptedSource?.() ? currentContext : null; },
         updateSyncInfoInBar: updateSyncInfoInBar,
         getSelectionGeneration: function () { return selectionGeneration; }
     };

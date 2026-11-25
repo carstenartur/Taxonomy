@@ -118,7 +118,7 @@ public class WorkspaceController {
                 workspaceResolver.resolveCurrentRepositoryContext();
             } catch (InitialWorkspaceSourcePending pending) {
                 return ResponseEntity.accepted().cacheControl(CacheControl.noStore()).header(HttpHeaders.RETRY_AFTER, "1")
-                        .body(Map.of("state", "INITIAL_SOURCE_PENDING"));
+                        .body(Map.of("state", InitialWorkspaceSourcePending.CODE));
             }
             info = workspaceManager.getWorkspaceInfo(user);
         }
@@ -411,9 +411,9 @@ public class WorkspaceController {
 
     @GetMapping("/sync-state")
     @Operation(summary = "Get current sync state",
-            description = "Returns the synchronization status between the user's workspace " +
-                    "and the shared repository, including last sync time and " +
-                    "unpublished commit count.")
+            description = "Returns the working copy's provisioning state or its synchronization status " +
+                    "with the shared repository, including last sync time and unpublished commit count.")
+    @WorkspaceMetadataOperation
     public ResponseEntity<Map<String, Object>> getSyncState() {
         String user = workspaceResolver.resolveCurrentUsername();
         var state = syncIntegrationService.getSyncState(user);

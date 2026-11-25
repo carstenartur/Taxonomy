@@ -26,6 +26,7 @@ function deferred() {
 }
 
 function createProbeHarness(request) {
+  const notices = [];
   const runtime = {
     workspaceId: 'ws-1',
     version: null,
@@ -48,7 +49,7 @@ function createProbeHarness(request) {
     jsonRequest: request,
     hasDerivedAnalysis: () => false,
     isStale: () => false,
-    showActionAlert() {},
+    showActionAlert(...args) { notices.push(args); },
     showStaleActions() {},
     openRequirementDialog() {}
   };
@@ -82,6 +83,7 @@ function createProbeHarness(request) {
     window,
     document,
     console,
+    AbortController,
     Array,
     Boolean,
     CustomEvent: class CustomEvent {},
@@ -93,7 +95,7 @@ function createProbeHarness(request) {
     encodeURIComponent
   }, { filename: 'taxonomy-analysis-session-draft.js' });
 
-  return { context, runtime };
+  return { context, runtime, notices };
 }
 
 function createStartupHarness(workspaceResponse, loadDraft = async () => null, metadata = {}) {
@@ -483,6 +485,134 @@ function earlyWorkspaceStartup(next = Response.json({workspaceId: 'bootstrapped-
 
 const gitStatusSource = await readFile(new URL(
   '../../taxonomy-app/src/main/resources/static/js/workspace/taxonomy-git-status.js', import.meta.url), 'utf8');
+const settleStartup = () => new Promise(resolve => setImmediate(resolve));
+
+function installLiveStatus(h, contextBar = false) {
+  const requests = [], timers = new Map();
+  let sequence = 0;
+  const bar = {innerHTML:'', classList:{remove() {}}, querySelector() {return null;}};
+  h.document.getElementById = id => id === 'gitStatusBar' ? bar : null;
+  const sandbox = {window:h.window, document:h.document, console,
+    TaxonomyI18n:{t:key => key}, TaxonomyUtils:{escapeHtml:String},
+    setTimeout(callback, delay) { timers.set(++sequence, {callback, delay}); return sequence; },
+    clearTimeout(id) { timers.delete(id); },
+    fetch: (url, options) => new Promise(resolve => requests.push({
+      path: new URL(url, 'https://example.test/').pathname, signal: options.signal,
+      answer(body, status = 200) { resolve(Response.json(body, {status})); }
+    }))
+  };
+  canonicalFixture.install(sandbox, ['api/workspace-api.js', ...(contextBar ? ['versioning/taxonomy-context-bar.js'] : [])]);
+  vm.runInContext(gitStatusSource, sandbox);
+  return {
+    requests: endpoint => requests.filter(request => request.path === endpoint),
+    tick(delay) {
+      for (const [id, timer] of [...timers]) if (timer.delay === delay && timers.delete(id)) timer.callback();
+    }
+  };
+}
+
+for (const status of [403, 409]) test(`a healthy Git observation respects context HTTP ${status} retry limits during session admission`, async () => {
+  const h = createStartupHarness(Promise.resolve({workspaceId:'ws-ready'}), async () => null, {
+    TaxonomyContextBar:{fetchAndRender() {throw new Error('Install the real ContextBar before startup settles');}}
+  });
+  const errors = [];
+  h.context.serverUnavailable = error => errors.push(error);
+  const statusPolls = installLiveStatus(h, true);
+  const contextReads = () => statusPolls.requests('/api/context/current');
+  await h.session.whenInitialized();
+  h.window.TaxonomyContextBar.init('contextBar');
+  await settleStartup();
+  assert.equal(contextReads().length, 1);
+  const reason = 'The selected working copy is being initialized';
+  contextReads()[0].answer({code:'WORKSPACE_NOT_READY', workspaceStatus:'PROVISIONING', detail:reason}, status);
+  await settleStartup();
+  await h.emit('DOMContentLoaded');
+  statusPolls.requests('/api/git/state')[0].answer({currentBranch:'draft'});
+  await settleStartup();
+  assert.equal(contextReads().length, 1, 'Git success must never trigger an extra read during context stop or backoff');
+  assert.equal(h.session.state().ready, false);
+  if (status === 409) {
+    assert.equal(errors[0]?.detail, reason);
+    statusPolls.tick(20000);
+    await settleStartup();
+    assert.equal(contextReads().length, 2);
+    contextReads()[1].answer({contextId:'ready', branch:'draft', mode:'EDITABLE'});
+    await settleStartup();
+    assert.equal(h.session.state().ready, true, 'Recovery reaches session admission through the actual ContextBar publication');
+  }
+});
+
+test('a Git readiness conflict keeps the draft fail-closed without triggering a status probe', async () => {
+  const h = createStartupHarness(Promise.resolve({workspaceId:'ws-ready'}));
+  const notices = [];
+  h.context.serverUnavailable = error => { h.runtime.serverUnconfirmed = true; notices.push(error); };
+  const polls = installLiveStatus(h);
+  await h.session.whenInitialized();
+  await h.emit('DOMContentLoaded');
+  const reason = 'Waiting for the working copy checkpoint';
+  polls.requests('/api/git/state')[0].answer({
+    code:'WORKSPACE_NOT_READY', workspaceStatus:'PROVISIONING', detail:reason
+  }, 409);
+  await settleStartup();
+  assert.deepEqual(h.observations, [], 'A Git conflict does not initiate draft reconciliation');
+  assert.equal(notices[0]?.detail, reason);
+  assert.equal(h.session.state().ready, false);
+});
+
+test('an older draft revision response cannot reopen saving after a Git readiness conflict', async () => {
+  const h = createStartupHarness(Promise.resolve({workspaceId:'ws-ready'}));
+  const polls = installLiveStatus(h);
+  await h.session.whenInitialized();
+  const revision = {workspaceId:'ws-ready', branch:'draft', version:7, updatedAt:'2026-11-24T12:00:00Z'};
+  Object.assign(h.runtime, {version:7, confirmedDraftRevision:JSON.stringify([
+    revision.workspaceId, revision.branch, revision.version, revision.updatedAt
+  ])});
+  h.context.draftEndpoint = () => '/api/analysis-drafts/ws-ready';
+  h.context.jsonRequest = (url, options) => h.window.TaxonomyApiClient.requestJson(url, options);
+  h.document.querySelectorAll = () => [];
+  h.window.clearTimeout = () => {};
+  h.window.setTimeout = () => 1;
+  vm.runInNewContext(draftSource, {window:h.window, document:h.document, AbortController,
+    CustomEvent: class {constructor(type, options) {this.type = type; this.detail = options?.detail;}}});
+
+  await h.emit('DOMContentLoaded');
+  const gitReads = () => polls.requests('/api/git/state');
+  const draftReads = () => polls.requests('/api/analysis-drafts/ws-ready/status');
+  gitReads()[0].answer({currentBranch:'draft'});
+  await settleStartup();
+  assert.equal(draftReads().length, 1);
+  polls.tick(10000);
+  gitReads()[1].answer({code:'WORKSPACE_NOT_READY', detail:'Working copy is being initialized'}, 409);
+  await settleStartup();
+  assert.equal(h.runtime.serverUnconfirmed, true);
+  assert.equal(draftReads()[0].signal.aborted, true);
+  const current = h.context.retryServerState();
+  await settleStartup();
+  assert.equal(draftReads().length, 2, 'The explicit check does not wait for obsolete network data');
+  draftReads()[0].answer(revision);
+  await settleStartup();
+  assert.equal(h.runtime.serverUnconfirmed, true);
+  assert.equal(h.runtime.draftDecisionPending, true);
+  assert.equal(h.runtime.saveTimer, null);
+
+  draftReads()[1].answer(revision);
+  await current;
+  assert.equal(h.runtime.serverUnconfirmed, false);
+  assert.equal(h.runtime.draftDecisionPending, false);
+});
+
+test('a rejected draft status observation shows the server explanation', async () => {
+  const reason = 'Waiting for the working copy checkpoint';
+  const h = createProbeHarness(async () => {
+    throw Object.assign(new Error('HTTP 409'), {status:409, detail:reason,
+      responseBody:{code:'WORKSPACE_NOT_READY', workspaceStatus:'PROVISIONING'}});
+  });
+  h.runtime.workspaceResolved = true;
+  assert.equal(await h.context.reconcileDraft(), false);
+  assert.equal(h.runtime.serverUnconfirmed, true);
+  assert.equal(h.notices[0]?.[2], reason);
+});
+
 function gitStatusHarness(fetcher, i18n = { t: key => key }) {
   const events = [], authEvents = [], documentListeners = new Map();
   const bar = { innerHTML: '', classList: { remove() {} }, querySelector() { return null; } };
@@ -533,6 +663,27 @@ test('an earlier Git response cannot render when the workspace changed while tra
   assert.equal(h.bar.innerHTML, '');
   assert.deepEqual(h.events, []);
 });
+
+for (const status of [200, 409]) {
+  test(`a Git HTTP ${status} waiting for translations cannot publish after another request's 401`, async () => {
+    const language = deferred(), awaitingLocale = deferred();
+    const h = gitStatusHarness(async url => {
+      if (new URL(url, 'https://example.test/').pathname !== '/api/git/state')
+        return Response.json({detail:'Session expired'}, {status:401});
+      const body = status === 200 ? {currentBranch:'draft'}
+        : {code:'WORKSPACE_NOT_READY', detail:'Waiting for the working copy'};
+      return Response.json(body, {status});
+    }, {t:key => key, ready: () => { awaitingLocale.resolve(); return language.promise; }});
+    h.refresh();
+    await awaitingLocale.promise;
+    await assert.rejects(h.window.TaxonomyApiClient.getJson('/api/unrelated'), {status:401});
+    assert.equal(h.authEvents.length, 1);
+    language.resolve();
+    await settleStartup();
+    assert.equal(h.bar.innerHTML, '');
+    assert.deepEqual(h.events, []);
+  });
+}
 
 test('existing git observation publishes successful and failed server contact without caching', async () => {
   let connected = false;

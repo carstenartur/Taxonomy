@@ -437,7 +437,7 @@
         }
 
         body.innerHTML = errorHtml;
-        body.appendChild(llmLogDiagnosticField('\u{1F4E4} PROMPT:', prompt, 'llm-log-prompt'));
+        body.appendChild(window.TaxonomyPromptDisplay.render(prompt, { originalLength: detail?.promptLength }));
         body.appendChild(llmLogDiagnosticField('\u{1F4E5} RESPONSE:', rawResponse, 'llm-log-response'));
         if (reasonsHtml) {
             const reasonsContainer = document.createElement('div');

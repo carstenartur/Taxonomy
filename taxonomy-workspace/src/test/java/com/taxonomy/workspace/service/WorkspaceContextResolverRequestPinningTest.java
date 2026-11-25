@@ -2,21 +2,28 @@ package com.taxonomy.workspace.service;
 
 import com.taxonomy.workspace.model.SystemRepository;
 import com.taxonomy.workspace.model.UserWorkspace;
+import com.taxonomy.workspace.model.WorkspaceProvisioningStatus;
 import com.taxonomy.workspace.repository.UserWorkspaceRepository;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
+import org.springframework.web.server.ResponseStatusException;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -145,6 +152,25 @@ class WorkspaceContextResolverRequestPinningTest {
                 .isInstanceOf(AccessDeniedException.class)
                 .hasMessageContaining("not available");
         verify(systemRepositoryService, never()).getRepository("repo-b");
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = WorkspaceProvisioningStatus.class, mode = EnumSource.Mode.EXCLUDE, names = "READY")
+    void pinnedRepositoryReadReportsTheWorkingCopyLifecycle(WorkspaceProvisioningStatus status) {
+        var requested = workspace("alice", "workspace-a", "feature/a", "repo-a");
+        requested.setProvisioningStatus(status);
+        when(workspaceManager.getWorkspaceById("workspace-a")).thenReturn(requested);
+        requestWithWorkspaceHeader("workspace-a");
+
+        var conflict = assertThrows(ResponseStatusException.class,
+                () -> resolver().resolveRepositoryContextForRead("alice"));
+
+        assertThat(conflict.getStatusCode().value()).isEqualTo(409);
+        assertThat(conflict.getBody().getProperties())
+                .containsEntry("code", "WORKSPACE_NOT_READY")
+                .containsEntry("workspaceStatus", status);
+        verify(workspaceManager, never()).provisionDefaultWorkspaceRepository(anyString(), anyString());
+        verifyNoInteractions(systemRepositoryService);
     }
 
     @Test

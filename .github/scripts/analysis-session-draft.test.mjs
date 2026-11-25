@@ -171,6 +171,7 @@ function createHarness({ inputText = '', payload, request, withUi = false, withT
     window,
     document,
     console,
+    AbortController,
     Array,
     Boolean,
     CustomEvent: class CustomEvent {
@@ -969,6 +970,66 @@ test('a version check started before a successful local save cannot roll that sa
   await checking;
   assert.equal(h.input.value, 'saved new text');
   assert.equal(h.runtime.version, 8);
+});
+
+test('a delayed save receipt advances the revision without reopening a newer readiness conflict', async () => {
+  const writing = deferred();
+  const written = {workspaceId:'ws-1', branch:'draft', version:8, updatedAt:'committed',
+    payload:{businessText:'saved locally', scores:{OLD:100}}};
+  const h = await savedHarness(async (url, options) => options.method === 'PUT' ? writing.promise : written);
+  h.editInput(written.payload.businessText);
+  const saved = h.context.saveDraft();
+  h.context.serverUnavailable({status:409, detail:'Working copy is not ready'});
+  writing.resolve(written);
+  assert.equal(await saved, false);
+  assert.equal(h.runtime.version, 8, 'Keep the real committed revision for recovery');
+  assert.equal(h.runtime.confirmedBusinessText, written.payload.businessText);
+  assert.equal(h.runtime.serverUnconfirmed, true);
+  assert.equal(h.runtime.draftDecisionPending, true);
+  assert.equal(await h.context.reconcileDraft(), true);
+  assert.equal(h.runtime.serverUnconfirmed, false);
+});
+
+for (const conflict of [false, true]) {
+  test(`a reset queued behind a save ${conflict ? 'is canceled by a newer readiness conflict' : 'still runs when the workspace stays ready'}`, async () => {
+    const writing = deferred(), methods = [];
+    const empty = {workspaceId:'ws-1', branch:'draft', version:9, updatedAt:'reset',
+      payload:{draftState:'EMPTY', businessText:''}};
+    const written = {workspaceId:'ws-1', branch:'draft', version:8, updatedAt:'committed',
+      payload:{businessText:'saved locally', scores:{OLD:100}}};
+    const h = await savedHarness((url, options) => {
+      methods.push(options.method);
+      if (options.method === 'PUT') return writing.promise;
+      return Promise.resolve(empty);
+    });
+    h.editInput(written.payload.businessText);
+    const saving = h.context.saveDraft();
+    const resetting = h.context.resetDraft();
+    assert.deepEqual(methods, ['PUT']);
+    if (conflict) h.context.serverUnavailable({status:409, detail:'Working copy is not ready'});
+    writing.resolve(written);
+
+    assert.equal(await saving, !conflict);
+    assert.equal(await resetting, conflict ? null : empty);
+    assert.deepEqual(methods, conflict ? ['PUT'] : ['PUT', 'POST']);
+    assert.equal(h.runtime.version, conflict ? 8 : 9);
+    assert.equal(h.runtime.serverUnconfirmed, conflict);
+    assert.equal(h.runtime.draftDecisionPending, conflict);
+    assert.equal(h.runtime.resetting, false);
+  });
+}
+
+test('a delayed full draft load cannot clear a newer readiness conflict', async () => {
+  const reading = deferred();
+  const h = await savedHarness(async () => reading.promise);
+  const starting = h.context.loadDraft({force:true});
+  h.context.serverUnavailable({status:409, detail:'Working copy is not ready'});
+  reading.resolve({workspaceId:'ws-1', branch:'draft', version:8, updatedAt:'new',
+    payload:{businessText:'older observation', scores:{OTHER:90}}});
+  assert.equal(await starting, null);
+  assert.equal(h.input.value, 'saved requirement');
+  assert.equal(h.runtime.serverUnconfirmed, true);
+  assert.equal(h.runtime.draftDecisionPending, true);
 });
 
 for (const invalidations of [1, 2]) for (const externalChange of [false, true]) {

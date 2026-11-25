@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 
 const source = readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-progress.js', import.meta.url), 'utf8');
+const promptDisplaySource = readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/core/taxonomy-prompt-display.js', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../../taxonomy-app/src/main/resources/static/css/taxonomy.css', import.meta.url), 'utf8');
 const template = readFileSync(new URL('../../taxonomy-app/src/main/resources/templates/index.html', import.meta.url), 'utf8');
 const utilsSource = readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/shared/taxonomy-utils.js', import.meta.url), 'utf8');
@@ -51,7 +52,9 @@ function fixture(detail, status = 'FAILED', options = {}) {
     // No navigator.clipboard here: the renderer must delegate to the shared helper,
     // which owns the secure-context and textarea fallback policy.
     const navigator = {};
-    vm.runInNewContext(source, { window, document, navigator, AbortController, console });
+    const context = { window, document, navigator, AbortController, console };
+    vm.runInNewContext(promptDisplaySource, context);
+    vm.runInNewContext(source, context);
     const monitor = window.TaxonomyAnalysisProgress.start('run');
     return { root, log, monitor, runtime, clipboardWrites,
         get detailCalls() { return detailCalls; },
@@ -124,6 +127,67 @@ test('expanded response and prompt each provide a direct copy action', async () 
     assert.equal(copyButtons.length, 2, 'response and prompt both expose copy controls');
     copyButtons[0].emit('click'); copyButtons[1].emit('click'); await flush();
     assert.deepEqual(view.clipboardWrites, [reply, failure.prompt]);
+    view.monitor.stop();
+});
+
+test('a relation search prompt shows its instructions and decoded paragraphs by default', async () => {
+    const instructions = 'Evaluate the offered nodes. Preserve literal \\n in your answer.\n\nINPUT\n';
+    const original = 'First requirement paragraph.\n\nSecond paragraph with literal \\n and <script>alert(1)</script>.';
+    const description = 'Catalogue description.\n\nMore catalogue detail.';
+    const prompt = instructions + JSON.stringify({ nodes: [{ id: 'IP', description }], original });
+    const view = fixture({ ...failure, prompt }, 'COMPLETED', { locale: 'en' });
+    await view.tick(); await view.open();
+    const displayed = descendants(view.row).filter(element => {
+        for (let parent = element; parent !== view.row; parent = parent.parent) {
+            if (parent.tagName === 'DETAILS' && !parent.open) return false;
+        }
+        return true;
+    });
+    assert.ok(displayed.some(element => element.ownText === instructions), 'Instructions stay visible');
+    assert.ok(displayed.some(element => element.ownText === original), 'Requirements keep paragraphs and literal escapes');
+    assert.ok(displayed.some(element => element.ownText === description), 'Nested strings also keep paragraphs');
+    assert.ok(!descendants(view.log).some(element => element.tagName === 'SCRIPT'));
+    view.monitor.stop();
+});
+
+test('structured prompts expose an expandable raw copy with the original JSON escapes', async () => {
+    const prompt = '{"original":"First line.\\n\\nSecond line.","nodes":[]}\r\n';
+    const view = fixture({ ...failure, prompt }, 'COMPLETED', { locale: 'en' });
+    await view.tick(); await view.open();
+    const raw = descendants(view.row).find(element => element.tagName === 'DETAILS'
+        && element.children.some(child => child.tagName === 'SUMMARY' && /raw prompt/i.test(child.textContent)));
+    assert.ok(raw && !raw.open, 'The unchanged prompt can be expanded separately');
+    assert.ok(raw.children.some(element => element.tagName === 'PRE' && element.textContent === prompt));
+    const copy = descendants(view.row).find(element => element.tagName === 'BUTTON' && /copy raw prompt/i.test(element.textContent));
+    assert.ok(copy, 'Exact copying is available from the prompt heading');
+    copy.emit('click'); await flush();
+    assert.deepEqual(view.clipboardWrites, [prompt]);
+    assert.ok(descendants(view.row).some(element => element.ownText === 'First line.\n\nSecond line.'));
+    view.monitor.stop();
+});
+
+for (const [label, prompt, originalLength] of [
+    ['plain instructions', 'First line.\n\nSecond line with literal \\n.', undefined],
+    ['an inline INPUT label', 'This mentions INPUT\n{"original":"Paragraph 1\\n\\nParagraph 2"}', undefined],
+    ['malformed structured input', 'Instructions\nINPUT\n{"original":"Paragraph 1\\n\\nParagraph 2",}', undefined],
+    ['truncated structured input', 'Instructions\nINPUT\n{"original":"Paragraph 1\\n\\nParagraph 2"\n[truncated]', 20000],
+    ['length-marked truncated input', 'Instructions\nINPUT\n{"original":"Paragraph 1\\n\\nParagraph 2"}', 20000]
+]) {
+    test(`${label} is displayed verbatim`, async () => {
+        const view = fixture({ ...failure, prompt, promptLength: originalLength, truncated: Boolean(originalLength) });
+        await view.tick(); await view.open();
+        assert.ok(descendants(view.row).some(element => element.tagName === 'PRE' && element.textContent === prompt));
+        assert.ok(!descendants(view.row).some(element => element.tagName === 'SUMMARY' && /Rohprompt/.test(element.textContent)));
+        view.monitor.stop();
+    });
+}
+
+test('deeply nested evidence is still available verbatim without building a deep document tree', async () => {
+    const prompt = '['.repeat(60) + '"value"' + ']'.repeat(60);
+    const view = fixture({ ...failure, prompt });
+    await view.tick(); await view.open();
+    assert.ok(descendants(view.row).some(element => element.tagName === 'PRE' && element.textContent === prompt));
+    assert.ok(!descendants(view.row).some(element => element.tagName === 'OL'));
     view.monitor.stop();
 });
 
