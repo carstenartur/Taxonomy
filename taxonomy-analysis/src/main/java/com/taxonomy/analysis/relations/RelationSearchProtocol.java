@@ -33,7 +33,7 @@ public final class RelationSearchProtocol {
     /** Only changed instructions are retained in a frozen relation plan. */
     @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
     public record Templates(String sources, String navigate, String verify) {
-        private static final Templates DEFAULT = new Templates(null, null, null);
+        static final Templates DEFAULT = new Templates(null, null, null);
 
         static Templates capture(Map<String, String> effective) {
             var changed = new Templates(override(effective.get("relation-sources"), SOURCES_TASK),

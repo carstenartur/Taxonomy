@@ -108,6 +108,7 @@ function browserHarness() {
   }
 
   const page = {
+    isClosed: () => false,
     evaluate(callback, argument) {
       realm.__argument = argument;
       realm.fetch = (...args) => window.fetch(...args);

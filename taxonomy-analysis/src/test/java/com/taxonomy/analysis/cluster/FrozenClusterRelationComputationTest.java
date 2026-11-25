@@ -1,6 +1,8 @@
 package com.taxonomy.analysis.cluster;
 
 import com.taxonomy.analysis.dag.*;
+import com.taxonomy.analysis.recovery.AnalysisCheckpointSession;
+import com.taxonomy.analysis.recovery.AnalysisContinuationBinding;
 import com.taxonomy.analysis.relations.*;
 import com.taxonomy.analysis.service.*;
 import com.taxonomy.catalog.model.TaxonomyNode;
@@ -108,6 +110,45 @@ class FrozenClusterRelationComputationTest {
         verifyNoInteractions(fixture.repository);
     }
 
+    @Test void anAdmittedTargetGrantUsesItsFrozenInstructionsAfterAnotherEdit() {
+        var fixture = new Fixture();
+        fixture.store.roots.setStatus("SUCCESS");
+        var templates = new PromptTemplateService();
+        templates.loadDefaults();
+        String admittedInstructions = "Verify the relation against the original evidence.";
+        templates.setTemplate("relation-verify", admittedInstructions);
+        ReflectionTestUtils.setField(fixture.relations, "promptTemplates", templates);
+        String admittedPolicy = AnalysisCheckpointSession.digest(fixture.relations.recoveryPolicyFingerprint());
+
+        var preparation = ClusterRelationServiceTest.task(fixture.store.context, null);
+        var prepared = (ClusterRelationComputation.Preparation) fixture.computation("all", "BP,BR,CP,CI,CO,CR,IP,UA")
+                .compute(fixture.store.start(preparation), preparation, () -> false);
+        var plan = JSON.readValue(JSON.writeValueAsString(prepared.plan()), RelationSearchDistribution.Plan.class);
+        var work = RelationSearchDistribution.ready(plan, List.of()).stream()
+                .filter(w -> w.targetRoot().code().equals("IP") && plan.items().get(w.ordinal()).type().equals("CONSUMES"))
+                .findFirst().orElseThrow();
+        fixture.store.plan = plan;
+        fixture.store.input = JSON.writeValueAsString(work);
+        var binding = new AnalysisContinuationBinding(UUID.randomUUID().toString(), UUID.randomUUID().toString(),
+                AnalysisCheckpointSession.digest("input"), AnalysisCheckpointSession.digest("scoring"), admittedPolicy);
+        fixture.store.command = fixture.store.command.withContinuationBinding(binding);
+        var store = spy(fixture.store);
+        doAnswer(call -> {
+            assertThat(call.<String>getArgument(3)).isEqualTo(binding.relationPolicyHash());
+            return null;
+        }).when(store).checkpointSession(any(), any(), anyString(), anyString());
+
+        String replacement = "Reject this relation under the new instructions.";
+        templates.setTemplate("relation-verify", replacement);
+        assertThat(AnalysisCheckpointSession.digest(fixture.relations.recoveryPolicyFingerprint())).isNotEqualTo(admittedPolicy);
+        var target = ClusterRelationServiceTest.task(fixture.store.context, work);
+        var evaluation = (ClusterRelationComputation.Evaluation) fixture.computation(store, "worker", "IP")
+                .compute(store.start(target), target, () -> false);
+        assertThat(evaluation.result().result().edges()).hasSize(1);
+        assertThat(fixture.prompts).anyMatch(prompt -> prompt.contains(admittedInstructions))
+                .noneMatch(prompt -> prompt.contains(replacement));
+    }
+
     @Test void partialSourceResultsStayExplicitInPreparedEvidence() {
         var fixture = new Fixture(); fixture.store.roots.setStatus("PARTIAL");
         fixture.store.roots.setWarnings(new ArrayList<>(List.of("IP: unexecuted root; no negative finding")));
@@ -152,7 +193,7 @@ class FrozenClusterRelationComputationTest {
                 initial.sources(), List.of(), initial.sourceCalls(), initial.durationMillis(), warnings,
                 initial.stopReason(), true, inline);
         var relations = spy(fixture.relations);
-        doReturn(inlinePlan).when(relations).prepare(anyString(), anyString(), anyMap(), anyList(), any(), eq(true));
+        doReturn(inlinePlan).when(relations).prepare(anyString(), anyString(), anyMap(), anyList(), any(), eq(true), any());
         var prepared = (ClusterRelationComputation.Preparation) fixture.computation("all", "BP,BR,CP,CI,CO,CR,IP,UA", relations)
                 .compute(fixture.store.start(task), task, () -> false);
 

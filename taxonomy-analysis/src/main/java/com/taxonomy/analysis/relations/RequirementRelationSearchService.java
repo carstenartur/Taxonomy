@@ -84,7 +84,8 @@ public class RequirementRelationSearchService {
         return new RequirementRelationSearch.Options(configured.limits(), configured.maxSources(), cap);
     }
 
-    private RequirementRelationSearch.Options executionOptions(RelationSearchBudgetSettings.Snapshot configuredBudget) {
+    private RequirementRelationSearch.Options executionOptions(RelationSearchBudgetSettings.Snapshot configuredBudget,
+            RelationSearchProtocol.Templates templates) {
         var policy = AnalysisCheckpointSession.relationBudget();
         if (policy == null) {
             int spent = AnalysisCheckpointSession.relationCallsSpent();
@@ -104,9 +105,9 @@ public class RequirementRelationSearchService {
         // must allow all funded work while the original per-section limits stay visible.
         int work = policy.automatic() ? Math.max(policy.workItemsPerSlice(), calls) : policy.workItemsPerSlice();
         var limits = configured.limits();
-        var templates = promptTemplates == null ? null : RelationSearchProtocol.Templates.capture(promptTemplates.effectiveTemplates());
         return new RequirementRelationSearch.Options(new Limits(calls, limits.maxDepth(), limits.batchSize(), work),
-                policy.sourcesPerSlice(), configured.maxPromptCharacters(), policy, null, templates);
+                policy.sourcesPerSlice(), configured.maxPromptCharacters(), policy, null,
+                RelationSearchProtocol.Templates.DEFAULT.equals(templates) ? null : templates);
     }
 
     public RelationSearchReport search(String original, Map<String,Double> scores) {
@@ -136,7 +137,8 @@ public class RequirementRelationSearchService {
                 return children.computeIfAbsent(node.id(), id -> scalars(catalogue.getChildrenOf(id)));
             }
         };
-        var options = executionOptions(budget);
+        var templates = AnalysisCheckpointSession.relationTemplates();
+        var options = executionOptions(budget, templates == null ? captureRelationTemplates() : templates);
         var engine = new RequirementRelationSearch(adapter, rules, this::complete, AnalysisRunControl::checkpoint, llm.getActiveProviderName());
         return options.budget().automatic() ? engine.searchWithSourceContinuation(original, scores, options)
                 : engine.search(original, scores, options);
@@ -146,7 +148,14 @@ public class RequirementRelationSearchService {
     public RelationSearchDistribution.Plan prepare(String preparationId, String original, Map<String, Double> scores,
             List<String> sourceResultIds, RequirementRelationSearch.InputCatalogue frozenCatalogue,
             boolean includeRelations) {
-        var distributed = executionOptions(executionBudget());
+        return prepare(preparationId, original, scores, sourceResultIds, frozenCatalogue, includeRelations,
+                captureRelationTemplates());
+    }
+
+    public RelationSearchDistribution.Plan prepare(String preparationId, String original, Map<String, Double> scores,
+            List<String> sourceResultIds, RequirementRelationSearch.InputCatalogue frozenCatalogue,
+            boolean includeRelations, RelationSearchProtocol.Templates templates) {
+        var distributed = executionOptions(executionBudget(), templates);
         var engine = new RequirementRelationSearch(Objects.requireNonNull(frozenCatalogue), rules, this::complete,
                 AnalysisRunControl::checkpoint, llm.getActiveProviderName());
         if (includeRelations && !llm.supportsGenerativeCompletion()) {
@@ -170,6 +179,17 @@ public class RequirementRelationSearchService {
     }
 
     public String recoveryPolicyFingerprint() {
+        return recoveryPolicyFingerprint(captureRelationTemplates());
+    }
+
+    /** Capture all relation instructions from one revision for policy checks and execution. */
+    public RelationSearchProtocol.Templates captureRelationTemplates() {
+        if (!enabled || promptTemplates == null) return RelationSearchProtocol.Templates.DEFAULT;
+        var captured = RelationSearchProtocol.Templates.capture(promptTemplates.effectiveTemplates());
+        return captured == null ? RelationSearchProtocol.Templates.DEFAULT : captured;
+    }
+
+    public String recoveryPolicyFingerprint(RelationSearchProtocol.Templates templates) {
         // Request/provider scope owns model identity separately. Keep the policy identity
         // stable when a background worker restores that scope after admission.
         // Execution resources can be raised without discarding validated answers.
@@ -179,6 +199,10 @@ public class RequirementRelationSearchService {
                 + "/standard-prompt=" + (maxPromptCharacters == null ? 120_000 : maxPromptCharacters)
                 + "/batch-override=" + batchSize + "/prompt-override=" + maxPromptCharacters
                 + "/" + PromptTemplateService.FUNCTIONAL_SCOPE_POLICY;
+        if (templates != null && !RelationSearchProtocol.Templates.DEFAULT.equals(templates)) {
+            fingerprint += "/relation-templates-v1=" + AnalysisCheckpointSession.digest(
+                    templates.sources(), templates.navigate(), templates.verify());
+        }
         var language = com.taxonomy.analysis.service.AnalysisLanguageContext.current();
         return language == null ? fingerprint : fingerprint + "/"
                 + com.taxonomy.analysis.service.AnalysisLanguageContext.POLICY + "/" + language.value();
@@ -188,7 +212,11 @@ public class RequirementRelationSearchService {
 
     /** Retain an exact saved identity only when its non-resource policy still matches. */
     public RelationRecoveryPolicy.Compatible compatibleRecoveryPolicy(String savedHash) {
-        return RelationRecoveryPolicy.compatible(savedHash, recoveryPolicyFingerprint(), enabled, maxDepth,
+        return compatibleRecoveryPolicy(savedHash, recoveryPolicyFingerprint());
+    }
+
+    public RelationRecoveryPolicy.Compatible compatibleRecoveryPolicy(String savedHash, String currentFingerprint) {
+        return RelationRecoveryPolicy.compatible(savedHash, currentFingerprint, enabled, maxDepth,
                 batchSize, maxPromptCharacters, maxCalls, maxWorkItems, maxSources);
     }
 

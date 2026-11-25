@@ -88,7 +88,8 @@ export async function openRoleSession({
   adminUsername = 'admin',
   adminPassword = ROLE_ACCOUNTS.ADMIN.password,
   forcedColors = false,
-  reducedMotion = true
+  reducedMotion = true,
+  initScript
 }) {
   const browserType = { chromium, firefox, webkit }[browserName];
   if (!browserType) throw new Error(`Unsupported browser: ${browserName}`);
@@ -106,6 +107,7 @@ export async function openRoleSession({
     forcedColors: forcedColors ? 'active' : 'none',
     acceptDownloads: true
   });
+  if (initScript) await context.addInitScript(initScript);
   const page = await context.newPage();
 
   await page.goto(`${baseUrl}/login`, { waitUntil: 'networkidle' });

@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { openRoleSession } from './ui-role-fixtures.mjs';
 import { createRoleStateEvidence } from './ui-role-state-evidence.mjs';
+import { installRoleStateGitPollBarrier } from './ui-role-state-git-polls.mjs';
 import { captureFailureEvidence } from './ui-evidence-policy.mjs';
 import { measureCatalogueSearch } from './ui-catalogue-search-budget.mjs';
 import { isolateRoleStateScenario, isolateCompletedRoleStateScenario } from './ui-role-state-isolation.mjs';
@@ -161,7 +162,7 @@ try {
   ({ browser, context, page } = await openRoleSession({
     baseUrl, role, browserName, viewport: effectiveViewport,
     adminUsername, adminPassword,
-    forcedColors, reducedMotion: true
+    forcedColors, reducedMotion: true, initScript: installRoleStateGitPollBarrier
   }));
   await navigationPollEvidence.attach(page, context);
   taskMeasurements.failedStep = 'authenticated application startup';

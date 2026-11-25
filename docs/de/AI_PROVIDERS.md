@@ -243,6 +243,8 @@ Im **Admin-Modus → Prompt-Vorlagen** können Administratoren die fachlichen An
 
 Taxonomy speichert die Änderungen in der gemeinsamen Datenbank. Sie gelten nach einem Neustart und auf weiteren Instanzen derselben Installation. Mit **Auf Standard zurücksetzen** wird wieder die ausgelieferte Vorlage verwendet. Neue Reformulierungen übernehmen die zu diesem Zeitpunkt gültigen Vorlagen für Synthese und Abgleich. Eine bereits gespeicherte Reformulierung verwendet bei der Wiederaufnahme ihre eingefrorenen Vorlagen.
 
+Gespeicherte Relationsanalysen sind ebenfalls an ihre fachlichen Anweisungen gebunden. Weichen die aktuellen Anweisungen davon ab, meldet die Wiederaufnahme einen Konflikt. Starten Sie eine neue Analyse, um die geänderten Vorlagen anzuwenden. Bereits vorbereitete verteilte Relationsaufgaben arbeiten mit ihren eingefrorenen Anweisungen weiter. Die ausgelieferten Standardvorlagen bleiben mit bisherigen gespeicherten Analysen kompatibel.
+
 Eine Datenbanksicherung umfasst die gespeicherten Vorlagenänderungen. Im Einstellungsexport der Anwendung fehlen sie. Bei einem Umzug mit angepassten Vorlagen gehört deshalb die Anwendungsdatenbank zur Sicherung.
 
 Die Anwendung ergänzt technische Vorgaben zum Antwortformat und validiert Kandidatenidentitäten und Belegstellen. In der Wiederverwendungsprüfung bewertet der Anbieter kleine Gruppen gleichartiger Kandidaten und wählt Belegstellen aus dem vorgegebenen Text. Taxonomy übernimmt die ausgewählten Textstellen aus den Originalen.

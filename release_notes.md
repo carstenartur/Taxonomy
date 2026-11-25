@@ -15,6 +15,9 @@ directed relation and its requirement allocation together in one Git checkpoint.
 Administrators can save prompt changes across application restarts and instances.
 New reformulations capture the current synthesis and reconciliation instructions.
 Resuming a saved proposal uses the instructions captured for that proposal.
+Saved relation analyses reject continuation under changed instructions, while
+already prepared distributed tasks keep their captured templates. Existing
+analyses using the shipped defaults retain their continuation compatibility.
 See the [intake guide](docs/en/PROJECT_REQUIREMENT_PORTFOLIO.md#requirement-intake)
 and the [prompt editor guide](docs/en/AI_PROVIDERS.md#prompt-template-editor).
 
