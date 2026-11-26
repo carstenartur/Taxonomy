@@ -110,6 +110,8 @@ not searched. Opening a historical result selects its read-only model stand.
 <a id="requirement-intake"></a>
 ## Review incoming text before saving
 
+**Review text** opens or refreshes the review before anything is saved. After an explicit choice, **Save selection** applies that choice. The review appears inside the dialog and receives keyboard focus when attention is needed. If a command must be retried, its retry label and command identity remain in place. The contextual help link opens this section separately so the unfinished input stays available. Whitespace-only input receives a field error.
+
 Use the intake review when saving a new requirement or promoting an analysis into
 a project. The review can suggest a duplicate, change, addition or conflict against
 the candidates it was permitted to inspect. Review the quoted evidence and source
@@ -276,6 +278,8 @@ A requirement has a stable identity and an immutable current text version. Open 
 Changing the text creates a new version; it does not overwrite history.
 
 ## 4. Analyse requirements without blocking the page
+
+The analysis action names the selected text version. Check that number before starting; a historical snapshot continues to show the version that was actually analyzed. An empty project explains why bulk analysis is unavailable.
 
 Use **Analyze** for one requirement or **Analyze all** for the selected project.
 

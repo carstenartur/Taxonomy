@@ -117,6 +117,8 @@ Workspaces anderer Benutzer werden nicht durchsucht. Ein historischer Treffer
 <a id="requirement-intake"></a>
 ## Eingehenden Text vor dem Speichern prüfen
 
+**Text prüfen** öffnet oder aktualisiert die Prüfung, bevor etwas gespeichert wird. Nach einer ausdrücklichen Auswahl übernimmt **Auswahl speichern** die Entscheidung. Die Prüfung erscheint innerhalb des Dialogs und erhält bei nötiger Rückmeldung den Tastaturfokus. Muss ein Auftrag wiederholt werden, bleiben Wiederholungsbeschriftung und Auftragsidentität erhalten. Die kontextbezogene Hilfe öffnet diesen Abschnitt separat und erhält damit die begonnene Eingabe. Reine Leerzeichen führen zu einem Hinweis am Textfeld.
+
 Die Eingangsprüfung beim Speichern einer neuen Anforderung oder beim Übertragen
 einer Analyse in ein Projekt verwenden. Sie kann Duplikate, Änderungen, Ergänzungen
 oder Konflikte unter den zugelassenen Kandidaten vorschlagen. Quellauszüge und
@@ -292,6 +294,8 @@ Eine Anforderung besitzt eine stabile Identität und eine unveränderliche aktue
 Eine Textänderung erzeugt eine neue Version und überschreibt keine Historie.
 
 ## 4. Anforderungen analysieren, ohne die Seite zu blockieren
+
+Die Analyseaktion nennt die ausgewählte Textversion. Diese Nummer vor dem Start prüfen; ein historischer Snapshot zeigt weiterhin die tatsächlich analysierte Version. In einem leeren Projekt erklärt ein Hinweis, warum die Sammelanalyse nicht verfügbar ist.
 
 Verwenden Sie **Analysieren** für eine Anforderung oder **Alle analysieren** für das ausgewählte Projekt.
 

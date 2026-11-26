@@ -208,3 +208,9 @@ A local Taxonomy VSDX export can also be converted on a workstation with a Java 
 ```sh
 java taxonomy-reporting/src/main/java/com/taxonomy/reporting/render/decision/VisioDrawingPdf.java decision.vsdx decision.pdf
 ```
+
+## Visible context in diagram exports
+
+Snapshot SVG and PDF exports display the recorded analysis status, unfinished-work warnings and source identity alongside the graph. Canonical architecture exports display repository, workspace and branch context plus the checkpoint, or an explicit uncheckpointed revision. Keep this context visible when reusing the drawing. A partial analysis does not become complete by exporting it.
+
+Generated labels and recognized system diagnostics use the requested report language. Stored requirement text, original explanations and unknown diagnostic text retain their recorded wording. Built-in Word template cleanup applies to the bootstrap template; user-authored template content remains under its own versioned contract.

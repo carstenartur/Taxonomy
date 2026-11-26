@@ -1,6 +1,6 @@
 # Combined-source documentation screenshots — 7 November 2026
 
-The 77 refreshed PNGs and both generated manifests come unchanged from the successful [combined-source PR 1404 screenshot run](https://github.com/carstenartur/Taxonomy/actions/runs/42322441904), [capture job](https://github.com/carstenartur/Taxonomy/actions/runs/42322441904/job/128249920789). This source combines the REST permissions and CSRF changes, shared-editing/recovery work, compact application toolbar, visible score legend and standalone installation-snapshot tooling. Earlier screenshot artifacts remain historical evidence for their own source and bytes; none supplies the files in this refresh.
+At the original refresh, the 77 PNGs and both generated manifests came unchanged from the successful [combined-source PR 1404 screenshot run](https://github.com/carstenartur/Taxonomy/actions/runs/42322441904), [capture job](https://github.com/carstenartur/Taxonomy/actions/runs/42322441904/job/128249920789). This source combines the REST permissions and CSRF changes, shared-editing/recovery work, compact application toolbar, visible score legend and standalone installation-snapshot tooling. Earlier screenshot artifacts remain historical evidence for their own source and bytes; none supplies the files in this refresh.
 
 ## Exact capture provenance
 
@@ -22,7 +22,7 @@ The synthetic capture merge, published PR source and local product checkpoint ha
 
 The post-capture test delta was independently reviewed as `b3ecb2058084a29132c0ea8145e3d06b8d36ddb4`: ArchiMate export positives use the execution-capable USER role; source-focus tests retain authentication/CSRF checks and require denial for ADMIN/READER without execution permission; the isolated account/editor context supplies its required collaboration-service mock. Both Bearer-scope editability assertions remain. All 152 focused cases across eight classes passed, including all 65 cases in the three affected owners. These fixture changes alter no captured runtime or capture-owner bytes; the 79 generated files remain byte-identical to the artifact.
 
-The original [common manifest](../images/documentation-screenshots.json) records dimensions and hashes for all 77 PNGs. The original [decision-export component manifest](../images/decision-export-screenshots.json), recorded at `2026-11-07T01:21:02.046Z`, records six labelled examples, their production-source hash and Chrome `149.0.7827.55`. Both manifests identify the same capture commit. All 79 retained files match the downloaded ZIP byte for byte. The component source hash also matches the committed production JavaScript. Four older capture manifests remain unchanged historical records; their old hashes do not describe these replacement bytes.
+The original [common manifest](../images/documentation-screenshots.json) records dimensions and hashes for all 77 PNGs. The original [decision-export component manifest](../images/decision-export-screenshots.json), recorded at `2026-11-07T01:21:02.046Z`, records six labelled examples, their production-source hash and Chrome `149.0.7827.55`. Both manifests identify the same capture commit. At that refresh, all 79 retained files matched the downloaded ZIP byte for byte. The component source hash also matches the committed production JavaScript. Four older capture manifests remain unchanged historical records; their old hashes do not describe these replacement bytes.
 
 ## Capture checks and visual review
 
@@ -58,3 +58,7 @@ After staging the original artifact files and paired prose in the fresh worktree
   -Dsurefire.failIfNoSpecifiedTests=false \
   -Dmaven.build.cache.enabled=false -Dtaxonomy.frontend.skip=true
 ```
+
+## Later selected capture replacement
+
+The two diagram-print toolbar images were refreshed on 26 November with explicit capture-level provenance. The other 75 capture records and the original global source metadata remain historical records. See the [help and capture repair](2026-11-26-help-and-capture-repair.md) for the actual source, recorded mismatches and replacement policy.

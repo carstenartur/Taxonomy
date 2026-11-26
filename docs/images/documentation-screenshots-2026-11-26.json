@@ -1,0 +1,398 @@
+{
+  "schemaVersion" : 1,
+  "capturedAt" : "2026-11-26T12:35:21.039294656Z",
+  "runStartedAt" : "2026-11-26T12:21:17Z",
+  "sourceCommit" : "a76704c4497750397bb610094d028f4cd5d86573",
+  "sourceTree" : "0edfe7584aeac90e4ef24736d374775045f5b788",
+  "sourceDirty" : false,
+  "sourceChanges" : [ ],
+  "entryPoint" : "./mvnw -B verify -Pscreenshots",
+  "applicationData" : "isolated deterministic mock/demo data; no external LLM calls",
+  "componentExamples" : "decision-export-{dialog,options,mobile}-{de,en}.png use production components with authored example input",
+  "captures" : [ {
+    "file" : "01-full-page-layout.png",
+    "width" : 1392,
+    "height" : 753,
+    "sha256" : "c638f439a0c8d38a2f8ead18167872a4199ad696e89b6de157e0fad33a224951"
+  }, {
+    "file" : "02-left-panel-list-view.png",
+    "width" : 778,
+    "height" : 753,
+    "sha256" : "54c91688011d85290f5a8a05eefbd150fb032417d610136aa332754f412d0499"
+  }, {
+    "file" : "03-right-panel-default.png",
+    "width" : 1392,
+    "height" : 753,
+    "sha256" : "43ebdaaa05b66c178330532f89c9b3550f79b9ce94fd6603fcdf6a4fabc42b11"
+  }, {
+    "file" : "04-analysis-panel-empty.png",
+    "width" : 549,
+    "height" : 655,
+    "sha256" : "3a71e8678a9d223bc97f00fe6a08d7e5336a704ef1c26a40139e92f1be198c60"
+  }, {
+    "file" : "05-tabs-view.png",
+    "width" : 1392,
+    "height" : 753,
+    "sha256" : "c5a594adb044df85a905e47f5ea8d44766f02aaff70cccf9396eee51034a16c7"
+  }, {
+    "file" : "06-sunburst-view.png",
+    "width" : 776,
+    "height" : 1023,
+    "sha256" : "4f34a5777a6de890b3fa4fca72d9d72d69ec011228ea272db44f5c8b6f843419"
+  }, {
+    "file" : "07-tree-view.png",
+    "width" : 776,
+    "height" : 659,
+    "sha256" : "e7bc9b25809dc832cecb74acbf3912147941eb7110a2d902cd2beab55ad59ff0"
+  }, {
+    "file" : "08-decision-map-view.png",
+    "width" : 1392,
+    "height" : 753,
+    "sha256" : "1fa128108312ab9fcc6d9340e1509483cca1bfd4174707e175fccaa548f899ec"
+  }, {
+    "file" : "09-list-view-descriptions.png",
+    "width" : 1392,
+    "height" : 753,
+    "sha256" : "7fc7f13de8dae1d93e687ca709624b5b50565b26130c6ef5f99d1210c27e0cec"
+  }, {
+    "file" : "10-match-legend.png",
+    "width" : 729,
+    "height" : 24,
+    "sha256" : "51e58b25e0b02165dbc91f835abec4ca83b7216e35bc7845919ba9392c5e563d"
+  }, {
+    "file" : "11-graph-explorer-panel.png",
+    "width" : 551,
+    "height" : 379,
+    "sha256" : "495fb75d3a4b4f1b948d579c56280c4e54151bd92f62b830474f26649f9f2a0c"
+  }, {
+    "file" : "12-relation-proposals-panel.png",
+    "width" : 1360,
+    "height" : 193,
+    "sha256" : "d0072117c9e2e38dce3c66418914bf8ae9fdbfe3a8f3a4ea0c8d135746e16ed0"
+  }, {
+    "file" : "13-propose-relations-modal.png",
+    "width" : 1392,
+    "height" : 753,
+    "sha256" : "1474ccaef52a411183d578e8a1f7476bfd668d1183c4b9cca3b3b1075186de36"
+  }, {
+    "file" : "14-navbar-settings.png",
+    "width" : 1392,
+    "height" : 753,
+    "sha256" : "d9536328b4717a328210c510243db7c99f526e4799aab5562b2305991a09c507"
+  }, {
+    "file" : "15-scored-taxonomy-tree.png",
+    "width" : 744,
+    "height" : 127,
+    "sha256" : "b6df52c5bad267996b08e67c46b921a61fb3cd8b634e035e13ba68b31f32aba3"
+  }, {
+    "file" : "16-interactive-mode.png",
+    "width" : 1392,
+    "height" : 753,
+    "sha256" : "046bbf8f7cac515073253169f0f1a3113e77defcab351db5928a8b5b3cac02cf"
+  }, {
+    "file" : "17-match-legend-with-scores.png",
+    "width" : 1392,
+    "height" : 753,
+    "sha256" : "39024082f1fb6616a26a7018d059e927d5e0655e0a3109475d5e42832ba47426"
+  }, {
+    "file" : "18-leaf-justification-modal.png",
+    "width" : 1392,
+    "height" : 753,
+    "sha256" : "42b845e34b1b3bed03e0056107f4fc9e906cbb37551f4d9a64575b54ab042c45"
+  }, {
+    "file" : "19-stale-results-warning.png",
+    "width" : 1392,
+    "height" : 753,
+    "sha256" : "fe78cdcfdd1615a2089a10991b11cf484c67de5efbe9b305f3b87274ace88e27"
+  }, {
+    "file" : "21-graph-explorer-upstream.png",
+    "width" : 551,
+    "height" : 753,
+    "sha256" : "2f7c511cb9e1d9186a28f3132749b34019431e10badcd7eb41e655633f9f3e57"
+  }, {
+    "file" : "22-graph-explorer-failure.png",
+    "width" : 551,
+    "height" : 753,
+    "sha256" : "35a807e3b5e3932c1effd99ebb2788109423642513dd2ac61cb258fcd781d39d"
+  }, {
+    "file" : "23-export-buttons.png",
+    "width" : 1311,
+    "height" : 444,
+    "sha256" : "f0b070ce7be610f09c40cc3a1b8d72ad248ade5f7723ba86cbd030c280060d4e"
+  }, {
+    "file" : "24-llm-diagnostics.png",
+    "width" : 1345,
+    "height" : 213,
+    "sha256" : "9cbe36f42fc235913892e2344a5886256cb906afce0d806af78cfcde1827378d"
+  }, {
+    "file" : "25-prompt-template-editor.png",
+    "width" : 1345,
+    "height" : 375,
+    "sha256" : "6d6ed62955f152ffe33598555401e70489ebac73575b150556366a68be0a57bb"
+  }, {
+    "file" : "26-coverage-dashboard-empty.png",
+    "width" : 1345,
+    "height" : 416,
+    "sha256" : "8898c69bd875f92dc1c786d894f21f97977734993034d00d53fa1b54e4520136"
+  }, {
+    "file" : "27-coverage-dashboard-data.png",
+    "width" : 1345,
+    "height" : 730,
+    "sha256" : "b0b4652735b3be6a49f7795470d1ba9c91dd9be87c152201611ccb8a08ab2e98"
+  }, {
+    "file" : "28-proposal-review-queue.png",
+    "width" : 1360,
+    "height" : 193,
+    "sha256" : "713740292ed2d2cfa718a6bd11afcbe015fbad998b81d0ae770a483df92df646"
+  }, {
+    "file" : "29-search-fulltext.png",
+    "width" : 776,
+    "height" : 481,
+    "sha256" : "6d9b68b092953996bf020dbeb65d9c098352d43aeaf3d4b4e9cd543259285e42"
+  }, {
+    "file" : "30-search-semantic.png",
+    "width" : 776,
+    "height" : 481,
+    "sha256" : "bf01cfbbbaeec83f9f60041b4687b22ff90f4fd8583a007bb3c7c20758ad64ad"
+  }, {
+    "file" : "31-search-hybrid.png",
+    "width" : 776,
+    "height" : 481,
+    "sha256" : "0b79574650b29687484a426f7ea8860f5adf379bd4891345acfd5b3593f4a025"
+  }, {
+    "file" : "33-export-tab.png",
+    "width" : 1360,
+    "height" : 1046,
+    "sha256" : "da11741c9313526d50b5a3d0d4fb05ad931fafad6667aa7a87ddbd4333d823d0"
+  }, {
+    "file" : "34-dsl-editor-panel.png",
+    "width" : 1392,
+    "height" : 753,
+    "sha256" : "ad900fcd9fda90ec75316c3d6931d1ec8acd891f64b655d400499d1b8238071c"
+  }, {
+    "file" : "35-scored-bp-tree-expanded.png",
+    "width" : 744,
+    "height" : 203,
+    "sha256" : "f86f9c8d68e68f31ee0d68b7cd92dbbf45deeb8341390a6f80c2ec46bb0bfd97"
+  }, {
+    "file" : "36-proposal-accepted.png",
+    "width" : 1345,
+    "height" : 242,
+    "sha256" : "4c8e8b54604792ba952f8e982b8375cdb1fc0822e327d9c01c35dec3b6d3dd7d"
+  }, {
+    "file" : "39-scored-sunburst.png",
+    "width" : 776,
+    "height" : 914,
+    "sha256" : "5d90b601870a72b3edf91785fa0d9e7a79e433384deec5d730d11c8f9e4ff900"
+  }, {
+    "file" : "40-dsl-editor-with-relations.png",
+    "width" : 1392,
+    "height" : 753,
+    "sha256" : "77ce54d487283dba9ecccd4d67d2f9f7508b30548cead80d54f837fcb3af83e8"
+  }, {
+    "file" : "41-versions-tab-history.png",
+    "width" : 1392,
+    "height" : 753,
+    "sha256" : "699a27fac37d20c49b819eacc59c405cc6a8658b17e764f56942c6ec76cc39f5"
+  }, {
+    "file" : "42-versions-tab-save.png",
+    "width" : 1392,
+    "height" : 753,
+    "sha256" : "a71e5a74516282566b206ebfb53293c92d24aa8b5bc03e1e23971670b354f062"
+  }, {
+    "file" : "43-git-status-bar.png",
+    "width" : 1353,
+    "height" : 28,
+    "sha256" : "3b4af2d0f0380dd9eebf7a74bb552afde5fa7dc71df75b03cd4908e0a500792a"
+  }, {
+    "file" : "44-context-bar.png",
+    "width" : 1353,
+    "height" : 48,
+    "sha256" : "fb097e1b232071ee5e37a45c20621ce71df65127d68b43455b0d53d85452f34c"
+  }, {
+    "file" : "45-workspace-user-badge.png",
+    "width" : 1377,
+    "height" : 168,
+    "sha256" : "fab14a7b04f27d76ea663456f59a74673b89e958944e0d7c7a123431ea07a3ef"
+  }, {
+    "file" : "46-variant-creation-modal.png",
+    "width" : 1392,
+    "height" : 753,
+    "sha256" : "db61315d8abc8980c51057742059a1c98554401e5d73246362711e9df8125beb"
+  }, {
+    "file" : "47-variants-browser-tab.png",
+    "width" : 1392,
+    "height" : 753,
+    "sha256" : "7a09e5a5b3aea0817d8278c374df7b67e37537fa9badf4a3a34fe9a9f7f95bf2"
+  }, {
+    "file" : "66-versions-timeline.png",
+    "width" : 1392,
+    "height" : 753,
+    "sha256" : "d514cafa5d0e5bcddb441e277043ed3049e7068edcb709db62bd329a82fc8534"
+  }, {
+    "file" : "69-decision-map-scored.png",
+    "width" : 776,
+    "height" : 1355,
+    "sha256" : "63c1a44e73dc71a1ac4116e13dee0269cf74d3e96960c005f04a6fe40388e613"
+  }, {
+    "file" : "70-swagger-ui.png",
+    "width" : 1392,
+    "height" : 753,
+    "sha256" : "df653ee0b4e987f02cb7c6f6c76b54cbbc6741879e296ba476b5486a6ca0cfe9"
+  }, {
+    "file" : "71-copilot-architecture-workbench.png",
+    "width" : 2192,
+    "height" : 1153,
+    "sha256" : "55b414f115b412e5dd46c6dd5f08e57baf6b04660f7f5e81afee6c1990e9c123"
+  }, {
+    "file" : "71-rich-version-timeline.png",
+    "width" : 1392,
+    "height" : 753,
+    "sha256" : "4c23e177301d797a870e9eaee1d797c055a5a2a6130623aa5f843c04bf4235b4"
+  }, {
+    "file" : "72-complete-copilot-run-result.png",
+    "width" : 2192,
+    "height" : 1453,
+    "sha256" : "18f5f270d26885c516b5bde9f6e233cafc9d664f7b882a09cee71d88c3f759be"
+  }, {
+    "file" : "72-rich-variants-browser.png",
+    "width" : 1392,
+    "height" : 753,
+    "sha256" : "41a19ff24e16497d9a94172c4150aa4fdd435e81066744110ca65cb58810f6d8"
+  }, {
+    "file" : "73-cherry-pick-before.png",
+    "width" : 1392,
+    "height" : 753,
+    "sha256" : "4c23e177301d797a870e9eaee1d797c055a5a2a6130623aa5f843c04bf4235b4"
+  }, {
+    "file" : "74-cherry-pick-after.png",
+    "width" : 1392,
+    "height" : 753,
+    "sha256" : "f4a825e19e1e60a7645f83aa82796039b1cad08fb6d60106ac49e5274e5ce897"
+  }, {
+    "file" : "75-preferences-diagram-policy.png",
+    "width" : 1392,
+    "height" : 753,
+    "sha256" : "abc6161876ad2e70cf6d37adf6e0a74afb833b091a61eba41e0002dfaf67b273"
+  }, {
+    "file" : "architecture-editor-current-de.png",
+    "width" : 1745,
+    "height" : 1852,
+    "sha256" : "e589bad164cc59dfe6a3b43df71d53966ae439673dbe9cab400bc8c85be33fc6"
+  }, {
+    "file" : "architecture-editor-current-en.png",
+    "width" : 1745,
+    "height" : 1852,
+    "sha256" : "19d60befde09453f3075206acfdfd678dfdc696987471c58b039c41bc87ee5f7"
+  }, {
+    "file" : "architecture-editor-focus-de.png",
+    "width" : 753,
+    "height" : 340,
+    "sha256" : "e46f1ca982f7d456b3d141d82d2d2e5f76625cf2f673faf4b0c9ee900a1e5a7c"
+  }, {
+    "file" : "architecture-editor-focus-en.png",
+    "width" : 753,
+    "height" : 316,
+    "sha256" : "29c19ea756f10e8f0636c4d32d96994e2e27603c2ef5f1bcc365bc5ba07d6dd6"
+  }, {
+    "file" : "architecture-workbench-current-de.png",
+    "width" : 2192,
+    "height" : 1153,
+    "sha256" : "def00e3a74424b77eeacdf78f93971f8305f57052e173142a21f3d438b02ccf1"
+  }, {
+    "file" : "architecture-workbench-current-en.png",
+    "width" : 2192,
+    "height" : 1153,
+    "sha256" : "ce31dc411d705f46fa5fa8fdf175986b0f286d67e9bb566bf1c441fc98bf399b"
+  }, {
+    "file" : "database-setup-current-de.png",
+    "width" : 832,
+    "height" : 921,
+    "sha256" : "703ecb7303ca4e844c77e540d3b91558ab03b6039401627f90b1aaf9530bc5ca"
+  }, {
+    "file" : "database-setup-current-en.png",
+    "width" : 832,
+    "height" : 921,
+    "sha256" : "592ff807c07e752d6d80c35b0b838ea1a2c0cbcbbd5a079328163af377d144b4"
+  }, {
+    "file" : "decision-export-dialog-de.png",
+    "width" : 640,
+    "height" : 742,
+    "sha256" : "3171372dcd33abbe5f6fe721fb9fb143896b21002b0ffb92bd19ed0f8fd3690f"
+  }, {
+    "file" : "decision-export-dialog-en.png",
+    "width" : 640,
+    "height" : 726,
+    "sha256" : "bf82adff6ff713899940b0bd5c0f115f1a5cd61ad9f30f2b76dea339efe1f74d"
+  }, {
+    "file" : "decision-export-mobile-de.png",
+    "width" : 352,
+    "height" : 826,
+    "sha256" : "aaa1f47e97d9780bafbd1f910a1f36966bd16825461281ac1485f5700eef5b76"
+  }, {
+    "file" : "decision-export-mobile-en.png",
+    "width" : 352,
+    "height" : 826,
+    "sha256" : "260bd6ac01d814160b99081fa0586e4eb00df5249aee08a9dacbd17bb67f26e4"
+  }, {
+    "file" : "decision-export-options-de.png",
+    "width" : 640,
+    "height" : 1194,
+    "sha256" : "d54808d1679c6b510986a32ddec28635670f0964dec8d412dc68b47927c88e45"
+  }, {
+    "file" : "decision-export-options-en.png",
+    "width" : 640,
+    "height" : 1178,
+    "sha256" : "3361d04e953188a8b11257ed9202a7f1f60efa3382db20e6665ac5e08769f369"
+  }, {
+    "file" : "decision-rationale-template-test-report.png",
+    "width" : 1191,
+    "height" : 1684,
+    "sha256" : "909ee5aac01e714d7bc7df74325eb7656f2016d6e732692a331a2ced969f3997"
+  }, {
+    "file" : "diagram-print-controls-de.png",
+    "width" : 729,
+    "height" : 167,
+    "sha256" : "a90f6255a69e3a7a1a3900ed8803244992f37b65d7d5b99c88904d4a7fa3e772"
+  }, {
+    "file" : "diagram-print-controls-en.png",
+    "width" : 729,
+    "height" : 130,
+    "sha256" : "fd79e91e79e2af0def154632d462cd15d17d828406cb121f99cc7099efeff38e"
+  }, {
+    "file" : "document-template-management.png",
+    "width" : 1440,
+    "height" : 1398,
+    "sha256" : "6d3b0ebea6375f8e719601e1524741e19f98fbd411ac13310564e2a003c12d3f"
+  }, {
+    "file" : "graph-entry-current-de.png",
+    "width" : 1392,
+    "height" : 753,
+    "sha256" : "95b8a36cb0692a7d26e445c184ef57c571dba7de0c6a5e51f7c5d15b4c26218b"
+  }, {
+    "file" : "hospital-requirement-analysis.png",
+    "width" : 1440,
+    "height" : 4501,
+    "sha256" : "5185c407bf8e07537fbb0935793a4242ad19f8f83246e58f2f30c6afa41aef9a"
+  }, {
+    "file" : "hospital-requirement-architecture-graph.png",
+    "width" : 781,
+    "height" : 1004,
+    "sha256" : "7f3648334bee075bfa2647272d22345be2be378a6391e3445db0cbee037c7346"
+  }, {
+    "file" : "hospital-requirement-onboarding.png",
+    "width" : 1440,
+    "height" : 1000,
+    "sha256" : "3c9a14e9130b9cad419e3ee8abf64fddfbfadd31e1f8f2d31fee6ca4130167c2"
+  }, {
+    "file" : "root-relevance-clarification-de.png",
+    "width" : 941,
+    "height" : 1237,
+    "sha256" : "458df503022f4f634734945390505b4e9bb1e1b2479db51cf00cd7ec6ded3742"
+  }, {
+    "file" : "root-relevance-clarification-en.png",
+    "width" : 941,
+    "height" : 1237,
+    "sha256" : "1048d2162044ad1a685d98a5e1a22189687645be26137f13ab07b4447562bf2b"
+  } ]
+}

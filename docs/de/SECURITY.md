@@ -221,6 +221,16 @@ Das Produktionsprofil bricht bei unsicheren Bootstrap-Zugangsdaten bewusst fehlg
 
 Die Erreichbarkeit von Health-, Actuator-, OpenAPI- und statischen Ressourcen hängt von aktivem Profil und Deployment-Konfiguration ab. Ein in der Entwicklung erreichbarer Endpunkt ist nicht automatisch für eine öffentliche Produktionsbereitstellung geeignet.
 
+<a id="audit-logging"></a>
+## Audit-Protokollierung
+
+Mit `TAXONOMY_AUDIT_LOGGING=true` (`taxonomy.security.audit-logging`) wird der Authentifizierungs-Audit-Listener aktiviert. Er protokolliert erfolgreiche Anmeldungen und fehlgeschlagene Passwortanmeldungen mit Kontoname und Remote-Adresse; bei erfolgreicher Authentifizierung eines stabilen Principals kommt dessen Kennung hinzu. Die Basiskonfiguration deaktiviert diesen Listener; die Produktions- und Kubernetes-Profile aktivieren ihn standardmäßig. Er bildet keine vollständige Historie aller Anwendungsaktionen. Zugriff, Aufbewahrung und zentrale Sammlung dieser Protokolle passend zum Betrieb konfigurieren. Änderungen versionierter Branch-Regeln besitzen eigene transaktionale Audit-Einträge, die weiter unten beschrieben sind.
+
+<a id="sbom-software-bill-of-materials"></a>
+## Software-Stückliste (SBOM)
+
+Der Maven-Build erzeugt ein CycloneDX-Abhängigkeitsverzeichnis. **Über Taxonomy** verlinkt die mit dem jeweiligen Build ausgelieferten JSON- und XML-Verzeichnisse; die zugehörigen Anwendungsrouten sind `/api/about/sbom.json` und `/api/about/sbom.xml`. Das Verzeichnis zusammen mit der tatsächlich bewerteten Releaseversion aufbewahren. Der Sicherheitsworkflow prüft Abhängigkeiten, Geheimnisse und Konfiguration. Das Verzeichnis allein ist keine Schwachstellenbewertung und keine Sicherheitsgarantie für sämtliche betriebenen Komponenten.
+
 ## Sicherheitsprüfung
 
 Der kanonische Maven-Build prüft unter anderem Authentifizierung, Autorisierung, Passwort-Bootstrap und Migration, Produktionshärtung, Container-Start, Persistenz, Browser-Abläufe, Barrierefreiheit und ausgewählte Fehlerpfade:

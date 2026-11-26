@@ -16,12 +16,13 @@ function fixture(hash = '#help/USER_GUIDE/guide-section-8') {
             classList: {add: c => classes.add(c), remove: c => classes.delete(c), contains: c => classes.has(c),
                 toggle(c, yes) {yes ? classes.add(c) : classes.delete(c);}},
             setAttribute(k, v) {attrs[k] = String(v); this.attributes = Object.entries(attrs).map(([name, value]) => ({name, value})); if (k === 'id') ids.set(v, this);},
+            removeAttribute(k) {delete attrs[k]; this.attributes = Object.entries(attrs).map(([name, value]) => ({name, value}));},
             getAttribute: k => attrs[k] || null,
             appendChild(child) {this.childNodes.push(child); child.parentElement = this; return child;},
             addEventListener(k, fn) {events[k] = fn;},
             fire(k, event) {events[k]?.(event);},
             closest(selector) {return selector === '.help-content-area' ? area : selector === 'a[href]' && tag === 'a' ? this : null;},
-            querySelectorAll(selector) {return this.childNodes.flatMap(n => [n, ...n.querySelectorAll(selector)]).filter(n => selector === '[id]' ? !!n.getAttribute('id') : n.tagName === selector.toUpperCase());},
+            querySelectorAll(selector) {return this.childNodes.flatMap(n => [n, ...n.querySelectorAll(selector)]).filter(n => selector === '[id]' ? !!n.getAttribute('id') : selector === 'a[href]' ? n.tagName === 'A' && !!n.getAttribute('href') : n.tagName === selector.toUpperCase());},
             querySelector(selector) {return this.querySelectorAll(selector)[0] || null;},
             contains(n) {return this === n || this.childNodes.some(c => c.contains(n));},
             focus() {focus.push(this.getAttribute('id'));},
@@ -66,7 +67,7 @@ function fixture(hash = '#help/USER_GUIDE/guide-section-8') {
     const context = {window, document, history, fetch, DOMParser, URL, console,
         CustomEvent: class {constructor(type, init) {this.type = type; this.detail = init.detail;}},
         Node: {TEXT_NODE: 3, ELEMENT_NODE: 1},
-        TaxonomyI18n: {t: k => k, getLocale: () => 'de', resolveUrl: url => '/taxonomy' + url},
+        TaxonomyI18n: {t: k => k, getLocale: () => 'de', resolveUrl: url => url.startsWith('/taxonomy/') ? url : '/taxonomy' + url},
         TaxonomyUtils: {escapeHtml: String}};
     vm.runInNewContext(source, context);
     function response(request, html, toc = []) {request.resolve({ok: true, text: async () => html, json: async () => toc});}
@@ -149,4 +150,19 @@ test('late table-of-contents metadata supplies the current document title withou
     assert.equal(f.ids.get('helpDocTitle').classList.contains('d-none'), false);
     assert.equal(f.ids.get('helpDocTitle').textContent, '📖 Benutzerhandbuch');
     assert.deepEqual(f.focus, ['guide-section-8']);
+});
+
+test('help asset links and explicit-language navigation retain the application context', async () => {
+    const f = fixture('#help/USER_GUIDE');
+    f.window.navigateToPage('help');
+    f.response(f.requests.find(r => r.url.includes('/help/USER_GUIDE')),
+        '<a id="capture" href="/help/images/documentation-screenshots.json">Source</a>' +
+        '<a id="language" href="/?lang=en#help/USER_GUIDE/guide-section-4">English</a>' +
+        '<a id="prefixed" href="/taxonomy/help/images/example.png">Image</a>' +
+        '<a id="external" href="https://example.test/source">External</a>');
+    await tick();
+    assert.equal(f.ids.get('capture').getAttribute('href'), '/taxonomy/help/images/documentation-screenshots.json');
+    assert.equal(f.ids.get('language').getAttribute('href'), '/taxonomy/?lang=en#help/USER_GUIDE/guide-section-4');
+    assert.equal(f.ids.get('prefixed').getAttribute('href'), '/taxonomy/help/images/example.png');
+    assert.equal(f.ids.get('external').getAttribute('href'), 'https://example.test/source');
 });

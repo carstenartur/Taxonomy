@@ -224,14 +224,16 @@ class HelpControllerTest {
     }
 
     @Test
-    void repositoryInternalLinksAreRewrittenForHelpTab() {
+    void repositoryInternalLinksAreRewrittenForHelpTab() throws Exception {
         String markdown = "[Tests](../dev/06-testing-by-change-type.md) "
                 + "[Matrix](../internal/MAINTAINABILITY_MATRIX.md)";
 
-        assertEquals(
-                "[Tests](https://github.com/carstenartur/Taxonomy/blob/main/docs/dev/06-testing-by-change-type.md) "
-                + "[Matrix](https://github.com/carstenartur/Taxonomy/blob/main/docs/internal/MAINTAINABILITY_MATRIX.md)",
-                HelpController.rewriteRepositoryDocLinks(markdown));
+        String html = HelpHeadingAssertions.render(markdown);
+        var links = org.jsoup.Jsoup.parseBodyFragment(html).select("a[href]");
+        assertEquals("https://github.com/carstenartur/Taxonomy/blob/main/docs/dev/06-testing-by-change-type.md",
+                links.get(0).attr("href"));
+        assertEquals("https://github.com/carstenartur/Taxonomy/blob/main/docs/internal/MAINTAINABILITY_MATRIX.md",
+                links.get(1).attr("href"));
     }
 
     @Test

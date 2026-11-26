@@ -209,3 +209,9 @@ Einen lokalen Taxonomy-VSDX-Export können Sie auf einem Arbeitsplatz mit Java-2
 ```sh
 java taxonomy-reporting/src/main/java/com/taxonomy/reporting/render/decision/VisioDrawingPdf.java entscheidung.vsdx entscheidung.pdf
 ```
+
+## Sichtbarer Kontext in Diagrammexporten
+
+SVG- und PDF-Exporte eines Snapshots zeigen den gespeicherten Analysestatus, Hinweise zu offener Arbeit und die Quellenidentität neben dem Graphen. Exporte der kanonischen Architektur zeigen Repository, Arbeitsbereich und Branch sowie den Checkpoint oder eine ausdrücklich noch nicht eingecheckte Revision. Diesen Kontext bei der Weiterverwendung der Zeichnung sichtbar lassen. Ein Teilergebnis wird durch den Export nicht vollständig.
+
+Erzeugte Beschriftungen und erkannte Systemdiagnosen verwenden die angeforderte Berichtssprache. Gespeicherter Anforderungstext, ursprüngliche Begründungen und unbekannte Diagnosetexte behalten ihren aufgezeichneten Wortlaut. Die Bereinigung der eingebauten Word-Vorlage gilt für die Bootstrap-Vorlage; selbst verfasste Vorlageninhalte bleiben an ihren eigenen versionierten Vertrag gebunden.

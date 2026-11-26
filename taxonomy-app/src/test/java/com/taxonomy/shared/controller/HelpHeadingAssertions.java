@@ -19,7 +19,7 @@ public final class HelpHeadingAssertions {
         if (!condition) throw new AssertionError(message);
     }
 
-    private static String render(String markdown) throws Exception {
+    static String render(String markdown) throws Exception {
         ClassLoader previous = Thread.currentThread().getContextClassLoader();
         var previousLocale = LocaleContextHolder.getLocaleContext();
         byte[] bytes = markdown.getBytes(StandardCharsets.UTF_8);
