@@ -456,9 +456,14 @@ public class LlmService {
             });
         }
 
-        // Build the annotated tree from whatever scores were collected
-        List<TaxonomyNodeDto> rawTree = run.stop == null || !scope.legacyFull()
-                ? plannedTree == null ? taxonomyService.getFullTree() : plannedTree : List.of();
+        List<TaxonomyNodeDto> rawTree;
+        if (run.stop != null && scope.legacyFull()) {
+            // Under pressure, reuse only admitted branches with evidence; never load another catalogue.
+            rawTree = plannedTree == null ? List.of() : plannedTree.stream()
+                    .filter(root -> run.allScores.containsKey(root.getCode())).toList();
+        } else {
+            rawTree = plannedTree == null ? taxonomyService.getFullTree() : plannedTree;
+        }
         List<TaxonomyNodeDto> annotatedTree = new ArrayList<>();
         for (TaxonomyNodeDto rootDto : rawTree) {
             annotatedTree.add(taxonomyService.applyScores(rootDto, run.allScores));
@@ -494,7 +499,7 @@ public class LlmService {
             result.setStatus("SUCCESS");
         }
 
-        if (!scope.legacyFull() || !run.failedAssessments.isEmpty()) {
+        if (!scope.legacyFull() || !run.failedAssessments.isEmpty() || (run.stop != null && plannedTree != null)) {
             List<TaxonomyNodeDto> coverageTree = plannedTree == null ? rawTree : plannedTree;
             result.setAnalysisCoverage(AnalysisCoverage.derive(scope.selectedTree(coverageTree), run.allScores,
                     result.getScores(), run.failedAssessments, run.stop == null ? null : "INTERRUPTED:" + run.stop.reason().name()));
