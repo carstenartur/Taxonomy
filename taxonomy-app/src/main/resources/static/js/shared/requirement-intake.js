@@ -63,6 +63,9 @@
             if (state.cancellation === cancellation && matching(state,capture)) review(state);
         }, 650);
     }
+    function clearFieldError(input) {
+        if (input.validity?.customError) input.setCustomValidity('');
+    }
     function attach(form, options) {
         if (forms.has(form)) {
             var existing=forms.get(form);
@@ -77,7 +80,7 @@
         var state = {form:form,options:options,section:section,generation:0,cancellation:0,response:null,pending:null,selected:null,choose:null,scope:scope()};
         forms.set(form,state); form.append(section);
         options.textElement.addEventListener('input',function () {
-            if (options.textElement.value.trim()) options.textElement.setCustomValidity('');
+            if (options.textElement.value.trim()) clearFieldError(options.textElement);
             edited(state);
         });
         form.addEventListener('input',function (event) { if(event.target!==options.textElement) edited(state); });
@@ -85,7 +88,7 @@
         var dialog = form.closest?.('dialog, .modal');
         if (dialog) ['close','cancel','hidden.bs.modal'].forEach(function (event) {
             dialog.addEventListener(event,function () {
-                options.textElement.setCustomValidity('');
+                clearFieldError(options.textElement);
                 cancel(state);
             });
         });

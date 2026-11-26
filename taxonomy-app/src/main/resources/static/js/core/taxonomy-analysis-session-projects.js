@@ -433,12 +433,29 @@
                 textElement:textInput, projectId:function () { return Number(projectSelect.value); },versionTarget:options?.versionTarget
             });
 
+            var keyGeneration = 0;
+            var keyEdited = false;
+            keyInput.addEventListener('input', function () { keyEdited = true; });
+
             function refreshKey() {
-                jsonRequest('/api/projects/' + encodeURIComponent(projectSelect.value) + '/requirements', {
+                if (keyEdited) return;
+                var generation = ++keyGeneration;
+                var projectId = projectSelect.value;
+                var previousKey = keyInput.value;
+                var current = capturePromotionContext();
+
+                function applyKey(key) {
+                    if (parts.dialog.open && generation === keyGeneration && projectSelect.value === projectId
+                            && !keyEdited && keyInput.value === previousKey && current()) {
+                        keyInput.value = key;
+                    }
+                }
+
+                jsonRequest('/api/projects/' + encodeURIComponent(projectId) + '/requirements', {
                     method: 'GET'
                 }).then(function (requirements) {
-                    keyInput.value = nextRequirementKey(requirements);
-                }).catch(function () { keyInput.value = 'REQ-001'; });
+                    applyKey(nextRequirementKey(requirements));
+                }).catch(function () { applyKey('REQ-001'); });
             }
             projectSelect.addEventListener('change', refreshKey);
             refreshKey();
@@ -527,6 +544,9 @@
             seedTextInput.className = 'form-control'; seedTextInput.rows = 8; seedTextInput.value = seed;
             parts.body.appendChild(field(text('requirementText'), seedTextInput));
             window.TaxonomyRequirementIntake.attach(parts.form, {textElement:seedTextInput,projectId:null});
+            createRequirementCheck.addEventListener('change', function () {
+                if (!createRequirementCheck.checked) seedTextInput.setCustomValidity('');
+            });
         }
 
         parts.form.addEventListener('submit', function (event) {

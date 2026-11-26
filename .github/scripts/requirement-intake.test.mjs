@@ -11,6 +11,7 @@ class Element {
   replaceChildren(...children) { this.children=[...children]; }
   setAttribute() {} closest() { return null; }
   focus() { this.focused=true; }
+  get validity() { return {customError:Boolean(this.validationMessage)}; }
   setCustomValidity(message) { this.validationMessage=message; }
   reportValidity() { this.reportedValidationMessage=this.validationMessage; return !this.validationMessage; }
   addEventListener(name,fn) { this.listeners.set(name, [...(this.listeners.get(name)||[]),fn]); }
