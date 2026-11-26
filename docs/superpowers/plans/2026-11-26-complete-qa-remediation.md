@@ -124,3 +124,12 @@ The ledger records fresh evidence for the reconstructed source. Test harness cor
 | ADD-REPORT-FOOTER | Dreistellige Seitenzähler umbrechen im Bootstrap-Footer | Reports | Verified: focused tests and fresh DE/EN rendering; independent review |
 | ADD-CANONICAL-TITLE | Bekannter Diagramm-Titelalias wird roh im Export gedruckt | Reports | Verified: focused tests and fresh DE/EN rendering; independent review |
 | ADD-REPORT-EN-INSTRUCTION | Feste Vorlagen-Bearbeitungsanleitung bleibt im englischen Bericht deutsch | Reports | Verified: focused tests and fresh DE/EN rendering; independent review |
+
+### Additional findings from the integrated capture review
+
+These two findings were observed after the original 44-finding reconstruction, in the real documentation capture of the earlier `8b6a86c2` source. They are tracked separately from the retained matrix. The [completion record](../../qa/2026-11-26-qa-completion.md) records their reproduction and corrections; PR 1607 remains authoritative for fresh CI, browser acceptance and merges.
+
+| ID | Product finding | Owner | Status |
+| --- | --- | --- | --- |
+| REVIEW-UI-01 | Evaluated incomplete-only pattern coverage is labelled unevaluated; overview and detail aggregate disagree | GUI | Corrected; 222 final JS cases and 8 app contracts pass; independent source review; fresh browser/capture gate in PR 1607 |
+| REVIEW-UI-02 | Local accepted proposals expose and automatically call central-only branch adoption | GUI | Corrected; explicit central provenance at table, binding and direct-preview boundaries; existing central safeguards retained; fresh browser/capture gate in PR 1607 |

@@ -675,6 +675,11 @@
         const relations = asArray(detail.relationMappings);
         const judgments = asArray(gap.judgments);
         const matched = asArray(patterns.matchedPatterns);
+        // A recorded zero is an evaluated result even when no chain fully matched.
+        // Coverage is already in percent units; missing evidence is not zero.
+        const patternCoverage = !skipped && Number.isFinite(patterns.patternCoverage)
+            && patterns.patternCoverage >= 0 && patterns.patternCoverage <= 100
+            ? Math.round(patterns.patternCoverage * 10) / 10 : null;
         const matches = asArray(recommendation.matchedElements);
         const accepted = asArray(recommendation.acceptedElements);
         const proposed = asArray(recommendation.proposedElements);
@@ -695,8 +700,8 @@
             + resultMetric(t('obligationAssessment'), skipped || !judgments.length ? '—' : violated,
                 skipped || !judgments.length ? t('notEvaluated') : inconclusive + ' ' + t('INCONCLUSIVE'),
                 violated ? 'warning' : 'secondary')
-            + resultMetric(t('patternCoverage'), skipped || !matched.length ? '—' : percentage(patterns.patternCoverage) + '%',
-                skipped || !matched.length ? t('notEvaluated') : matched.length + ' ' + t('matchedPatterns'), 'secondary')
+            + resultMetric(t('patternCoverage'), patternCoverage === null ? '—' : patternCoverage + '%',
+                patternCoverage === null ? t('notEvaluated') : matched.length + ' ' + t('matchedPatterns'), 'secondary')
             + resultMetric(t('meanRelevance'), skipped || relevance === null ? '—' : relevance + '%',
                 skipped || relevance === null ? t('notEvaluated') : suggested.length + ' ' + t('suggestedRelations'), 'secondary')
             + resultMetric(t('assessmentMatches'), skipped ? '—' : matches.length,
@@ -731,7 +736,7 @@
         return overview + renderModelEvidence(analysis) + renderRelationSearchSummary(relationReport) + warningHtml
             + (skipped ? '' : `<div class="portfolio-result-grid mt-3">`
                 + renderGapResult(gap, judgments)
-                + renderPatternResult(patterns, matched, retained)
+                + renderPatternResult(patterns, matched, retained, patternCoverage)
                 + renderRecommendationResult(recommendation, matches, accepted, proposed, suggested, reasoning)
                 + `</div>`) + technicalHtml;
     }
@@ -782,7 +787,7 @@
             + findings + asArray(gap.notes).map(note => `<p class="small">${escapeHtml(note)}</p>`).join('') + `</section>`;
     }
 
-    function renderPatternResult(patterns, matched, retained) {
+    function renderPatternResult(patterns, matched, retained, patternCoverage) {
         const displayed = retained ? matched.concat(asArray(patterns.incompletePatterns)) : matched;
         const cards = displayed.length ? displayed.map(pattern => {
             const completeness = percentage(pattern.completeness);
@@ -802,7 +807,7 @@
         }).join('') : `<p class="text-body-secondary mb-0">—</p>`;
         return `<section id="patternResultSection" class="portfolio-result-panel" aria-labelledby="patternResultTitle">`
             + `<div class="portfolio-result-panel-header"><h3 id="patternResultTitle" class="h6 mb-0">${escapeHtml(t('patternDetection'))}</h3>`
-            + `<span class="badge text-bg-secondary">${displayed.length && patterns.patternCoverage != null ? percentage(patterns.patternCoverage) + '%' : escapeHtml(t('notEvaluated'))}</span></div>`
+            + `<span class="badge text-bg-secondary text-wrap">${escapeHtml(t('patternCoverage'))}: ${patternCoverage === null ? escapeHtml(t('notEvaluated')) : patternCoverage + '%'}</span></div>`
             + `<div class="vstack gap-2 mt-3">${cards}</div></section>`;
     }
 
