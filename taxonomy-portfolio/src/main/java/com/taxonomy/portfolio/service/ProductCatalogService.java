@@ -5,6 +5,7 @@ import com.taxonomy.portfolio.dto.PortfolioDtos.CreateProductRequest;
 import com.taxonomy.portfolio.dto.PortfolioDtos.ProductView;
 import com.taxonomy.portfolio.dto.PortfolioDtos.SolutionProductCandidateView;
 import com.taxonomy.portfolio.dto.PortfolioDtos.TaxonomyCoverageView;
+import com.taxonomy.portfolio.dto.PortfolioDtos.UpdateProductCandidateRequest;
 import com.taxonomy.portfolio.dto.PortfolioDtos.UpdateProductRequest;
 import com.taxonomy.portfolio.dto.PortfolioDtos.UpsertProductCandidateRequest;
 import com.taxonomy.portfolio.dto.PortfolioDtos.UpsertTaxonomyCoverageRequest;
@@ -212,16 +213,7 @@ public class ProductCatalogService {
                 ? request.selectionStatus() : ProductSelectionStatus.CANDIDATE;
         String exclusions = ProjectPortfolioService.limited(
                 request.hardExclusions(), 4000, "hardExclusions");
-        if (selectionStatus == ProductSelectionStatus.SELECTED) {
-            if (reviewStatus != ReviewStatus.CONFIRMED) {
-                throw PortfolioException.validation(
-                        "A selected product candidate must have reviewStatus CONFIRMED");
-            }
-            if (exclusions != null && !exclusions.isBlank()) {
-                throw PortfolioException.validation(
-                        "A product with hard exclusions cannot be selected");
-            }
-        }
+        validateCandidateSelection(reviewStatus, selectionStatus, exclusions);
 
         Instant now = Instant.now();
         SolutionProductCandidate candidate = candidateRepository
@@ -239,11 +231,9 @@ public class ProductCatalogService {
                         selectionStatus,
                         PortfolioScope.username(username, context),
                         now));
-        if (candidate.getInventoryHardExclusions() != null && !candidate.getInventoryHardExclusions().isBlank()) {
-            if (selectionStatus == ProductSelectionStatus.SELECTED) throw PortfolioException.validation("Retained inventory hard exclusions prevent selection");
-        }
-        String effectiveExclusions = candidate.getInventoryHardExclusions() != null && !candidate.getInventoryHardExclusions().isBlank()
-                ? candidate.getInventoryHardExclusions() : exclusions;
+        String retainedExclusions = candidate.getInventoryHardExclusions();
+        validateRetainedInventorySelection(selectionStatus, retainedExclusions);
+        String effectiveExclusions = hasHardExclusions(retainedExclusions) ? retainedExclusions : exclusions;
         if (candidate.getId() != null) {
             candidate.update(
                     coverage,
@@ -259,6 +249,71 @@ public class ProductCatalogService {
         }
         candidateRepository.save(candidate);
         return toCandidateView(candidate);
+    }
+
+    @Transactional
+    public SolutionProductCandidateView updateCandidate(Long projectId,
+                                                        Long candidateId,
+                                                        UpdateProductCandidateRequest request,
+                                                        String username,
+                                                        WorkspaceContext context) {
+        if (candidateId == null) throw PortfolioException.validation("candidateId is required");
+        if (request == null || (request.reviewStatus() == null && request.selectionStatus() == null)) {
+            throw PortfolioException.validation("reviewStatus or selectionStatus is required");
+        }
+        var project = projectService.requireProject(projectId, username, context);
+        SolutionProductCandidate candidate = candidateRepository.findById(candidateId)
+                .filter(existing -> projectId.equals(existing.getProjectSolution().getProject().getId()))
+                .filter(existing -> project.getScopeKey().equals(existing.getProduct().getScopeKey()))
+                .orElseThrow(() -> PortfolioException.notFound("Product candidate not found: " + candidateId));
+
+        ReviewStatus reviewStatus = patchStatus(request.reviewStatus(), candidate.getReviewStatus(), "reviewStatus");
+        ProductSelectionStatus selectionStatus = patchStatus(
+                request.selectionStatus(), candidate.getSelectionStatus(), "selectionStatus");
+        validateCandidateSelection(reviewStatus, selectionStatus, candidate.getHardExclusions());
+        validateRetainedInventorySelection(selectionStatus, candidate.getInventoryHardExclusions());
+
+        candidate.update(candidate.getCoveragePercent(), candidate.getHardExclusions(),
+                candidate.getStrengths(), candidate.getWeaknesses(), candidate.getOpenEvidence(),
+                candidate.getConfidence(), reviewStatus, selectionStatus,
+                PortfolioScope.username(username, context), Instant.now());
+        candidateRepository.save(candidate);
+        return toCandidateView(candidate);
+    }
+
+    private static <E extends Enum<E>> E patchStatus(String value, E current, String field) {
+        if (value == null) {
+            return current;
+        }
+        try {
+            return Enum.valueOf(current.getDeclaringClass(), value);
+        } catch (IllegalArgumentException invalidStatus) {
+            throw PortfolioException.validation(field + " has an unsupported value");
+        }
+    }
+
+    private static void validateCandidateSelection(ReviewStatus reviewStatus,
+                                                   ProductSelectionStatus selectionStatus,
+                                                   String hardExclusions) {
+        if (selectionStatus != ProductSelectionStatus.SELECTED) {
+            return;
+        }
+        if (reviewStatus != ReviewStatus.CONFIRMED) {
+            throw PortfolioException.validation("A selected product candidate must have reviewStatus CONFIRMED");
+        }
+        if (hasHardExclusions(hardExclusions)) {
+            throw PortfolioException.validation("A product with hard exclusions cannot be selected");
+        }
+    }
+
+    private static void validateRetainedInventorySelection(ProductSelectionStatus selectionStatus, String exclusions) {
+        if (selectionStatus == ProductSelectionStatus.SELECTED && hasHardExclusions(exclusions)) {
+            throw PortfolioException.validation("Retained inventory hard exclusions prevent selection");
+        }
+    }
+
+    private static boolean hasHardExclusions(String exclusions) {
+        return exclusions != null && !exclusions.isBlank();
     }
 
     /** Only the deterministic inventory workflow replaces the previous context's retained findings. */

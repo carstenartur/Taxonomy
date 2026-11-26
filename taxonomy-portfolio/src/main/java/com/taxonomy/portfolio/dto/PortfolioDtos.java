@@ -647,6 +647,10 @@ public final class PortfolioDtos {
             ProductSelectionStatus selectionStatus) {
     }
 
+    /** Optional status names from {@link ReviewStatus} and {@link ProductSelectionStatus}. */
+    public record UpdateProductCandidateRequest(String reviewStatus, String selectionStatus) {
+    }
+
     public record SolutionProductCandidateView(
             Long id,
             Long projectSolutionId,

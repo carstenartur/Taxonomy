@@ -38,6 +38,7 @@ class PortfolioControllerDelegationContractTest {
             new Route(ProductCatalogController.class,"update","updateProduct",200,null),
             new Route(ProductCatalogController.class,"upsertCoverage","upsertTaxonomyCoverage",200,null),
             new Route(ProductCatalogController.class,"upsertCandidate","upsertCandidate",200,null),
+            new Route(ProductCatalogController.class,"updateCandidate","updateCandidate",200,null),
             new Route(ProductCatalogController.class,"listCandidates","listCandidates",200,null),
             new Route(SolutionCatalogController.class,"create","createSolution",201,"/api/solutions/73"),
             new Route(SolutionCatalogController.class,"list","listSolutions",200,null),

@@ -3,6 +3,7 @@ package com.taxonomy.portfolio.controller;
 import com.taxonomy.portfolio.dto.PortfolioDtos.CreateProductRequest;
 import com.taxonomy.portfolio.dto.PortfolioDtos.ProductView;
 import com.taxonomy.portfolio.dto.PortfolioDtos.SolutionProductCandidateView;
+import com.taxonomy.portfolio.dto.PortfolioDtos.UpdateProductCandidateRequest;
 import com.taxonomy.portfolio.dto.PortfolioDtos.UpdateProductRequest;
 import com.taxonomy.portfolio.dto.PortfolioDtos.UpsertProductCandidateRequest;
 import com.taxonomy.portfolio.dto.PortfolioDtos.UpsertTaxonomyCoverageRequest;
@@ -93,6 +94,18 @@ public class ProductCatalogController {
         RequestScope scope = scope();
         return productService.upsertCandidate(
                 projectId, projectSolutionId, request, scope.username(), scope.context());
+    }
+
+    @PatchMapping("/projects/{projectId}/product-candidates/{candidateId}")
+    @Operation(summary = "Update an existing product candidate's review or selection status",
+            description = "Updates the supplied status names for a candidate in the authorized project. Omitted statuses and stored evidence are preserved.")
+    public SolutionProductCandidateView updateCandidate(
+            @PathVariable Long projectId,
+            @PathVariable Long candidateId,
+            @RequestBody UpdateProductCandidateRequest request) {
+        RequestScope scope = scope();
+        return productService.updateCandidate(
+                projectId, candidateId, request, scope.username(), scope.context());
     }
 
     @GetMapping("/projects/{projectId}/solutions/{projectSolutionId}/products")
