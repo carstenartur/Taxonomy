@@ -82,6 +82,7 @@ for (const width of [1280, 390]) {
         const description = 'Catalogue detail.\nA long identifier follows.\n' + 'abc123'.repeat(40);
         const prompt = instructions + JSON.stringify({ original, nodes: [{ id: 'IP', description }] }) + '\r\n';
         const page = await fixture(t, width, [{ prompt, response: '{"selected":["IP"]}', promptLength: prompt.length }]);
+        await page.getByText('Completed · 1 node evaluated', { exact: true }).waitFor();
         const field = await openPrompt(page);
         const readable = field.locator('.llm-prompt-readable');
         const blocks = await readable.locator('pre').allTextContents();
@@ -116,6 +117,7 @@ test('plain and truncated Copilot prompts display the retained evidence verbatim
         { prompt: plain, promptLength: plain.length },
         { prompt: truncated, promptLength: 20000, truncated: true }
     ]);
+    await page.getByText('Completed · 2 nodes evaluated', { exact: true }).waitFor();
     for (const [index, expected] of [plain, truncated].entries()) {
         const field = await openPrompt(page, index);
         assert.equal(await field.locator('pre').textContent(), expected);

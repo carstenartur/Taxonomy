@@ -976,7 +976,7 @@
                         'Request accepted; waiting for an analysis slot. No LLM request started yet.')
                     : (status ? text(status[0], status[1]) : text('Status wird geprüft', 'Checking status')) + ' · '
                     + (snapshot.cluster || snapshot.nodeProgress || snapshot.relationProgress ? workSummary(snapshot)
-                        : snapshot.evaluatedNodes + text(' Knoten bewertet', ' nodes evaluated'))
+                        : snapshot.evaluatedNodes + text(' Knoten bewertet', snapshot.evaluatedNodes === 1 ? ' node evaluated' : ' nodes evaluated'))
                     + (quiet >= 15 ? text(' · Letzte Aktivität vor ', ' · Last activity ') + quiet + ' s' : '');
                 var memory = snapshot.memory || {};
                 resources.textContent = snapshot.status + ' · Heap: ' + (memory.percent >= 0 ? memory.percent + '%' : text('unbekannt', 'unknown'))
