@@ -9,7 +9,10 @@ class Element {
   constructor(tag='div') { this.tagName=tag; this.children=[]; this.listeners=new Map(); this.value=''; this.dataset={}; this.classList={add(){},remove(){}}; }
   append(...children) { this.children.push(...children); }
   replaceChildren(...children) { this.children=[...children]; }
-  setAttribute() {} focus() {} closest() { return null; }
+  setAttribute() {} closest() { return null; }
+  focus() { this.focused=true; }
+  setCustomValidity(message) { this.validationMessage=message; }
+  reportValidity() { this.reportedValidationMessage=this.validationMessage; return !this.validationMessage; }
   addEventListener(name,fn) { this.listeners.set(name, [...(this.listeners.get(name)||[]),fn]); }
   dispatch(name) { for (const listener of this.listeners.get(name)||[]) listener({target:this,preventDefault(){}}); }
 }
@@ -32,6 +35,29 @@ function harness(review, lifecycle) {
 test('portable digest preserves raw whitespace and Unicode when WebCrypto is absent',async()=>{
   const h=harness(()=>{throw new Error('No transport expected');});
   for(const text of ['abc',' a ','🧭\r\nÄ']) assert.equal(await h.api.inputHash(text),createHash('sha256').update(text,'utf8').digest('hex'));
+});
+test('whitespace-only submission reports a text field error before review and can be corrected',async()=>{
+  let contextReads=0;
+  const reviews=[];
+  const h=harness(async request=>{
+    reviews.push(request.text);
+    return completedReview({repositoryId:'repo',workspaceId:'work',branch:'draft'});
+  },{ready:async()=>{contextReads++;return {};}});
+  h.input.value=' \t\n ';
+  h.api.attach(h.form,{textElement:h.input,projectId:7});
+  assert.equal(await h.api.prepare(h.form,{text:h.input.value},7),null);
+  assert.match(h.input.reportedValidationMessage || '',/requirement text/i);
+  assert.equal(h.input.focused,true);
+  assert.equal(contextReads,0);
+  assert.deepEqual(reviews,[]);
+
+  h.input.value='candidate';h.input.dispatch('input');
+  assert.equal(h.input.validationMessage,'');
+  const pending=h.api.prepare(h.form,{text:'candidate'},7);
+  await new Promise(resolve=>setImmediate(resolve));
+  h.form.children[0].children.find(element=>element.dataset.intakeChoice==='NEW').dispatch('click');
+  assert.equal((await pending).requirement.text,'candidate');
+  assert.deepEqual(reviews,['candidate']);
 });
 test('review alone never chooses a mutation; prepare awaits an explicit choice',async()=>{
   let calls=0;

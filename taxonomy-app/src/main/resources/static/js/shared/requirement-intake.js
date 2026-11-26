@@ -76,11 +76,19 @@
         section.setAttribute('aria-label', label('Requirement review', 'Anforderungsprüfung')); section.setAttribute('aria-live', 'polite');
         var state = {form:form,options:options,section:section,generation:0,cancellation:0,response:null,pending:null,selected:null,choose:null,scope:scope()};
         forms.set(form,state); form.append(section);
-        options.textElement.addEventListener('input',function () { edited(state); });
+        options.textElement.addEventListener('input',function () {
+            if (options.textElement.value.trim()) options.textElement.setCustomValidity('');
+            edited(state);
+        });
         form.addEventListener('input',function (event) { if(event.target!==options.textElement) edited(state); });
         form.addEventListener('change',function () { edited(state); });
         var dialog = form.closest?.('dialog, .modal');
-        if (dialog) { ['close','cancel','hidden.bs.modal'].forEach(function(event){dialog.addEventListener(event,function(){cancel(state);});}); }
+        if (dialog) ['close','cancel','hidden.bs.modal'].forEach(function (event) {
+            dialog.addEventListener(event,function () {
+                options.textElement.setCustomValidity('');
+                cancel(state);
+            });
+        });
         review(state); return state;
     }
     function matching(state, capture) { return capture === fingerprint(state,state.options.textElement.value,project(state)); }
@@ -191,6 +199,13 @@
         if(!state) throw new Error(label('Requirement review is not ready.','Die Anforderungsprüfung ist nicht bereit.'));
         if(projectId!==undefined && typeof state.options.projectId!=='function') state.options.projectId=projectId;
         if(payload.text!==state.options.textElement.value) return null;
+        if (!payload.text.trim()) {
+            var input = state.options.textElement;
+            input.setCustomValidity(label('Enter the requirement text.','Geben Sie den Anforderungstext ein.'));
+            input.focus();
+            input.reportValidity();
+            return null;
+        }
         if (!state.contextReady && window.TaxonomyArchitectureLifecycle?.ready && !await awaitInitialContext(state)) return null;
         var capture=fingerprint(state,payload.text,project(state));
         var response=await review(state);
