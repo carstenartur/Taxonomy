@@ -34,7 +34,8 @@ class NativeInstallationPostgresRecoveryIT {
             long largeObject = Long.parseLong(database.query(database.sourceUrl, "select lo_from_bytea(0, decode('000102ff', 'hex'))"));
             Map<String, String> original = digests(source), originalRows = database.rows(database.sourceUrl);
             assertThat(original.keySet()).contains("source-content/requirements.txt").anyMatch(name -> name.startsWith("lucene-index/"));
-            assertThat(tool(database, "postgres-capture", "source", source, snapshot, null, version, evidence)).isZero();
+            assertThat(tool(database, "postgres-capture", "source", source, snapshot, null, version, evidence))
+                    .as(() -> ProcessTestDiagnostics.describe(evidence.resolve("01-postgres-capture-source.log"))).isZero();
             var receipt = NativeInstallationSnapshot.verify(snapshot, version, () -> {});
             assertThat(tool(database, "postgres-plan", "source", source, snapshot, target, version, evidence)).as("A source alias must not be restored in place").isNotZero();
             database.sql(database.targetUrl, "create table recovery_collision (value integer)");
