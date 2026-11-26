@@ -198,6 +198,15 @@ public class ProductCatalogService {
                                                         UpsertProductCandidateRequest request,
                                                         String username,
                                                         WorkspaceContext context) {
+        return upsertCandidate(projectId, projectSolutionId, request, username, context, null);
+    }
+
+    private SolutionProductCandidateView upsertCandidate(Long projectId,
+                                                         Long projectSolutionId,
+                                                         UpsertProductCandidateRequest request,
+                                                         String username,
+                                                         WorkspaceContext context,
+                                                         InventoryCandidateEvidence replacement) {
         if (request == null) throw PortfolioException.validation("product candidate is required");
         projectService.requireProject(projectId, username, context);
         ProjectSolution projectSolution = projectSolutionRepository
@@ -205,50 +214,57 @@ public class ProductCatalogService {
                 .orElseThrow(() -> PortfolioException.notFound(
                         "Project solution not found: " + projectSolutionId));
         ProductCatalogEntry product = requireProduct(request.productId(), username, context);
-        int coverage = normalizePercentage(request.coveragePercent(), "coveragePercent");
-        double confidence = normalizeConfidence(request.confidence());
+        SolutionProductCandidate candidate = candidateRepository
+                .findByProjectSolutionIdAndProductId(projectSolutionId, product.getId()).orElse(null);
+        if (request.coveragePercent() == null && candidate == null) {
+            throw PortfolioException.validation("coveragePercent is required for a new product candidate");
+        }
+        int coverage = request.coveragePercent() != null
+                ? normalizePercentage(request.coveragePercent(), "coveragePercent") : candidate.getCoveragePercent();
+        double confidence = request.confidence() != null ? normalizeConfidence(request.confidence())
+                : candidate != null ? candidate.getConfidence() : 0.0;
         ReviewStatus reviewStatus = request.reviewStatus() != null
-                ? request.reviewStatus() : ReviewStatus.PROPOSED;
+                ? request.reviewStatus() : candidate != null ? candidate.getReviewStatus() : ReviewStatus.PROPOSED;
         ProductSelectionStatus selectionStatus = request.selectionStatus() != null
-                ? request.selectionStatus() : ProductSelectionStatus.CANDIDATE;
-        String exclusions = ProjectPortfolioService.limited(
-                request.hardExclusions(), 4000, "hardExclusions");
+                ? request.selectionStatus() : candidate != null ? candidate.getSelectionStatus() : ProductSelectionStatus.CANDIDATE;
+        String previousExclusions = candidate != null ? candidate.getHardExclusions() : null;
+        String retainedExclusions = candidate != null ? candidate.getInventoryHardExclusions() : null;
+        String exclusions;
+        if (replacement == null) {
+            exclusions = candidateText(request.hardExclusions(), previousExclusions, "hardExclusions");
+        } else {
+            // Equal wording cannot establish whether a finding was also entered by a person.
+            // Only the separate retained field belongs to this inventory-context replacement.
+            exclusions = previousExclusions;
+            retainedExclusions = ProjectPortfolioService.limited(replacement.hardExclusions(), 4000, "hardExclusions");
+        }
+        String strengths = candidateText(request.strengths(), candidate != null ? candidate.getStrengths() : null, "strengths");
+        String weaknesses = candidateText(request.weaknesses(), candidate != null ? candidate.getWeaknesses() : null, "weaknesses");
+        String openEvidence = candidateText(request.openEvidence(), candidate != null ? candidate.getOpenEvidence() : null, "openEvidence");
         validateCandidateSelection(reviewStatus, selectionStatus, exclusions);
+        validateRetainedInventorySelection(selectionStatus, retainedExclusions);
 
         Instant now = Instant.now();
-        SolutionProductCandidate candidate = candidateRepository
-                .findByProjectSolutionIdAndProductId(projectSolutionId, product.getId())
-                .orElseGet(() -> new SolutionProductCandidate(
-                        projectSolution,
-                        product,
-                        coverage,
-                        exclusions,
-                        ProjectPortfolioService.limited(request.strengths(), 4000, "strengths"),
-                        ProjectPortfolioService.limited(request.weaknesses(), 4000, "weaknesses"),
-                        ProjectPortfolioService.limited(request.openEvidence(), 4000, "openEvidence"),
-                        confidence,
-                        reviewStatus,
-                        selectionStatus,
-                        PortfolioScope.username(username, context),
-                        now));
-        String retainedExclusions = candidate.getInventoryHardExclusions();
-        validateRetainedInventorySelection(selectionStatus, retainedExclusions);
-        String effectiveExclusions = hasHardExclusions(retainedExclusions) ? retainedExclusions : exclusions;
-        if (candidate.getId() != null) {
-            candidate.update(
-                    coverage,
-                    effectiveExclusions,
-                    ProjectPortfolioService.limited(request.strengths(), 4000, "strengths"),
-                    ProjectPortfolioService.limited(request.weaknesses(), 4000, "weaknesses"),
-                    ProjectPortfolioService.limited(request.openEvidence(), 4000, "openEvidence"),
-                    confidence,
-                    reviewStatus,
-                    selectionStatus,
-                    PortfolioScope.username(username, context),
-                    now);
+        String actor = PortfolioScope.username(username, context);
+        if (candidate == null) {
+            candidate = new SolutionProductCandidate(projectSolution, product, coverage, exclusions,
+                    strengths, weaknesses, openEvidence, confidence, reviewStatus, selectionStatus, actor, now);
+        } else {
+            candidate.update(coverage, exclusions, strengths, weaknesses, openEvidence, confidence,
+                    reviewStatus, selectionStatus, actor, now);
+        }
+        if (replacement != null) {
+            candidate.bindInventoryEvidence(replacement.comparisonId(), replacement.fingerprint(), retainedExclusions);
         }
         candidateRepository.save(candidate);
         return toCandidateView(candidate);
+    }
+
+    private static String candidateText(String requested, String stored, String field) {
+        return requested != null ? ProjectPortfolioService.limited(requested, 4000, field) : stored;
+    }
+
+    private record InventoryCandidateEvidence(String comparisonId, String fingerprint, String hardExclusions) {
     }
 
     @Transactional
@@ -321,22 +337,8 @@ public class ProductCatalogService {
     public SolutionProductCandidateView applyReviewedInventoryCandidate(Long projectId,Long projectSolutionId,
             UpsertProductCandidateRequest request,String comparisonId,String fingerprint,String computedHardExclusions,
             String username,WorkspaceContext context) {
-        projectService.requireProject(projectId,username,context);
-        requireProduct(request.productId(),username,context);
-        candidateRepository.findByProjectSolutionIdAndProductId(projectSolutionId,request.productId())
-                .ifPresent(candidate->candidate.bindInventoryEvidence(comparisonId,fingerprint,computedHardExclusions));
-        var result=upsertCandidate(projectId,projectSolutionId,request,username,context);
-        bindInventoryEvidence(result.id(),comparisonId,fingerprint,computedHardExclusions,username,context);
-        return result;
-    }
-
-    /** Bind retained findings independently of browser-editable candidate fields. */
-    private void bindInventoryEvidence(Long candidateId,String comparisonId,String fingerprint,String hardExclusions,
-                                      String username,WorkspaceContext context) {
-        var candidate=candidateRepository.findById(candidateId).orElseThrow(()->PortfolioException.notFound("Product candidate not found"));
-        requireProduct(candidate.getProduct().getId(),username,context);
-        projectService.requireProject(candidate.getProjectSolution().getProject().getId(),username,context);
-        candidate.bindInventoryEvidence(comparisonId,fingerprint,hardExclusions);
+        return upsertCandidate(projectId, projectSolutionId, request, username, context,
+                new InventoryCandidateEvidence(comparisonId, fingerprint, computedHardExclusions));
     }
 
     @Transactional(readOnly = true)
@@ -413,6 +415,11 @@ public class ProductCatalogService {
     }
 
     public SolutionProductCandidateView toCandidateView(SolutionProductCandidate candidate) {
+        String exclusions = candidate.getHardExclusions();
+        String retained = candidate.getInventoryHardExclusions();
+        if (hasHardExclusions(retained) && !retained.equals(exclusions)) {
+            exclusions = hasHardExclusions(exclusions) ? exclusions + "; " + retained : retained;
+        }
         String openEvidence=candidate.getOpenEvidence();
         if(candidate.getInventoryComparisonId()!=null && (openEvidence==null || !openEvidence.contains(candidate.getInventoryComparisonId())))
             openEvidence=java.util.Objects.toString(openEvidence,"")+"; Inventory comparison "+candidate.getInventoryComparisonId()+" / "+candidate.getInventoryFingerprint();
@@ -421,7 +428,7 @@ public class ProductCatalogService {
                 candidate.getProjectSolution().getId(),
                 toProductView(candidate.getProduct()),
                 candidate.getCoveragePercent(),
-                candidate.getHardExclusions(),
+                exclusions,
                 candidate.getStrengths(),
                 candidate.getWeaknesses(),
                 openEvidence,

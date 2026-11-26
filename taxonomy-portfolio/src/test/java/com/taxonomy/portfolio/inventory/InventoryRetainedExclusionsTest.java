@@ -20,7 +20,10 @@ class InventoryRetainedExclusionsTest {
         when(pr.findByIdAndScopeKey(eq(9L),anyString())).thenReturn(Optional.of(product));var solution=mock(ProjectSolution.class);when(sr.findByIdAndProjectId(7L,1L)).thenReturn(Optional.of(solution));
         var candidate=new SolutionProductCandidate(solution,product,100,"availability contradicted",null,null,null,1,ReviewStatus.CONFIRMED,ProductSelectionStatus.REJECTED,"alice",Instant.now());
         ReflectionTestUtils.setField(candidate,"id",8L);candidate.bindInventoryEvidence("comparison","fingerprint","availability contradicted");when(cr.findByProjectSolutionIdAndProductId(7L,9L)).thenReturn(Optional.of(candidate));
-        assertThrows(PortfolioException.class,()->service.upsertCandidate(1L,7L,new UpsertProductCandidateRequest(9L,100,null,null,null,null,1,ReviewStatus.CONFIRMED,ProductSelectionStatus.SELECTED),"alice",context));
+        assertThrows(PortfolioException.class,()->service.upsertCandidate(1L,7L,new UpsertProductCandidateRequest(9L,100,"",null,null,null,1.0,ReviewStatus.CONFIRMED,ProductSelectionStatus.SELECTED),"alice",context));
         assertEquals("availability contradicted",candidate.getInventoryHardExclusions());verify(cr,never()).save(any());
+        var visible=service.upsertCandidate(1L,7L,new UpsertProductCandidateRequest(9L,100,"",null,null,null,1.0,ReviewStatus.CONFIRMED,ProductSelectionStatus.REJECTED),"alice",context);
+        assertEquals("availability contradicted",visible.hardExclusions());
+        assertEquals("availability contradicted",candidate.getInventoryHardExclusions());
     }
 }

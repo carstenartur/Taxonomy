@@ -253,6 +253,9 @@ public class PortfolioDecisionGitContributor {
                                     candidate.getProduct().getProductKey()), properties(
                                     "coveragePercent", string(candidate.getCoveragePercent()),
                                     "hardExclusions", candidate.getHardExclusions(),
+                                    "inventoryComparisonId", candidate.getInventoryComparisonId(),
+                                    "inventoryFingerprint", candidate.getInventoryFingerprint(),
+                                    "inventoryHardExclusions", candidate.getInventoryHardExclusions(),
                                     "strengths", candidate.getStrengths(),
                                     "weaknesses", candidate.getWeaknesses(),
                                     "openEvidence", candidate.getOpenEvidence(),
@@ -671,9 +674,11 @@ public class PortfolioDecisionGitContributor {
                     block.property("selectionStatus"),
                     ProductSelectionStatus.CANDIDATE);
             String exclusions = block.property("hardExclusions");
-            if(candidate!=null && !isBlank(candidate.getInventoryHardExclusions()))exclusions=candidate.getInventoryHardExclusions();
+            if (candidate != null && exclusions == null) exclusions = candidate.getHardExclusions();
+            CandidateInventoryEvidence inventory = candidateInventoryEvidence(block, candidate, warnings);
+            if (inventory == null) continue;
             if (selection == ProductSelectionStatus.SELECTED
-                    && (review != ReviewStatus.CONFIRMED || !isBlank(exclusions))) {
+                    && (review != ReviewStatus.CONFIRMED || !isBlank(exclusions) || !isBlank(inventory.hardExclusions()))) {
                 warnings.add(identity(block)
                         + " cannot remain SELECTED without confirmed review and no hard exclusions");
                 selection = ProductSelectionStatus.CANDIDATE;
@@ -706,9 +711,29 @@ public class PortfolioDecisionGitContributor {
                         valueOrDefault(block.property("updatedBy"), owner),
                         now);
             }
+            candidate.bindInventoryEvidence(inventory.comparisonId(), inventory.fingerprint(), inventory.hardExclusions());
             candidateRepository.save(candidate);
         }
         return count;
+    }
+
+    private static CandidateInventoryEvidence candidateInventoryEvidence(
+            BlockAst block, SolutionProductCandidate candidate, List<String> warnings) {
+        var incoming = new CandidateInventoryEvidence(block.property("inventoryComparisonId"),
+                block.property("inventoryFingerprint"), block.property("inventoryHardExclusions"));
+        if (candidate == null) return incoming;
+        var retained = new CandidateInventoryEvidence(candidate.getInventoryComparisonId(),
+                candidate.getInventoryFingerprint(), candidate.getInventoryHardExclusions());
+        if (!retained.present()) return incoming;
+        if (incoming.present() && !retained.equals(incoming)) {
+            warnings.add(identity(block) + " cannot replace retained inventory evidence; review the retained comparison first");
+            return null;
+        }
+        return retained;
+    }
+
+    private record CandidateInventoryEvidence(String comparisonId, String fingerprint, String hardExclusions) {
+        boolean present() { return comparisonId != null || fingerprint != null || hardExclusions != null; }
     }
 
     private DocumentAst parseOrEmpty(String dsl) {

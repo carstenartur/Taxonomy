@@ -637,12 +637,12 @@ public final class PortfolioDtos {
 
     public record UpsertProductCandidateRequest(
             Long productId,
-            int coveragePercent,
+            Integer coveragePercent,
             String hardExclusions,
             String strengths,
             String weaknesses,
             String openEvidence,
-            double confidence,
+            Double confidence,
             ReviewStatus reviewStatus,
             ProductSelectionStatus selectionStatus) {
     }

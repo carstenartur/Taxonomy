@@ -48,6 +48,7 @@ class PortfolioDecisionGitRoundtripTest {
     @Autowired private com.taxonomy.portfolio.service.PortfolioReportService reports;
     @Autowired private com.taxonomy.portfolio.repository.ProjectSolutionRepository projectSolutions;
     @Autowired private com.taxonomy.portfolio.repository.RequirementSolutionLinkRepository requirementLinks;
+    @Autowired private com.taxonomy.portfolio.repository.SolutionProductCandidateRepository productCandidates;
 
 
     @Test
@@ -244,6 +245,50 @@ class PortfolioDecisionGitRoundtripTest {
         retained=solutionService.listProjectSolutions(imported.id(),"bob",target).getFirst();
         assertThat(retained.inventoryComparisonId()).isEqualTo(comparison);assertThat(retained.inventoryFingerprint()).isEqualTo(fingerprint);assertThat(retained.inventoryHardExclusions()).isEqualTo("Explicit interface incompatibility");
         org.assertj.core.api.Assertions.assertThatThrownBy(()->solutionService.updateProjectSolution(imported.id(),solutionService.listProjectSolutions(imported.id(),"bob",target).getFirst().id(),new com.taxonomy.portfolio.dto.PortfolioDtos.UpdateProjectSolutionRequest(ProjectSolutionStatus.IMPLEMENTED,null,null,"Bypass"),"bob",target)).isInstanceOf(com.taxonomy.portfolio.service.PortfolioException.class);
+    }
+
+    @Test void candidateInventoryEvidenceSurvivesFreshTargetAndRejectsReplacement() {
+        String suffix=UUID.randomUUID().toString().substring(0,8);
+        String repository=systemRepositoryService.getPrimaryRepository().getRepositoryId();
+        var source=new WorkspaceContext("alice","candidate-source-"+suffix,"draft",repository);
+        var target=new WorkspaceContext("bob","candidate-target-"+suffix,"draft",repository);
+        var project=projectService.createProject(new CreateProjectRequest("P-"+suffix,"Candidate project",null,null,null,null,null,null),"alice",source);
+        var solution=solutionService.createSolution(new CreateSolutionRequest("S-"+suffix,"Candidate solution",null,null,null,null,null,"north",null,null,null,null,Map.of()),"alice",source);
+        var decision=solutionService.addProjectSolution(project.id(),new AddProjectSolutionRequest(solution.id(),null,null,50,"Existing"),"alice",source);
+        var product=productService.createProduct(new CreateProductRequest("PRD-"+suffix,"Fixture supplier",null,"Retained product",null,
+                ProductStatus.ACTIVE,null,null,OperatingModel.UNSPECIFIED,null,null,null,null,null,null,
+                "Reviewed inventory source",Instant.parse("2026-01-01T00:00:00Z")),"alice",source);
+        String comparison=UUID.randomUUID().toString(),fingerprint="a".repeat(64),exclusion="Retained inventory incompatibility";
+        var sourceCandidate=productService.applyReviewedInventoryCandidate(project.id(),decision.id(),
+                new UpsertProductCandidateRequest(product.id(),42,exclusion,null,null,"Reviewed inventory",0.0,
+                        ReviewStatus.CONFIRMED,ProductSelectionStatus.REJECTED),comparison,fingerprint,exclusion,"alice",source);
+        assertThat(productCandidates.findById(sourceCandidate.id()).orElseThrow().getHardExclusions()).isNull();
+        String dsl=portfolioGitService.exportPortfolio("alice",source);
+        assertThat(dsl).contains("inventoryComparisonId",comparison,"inventoryFingerprint",fingerprint,"inventoryHardExclusions",exclusion,
+                "selectionStatus: \"REJECTED\"");
+        var importedResult=portfolioGitService.materialize(dsl.replace("selectionStatus: \"REJECTED\"","selectionStatus: \"SELECTED\""),"bob",target);
+        assertThat(importedResult.warnings()).anyMatch(value->value.contains("cannot remain SELECTED"));
+        var importedProject=projectService.listProjects("bob",target).getFirst();
+        var importedDecision=solutionService.listProjectSolutions(importedProject.id(),"bob",target).getFirst();
+        var importedCandidate=importedDecision.productCandidates().getFirst();
+        assertThat(importedCandidate.selectionStatus()).isEqualTo(ProductSelectionStatus.CANDIDATE);
+        assertThat(importedCandidate.hardExclusions()).isEqualTo(exclusion);
+        var retained=productCandidates.findById(importedCandidate.id()).orElseThrow();
+        assertThat(retained.getHardExclusions()).isNull();
+        assertThat(retained.getInventoryComparisonId()).isEqualTo(comparison);
+        assertThat(retained.getInventoryFingerprint()).isEqualTo(fingerprint);
+        assertThat(retained.getInventoryHardExclusions()).isEqualTo(exclusion);
+        org.assertj.core.api.Assertions.assertThatThrownBy(()->productService.updateCandidate(importedProject.id(),importedCandidate.id(),
+                new com.taxonomy.portfolio.dto.PortfolioDtos.UpdateProductCandidateRequest("CONFIRMED","SELECTED"),"bob",target))
+                .isInstanceOf(com.taxonomy.portfolio.service.PortfolioException.class);
+        var conflicting=portfolioGitService.materialize(dsl.replace(comparison,UUID.randomUUID().toString())
+                .replace(fingerprint,"b".repeat(64)).replace(exclusion,"Incoming different exclusion"),"bob",target);
+        assertThat(conflicting.warnings()).anyMatch(value->value.contains("cannot replace retained inventory evidence"));
+        retained=productCandidates.findById(importedCandidate.id()).orElseThrow();
+        assertThat(retained.getInventoryComparisonId()).isEqualTo(comparison);
+        assertThat(retained.getInventoryFingerprint()).isEqualTo(fingerprint);
+        assertThat(retained.getInventoryHardExclusions()).isEqualTo(exclusion);
+        assertThat(retained.getSelectionStatus()).isEqualTo(ProductSelectionStatus.CANDIDATE);
     }
 
 }
