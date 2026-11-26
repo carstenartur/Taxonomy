@@ -7,26 +7,34 @@ export function installRoleStateGitPollBarrier() {
   function wrapClient(client) {
     const request = client.request;
     client.request = function (url, init, policy) {
-      const path = new URL(url, window.location.href).pathname;
+      const target = new URL(url, window.location.href);
+      const path = target.pathname;
       const method = (init?.method || 'GET').toUpperCase();
       // Git status has a distinct transport policy. Its server-contact event
       // can start a second passive observation of the draft revision.
       const gitPoll = path.endsWith('/api/git/state') && policy?.acceptedStatuses?.length === 0;
       const draftStatus = /\/api\/analysis-drafts\/[^/]+\/status$/.test(path);
-      if (method !== 'GET' || !policy?.signal || (!gitPoll && !draftStatus)) {
+      // Source hydration also reads the selected repository's proposal inbox.
+      const proposalList = target.origin === window.location.origin && policy?.selectedRepository === true
+        && /\/api\/proposals(?:\/pending)?$/.test(path);
+      if (method !== 'GET' || !policy?.signal || (!gitPoll && !draftStatus && !proposalList)) {
         return request.call(this, url, init, policy);
       }
 
+      const ownsContext = client.captureContext();
       const dispatch = async () => {
         const completion = Promise.withResolvers();
         pending.add(completion.promise);
         function complete() {
-          pending.delete(completion.promise);
+          if (!pending.delete(completion.promise)) return;
+          policy.signal.removeEventListener('abort', complete);
           completion.resolve();
         }
+        policy.signal.addEventListener('abort', complete, { once: true });
+        if (policy.signal.aborted) complete();
         try {
           const response = await request.call(this, url, init, policy);
-          if (response.status === 204) {
+          if (!response.ok || response.status === 204 || !ownsContext()) {
             complete();
             return response;
           }
@@ -46,10 +54,9 @@ export function installRoleStateGitPollBarrier() {
       };
 
       if (!paused) return dispatch();
-      const ownsContext = client.captureContext();
       return paused.promise.then(() => {
         if (policy.signal.aborted || !ownsContext()) {
-          throw new client.ApiError('Deferred poll context was superseded', 0, url, null, { code: 'ABORTED' });
+          throw new client.ApiError('Deferred read context was superseded', 0, url, null, { code: 'ABORTED' });
         }
         return dispatch();
       });
