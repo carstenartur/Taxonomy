@@ -207,8 +207,8 @@ async function runAnalysisUxBrowserTests(group, applicationBaseUrl) {
   const [bootstrapCss, d3Script] = await Promise.all([
     bundledResource('/webjars/bootstrap/5.3.8/dist/css/bootstrap.min.css',
       'bootstrap-5.3.8.min.css', ['text/css']),
-    bundledResource('/webjars/d3/7.9.0/dist/d3.min.js',
-      'd3-7.9.0.min.js', ['text/javascript', 'application/javascript', 'application/x-javascript'])
+    bundledResource('/webjars/d3/7.9.2/dist/d3.min.js',
+      'd3-7.9.2.min.js', ['text/javascript', 'application/javascript', 'application/x-javascript'])
   ]);
 
   console.log('\n=== Native Chromium component regressions: analysis/navigation UX ===');

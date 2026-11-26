@@ -107,7 +107,7 @@
         <!-- Test-only transitive dependencies still need the patched versions. -->
         <guava.version>33.8.0-jre</guava.version>
         <commons-configuration2.version>2.15.1</commons-configuration2.version>
-        <d3-hierarchy.version>3.1.2</d3-hierarchy.version>
+        <d3-hierarchy.version>3.1.3</d3-hierarchy.version>
         <svgpath.version>2.6.0</svgpath.version>
         <springdoc.version>3.2.0</springdoc.version>
         <postgresql.version>42.7.14</postgresql.version>
@@ -191,8 +191,8 @@
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
-            <!-- The aggregate D3 WebJar references 3.0.1, whose generated Maven
-                 metadata is incomplete. Manage the compatible 3.1.2 release so
+            <!-- Some aggregate D3 WebJar releases reference incomplete generated Maven
+                 metadata. Manage a compatible release with complete metadata so
                  clean builds resolve complete dependency metadata without a
                  warning while retaining D3's supported 3.x range. -->
             <dependency>
