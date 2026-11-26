@@ -250,7 +250,25 @@
         }
     }
 
+    function revealDetailTab(tabs, tab) {
+        if (tab?.getAttribute?.('role') !== 'tab' || tab.getAttribute('aria-selected') !== 'true'
+                || tab.closest('[role="tablist"]') !== tabs || tabs.scrollWidth <= tabs.clientWidth) return;
+
+        // Bootstrap activates keyboard tabs without scrolling focus. Move only this tab strip.
+        const strip = tabs.getBoundingClientRect();
+        const selected = tab.getBoundingClientRect();
+        const style = window.getComputedStyle(tabs);
+        const viewportLeft = strip.left + tabs.clientLeft;
+        const viewportRight = Math.min(strip.right, viewportLeft + tabs.clientWidth);
+        const left = selected.left - viewportLeft - (parseFloat(style.paddingLeft) || 0);
+        const right = selected.right - viewportRight + (parseFloat(style.paddingRight) || 0);
+        const offset = left < 0 ? Math.floor(left) : Math.max(0, Math.ceil(right));
+        if (offset) tabs.scrollBy({left: offset, behavior: 'instant'});
+    }
+
     function wireEvents() {
+        const detailTabs = document.getElementById('detailTabs');
+        detailTabs.addEventListener('shown.bs.tab', event => revealDetailTab(detailTabs, event.target));
         document.getElementById('jumpToRequirementText').addEventListener('click', () => {
             document.getElementById('text-tab').click();
             document.getElementById('textPane').focus({preventScroll: true});
