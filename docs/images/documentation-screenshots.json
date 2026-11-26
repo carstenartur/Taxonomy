@@ -78,9 +78,27 @@
     },
     {
       "file": "12-relation-proposals-panel.png",
-      "width": 1345,
-      "height": 133,
-      "sha256": "f11750f113b94c4146cb944a5dd1ed0e9311b9e8d529107e88a3804bdfd98d50"
+      "width": 1360,
+      "height": 193,
+      "sha256": "c5e5dca85906ffaee449cc7a7009bd39e3a8042c9e45098d1cbf77c688ad9b39",
+      "capturedAt": "2026-11-26T19:43:39.800114979Z",
+      "runStartedAt": "2026-11-26T19:34:50Z",
+      "sourceCommit": "0dec8d1bdac5abb89e1043d29f06b78394731b44",
+      "sourceTree": "972f6abaa357ae7ba3e6e55b875782323198f8af",
+      "sourceDirty": false,
+      "entryPoint": "./mvnw -B verify -Pscreenshots",
+      "applicationData": "isolated deterministic mock/demo data; no external LLM calls",
+      "sourceManifest": "documentation-screenshots-run-45884345091.json",
+      "workflowRun": "https://github.com/carstenartur/Taxonomy/actions/runs/45884345091",
+      "artifactId": 15149610991,
+      "previousRecord": {
+        "file": "12-relation-proposals-panel.png",
+        "width": 1345,
+        "height": 133,
+        "sha256": "f11750f113b94c4146cb944a5dd1ed0e9311b9e8d529107e88a3804bdfd98d50"
+      },
+      "replacedBytesSha256": "f11750f113b94c4146cb944a5dd1ed0e9311b9e8d529107e88a3804bdfd98d50",
+      "previousRecordMatchedReplacedBytes": true
     },
     {
       "file": "13-propose-relations-modal.png",
@@ -168,9 +186,27 @@
     },
     {
       "file": "28-proposal-review-queue.png",
-      "width": 1345,
-      "height": 133,
-      "sha256": "bcaecb0996035190523a0176f7f6341ad314c6f3fc9156236a956bc85aaa82cb"
+      "width": 1360,
+      "height": 193,
+      "sha256": "0274ab3b5910b538ebeecf6dd204d9ffddd19f267608824c179dc82692f42023",
+      "capturedAt": "2026-11-26T19:43:39.800114979Z",
+      "runStartedAt": "2026-11-26T19:34:50Z",
+      "sourceCommit": "0dec8d1bdac5abb89e1043d29f06b78394731b44",
+      "sourceTree": "972f6abaa357ae7ba3e6e55b875782323198f8af",
+      "sourceDirty": false,
+      "entryPoint": "./mvnw -B verify -Pscreenshots",
+      "applicationData": "isolated deterministic mock/demo data; no external LLM calls",
+      "sourceManifest": "documentation-screenshots-run-45884345091.json",
+      "workflowRun": "https://github.com/carstenartur/Taxonomy/actions/runs/45884345091",
+      "artifactId": 15149610991,
+      "previousRecord": {
+        "file": "28-proposal-review-queue.png",
+        "width": 1345,
+        "height": 133,
+        "sha256": "bcaecb0996035190523a0176f7f6341ad314c6f3fc9156236a956bc85aaa82cb"
+      },
+      "replacedBytesSha256": "bcaecb0996035190523a0176f7f6341ad314c6f3fc9156236a956bc85aaa82cb",
+      "previousRecordMatchedReplacedBytes": true
     },
     {
       "file": "29-search-fulltext.png",
@@ -211,8 +247,26 @@
     {
       "file": "36-proposal-accepted.png",
       "width": 1345,
-      "height": 156,
-      "sha256": "9d4e10557c8dae698a85884cacacbd8adc1d4c5f58c32df7e2489403ba1f5db7"
+      "height": 217,
+      "sha256": "fdf5df6c46362a0a9a8859660e4423bc19dfe090b10891c801893426d807fb6e",
+      "capturedAt": "2026-11-26T19:43:39.800114979Z",
+      "runStartedAt": "2026-11-26T19:34:50Z",
+      "sourceCommit": "0dec8d1bdac5abb89e1043d29f06b78394731b44",
+      "sourceTree": "972f6abaa357ae7ba3e6e55b875782323198f8af",
+      "sourceDirty": false,
+      "entryPoint": "./mvnw -B verify -Pscreenshots",
+      "applicationData": "isolated deterministic mock/demo data; no external LLM calls",
+      "sourceManifest": "documentation-screenshots-run-45884345091.json",
+      "workflowRun": "https://github.com/carstenartur/Taxonomy/actions/runs/45884345091",
+      "artifactId": 15149610991,
+      "previousRecord": {
+        "file": "36-proposal-accepted.png",
+        "width": 1345,
+        "height": 156,
+        "sha256": "9d4e10557c8dae698a85884cacacbd8adc1d4c5f58c32df7e2489403ba1f5db7"
+      },
+      "replacedBytesSha256": "9d4e10557c8dae698a85884cacacbd8adc1d4c5f58c32df7e2489403ba1f5db7",
+      "previousRecordMatchedReplacedBytes": true
     },
     {
       "file": "39-scored-sunburst.png",
@@ -302,7 +356,25 @@
       "file": "72-complete-copilot-run-result.png",
       "width": 2192,
       "height": 1453,
-      "sha256": "29f70f8567025dbe52d71d683f4a5f69c1ba577d1b22ce83fff6e5ec24312270"
+      "sha256": "7c900001480b9815bf28b98174cbd6e635cc6076a1ba055046c0b739b73c26cf",
+      "capturedAt": "2026-11-26T19:43:39.800114979Z",
+      "runStartedAt": "2026-11-26T19:34:50Z",
+      "sourceCommit": "0dec8d1bdac5abb89e1043d29f06b78394731b44",
+      "sourceTree": "972f6abaa357ae7ba3e6e55b875782323198f8af",
+      "sourceDirty": false,
+      "entryPoint": "./mvnw -B verify -Pscreenshots",
+      "applicationData": "isolated deterministic mock/demo data; no external LLM calls",
+      "sourceManifest": "documentation-screenshots-run-45884345091.json",
+      "workflowRun": "https://github.com/carstenartur/Taxonomy/actions/runs/45884345091",
+      "artifactId": 15149610991,
+      "previousRecord": {
+        "file": "72-complete-copilot-run-result.png",
+        "width": 2192,
+        "height": 1453,
+        "sha256": "29f70f8567025dbe52d71d683f4a5f69c1ba577d1b22ce83fff6e5ec24312270"
+      },
+      "replacedBytesSha256": "29f70f8567025dbe52d71d683f4a5f69c1ba577d1b22ce83fff6e5ec24312270",
+      "previousRecordMatchedReplacedBytes": true
     },
     {
       "file": "72-rich-variants-browser.png",
@@ -416,7 +488,25 @@
       "file": "decision-rationale-template-test-report.png",
       "width": 1191,
       "height": 1684,
-      "sha256": "92905035e4a79e2ec81235380e39f5e4976b007dac2a1b843d051f0a25713594"
+      "sha256": "ada7ed0ea402e6a153f187979e5b9a63196faf0d9ffc0625828d2db29b614894",
+      "capturedAt": "2026-11-26T19:43:39.800114979Z",
+      "runStartedAt": "2026-11-26T19:34:50Z",
+      "sourceCommit": "0dec8d1bdac5abb89e1043d29f06b78394731b44",
+      "sourceTree": "972f6abaa357ae7ba3e6e55b875782323198f8af",
+      "sourceDirty": false,
+      "entryPoint": "./mvnw -B verify -Pscreenshots",
+      "applicationData": "isolated deterministic mock/demo data; no external LLM calls",
+      "sourceManifest": "documentation-screenshots-run-45884345091.json",
+      "workflowRun": "https://github.com/carstenartur/Taxonomy/actions/runs/45884345091",
+      "artifactId": 15149610991,
+      "previousRecord": {
+        "file": "decision-rationale-template-test-report.png",
+        "width": 1191,
+        "height": 1684,
+        "sha256": "92905035e4a79e2ec81235380e39f5e4976b007dac2a1b843d051f0a25713594"
+      },
+      "replacedBytesSha256": "92905035e4a79e2ec81235380e39f5e4976b007dac2a1b843d051f0a25713594",
+      "previousRecordMatchedReplacedBytes": true
     },
     {
       "file": "diagram-print-controls-de.png",

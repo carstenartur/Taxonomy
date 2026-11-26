@@ -61,4 +61,4 @@ After staging the original artifact files and paired prose in the fresh worktree
 
 ## Later selected capture replacement
 
-The two diagram-print toolbar images were refreshed on 26 November with explicit capture-level provenance. The other 75 capture records and the original global source metadata remain historical records. See the [help and capture repair](2026-11-26-help-and-capture-repair.md) for the actual source, recorded mismatches and replacement policy.
+The two diagram-print toolbar images were refreshed on 26 November with explicit capture-level provenance. That toolbar repair retained the other 75 capture records and the original global source metadata. A later integrated capture refreshed five more examples. See the [help and capture repair](2026-11-26-help-and-capture-repair.md) for the actual source, recorded mismatches and replacement policy.
