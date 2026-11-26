@@ -47,6 +47,8 @@ final class QeaWritePlacements {
                     || placement.attributes().containsKey("placementKind") && !placement.attributes().get("placementKind").equals("diagram"))
                 throw fail("QEA_SELECTION_DEPENDENCY", "A diagram occurrence needs a selected or existing view, member and no package parent");
             long diagramId = model.nativeObjects.get(view).id(), objectId = model.objectId(member);
+            checkNativeIdentity(placement, "diagram_id", diagramId);
+            checkNativeIdentity(placement, "object_id", objectId);
             Placement old = before.get(placement.id());
             if (old != null) {
                 if (!old.containerId().equals(view) || !old.artifactId().equals(member))
@@ -94,6 +96,11 @@ final class QeaWritePlacements {
             if (value != null && !value.equals(prior.get("ea:t_diagramobjects:" + field)))
                 throw fail("QEA_LAYOUT_UNSUPPORTED", "Changing an existing native diagram layout requires an explicit layout-aware writer");
         }
+    }
+    private static void checkNativeIdentity(Placement placement, String field, long expected) {
+        String supplied = placement.attributes().get("ea:t_diagramobjects:" + field);
+        if (supplied != null && number(supplied, true) != expected)
+            throw fail("QEA_IDENTITY_CONFLICT", "A raw diagram occurrence identity must agree with its reviewed owner and member");
     }
     private static long coordinate(Placement placement, String field, long fallback) {
         String value = placement.attributes().get("ea:t_diagramobjects:" + field);

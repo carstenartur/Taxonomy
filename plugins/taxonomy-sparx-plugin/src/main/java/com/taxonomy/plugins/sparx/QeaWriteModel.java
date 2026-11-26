@@ -50,6 +50,13 @@ final class QeaWriteModel {
             String guid = add(row, ArtifactKind.VIEW, "diagram_id"); parents.put(guid, parent(packageGuids, row.number("package_id")));
         }
         for (Row row : basis.rows("t_connector")) add(row, ArtifactKind.RELATION, "connector_id");
+        // A new GUID must not resolve a previously dangling reference on an unselected native row.
+        // Reuse the reader's qualified fields; GUID-looking free text remains opaque evidence.
+        for (Row row : basis.rows("t_object")) for (var reference : QeaImplicitReferences.from(row)) {
+            if (!reference.guid()) continue;
+            try { occupied.add(QeaIds.guid(reference.value())); }
+            catch (QeaFailure invalid) { /* Non-GUID native values have no projected reference. */ }
+        }
         before.artifacts().forEach(a -> beforeArtifacts.put(a.id(), a));
         before.relations().forEach(r -> beforeRelations.put(r.id(), r));
         before.placements().forEach(p -> placements.put(p.id(), p));
