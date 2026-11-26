@@ -430,7 +430,7 @@ body.dark-mode .restore-preview {
         forced-color-adjust: auto;
     }
 
-    .tax-node-header.tax-scored .tax-node-actions .btn {
+    .tax-node-header.tax-scored > .tax-node-actions-toggle {
         background: ButtonFace !important;
         border-color: ButtonText !important;
         color: ButtonText !important;

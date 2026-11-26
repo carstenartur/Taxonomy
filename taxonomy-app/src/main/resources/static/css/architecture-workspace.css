@@ -67,7 +67,7 @@
 }
 @media screen and (max-width: 900px) {
     #architectureWorkspace:has(> #architectureSnapshotSource:not([hidden])) {
-        grid-template-columns: auto minmax(0, 1fr);
+        grid-template-columns: minmax(0, 1fr) auto;
         row-gap: .25rem;
     }
     #architectureWorkspace:has(> #architectureSnapshotSource:not([hidden])) > .architecture-source-toolbar { display: contents; }

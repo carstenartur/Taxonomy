@@ -206,6 +206,21 @@
                         </label>
                         <textarea id="businessText" class="form-control mb-3" rows="7"
                                   th:placeholder="#{analyze.placeholder}" placeholder="Example: We need a company-wide system for recording working hours.&#10;&#10;Demo without AI: Enter &quot;produktdemo&quot; and select &quot;Analyze with AI&quot;."></textarea>
+                        <details id="analysisPreview" class="mb-3" data-taxonomy-feature="analysis architecture" hidden>
+                            <summary class="fw-semibold" th:text="#{analysis.preview.title}">Preview changes to the requirement</summary>
+                            <p class="form-text" th:text="#{analysis.preview.hint}">As you type, the preview ranks entries in the selected taxonomies. Scores are provisional and stay outside the saved analysis. Even explicitly excluded topics can score highly.</p>
+                            <p id="analysisPreviewStatus" class="small mb-2" role="status" aria-live="polite"></p>
+                            <button id="analysisPreviewRetry" type="button" class="btn btn-sm btn-outline-secondary mb-2" hidden
+                                    th:text="#{analysis.preview.retry}">Refresh preview</button>
+                            <div id="analysisPreviewResults" hidden>
+                                <h2 id="analysisPreviewTreeHeading" class="h6" th:text="#{analysis.preview.tree}">Provisional decision tree</h2>
+                                <div id="analysisPreviewTree" class="analysis-preview-tree analysis-preview-scroll" role="region" tabindex="0" aria-labelledby="analysisPreviewTreeHeading"></div>
+                                <h2 id="analysisPreviewAssociationsHeading" class="h6 mt-3" th:text="#{analysis.preview.associations}">Connections across taxonomies</h2>
+                                <p class="form-text" th:text="#{analysis.preview.associationHint}">Up to 24 pairs are shown. Both entries match the requirement independently and share a title term found in the text. The full analysis assesses architectural relationships.</p>
+                                <div id="analysisPreviewAssociations" class="analysis-preview-scroll" role="region" tabindex="0" aria-labelledby="analysisPreviewAssociationsHeading"></div>
+                                <p id="analysisPreviewSource" class="form-text text-break mt-2 mb-0"></p>
+                            </div>
+                        </details>
                         <section id="analysisIntakeChoices" class="mb-3" aria-labelledby="analysisIntakeLabel" hidden>
                             <p id="analysisIntakeLabel" class="form-text mb-1" th:text="#{analyze.intake.draft}">Analyze this text as a draft, or review it for a project.</p>
                             <div class="d-flex gap-2 flex-wrap">
@@ -895,14 +910,14 @@
 
                 <!-- Undo / Redo bar -->
                 <div class="card shadow-sm mb-3">
-                    <div class="card-body d-flex align-items-center gap-3 py-2">
+                    <div class="card-body d-flex flex-wrap align-items-center gap-3 py-2">
                         <button id="versionsUndoBtn" class="btn btn-outline-warning btn-sm" th:title="#{versions.undo.title}" title="Undo last change on this branch">
                             &#8617; <span th:text="#{versions.undo}">Undo last change</span>
                         </button>
-                        <span id="versionsUndoInfo" class="text-muted small"></span>
-                        <div class="ms-auto d-flex align-items-center gap-2">
+                        <span id="versionsUndoInfo" class="text-muted small text-break"></span>
+                        <div class="ms-auto d-flex align-items-center gap-2 mw-100">
                             <label for="versionsBranchSelect" class="form-label mb-0 small text-muted" th:text="#{versions.branch.label}">Branch:</label>
-                            <select id="versionsBranchSelect" class="form-select form-select-sm" style="width:auto;min-width:120px;"></select>
+                            <select id="versionsBranchSelect" class="form-select form-select-sm" style="width:auto;min-width:0;max-width:100%;"></select>
                         </div>
                     </div>
                 </div>
@@ -931,7 +946,7 @@
                             <button id="versionsRefreshBtn" class="btn btn-sm btn-outline-secondary" th:title="#{versions.history.refresh}" title="Refresh">&#128260; <span th:text="#{versions.history.refresh}">Refresh</span></button>
                         </div>
                         <div class="card-body p-0">
-                            <div id="versionsTimeline" class="p-3">
+                            <div id="versionsTimeline" class="p-3" th:attr="data-loading-label=#{versions.history.loading}">
                                 <div class="text-muted small" th:text="#{versions.history.loading}">Loading version history…</div>
                             </div>
                         </div>
@@ -1629,7 +1644,7 @@
                     <!-- Content area -->
                     <div class="help-content-area">
                         <div id="helpDocTitle" class="help-doc-title d-none"></div>
-                        <div id="helpDocBody">
+                        <div id="helpDocBody" th:attr="data-loading-label=#{help.loading}">
                             <div class="text-center text-muted py-5">
                                 <span style="font-size:3rem;">📖</span>
                                 <p class="mt-3" th:text="#{help.select.doc}">Select a document from the sidebar to read it here.</p>
@@ -1704,6 +1719,7 @@
 <script type="module" th:src="@{/js/shared/taxonomy-dsl-codemirror.mjs}"></script>
 <script th:src="@{/js/shared/taxonomy-about.js}"></script>
 <script th:src="@{/js/core/taxonomy-analysis-scope.js}"></script>
+<script th:src="@{/js/core/taxonomy-analysis-preview.js}"></script>
 <script th:src="@{/js/core/taxonomy-scoring.js}"></script>
 <script th:src="@{/js/shared/taxonomy-startup-progress.js}"></script>
 <script th:src="@{/js/core/taxonomy-browse.js}"></script>

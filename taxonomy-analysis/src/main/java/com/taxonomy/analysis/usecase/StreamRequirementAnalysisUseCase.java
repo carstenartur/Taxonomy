@@ -26,6 +26,8 @@ public class StreamRequirementAnalysisUseCase {
 
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private CatalogueSnapshotService catalogueSnapshots;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.taxonomy.catalog.snapshot.FrozenCatalogueEmbeddingService embeddingSnapshots;
     private final LlmService llmService;
     private final AiPromptBudgetPolicy promptBudgetPolicy;
 
@@ -45,8 +47,7 @@ public class StreamRequirementAnalysisUseCase {
         var reasonLength = command.analysisReasonLength() != null ? command.analysisReasonLength()
                 : llmService.resolveAnalysisReasonLength(null);
         var language = com.taxonomy.analysis.service.AnalysisLanguageContext.resolve(command.analysisLanguage(), command.requestLocale());
-        try (var catalogue = AdmittedCatalogue.open(catalogueSnapshots, command.modelBinding(), command.workspace());
-             var profile = AdmittedRelationRules.open(command.modelBinding());
+        try (var profile = AdmittedRelationRules.open(command.modelBinding());
              var reasonScope = com.taxonomy.analysis.service.AnalysisReasonContext.open(reasonLength);
              var languageScope = com.taxonomy.analysis.service.AnalysisLanguageContext.open(language);
              var mockScope = "MOCK".equalsIgnoreCase(command.provider())
@@ -129,8 +130,11 @@ public class StreamRequirementAnalysisUseCase {
                             productCoverageGaps, partialReasons, elapsedMillis(startedNanos), coverage));
                 }
             };
-            if (command.analysisScope().legacyFull()) llmService.analyzeStreaming(command.businessText(), callback);
-            else llmService.analyzeStreaming(command.businessText(), command.analysisScope(), callback);
+            try (var catalogue = AdmittedCatalogue.openForScoring(catalogueSnapshots, command.modelBinding(),
+                    command.workspace(), llmService, embeddingSnapshots)) {
+                if (command.analysisScope().legacyFull()) llmService.analyzeStreaming(command.businessText(), callback);
+                else llmService.analyzeStreaming(command.businessText(), command.analysisScope(), callback);
+            }
         } finally {
             try {
                 llmService.clearRequestProvider();

@@ -3,6 +3,10 @@ package com.taxonomy.analysis.usecase;
 import com.taxonomy.catalog.snapshot.CatalogueSnapshotService;
 import com.taxonomy.catalog.snapshot.CatalogueSourceIdentity;
 import com.taxonomy.catalog.snapshot.FrozenCatalogueContext;
+import com.taxonomy.catalog.snapshot.FrozenCatalogueEmbeddingService;
+import com.taxonomy.analysis.service.LlmProvider;
+import com.taxonomy.analysis.service.LlmService;
+import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.catalog.snapshot.RootCatalogueSnapshot;
 import com.taxonomy.dto.AnalysisModelBinding;
 import com.taxonomy.workspace.service.WorkspaceContext;
@@ -18,6 +22,23 @@ public final class AdmittedCatalogue {
 
     public static FrozenCatalogueContext.Scope open(CatalogueSnapshotService snapshots, AnalysisModelBinding binding,
                                                     WorkspaceContext workspace) {
+        return open(snapshots, binding, workspace, null);
+    }
+
+    /** Local scoring reads the same exact-commit relation-enriched vectors in a servlet or a cluster worker. */
+    public static FrozenCatalogueContext.Scope openForScoring(CatalogueSnapshotService snapshots,
+            AnalysisModelBinding binding, WorkspaceContext workspace, LlmService llm, FrozenCatalogueEmbeddingService embeddings) {
+        if (binding == null || llm.isMockMode() || !LlmProvider.LOCAL_ONNX.id().equals(llm.getActiveProviderId())) {
+            return open(snapshots, binding, workspace, null);
+        }
+        if (workspace == null || binding.commit() == null || binding.state() == AnalysisModelBinding.State.MODEL_UNCOMMITTED) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Checkpoint this architecture before local ONNX analysis");
+        }
+        return open(snapshots, binding, workspace, Objects.requireNonNull(embeddings, "Local ONNX catalogue preparation"));
+    }
+
+    private static FrozenCatalogueContext.Scope open(CatalogueSnapshotService snapshots, AnalysisModelBinding binding,
+            WorkspaceContext workspace, FrozenCatalogueEmbeddingService embeddings) {
         if (binding == null) return null;
         requireWorkspace(binding, workspace);
         var identity = new CatalogueSourceIdentity(binding.repositoryId(), workspace.workspaceId(),
@@ -29,6 +50,17 @@ public final class AdmittedCatalogue {
         binding.scope().validateRoots(roots);
         if (!roots.containsAll(binding.rootCodes())) {
             throw new IllegalStateException("The archived catalogue does not contain the admitted roots");
+        }
+        if (embeddings != null) {
+            var repository = workspace.workspaceId() == null
+                    ? RepositoryContext.centralRead(binding.repositoryId(), binding.branch(), workspace.username())
+                    : RepositoryContext.workspace(binding.repositoryId(), workspace.workspaceId(), binding.branch(), workspace.username());
+            try {
+                archived = embeddings.decorate(repository, identity, archived, roots);
+            } catch (FrozenCatalogueEmbeddingService.ProjectionUnavailable stale) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "Prepare the relation projection for this architecture checkpoint before local ONNX analysis", stale);
+            }
         }
         return snapshots.bind(identity, roots, archived);
     }

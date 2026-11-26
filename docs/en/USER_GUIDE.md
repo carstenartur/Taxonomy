@@ -437,6 +437,10 @@ Document language controls generated headings and labels in Word, HTML and Markd
 
 ### Standard Analysis
 
+Open **Preview changes to the requirement** in the requirement form and select one or more taxonomy roots. Try “We need an application for payroll” and replace “payroll” with “email”. After each pause in typing, the provisional decision tree shows up to twelve matches per selected root. Ancestors without scores show where a match sits in the hierarchy.
+
+The preview identifies its scoring method. It compares catalogue terms while local model vectors are being prepared or when embeddings are disabled. Once ready, the ONNX model measures semantic similarity. A possible cross-taxonomy connection names two independently matched entries and the term shared with the requirement. Start the full analysis to save an architecture with assessed relationships.
+
 1. Type your requirement in the textarea.
 2. Select the taxonomy roots and full or **Node assessment only** mode as described above. Leave **Interactive Mode** unchecked for an automatic hierarchical run.
 3. Click the **Analyze with AI** button.

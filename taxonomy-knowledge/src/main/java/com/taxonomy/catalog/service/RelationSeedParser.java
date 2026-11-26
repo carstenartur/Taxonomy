@@ -3,13 +3,14 @@ package com.taxonomy.catalog.service;
 import com.taxonomy.dto.RelationSeedRow;
 import com.taxonomy.model.RelationType;
 import com.taxonomy.model.SeedType;
+import org.apache.commons.csv.CSVFormat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -24,15 +25,12 @@ import java.util.List;
  * {@code Confidence}, {@code SeedType}, {@code ReviewRequired}, and
  * {@code Status}.
  *
- * <p>Rows that cannot be parsed are logged as warnings and skipped.
- * The parser does not throw exceptions for individual malformed rows.
+ * <p>Invalid required field values are logged and their records skipped.
+ * A broken CSV stream (for example, an unterminated quoted field) raises an IOException.
  */
 public final class RelationSeedParser {
 
     private static final Logger log = LoggerFactory.getLogger(RelationSeedParser.class);
-
-    /** Maximum number of columns in the extended CSV format. */
-    private static final int EXTENDED_COLUMN_COUNT = 10;
 
     /** Minimum number of columns required for a valid row. */
     private static final int MIN_COLUMN_COUNT = 3;
@@ -50,38 +48,28 @@ public final class RelationSeedParser {
      */
     public static List<RelationSeedRow> parse(InputStream inputStream) throws IOException {
         List<RelationSeedRow> rows = new ArrayList<>();
-        try (BufferedReader reader = new BufferedReader(
-                new InputStreamReader(inputStream, StandardCharsets.UTF_8))) {
-            String header = reader.readLine(); // skip header row
-            if (header == null) {
+        try (var reader = new InputStreamReader(inputStream, StandardCharsets.UTF_8);
+             var records = CSVFormat.DEFAULT.parse(reader)) {
+            var iterator = records.iterator();
+            if (!iterator.hasNext()) {
                 log.warn("Relation seed CSV is empty.");
                 return Collections.emptyList();
             }
-
-            int lineNumber = 1;
-            String line;
-            while ((line = reader.readLine()) != null) {
-                lineNumber++;
-                if (line.isBlank()) continue;
-
-                RelationSeedRow row = parseLine(line, lineNumber);
-                if (row != null) {
-                    rows.add(row);
-                }
+            iterator.next(); // Header; older seed files may have only three or four columns.
+            while (iterator.hasNext()) {
+                var fields = iterator.next().values();
+                if (fields.length == 1 && fields[0].isBlank()) continue;
+                RelationSeedRow row = parseRow(fields, records.getCurrentLineNumber());
+                if (row != null) rows.add(row);
             }
+        } catch (UncheckedIOException malformed) {
+            throw malformed.getCause();
         }
         return Collections.unmodifiableList(rows);
     }
 
-    /**
-     * Parse a single CSV line into a {@link RelationSeedRow}.
-     *
-     * @param line       the raw CSV line
-     * @param lineNumber the 1-based line number (for error messages)
-     * @return the parsed row, or {@code null} if the line is malformed
-     */
-    static RelationSeedRow parseLine(String line, int lineNumber) {
-        String[] parts = line.split(",", EXTENDED_COLUMN_COUNT);
+    /** Validate one decoded record, reporting the physical source line on bad field values. */
+    private static RelationSeedRow parseRow(String[] parts, long lineNumber) {
         if (parts.length < MIN_COLUMN_COUNT) {
             log.warn("Relation seed CSV line {}: too few columns ({}) — skipping.", lineNumber, parts.length);
             return null;
@@ -99,7 +87,7 @@ public final class RelationSeedParser {
         // Parse relation type
         RelationType relationType;
         try {
-            relationType = RelationType.valueOf(typeStr.toUpperCase());
+            relationType = RelationType.valueOf(typeStr.toUpperCase(java.util.Locale.ROOT));
         } catch (IllegalArgumentException e) {
             log.warn("Relation seed CSV line {}: unknown relation type '{}' — skipping.", lineNumber, typeStr);
             return null;
@@ -141,7 +129,7 @@ public final class RelationSeedParser {
         return value.isEmpty() ? null : value;
     }
 
-    private static double parseConfidence(String value, int lineNumber) {
+    private static double parseConfidence(String value, long lineNumber) {
         if (value == null) return 1.0;
         try {
             double confidence = Double.parseDouble(value);
@@ -158,10 +146,10 @@ public final class RelationSeedParser {
         }
     }
 
-    private static SeedType parseSeedType(String value, int lineNumber) {
+    private static SeedType parseSeedType(String value, long lineNumber) {
         if (value == null) return SeedType.TYPE_DEFAULT;
         try {
-            return SeedType.valueOf(value.toUpperCase());
+            return SeedType.valueOf(value.toUpperCase(java.util.Locale.ROOT));
         } catch (IllegalArgumentException e) {
             log.warn("Relation seed CSV line {}: unknown seed type '{}' — using TYPE_DEFAULT.",
                     lineNumber, value);

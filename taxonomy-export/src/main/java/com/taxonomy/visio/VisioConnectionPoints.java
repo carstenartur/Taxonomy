@@ -35,19 +35,29 @@ public final class VisioConnectionPoints {
         public double length() { return Math.hypot(target.x() - source.x(), target.y() - source.y()); }
     }
 
-    /** A null gutter denotes the original two-point geometry. */
-    public record Route(Endpoints endpoints, Double gutterFraction) { }
+    /** A route can bend at a column gutter or run beneath the lower endpoint. */
+    public record Route(Endpoints endpoints, Double gutterFraction, Double lowerClearance) {
+        public Route(Endpoints endpoints, Double gutterFraction) { this(endpoints, gutterFraction, null); }
+        public double lowerLaneY() {
+            return Math.min(endpoints.source().y(), endpoints.target().y()) - lowerClearance;
+        }
+    }
 
     /** Bounds shared by every shape in a layout column, including wider siblings. */
     public static final class Columns {
         private final NavigableMap<Double, Column> columns = new TreeMap<>();
 
+        private final boolean sparse;
+
         public Columns(List<VisioShape> shapes) {
+            int nodes = 0;
             for (var shape : shapes) {
                 if (!VisioNativeShape.isPresentationOnly(shape) && !VisioNativeShape.isContainer(shape)) {
                     columns.computeIfAbsent(shape.getX(), ignored -> new Column(shape.getX())).add(shape);
+                    nodes++;
                 }
             }
+            sparse = nodes <= 12;
         }
 
         public Route route(VisioConnect link, VisioShape source, VisioShape target) {
@@ -55,6 +65,18 @@ public final class VisioConnectionPoints {
             double left = Math.min(source.getX(), target.getX());
             double right = Math.max(source.getX(), target.getX());
             var leftColumn = columns.get(left);
+            if (sparse && left < right && source.getY() == target.getY() && leftColumn != null
+                    && columns.containsKey(right) && !VisioNativeShape.isContainer(source) && !VisioNativeShape.isContainer(target)) {
+                var span = columns.subMap(left, true, right, true).values();
+                if (span.size() > 2 && span.stream().allMatch(column -> column.rows.firstKey() >= source.getY())
+                        && span.stream().anyMatch(column -> column.obstructs(direct.endpoints(), source, target))) {
+                    var ends = new Endpoints(point(source, Side.BOTTOM), point(target, Side.BOTTOM));
+                    double lane = span.stream().mapToDouble(column -> column.rows.firstKey() - column.halfHeight)
+                            .min().orElseThrow() - .4;
+                    if (lane >= .35)
+                        return new Route(ends, null, Math.min(ends.source().y(), ends.target().y()) - lane);
+                }
+            }
             if (leftColumn == null || !Double.valueOf(right).equals(columns.higherKey(left))
                     || source.getY() == target.getY() || VisioNativeShape.isContainer(source)
                     || VisioNativeShape.isContainer(target)) return direct;

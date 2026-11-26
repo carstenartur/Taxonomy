@@ -642,7 +642,7 @@
     function csvField(value) {
         if (value === null || value === undefined) return '';
         var string = String(value);
-        return /[,"\n]/.test(string) ? '"' + string.replace(/"/g, '""') + '"' : string;
+        return /[,"\r\n]/.test(string) ? '"' + string.replace(/"/g, '""') + '"' : string;
     }
 
     function downloadBlob(blob, filename) {
@@ -745,7 +745,8 @@
                 var id = control.getAttribute('data-taxonomy-format'); control.hidden = !formats.has(id); formats.delete(id);
             });
             document.querySelectorAll('[data-taxonomy-feature]').forEach(function (control) {
-                control.hidden = !capabilities.features.includes(control.getAttribute('data-taxonomy-feature'));
+                const required = control.getAttribute('data-taxonomy-feature').split(/\s+/);
+                control.hidden = !required.every(id => capabilities.features.includes(id));
             });
             var reference = document.getElementById('exportVisio');
             if (!formats.size || !reference) return;

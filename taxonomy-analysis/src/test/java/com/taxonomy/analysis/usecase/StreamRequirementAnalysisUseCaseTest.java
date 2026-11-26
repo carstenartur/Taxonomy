@@ -43,8 +43,9 @@ class StreamRequirementAnalysisUseCaseTest {
     @InjectMocks
     private StreamRequirementAnalysisUseCase useCase;
 
-    @Test
-    void streamingReadsTheAdmittedCatalogueOnTheExecutingThreadAndClosesIt() {
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void streamingReadsTheAdmittedCatalogueOnTheExecutingThreadAndClosesIt(boolean onnx) {
         var snapshots = org.mockito.Mockito.mock(CatalogueSnapshotService.class);
         org.springframework.test.util.ReflectionTestUtils.setField(useCase, "catalogueSnapshots", snapshots);
         var workspace = new WorkspaceContext("alice", "work", "draft", "library");
@@ -57,14 +58,25 @@ class StreamRequirementAnalysisUseCaseTest {
         var snapshot = org.mockito.Mockito.mock(RootCatalogueSnapshot.class);
         org.mockito.Mockito.when(snapshot.rootCode()).thenReturn("CP");
         org.mockito.Mockito.when(snapshots.captureRevision(identity, generation, java.util.Set.of())).thenReturn(List.of(snapshot));
+        var prepared = snapshot;
+        if (onnx) {
+            var embeddings = org.mockito.Mockito.mock(com.taxonomy.catalog.snapshot.FrozenCatalogueEmbeddingService.class);
+            org.springframework.test.util.ReflectionTestUtils.setField(useCase, "embeddingSnapshots", embeddings);
+            org.mockito.Mockito.when(llmService.getActiveProviderId())
+                    .thenReturn(com.taxonomy.analysis.service.LlmProvider.LOCAL_ONNX.id());
+            prepared = org.mockito.Mockito.mock(RootCatalogueSnapshot.class);
+            var repository = com.taxonomy.workspace.service.RepositoryContext.workspace("library", "work", "draft", "alice");
+            org.mockito.Mockito.when(embeddings.decorate(repository, identity, List.of(snapshot), java.util.Set.of("CP")))
+                    .thenReturn(List.of(prepared));
+        }
         var archived = org.mockito.Mockito.mock(FrozenCatalogueContext.Scope.class);
-        org.mockito.Mockito.when(snapshots.bind(identity, java.util.Set.of("CP"), List.of(snapshot))).thenReturn(archived);
+        org.mockito.Mockito.when(snapshots.bind(identity, java.util.Set.of("CP"), List.of(prepared))).thenReturn(archived);
         var command = new StreamRequirementAnalysisCommand("Reading room", null, Locale.ENGLISH, scope,
                 null, null, model, workspace);
         useCase.stream(command, event -> {});
         var order = org.mockito.Mockito.inOrder(snapshots, llmService, archived);
         order.verify(snapshots).captureRevision(identity, generation, java.util.Set.of());
-        order.verify(snapshots).bind(identity, java.util.Set.of("CP"), List.of(snapshot));
+        order.verify(snapshots).bind(identity, java.util.Set.of("CP"), List.of(prepared));
         order.verify(llmService).analyzeStreaming(eq("Reading room"), any());
         order.verify(archived).close();
     }

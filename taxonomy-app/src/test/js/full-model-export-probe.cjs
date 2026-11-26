@@ -116,8 +116,9 @@ async function probe(source, scenario) {
     canonicalFixture.install(context, ['api/export-api.js']);
     vm.runInContext(source, context, {filename: 'taxonomy-export.js'});
     if (scenario === 'csv') {
-        window.TaxonomyExport.exportCsv({zero: 0, fraction: 0.125, invalid: NaN},
-            [{code: 'CP', name: 'Capabilities', children: [{code: 'zero', name: 'Explicit zero'}, {code: 'fraction', name: 'Fraction'}]}]);
+        window.TaxonomyExport.exportCsv({zero: 0, fraction: 0.125, multiline: 17, invalid: NaN},
+            [{code: 'CP', name: 'Capabilities', children: [{code: 'zero', name: 'Explicit zero'}, {code: 'fraction', name: 'Fraction'},
+                {code: 'multiline', name: 'permit\rreview'}]}]);
     } else if (scenario === 'json') {
         window.TaxonomyExport.exportJson({zero: 0}, {}, 'Accepted requirement', 'LOCAL_ONNX');
     } else {

@@ -375,7 +375,7 @@ class VisioHandoffContractTest {
                         List.of(new DiagramEdge("bad", "CP-01", target, "USES", .5)), graph.layout())));
     }
 
-    @Test void committedFixtureRetainsEveryPartExceptExplicitOpeningView() throws Exception {
+    @Test void committedFixtureRetainsEveryPartAndReviewedSparseLayout() throws Exception {
         try (var input = getClass().getResourceAsStream("/visio-handoff-v3/representative.visio.zip")) {
             assertNotNull(input);
             var expectedBundle = bytes(input.readAllBytes());
@@ -384,16 +384,29 @@ class VisioHandoffContractTest {
             assertArrayEquals(expectedBundle.get("mapping-profile.json"), actualBundle.get("mapping-profile.json"));
             var expected = bytes(expectedBundle.get("diagram.vsdx"));
             var actual = bytes(actualBundle.get("diagram.vsdx"));
-            // Retain the published pre-fix package as an independent golden baseline.
-            // Only the explicit opening view is intentionally new; every other
-            // uncompressed native part must remain byte-for-byte identical.
-            String openingView = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
-                    + "<Windows xmlns=\"http://schemas.microsoft.com/office/visio/2012/main\">"
-                    + "<Window ID=\"0\" WindowType=\"Drawing\" ContainerType=\"Page\" Container=\"0\""
-                    + " Page=\"0\" ViewCenterX=\"4.5\" ViewCenterY=\"2\" ViewScale=\"1\"/></Windows>";
-            assertNotNull(expected.put("visio/windows.xml", openingView.getBytes(StandardCharsets.UTF_8)));
+            // The revised card spacing also resizes the opening view and the evidence/requirement pages.
+            // Pin their complete native bytes while retaining the original fixture as the independent model baseline.
+            var layoutDigests = Map.of(
+                    "visio/windows.xml", "2073d5ed8404d59857dc7b1c1e20d736ae3ea81bb108aa3c09a3e7fa1054e8f4",
+                    "visio/pages/pages.xml", "0662680f118f37deb8742b972e75221f9b9699f6f829f91b3af98d277b3efa97",
+                    "visio/pages/page1.xml", "6ce1ea8b5241cbc1a788b7830d1f51d46da09adf31b3847c743ed7334c303a0b",
+                    "visio/pages/page2.xml", "ef4c70f7526b771a816cc02e5f8b45591a9f320bbb1666b554ffba397d87a1da",
+                    "visio/pages/page3.xml", "435e3a989855fb80a2fad69607ac62f65ec987e513675cfc8398dd9353dff682",
+                    "visio/pages/page4.xml", "e50b2ec18e8637d8ebd74ff23186d4d5b853fdc3c5cf02907fdd9a2f787def61");
             assertEquals(expected.keySet(), actual.keySet());
-            for (var entry : expected.entrySet()) assertArrayEquals(entry.getValue(), actual.get(entry.getKey()), entry.getKey());
+            assertTrue(actual.keySet().containsAll(layoutDigests.keySet()));
+            for (var entry : expected.entrySet()) {
+                String part = entry.getKey();
+                if (layoutDigests.containsKey(part))
+                    assertEquals(layoutDigests.get(part), VisioHandoffProfile.sha256(actual.get(part)), part);
+                else
+                    assertArrayEquals(entry.getValue(), actual.get(part), part);
+            }
+            for (int page = 1; page <= 4; page++) {
+                String part = "visio/pages/page" + page + ".xml";
+                assertEquals(shapeData(new String(expected.get(part), StandardCharsets.UTF_8)),
+                        shapeData(new String(actual.get(part), StandardCharsets.UTF_8)), part);
+            }
             var expectedManifest = JSON.readTree(expectedBundle.get("manifest.json"));
             ((com.fasterxml.jackson.databind.node.ObjectNode) expectedManifest.get("artifact"))
                     .put("sha256", VisioHandoffProfile.sha256(actualBundle.get("diagram.vsdx")));

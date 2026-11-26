@@ -39,6 +39,19 @@ class RelationSeedParserTest {
     }
 
     @Test
+    void preservesQuotedCommasQuotesAndNewlinesWithoutShiftingReviewEvidence() throws IOException {
+        String csv = "SourceCode,TargetCode,RelationType,Description,SourceStandard,SourceReference,Confidence,SeedType,ReviewRequired,Status\r\n"
+                + "BP,IP,PRODUCES,\"Collect, then \"\"publish\"\"\r\nfindings\",CIVIC,guide,0.41,FRAMEWORK_SEED,true,proposed\r\n";
+        assertThat(RelationSeedParser.parse(toStream(csv))).singleElement().satisfies(row -> {
+            assertThat(row.description()).isEqualTo("Collect, then \"publish\"\r\nfindings");
+            assertThat(row.sourceStandard()).isEqualTo("CIVIC");
+            assertThat(row.confidence()).isEqualTo(0.41);
+            assertThat(row.reviewRequired()).isTrue();
+            assertThat(row.status()).isEqualTo("proposed");
+        });
+    }
+
+    @Test
     void parseLegacyFourColumnFormat() throws IOException {
         String csv = "SourceCode,TargetCode,RelationType,Description\n"
                 + "CP,CR,REALIZES,Capabilities realized by Core Services\n";

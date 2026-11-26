@@ -99,11 +99,17 @@ public class FrozenCatalogueEmbeddingService {
         return result;
     }
 
+    public static final class ProjectionUnavailable extends IllegalStateException {
+        ProjectionUnavailable() {
+            super("Frozen embeddings require a complete relation projection at the exact source commit");
+        }
+    }
+
     private static IdentitySnapshot requireExact(IdentitySnapshot snapshot, CatalogueSourceIdentity source) {
         if (snapshot == null || snapshot.readModel() != ReadModel.PROJECTION
                 || snapshot.readinessState() != ReadinessState.READY || source.sourceCommit() == null
                 || !source.sourceCommit().equals(snapshot.commitId())) {
-            throw new IllegalStateException("Frozen embeddings require a complete relation projection at the exact source commit");
+            throw new ProjectionUnavailable();
         }
         return snapshot;
     }

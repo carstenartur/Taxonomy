@@ -842,11 +842,7 @@ public class AnalysisApiController {
     }
 
     private int businessTextLimit() {
-        int configured = analysisRuntimeSettings != null
-                ? analysisRuntimeSettings.getInt("limits.max-business-text", 5_000)
-                : 5_000;
-        // Invalid persisted/operator values must fail bounded rather than disabling the guard.
-        return Math.max(100, Math.min(100_000, configured));
+        return AnalysisRuntimeSettings.businessTextLimit(analysisRuntimeSettings);
     }
 
     private void enforceBusinessTextLimit(String businessText) {

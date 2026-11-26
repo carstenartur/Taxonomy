@@ -26,7 +26,7 @@ public final class ArchitectureReportDocxRenderer {
             String shortSnapshot = snapshot == null ? labels.unknown()
                     : snapshot.substring(0, Math.min(12, snapshot.length()));
             runningIdentity(document, labels, labels.architectureTitle() + " · " + shortSnapshot
-                    + " · " + labels.requirementVersion() + " " + report.evidence().requirementVersionNumber());
+                    + " · " + labels.requirementVersion() + " " + Objects.toString(report.evidence().requirementVersionNumber(), labels.unknown()));
             document.getProperties().getCoreProperties().setTitle(report.title());
             document.getProperties().getCoreProperties().setSubjectProperty(report.requirement());
             writer.heading(report.title(), 0, null);
@@ -49,11 +49,11 @@ public final class ArchitectureReportDocxRenderer {
     }
 
     public byte[] render(ArchitectureReport report) {
-        return render(report, "en");
+        return render(report, report.getLanguageTag());
     }
 
     public byte[] render(ArchitectureReport report, String language) {
-        return render(report, language, Map.of());
+        return render(report, language, report.getNodeReasons());
     }
 
     public byte[] render(ArchitectureReport report, String language, Map<String, String> nodeReasons) {

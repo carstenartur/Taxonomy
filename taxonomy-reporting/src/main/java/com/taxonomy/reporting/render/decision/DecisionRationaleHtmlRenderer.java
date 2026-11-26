@@ -90,7 +90,7 @@ public class DecisionRationaleHtmlRenderer implements ReportRendererExtension {
 
         html.append("<footer class=\"running-footer\"><span>")
                 .append(text(footerText(report, labels)))
-                .append("</span><span class=\"page-counter\"></span></footer>");
+                .append("</span></footer>");
 
         var options = report.scope().options();
         var visibleTree = visibleTree(report);
@@ -465,8 +465,9 @@ public class DecisionRationaleHtmlRenderer implements ReportRendererExtension {
             DecisionRationaleReport report,
             DecisionReportLabels labels) {
         html.append("<section class=\"report-section appendix\"><div class=\"section-kicker\">03</div><h2>")
-                .append(text(labels.appendix())).append("</h2><h3>")
+                .append(text(labels.appendix())).append("</h2><h3 id=\"decision_leaf_ranking\">")
                 .append(text(labels.leadingLeaves())).append("</h3>")
+                .append("<div class=\"decision-table-scroll\" role=\"region\" aria-labelledby=\"decision_leaf_ranking\" tabindex=\"0\">")
                 .append("<table><thead><tr><th>").append(text(labels.rank()))
                 .append("</th><th>").append(text(labels.node()))
                 .append("</th><th>").append(text(labels.score()))
@@ -484,7 +485,7 @@ public class DecisionRationaleHtmlRenderer implements ReportRendererExtension {
                     .append(text(leaf.hierarchyPath())).append("</td><td>")
                     .append(text(leaf.reason())).append("</td></tr>");
         }
-        html.append("</tbody></table><h3>").append(text(labels.taxonomyBasis()))
+        html.append("</tbody></table></div><h3>").append(text(labels.taxonomyBasis()))
                 .append("</h3><dl class=\"evidence-list\">");
         evidence(html, labels.catalogue(), report.metadata().taxonomyDataSource());
         evidence(html, labels.sourceFile(), report.metadata().taxonomyCatalogueFile());
@@ -528,7 +529,7 @@ public class DecisionRationaleHtmlRenderer implements ReportRendererExtension {
                 <style>
                 :root{--navy:#0b1f33;--teal:#007a78;--teal-light:#e1f4f3;--blue-light:#e9f0f7;--ink:#26303a;--muted:#64707c;--line:#cdd5dc;--paper:#fff;--warning:#fff4d6;--warning-border:#b98200}
                 *{box-sizing:border-box}html{background:#eef1f4}body{margin:0 auto;max-width:1120px;background:var(--paper);color:var(--ink);font:16px/1.5 "Segoe UI",Arial,sans-serif;box-shadow:0 0 30px rgba(11,31,51,.12)}
-                .running-footer{position:fixed;left:0;right:0;bottom:0;height:34px;padding:8px 18mm;border-top:1px solid var(--line);background:#fff;color:var(--muted);font-size:10px;display:flex;justify-content:space-between;z-index:20}.page-counter:after{content:""}
+                .running-footer{position:fixed;left:0;right:0;bottom:0;height:34px;padding:8px 18mm;border-top:1px solid var(--line);background:#fff;color:var(--muted);font-size:10px;display:flex;justify-content:space-between;z-index:20}
                 .title-page,.report-section{padding:20mm 18mm 24mm}.title-page{min-height:285mm;position:relative;page-break-after:always;background:linear-gradient(150deg,#fff 0,#fff 70%,#edf7f6 100%)}
                 .brand-rule{height:8px;background:linear-gradient(90deg,var(--navy) 0 72%,var(--teal) 72%);margin-bottom:36px}.eyebrow,.section-kicker,.small-label{color:var(--teal);font-weight:700;letter-spacing:.12em;text-transform:uppercase;font-size:12px}
                 h1{font-size:44px;line-height:1.12;color:var(--navy);max-width:800px;margin:18px 0}.subtitle{font-size:21px;color:var(--muted);max-width:760px}.status{display:inline-block;margin-top:18px;padding:8px 14px;border-radius:999px;font-weight:700;background:var(--teal-light);color:var(--teal)}.status-draft_incomplete,.status-no_result{background:var(--warning);color:#745400}
@@ -541,11 +542,12 @@ public class DecisionRationaleHtmlRenderer implements ReportRendererExtension {
                 .decision-diagram{margin:24px 0;page-break-inside:avoid}.decision-diagram svg{width:100%;height:auto;border:1px solid var(--line);border-radius:6px;background:#fff}.decision-diagram figcaption{font-size:11px;color:var(--muted);text-align:right}.rationale-grid{display:grid;grid-template-columns:1fr 1.3fr;gap:22px}.rationale-grid>div{background:#f6f8fa;padding:14px 18px;border-top:4px solid var(--teal)}.rationale-grid h3{margin-top:0}.row-leading{background:var(--teal-light)!important}.row-rejected{color:var(--muted)}.row-missing{font-style:italic;color:var(--muted)}
                 .evidence-list{display:grid;grid-template-columns:210px 1fr;border-top:1px solid var(--line)}.evidence-list dt,.evidence-list dd{margin:0;padding:8px;border-bottom:1px solid var(--line)}.evidence-list dt{font-weight:700;color:var(--navy)}.evidence-list dd{overflow-wrap:anywhere}pre{white-space:pre-wrap;background:#f6f8fa;padding:12px;border:1px solid var(--line)}
                 .recorded-reasons p{white-space:pre-wrap;overflow-wrap:anywhere;break-inside:auto}.recorded-reasons h3,.recorded-reasons h4{break-after:avoid}.relationship-evidence{break-inside:avoid;margin-bottom:1em}.relationship-evidence p{margin:.4em 0}td{overflow-wrap:anywhere}
-                @media(max-width:760px){body{box-shadow:none}.title-page,.report-section{padding:28px 20px}.metadata-grid,.rationale-grid{grid-template-columns:1fr}.chapter-heading{display:block}.parent-score{display:inline-block;margin-top:12px}.running-footer{display:none}}
+                @media screen and (max-width:760px){body{box-shadow:none}.title-page,.report-section{padding:28px 20px}.metadata-grid,.rationale-grid{grid-template-columns:1fr}.chapter-heading{display:block}.parent-score{display:inline-block;margin-top:12px}.running-footer{display:none}}
                 @media screen and (max-width:760px){.decision-table-scroll{overflow-x:auto}}
-                @media print{html,body{background:#fff;box-shadow:none;max-width:none}.running-footer{position:fixed}.page-counter:after{content:PAGE_COUNTER}@page{size:A4;margin:14mm 12mm 18mm}.title-page,.report-section{padding:12mm 10mm 18mm}.title-page{min-height:255mm}}
+                @media print{html,body{background:#fff;box-shadow:none;max-width:none}.running-footer{display:none}
+                @page{size:A4;margin:14mm 12mm 18mm;@bottom-left{content:"FOOTER_TEXT";width:145mm;font:8pt Arial,sans-serif;color:#485568}@bottom-right{content:PAGE_COUNTER;font:8pt Arial,sans-serif;color:#485568;white-space:nowrap}}.title-page,.report-section{padding:12mm 10mm 18mm}.title-page{min-height:255mm;padding:8mm}.title-page .brand-rule{margin-bottom:5mm}.title-page h1{font-size:30pt;margin:3mm 0}.title-page .subtitle{font-size:14pt;margin:2mm 0}.title-page .status{margin-top:3mm}.title-page .requirement-card{margin-top:5mm;padding:3mm 4mm}.title-page .metadata-grid{margin-top:4mm}.title-page .metadata-item{padding:2mm 3mm;font-size:10pt;break-inside:avoid}}
                 </style>
-                """.replace("PAGE_COUNTER", pageCounter);
+                """.replace("PAGE_COUNTER", pageCounter).replace("FOOTER_TEXT", cssString(footerText(report, labels)));
     }
 
     private void metadataItem(StringBuilder html, String label, String value) {
@@ -667,13 +669,12 @@ public class DecisionRationaleHtmlRenderer implements ReportRendererExtension {
                 .replace("'", "&#39;");
     }
 
-    private String cssString(String value) {
-        if (value == null) {
-            return "";
-        }
-        return value.replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("\n", "\\A " );
+    static String cssString(String value) {
+        if (value == null) return "";
+        // This CSS string is embedded in an HTML style element. A literal less-than sign
+        // could close the element even when it appears inside CSS quotes.
+        return value.replace("\\", "\\\\").replace("\"", "\\\"").replace("<", "\\3C ")
+                .replace("\r", "\\D ").replace("\n", "\\A ").replace("\f", "\\C ");
     }
 
     private String attr(String value) {

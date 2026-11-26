@@ -49,6 +49,9 @@ public class AnalyzeRequirementUseCase {
     private com.taxonomy.catalog.snapshot.CatalogueSnapshotService catalogueSnapshots;
 
     @Autowired
+    private com.taxonomy.catalog.snapshot.FrozenCatalogueEmbeddingService embeddingSnapshots;
+
+    @Autowired
     private com.taxonomy.analysis.relations.RequirementRelationSearchService requirementRelationSearch;
 
     private final LlmService llmService;
@@ -163,7 +166,10 @@ public class AnalyzeRequirementUseCase {
             ViewContext viewContext = resolveViewContext(command);
             operation = InProcessAnalysisOperation.open(operationContext(command, viewContext), null);
 
-            catalogueScope = AdmittedCatalogue.open(catalogueSnapshots, command.modelBinding(), command.workspaceContext());
+            catalogueScope = command.retainedAnalysis() != null
+                    ? AdmittedCatalogue.open(catalogueSnapshots, command.modelBinding(), command.workspaceContext())
+                    : AdmittedCatalogue.openForScoring(catalogueSnapshots, command.modelBinding(), command.workspaceContext(),
+                            llmService, embeddingSnapshots);
             if (command.retainedAnalysis() != null) {
                 var original = command.retainedAnalysis().getViewContext();
                 if (original == null || viewContext == null || !java.util.Objects.equals(original.basedOnCommit(), viewContext.basedOnCommit())

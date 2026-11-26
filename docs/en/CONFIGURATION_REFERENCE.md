@@ -226,6 +226,7 @@ These switches are for deterministic test evidence. A production process should 
 | `TAXONOMY_EMBEDDING_ENABLED` | `embedding.enabled` | `false` | Enables local embedding inference and semantic search. Independent of the selected chat provider. |
 | `TAXONOMY_EMBEDDING_MODEL_PROFILE` | `embedding.model.profile` | `MULTILINGUAL_MINILM_L12` | Selects model identity, pooling, token limit and default query prefix. `BGE_SMALL_EN` retains the legacy English model contract. |
 | `TAXONOMY_EMBEDDING_MODEL_DIR` | `embedding.model.dir` | empty | Mounted, pre-downloaded model directory. Preferred for offline and Kubernetes deployments. |
+| `TAXONOMY_PREVIEW_VECTOR_DIRECTORY` | `embedding.preview.cache-directory` | empty | Optional directory for prepared catalogue vectors. Mount a writable persistent volume to reuse vectors after a pod restart. The two cache slots contain only derived catalogue data. Use a directory outside the model bundle. |
 | `TAXONOMY_EMBEDDING_MODEL_NAME` | `embedding.model.name` | empty | Empty uses the selected profile's pinned URL. An explicit remote reference or local path is used when no directory is supplied. |
 | `TAXONOMY_EMBEDDING_QUERY_PREFIX` | `embedding.query.prefix` | unset; profile default | Unset uses the selected profile's prefix (none for multilingual MiniLM; English retrieval prefix for BGE). An explicitly empty value disables the prefix. |
 | `TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD` | `embedding.allow-download` | `false` | Explicitly permits runtime model download. Also requires suitable network policy/egress. |

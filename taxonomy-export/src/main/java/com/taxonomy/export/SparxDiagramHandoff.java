@@ -51,6 +51,12 @@ public final class SparxDiagramHandoff {
             attributes.put("tag:taxonomy.mappingProfile", SparxMappingProfile.PROFILE + "@3");
             attributes.put("tag:taxonomy.sourceId", node.id());
             if (node.catalogueUuid() != null) attributes.put("tag:taxonomy.catalogueUuid", node.catalogueUuid());
+            if (node.responsibility() != null) {
+                var owner = node.responsibility();
+                attributes.put("tag:taxonomy.responsibilityUnitId", owner.unitId());
+                attributes.put("tag:taxonomy.responsibilityName", owner.name());
+                attributes.put("tag:taxonomy.responsibilitySourceId", owner.sourceId());
+            }
             attributes.put("tag:taxonomy.sourceType", node.type());
             attributes.put("tag:taxonomy.relevance", Double.toString(node.relevance()));
             attributes.put("tag:taxonomy.anchor", Boolean.toString(node.anchor()));

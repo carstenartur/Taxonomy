@@ -24,7 +24,7 @@ final class VisioPresentation {
         Map<String, String> relationKeys = new HashMap<>();
         int ordinal = 0;
         for (var connect : overview.getConnects()) relationKeys.put(id(connect), "R" + (++ordinal));
-        boolean dense = overview.getConnects().size() > 6 || overview.getShapes().size() > 12;
+        boolean dense = usesCompactKeys(overview.getShapes().size(), overview.getConnects().size());
         boolean german = document.isGerman();
         int unplaced = 0;
         boolean shortenedOverviewType = false;
@@ -33,7 +33,7 @@ final class VisioPresentation {
             Map<String, VisioShape> pageNodes = new HashMap<>();
             page.getShapes().forEach(shape -> pageNodes.put(shape.getId(), shape));
             var occupied = new Occupancy();
-            var columns = options == null ? null : new VisioConnectionPoints.Columns(page.getShapes());
+            var columns = options != null || !dense ? new VisioConnectionPoints.Columns(page.getShapes()) : null;
             for (var shape : page.getShapes()) {
                 // A container's interior is intentionally occupied by members;
                 // only its title blocks captions. Avoid huge spatial bucket
@@ -69,7 +69,9 @@ final class VisioPresentation {
                     height = text.contains("\n") ? .46 : .30;
                 }
                 var from = pageNodes.get(connect.getFromShape()); var to = pageNodes.get(connect.getToShape());
-                Box position = columns == null ? null : placeOnRoute(occupied, columns.route(connect, from, to), width, height);
+                var route = columns == null ? null : columns.route(connect, from, to);
+                Box position = route != null && (options != null || route.lowerClearance() != null)
+                        ? placeOnRoute(occupied, route, width, height) : null;
                 if (position == null) position = place(occupied, from, to, width, height);
                 if (position == null) {
                     // An omitted caption is explicit; its canonical connector is never omitted.
@@ -109,16 +111,21 @@ final class VisioPresentation {
         double dx = end.x() - start.x(), dy = end.y() - start.y();
         for (double fraction : new double[]{.5, .30, .70, .15, .85}) {
             double x = start.x() + dx * (route.gutterFraction() == null ? fraction : route.gutterFraction());
-            var candidate = new Box(x, start.y() + dy * fraction, width, height);
+            double y = route.lowerClearance() == null ? start.y() + dy * fraction : route.lowerLaneY();
+            var candidate = new Box(x, y, width, height);
             if (candidate.left() >= .1 && candidate.bottom() >= .1 && !occupied.intersects(candidate)) return candidate;
         }
         return null;
     }
 
+    static boolean usesCompactKeys(int nodes, int edges) {
+        return edges > 6 || nodes > 12;
+    }
+
     private static Box place(Occupancy occupied, VisioShape from, VisioShape to, double width, double height) {
-        // Fixed 35 candidates; bounded local spatial lookups avoid O(nodes*edges).
-        for (double fraction : new double[]{.5, .35, .65, .2, .8}) {
-            for (double offset : new double[]{0, .4, -.4, .8, -.8, 1.2, -1.2}) {
+        // Try the stroke across its length before moving a caption away from its connector.
+        for (double offset : new double[]{0, .4, -.4, .8, -.8, 1.2, -1.2}) {
+            for (double fraction : new double[]{.5, .25, .75, .35, .65, .2, .8}) {
                 Box candidate = new Box(from.getX() + fraction * (to.getX() - from.getX()),
                         from.getY() + fraction * (to.getY() - from.getY()) + offset, width, height);
                 if (candidate.left() >= .1 && candidate.bottom() >= .1 && !occupied.intersects(candidate)) return candidate;

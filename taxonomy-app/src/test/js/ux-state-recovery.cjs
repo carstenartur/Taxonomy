@@ -2176,3 +2176,128 @@ test('reformulation promotion preserves draft evidence and stops before creation
         assert.deepEqual(evidence,{scores:{CI:80},businessText:'Arbeitsschutz',sourceDocument:{id:14,originalText:'Source evidence'}});
     }
 });
+
+test('editing a requirement debounces a scoped preview, rejects a late response and preserves saved scores', async () => {
+    const f = dom();
+    const input = f.element('textarea', 'businessText'), panel = f.element('details', 'analysisPreview');
+    for (const id of ['Status','Results','Tree','Associations','Source','Retry']) f.element('div', 'analysisPreview' + id);
+    const node = suffix => f.document.getElementById('analysisPreview' + suffix);
+    const requests = [], preparations = [], timers = new Map();
+    let seq = 0, selected = ['BP','IP'];
+    const score = Object.freeze({'BP-03':74});
+    const account = {analysisExecutionAllowed:true};
+    const window = {location:{hash:'#analyze'}, TaxonomyState:Object.freeze({currentScores:score}),
+        TaxonomyApiClient:{getAccountContext:async () => account},
+        TaxonomyI18n:{t:(key,...values) => [key,...values].join(' ')},
+        TaxonomyAnalysisScope:{read() { if (!selected) throw new Error('Select a taxonomy'); return {taxonomyRoots:selected}; }},
+        TaxonomyArchitectureLifecycle:{ready:async () => ({}), selectedAnalysisModel:() => ({expectedSemanticRevision:3})},
+        TaxonomyArchitectureWorkspace:{ready:async () => true},
+        TaxonomyArchitectureWorkflow:{getScope:() => ({repositoryId:'library',workspaceId:'private',branch:'draft'})},
+        AnalysisApi:{preparePreview(model) {preparations.push(model);return Promise.resolve(null);},
+            preview(payload,signal) {const request = {payload,signal,...deferred()};requests.push(request);return request.promise;}}
+    };
+    vm.runInNewContext(source('core/taxonomy-analysis-preview.js'), {window,document:f.document,AbortController,URLSearchParams,
+        setTimeout:fn => (timers.set(++seq,fn),seq), clearTimeout:key => timers.delete(key)});
+    const flush = async () => {for (const fn of timers.values()) fn();timers.clear();await tick();};
+    const type = async text => {input.value = text;await input.fire('input');};
+    await type('Archiv'); await flush();
+    assert.equal(requests.length,0);
+    panel.open = true;
+    await panel.fire('toggle');
+    await type('Archiv für Rechnungen');
+    await flush();
+    const old = requests[0];
+    assert.equal(old.payload.businessText, 'Archiv für Rechnungen');
+    assert.equal(old.payload.expectedSemanticRevision,3);
+    assert.deepEqual(old.payload.taxonomyRoots, ['BP','IP']);
+    await type('Digitale Bibliothek');await flush();
+    assert.ok(old.signal.aborted);
+    const preview = {method:'CATALOGUE_ONNX',catalogueRevision:'R1',semanticRevision:3,nodes:[
+        {code:'IP-3',parentCode:null,score:85,nameEn:'Book record'}, {code:'BP',parentCode:null,score:null,nameDe:'Abläufe'},
+        {code:'BP-1',parentCode:'BP',score:90,nameDe:'Bücher ausleihen'}],associations:[
+        {sourceCode:'BP-1',targetCode:'IP-3',sharedTerms:['Buch']}]};
+    requests[1].resolve(preview); await tick();
+    old.resolve({method:'CATALOGUE_LEXICAL',nodes:[],associations:[]}); await tick();
+    assert.match(node('Status').textContent,/semantic.*matched 2/);
+    const entries = node('Tree').querySelectorAll('li');
+    assert.equal(entries.length,3);
+    assert.equal(entries[0].children[0].textContent,'Abläufe (BP)');
+    assert.equal(entries[0].children[1].tagName,'ul');
+    assert.equal(entries[1].children[1].textContent,' 90/100');
+    assert.match(node('Associations').querySelector('li').textContent,/Bücher ausleihen.*Book record/);
+    assert.match(node('Source').textContent,/R1.*3/);
+    assert.equal(window.TaxonomyState.currentScores,score);
+    selected = null;
+    await f.document.fire('taxonomy:analysis-selection-changed');await flush();
+    assert.equal(requests.length,2);
+    assert.ok(node('Results').hidden);
+    assert.equal(node('Status').textContent,'Select a taxonomy');
+    selected = [];
+    await f.document.fire('taxonomy:analysis-selection-changed');await flush();
+    await f.document.fire('taxonomy:page-activated',{detail:{page:'architecture'}});
+    assert.ok(requests[2].signal.aborted);
+    requests[2].reject(new Error('late'));await tick();
+    assert.ok(node('Retry').hidden);
+    await type('');await flush();
+    assert.equal(requests.length,3);
+    await f.document.fire('taxonomy:page-activated',{detail:{page:'analyze'}});await flush();
+    await f.document.fire('taxonomy:analysis-selection-changed');await flush();
+    assert.equal(preparations.length,1);
+    assert.equal(preparations[0].expectedSemanticRevision,3);
+    assert.ok(!('businessText' in preparations[0]));
+    assert.match(node('Status').textContent,/empty/);
+    await type('Lesesaal');await flush();
+    requests[3].reject(Object.assign(new Error('catalogue unavailable'),{status:503}));await tick();
+    assert.match(node('Status').textContent,/unavailable/);
+    assert.equal(node('Retry').hidden,false);
+    await node('Retry').click();await flush();
+    requests[4].resolve({method:'CATALOGUE_LEXICAL',semanticRevision:3,nodes:[],associations:[]});await tick();
+    assert.match(node('Status').textContent,/lexical.*noMatches/);
+    assert.ok(node('Results').hidden);
+    assert.equal(node('Retry').hidden,false);
+
+    // A previous lifecycle initialization must never submit or render after a historical change.
+    const ready = deferred();
+    window.TaxonomyArchitectureLifecycle.ready = () => ready.promise;
+    window.location.search = '?commit=' + 'b'.repeat(40);
+    await node('Retry').click();await flush();
+    await type('Bibliotheksausweis');await flush();
+    assert.equal(requests.length,5);
+    window.location.search = ''; // A delayed navigation restored the current URL before resolving.
+    ready.resolve();await tick();
+    assert.equal(requests.length,5, 'A request for a historical model cannot fall back to the working head');
+    assert.match(node('Status').textContent,/unavailable/);
+    window.location.search = '?commit=' + 'b'.repeat(40);
+    window.TaxonomyArchitectureLifecycle.selectedAnalysisModel = () => ({expectedCommit:'b'.repeat(40)});
+    await node('Retry').click();await flush();await tick();
+    assert.equal(requests[5].payload.expectedCommit,'b'.repeat(40));
+    requests[5].resolve({...preview,commit:'c'.repeat(40)});await tick();
+    assert.match(node('Status').textContent,/unavailable/);
+    assert.ok(node('Results').hidden);
+
+    window.location.search = '';
+    window.TaxonomyArchitectureLifecycle.selectedAnalysisModel = () => null;
+    const visible = {repositoryId:'library',workspaceId:'private',branch:'draft'};
+    window.TaxonomyArchitectureWorkflow = {getScope:() => visible};
+    window.TaxonomyArchitectureWorkspace = {ready:async () => true,analysisScope:async () => ({...visible,branch:'other'})};
+    await node('Retry').click();await flush();await tick();
+    assert.equal(requests.length,6, 'An unconfirmed branch cannot supply the implicit model');
+    window.TaxonomyArchitectureWorkspace.analysisScope = async () => visible;
+    await node('Retry').click();await flush();await tick();
+    assert.equal(requests.length,7, 'The Analyze tab uses its confirmed source while the editor is suspended');
+    input.value = 'A newly restored draft';
+    requests[6].resolve(preview);await tick();await flush();await tick();
+    assert.equal(requests[7].payload.businessText,input.value);
+    assert.ok(node('Results').hidden);
+
+    account.analysisExecutionAllowed = false;
+    window.TaxonomyRoleSurface = {ready:Promise.resolve(),getContext:() => account};
+    await f.document.fire('taxonomy:roles-ready');await flush();
+    assert.ok(requests[7].signal.aborted);
+    assert.match(node('Status').textContent,/permission/);
+    assert.equal(requests.length,8);
+    await type('');await flush();
+    assert.equal(preparations.length,1,'Read-only accounts must not warm the protected index');
+    assert.match(node('Status').textContent,/permission/);
+    assert.ok(node('Retry').hidden);
+});

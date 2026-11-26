@@ -453,6 +453,10 @@ Die Dokumentsprache steuert generierte Überschriften und Beschriftungen in Word
 
 ### Standardanalyse
 
+Öffnen Sie im Anforderungsformular **Änderungen am Anforderungstext ausprobieren** und wählen Sie eine oder mehrere Teiltaxonomien. Schreiben Sie beispielsweise „Wir benötigen eine Gehaltsabrechnung“ und ersetzen Sie „Gehaltsabrechnung“ durch „E-Mail-Verwaltung“. Nach jeder Schreibpause zeigt der vorläufige Decision Tree bis zu zwölf Treffer pro gewählter Teiltaxonomie. Vorfahren ohne eigene Punktzahl geben den Pfad im Baum an.
+
+Die Anzeige nennt das verwendete Verfahren. Während die lokalen Modellvektoren vorbereitet werden oder wenn das eingebettete Modell deaktiviert ist, vergleicht die Vorschau Katalogbegriffe. Mit vorbereitetem ONNX-Modell misst sie die inhaltliche Ähnlichkeit. Ein möglicher Zusammenhang nennt zwei unabhängig gefundene Einträge und den gemeinsamen Begriff aus der Anforderung. Für eine gespeicherte Architektur mit bewerteten Beziehungen starten Sie die vollständige Analyse.
+
 1. Geben Sie Ihre Anforderung im Textbereich ein.
 2. Wählen Sie die Teiltaxonomien und den vollständigen Modus oder **Nur Knotenbewertung** wie oben beschrieben. Lassen Sie **Interactive Mode** für einen automatischen hierarchischen Lauf deaktiviert.
 3. Klicken Sie auf die Schaltfläche **Analyze with AI**.

@@ -321,7 +321,7 @@ public class VisioPageContentsConverter implements Converter {
             }
         }
         writeCharacterStyle(writer, box.height() >= 1 ? 12 : 10, "#172B4D");
-        writeLineGeometry(writer, width, angle, route.gutterFraction());
+        writeLineGeometry(writer, width, angle, route);
         writeProperties(writer, connect.getProperties());
 
         writer.startNode("Text");
@@ -495,15 +495,30 @@ public class VisioPageContentsConverter implements Converter {
         writer.endNode();
     }
 
-    private static void writeLineGeometry(
+    private void writeLineGeometry(
             HierarchicalStreamWriter writer,
-            double width, double angle, Double gutter) {
+            double width, double angle, VisioConnectionPoints.Route route) {
+        Double gutter = route.gutterFraction();
         writer.startNode("Section");
         writer.addAttribute("N", "Geometry");
         writer.addAttribute("IX", "0");
-        if (gutter != null) writeCell(writer, "NoFill", "1");
+        if (gutter != null || route.lowerClearance() != null) writeCell(writer, "NoFill", "1");
         writeGeometryRow(writer, "MoveTo", 1, 0, 0, null, null);
-        if (gutter == null) {
+        if (route.lowerClearance() != null) {
+            // Rotate page-vertical legs into the 1-D connector's coordinate system. The lane
+            // stays below the lower port when a reader moves either attached shape.
+            double lane = route.lowerLaneY();
+            double first = layout.length(lane - route.endpoints().source().y());
+            double last = layout.length(lane - route.endpoints().target().y());
+            String base = "(MIN(BeginY,EndY)-" + decimal(layout.length(route.lowerClearance()));
+            String start = base + "-BeginY)";
+            String end = base + "-EndY)";
+            writeGeometryRow(writer, "LineTo", 2, first * Math.sin(angle), first * Math.cos(angle),
+                    start + "*SIN(Angle)", start + "*COS(Angle)");
+            writeGeometryRow(writer, "LineTo", 3, width + last * Math.sin(angle), last * Math.cos(angle),
+                    "Width+" + end + "*SIN(Angle)", end + "*COS(Angle)");
+            writeGeometryRow(writer, "LineTo", 4, width, 0, "Width", null);
+        } else if (gutter == null) {
             writeGeometryRow(writer, "LineTo", 2, width, 0, "Width", null);
         } else {
             // Convert the two horizontal page-axis legs to the rotating 1-D shape's coordinates.

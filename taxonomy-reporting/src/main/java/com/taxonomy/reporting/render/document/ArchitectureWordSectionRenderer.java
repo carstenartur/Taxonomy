@@ -155,13 +155,13 @@ public final class ArchitectureWordSectionRenderer {
         writer.table(
                 List.of(labels.titleLabel(), labels.identifier()),
                 List.of(
-                        row(labels.project(), e.projectId()),
-                        row(labels.requirementId(), e.requirementId()),
+                        row(labels.project(), value(e.projectId(), labels)),
+                        row(labels.requirementId(), value(e.requirementId(), labels)),
                         row(
                                 labels.requirementVersion(),
-                                e.requirementVersionId() + " / v" + e.requirementVersionNumber()),
-                        row(labels.analysisSnapshot(), e.snapshotId()),
-                        row(labels.graphDigest(), e.graphSha256()),
+                                version(e, labels)),
+                        row(labels.analysisSnapshot(), value(e.snapshotId(), labels)),
+                        row(labels.graphDigest(), value(e.graphSha256(), labels)),
                         row(labels.repository(), value(e.repositoryId(), labels)),
                         row(labels.workspace(), value(e.workspaceId(), labels)),
                         row(labels.branch(), value(e.branch(), labels)),
@@ -194,8 +194,8 @@ public final class ArchitectureWordSectionRenderer {
         }
     }
 
-    private List<String> row(String name, Object value) {
-        return List.of(name, String.valueOf(value));
+    private List<String> row(String name, String value) {
+        return List.of(name, value);
     }
 
     /** Equal recorded reasons share their value while retaining every source-field label. */
@@ -241,8 +241,14 @@ public final class ArchitectureWordSectionRenderer {
         return result;
     }
 
-    private String value(String text, DecisionReportLabels labels) {
-        return text == null ? labels.unknown() : text;
+    private static String version(ArchitectureReportDocument.SnapshotEvidence source, DecisionReportLabels labels) {
+        if (source.requirementVersionNumber() == null) return value(source.requirementVersionId(), labels);
+        String version = "v" + source.requirementVersionNumber();
+        return source.requirementVersionId() == null ? version : source.requirementVersionId() + " / " + version;
+    }
+
+    private static String value(Object field, DecisionReportLabels labels) {
+        return Objects.toString(field, labels.unknown());
     }
 
     private String percentage(double score) {

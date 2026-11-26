@@ -57,6 +57,8 @@ Normalization allocates weights. It proves neither fulfilment, necessity, probab
 
 **Independent roots:** `analyzeWithBudget` and `analyzeStreaming` assess each root separately on a 0–100 scale, without a sum-to-100 prompt or child-budget normalization. A root response of `20` remains `20`; `0` and `100` remain distinct. The local ONNX path retains its root similarity score without allocation, and mock roots retain their bounded demonstration values. Positive root scores become budgets only for their *children*. A legitimate single-child category still follows the child-budget rule.
 
+During a full local ONNX assessment, Taxonomy embeds the requirement once per traversal or distributed root task. Editing the requirement starts a fresh comparison. Scoring a selected architecture uses the archived catalogue and the relation projection for its Git checkpoint. The interactive preview can use the selected catalogue before a checkpoint exists.
+
 The generative `root-relevance-v2` contract also distinguishes `RELEVANT`
 (positive score), `IRRELEVANT` (supported zero) and `UNRESOLVED` (no numeric
 score, with a reason and question). Needed existing services can be relevant.

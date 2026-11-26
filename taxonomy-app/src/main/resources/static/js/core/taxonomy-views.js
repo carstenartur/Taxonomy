@@ -2839,8 +2839,26 @@
     function buildMermaidTreeExport(data, scores) {
         var lines = ['graph LR'];
 
+        var usedIds = new Set();
+        var nodeIds = new Map();
+
+        function uniqueId(base) {
+            var id = base;
+            var suffix = 1;
+            while (usedIds.has(id)) id = base + '_' + (++suffix);
+            usedIds.add(id);
+            return id;
+        }
+
         function mermaidId(code) {
-            return code.replace(/[^a-zA-Z0-9_]/g, '_');
+            if (!nodeIds.has(code)) {
+                // Keep familiar catalogue IDs readable. A prefix keeps arbitrary imported codes
+                // away from Mermaid keywords, numeric tokens and the group namespace.
+                var base = code.replace(/[^A-Za-z0-9_]/g, '_');
+                if (!/^[A-Z][A-Z0-9_-]*$/.test(code)) base = 'node_' + base;
+                nodeIds.set(code, uniqueId(base));
+            }
+            return nodeIds.get(code);
         }
 
         function mermaidLabel(node) {
@@ -2870,7 +2888,7 @@
 
         data.forEach(function (root) {
             if (isTaxonomyContainer(root)) {
-                lines.push('    subgraph cluster_' + mermaidId(root.code) + '["'
+                lines.push('    subgraph ' + uniqueId('cluster_' + root.code.replace(/[^A-Za-z0-9_]/g, '_')) + '["'
                     + containerLabel(root, scores).replace(/"/g, '&quot;') + '"]');
                 (root.children || []).forEach(writeRoot);
                 lines.push('    end');
