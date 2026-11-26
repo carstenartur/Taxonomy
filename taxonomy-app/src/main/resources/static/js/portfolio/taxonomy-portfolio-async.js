@@ -20,10 +20,12 @@
     const jobs = new Map();
     const jobPolls = new Map();
     const pendingRetries = new Set();
+    const capabilityDisabledControls = new WeakSet();
     let pageActive = true;
-    let account = null;
+    let mutationAccess = 'pending';
     let locale = 'en';
     let dialogResolve = null;
+    let mappingReviewPending = false;
 
     const messages = {
         en: {
@@ -58,6 +60,8 @@
             result: 'Result',
             moreItems: 'More items are available through the job resource.',
             permissionDenied: 'Your role can view this information but cannot change it.',
+            permissionPending: 'Checking permission to edit the portfolio…',
+            permissionUnavailable: 'Editing is unavailable because permissions could not be checked. Reload the page to try again.',
             evidenceTitle: 'Document review decision',
             evidence: 'Evidence or rationale',
             comment: 'Comment',
@@ -107,6 +111,8 @@
             result: 'Ergebnis',
             moreItems: 'Weitere Einträge sind über die Jobressource verfügbar.',
             permissionDenied: 'Ihre Rolle darf diese Information sehen, aber nicht verändern.',
+            permissionPending: 'Die Berechtigung zum Bearbeiten des Portfolios wird geprüft…',
+            permissionUnavailable: 'Das Bearbeiten ist nicht verfügbar, da die Berechtigungen nicht geprüft werden konnten. Laden Sie die Seite erneut.',
             evidenceTitle: 'Prüfentscheidung dokumentieren',
             evidence: 'Evidenz oder Begründung',
             comment: 'Kommentar',
@@ -167,7 +173,7 @@
             const requestUrl = resolveUrl(input);
             const method = String((init && init.method)
                 || (input instanceof Request ? input.method : 'GET')).toUpperCase();
-            const sanitizedInit = sanitizeRequest(requestUrl, init);
+            const sanitizedInit = sanitizeRequest(requestUrl, method, init);
             const response = await nextFetch(input, sanitizedInit);
 
             if (method !== 'POST' || response.status !== 202 || !isAnalysisSubmission(requestUrl)) {
@@ -207,7 +213,12 @@
         window.fetch = wrapped;
     }
 
-    function sanitizeRequest(url, init) {
+    function sanitizeRequest(url, method, init) {
+        if (method === 'PATCH' && url.origin === window.location.origin
+                && url.pathname.startsWith(applicationBasePath + '/api/projects/')
+                && /^\/api\/projects\/\d+\/analysis-mappings\/elements\/\d+$/.test(url.pathname.slice(applicationBasePath.length))) {
+            return init; // This endpoint receives text entered explicitly in the mapping review dialog.
+        }
         if (!init || typeof init.body !== 'string'
                 || !String(init.headers && (init.headers['Content-Type']
                     || init.headers.get && init.headers.get('Content-Type')) || '')
@@ -252,6 +263,7 @@
         normalizeProjectNavigation();
         ensureDecisionDialog();
         ensureJobCenter();
+        applyCapabilities();
         loadAccountCapabilities();
         renderJobs();
         pollActiveJobs();
@@ -348,31 +360,66 @@
 
     async function loadAccountCapabilities() {
         try {
-            account = await window.TaxonomyPortfolioApi.getAccount();
+            const account = await window.TaxonomyPortfolioApi.getAccount();
+            if (account?.architectureMutationAllowed === true) mutationAccess = 'allowed';
+            else if (account?.architectureMutationAllowed === false) mutationAccess = 'denied';
+            else mutationAccess = 'unavailable';
         } catch (error) {
-            account = null;
+            mutationAccess = 'unavailable';
         }
         applyCapabilities();
     }
 
     function applyCapabilities() {
-        if (!account || account.architectureMutationAllowed) return;
+        const page = document.getElementById('portfolioMain');
+        if (!page) return;
+        const changed = page.dataset.mutationAccess !== mutationAccess;
+        page.dataset.mutationAccess = mutationAccess;
+        const reason = mutationAccess === 'pending' ? m('permissionPending')
+            : mutationAccess === 'unavailable' ? m('permissionUnavailable') : m('permissionDenied');
+        const notice = document.getElementById('portfolioMutationAccessMessage');
+        if (notice) {
+            notice.hidden = mutationAccess === 'allowed';
+            if (!notice.hidden && notice.textContent !== reason) notice.textContent = reason;
+        }
+
+        document.querySelectorAll('.mapping-review, .add-solution-coverage, .add-product-candidate, .add-product-coverage, .product-candidate-review')
+            .forEach(function (control) {
+                applyMutationControl(control, reason);
+                if (control.matches('form')) {
+                    control.querySelectorAll('input, select, button').forEach(field => applyMutationControl(field, reason));
+                }
+            });
+        if (changed) document.dispatchEvent(new CustomEvent('taxonomy:portfolio-mutation-access-changed'));
+        if (mutationAccess !== 'denied') return;
         const selectors = [
             '[data-bs-target="#projectModal"]',
             '[data-bs-target="#requirementModal"]',
             '[data-bs-target="#solutionModal"]',
             '[data-bs-target="#productModal"]',
             '#proposeSolutionsBtn', '#detectConflictsBtn',
-            '.requirement-confirm', '.mapping-review', '.save-solution-action',
-            '.confirm-requirement-link', '.add-solution-coverage',
-            '.add-product-candidate', '.product-candidate-review',
-            '.add-product-coverage', '.conflict-review'
+            '.requirement-confirm', '.save-solution-action', '.confirm-requirement-link',
+            '.conflict-review'
         ];
         document.querySelectorAll(selectors.join(',')).forEach(function (control) {
             control.disabled = true;
             control.setAttribute('aria-disabled', 'true');
             control.setAttribute('title', m('permissionDenied'));
         });
+    }
+
+    function applyMutationControl(control, reason) {
+        if (mutationAccess !== 'allowed') {
+            capabilityDisabledControls.add(control);
+            control.disabled = true;
+            control.setAttribute('aria-disabled', 'true');
+            control.setAttribute('title', reason);
+        } else if (capabilityDisabledControls.delete(control)) {
+            control.removeAttribute('aria-disabled');
+            control.removeAttribute('title');
+            // The main portfolio recomputes form submits and candidate reviews against its busy/source state.
+            if (!control.matches('button[type="submit"], .product-candidate-review')) control.disabled = false;
+        }
     }
 
     function ensureJobCenter() {
@@ -877,37 +924,43 @@
         document.addEventListener('click', function (event) {
             const mapping = event.target.closest('.mapping-review');
             const requirementLink = event.target.closest('.confirm-requirement-link');
-            const solutionCoverage = event.target.closest('.add-solution-coverage');
-            const productCoverage = event.target.closest('.add-product-coverage');
             const conflict = event.target.closest('.conflict-review');
-            if (!mapping && !requirementLink && !solutionCoverage && !productCoverage && !conflict) return;
-            if (event.target.disabled) return;
+            const control = mapping || requirementLink || conflict;
+            if (!control) return;
             event.preventDefault();
             event.stopImmediatePropagation();
-            if (mapping) reviewMapping(mapping);
+            if (control.disabled || (mapping ? mutationAccess !== 'allowed' : mutationAccess === 'denied')) return;
+            if (mapping) reviewMapping(mapping).catch(showError);
             else if (requirementLink) confirmRequirementLink(requirementLink);
-            else if (solutionCoverage) addSolutionCoverage(solutionCoverage);
-            else if (productCoverage) addProductCoverage(productCoverage);
             else reviewConflict(conflict);
         }, true);
     }
 
     async function reviewMapping(button) {
         const mappingId = Number(button.dataset.mappingId);
-        const action = document.querySelector(
-            '.mapping-action-select[data-mapping-id="' + mappingId + '"]').value;
-        const decision = await requestDecision({
-            title: m('evidenceTitle'),
-            evidenceRequired: action !== 'UNDECIDED'
-        });
-        if (!decision) return;
-        await guardedRequest(button,
-            body => window.TaxonomyPortfolioApi.updateElementMapping(currentProjectId(), mappingId, body), {
-                reviewStatus: 'CONFIRMED',
-                actionStatus: action,
-                actionEvidence: decision.evidence || null,
-                comment: decision.comment || null
+        const {snapshotId, status} = button.dataset;
+        const projectId = Number(button.dataset.projectId);
+        const isSelected = () => button.isConnected && projectId === currentProjectId()
+            && document.querySelector('.snapshot-select.active')?.dataset.snapshotId === snapshotId;
+        if (mappingReviewPending || !['CONFIRMED', 'REJECTED'].includes(status)
+                || !snapshotId || !Number.isSafeInteger(mappingId) || mappingId <= 0 || !isSelected()
+                || !document.getElementById('portfolioBusy').classList.contains('d-none')) return;
+
+        mappingReviewPending = true;
+        try {
+            const decision = await requestDecision({
+                title: m('evidenceTitle'), evidenceRequired: status === 'CONFIRMED'
             });
+            if (!decision || !isSelected() || mutationAccess !== 'allowed') return;
+            await guardedRequest(button,
+                body => window.TaxonomyPortfolioApi.updateElementMapping(projectId, mappingId, body), {
+                    reviewStatus: status,
+                    actionEvidence: decision.evidence || null,
+                    comment: decision.comment || null
+                }, snapshotId);
+        } finally {
+            mappingReviewPending = false;
+        }
     }
 
     async function confirmRequirementLink(button) {
@@ -926,44 +979,6 @@
             });
     }
 
-    async function addSolutionCoverage(button) {
-        const projectSolutionId = Number(button.dataset.projectSolutionId);
-        const review = document.querySelector(
-            '.solution-node-review[data-project-solution-id="' + projectSolutionId + '"]').value;
-        const decision = await requestDecision({
-            title: m('evidenceTitle'), evidenceRequired: review === 'CONFIRMED'
-        });
-        if (!decision) return;
-        await guardedRequest(button,
-            body => window.TaxonomyPortfolioApi.addCatalogSolutionCoverage(Number(button.dataset.solutionId), body), {
-                nodeCode: document.querySelector(
-                    '.solution-node-code[data-project-solution-id="' + projectSolutionId + '"]').value,
-                coveragePercent: Number(document.querySelector(
-                    '.solution-node-coverage[data-project-solution-id="' + projectSolutionId + '"]').value),
-                evidence: decision.evidence || null,
-                reviewStatus: review
-            });
-    }
-
-    async function addProductCoverage(button) {
-        const productId = Number(button.dataset.productId);
-        const review = document.querySelector(
-            '.product-node-review[data-product-id="' + productId + '"]').value;
-        const decision = await requestDecision({
-            title: m('evidenceTitle'), evidenceRequired: review === 'CONFIRMED'
-        });
-        if (!decision) return;
-        await guardedRequest(button,
-            body => window.TaxonomyPortfolioApi.addProductCoverage(productId, body), {
-                nodeCode: document.querySelector(
-                    '.product-node-code[data-product-id="' + productId + '"]').value,
-                coveragePercent: Number(document.querySelector(
-                    '.product-node-coverage[data-product-id="' + productId + '"]').value),
-                evidence: decision.evidence || null,
-                reviewStatus: review
-            });
-    }
-
     async function reviewConflict(button) {
         const status = button.dataset.status;
         const decision = await requestDecision({
@@ -979,7 +994,7 @@
             });
     }
 
-    async function guardedRequest(button, execute, body) {
+    async function guardedRequest(button, execute, body, snapshotId) {
         const isCurrent = window.TaxonomyApiClient.captureContext();
         const projectId = currentProjectId();
         button.disabled = true;
@@ -987,7 +1002,12 @@
             await execute(body);
             if (!isCurrent() || currentProjectId() !== projectId) return;
             announce(locale === 'de' ? 'Entscheidung wurde gespeichert.' : 'Decision saved.');
-            refreshCurrentProject(currentProjectId());
+            if (snapshotId) {
+                const selected = document.querySelector('.snapshot-select.active');
+                if (selected?.dataset.snapshotId === snapshotId) selected.click();
+                return;
+            }
+            refreshCurrentProject(projectId);
             window.setTimeout(function () {
                 if (!isCurrent() || currentProjectId() !== projectId) return;
                 const selected = document.querySelector('.snapshot-select.active');
@@ -996,11 +1016,12 @@
         } catch (error) {
             if (isCurrent() && currentProjectId() === projectId && error.code !== 'ABORTED') showError(error);
         } finally {
-            button.disabled = false;
+            button.disabled = button.getAttribute('aria-disabled') === 'true';
         }
     }
 
     async function requestDecision(options) {
+        if (dialogResolve) return null;
         const isCurrent = window.TaxonomyApiClient.captureContext();
         const projectId = currentProjectId();
         const decision = await showDecisionDialog(options);
@@ -1098,7 +1119,7 @@
     }
 
     function currentProjectId() {
-        return Number(window.localStorage.getItem('taxonomy.portfolio.projectId')) || null;
+        return Number(document.getElementById('projectWorkspace')?.dataset.projectId) || null;
     }
 
     function isAnalysisSubmission(url) {

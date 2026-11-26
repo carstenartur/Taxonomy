@@ -25,11 +25,12 @@
     <th:block th:fragment="localActions"><span data-i18n="page.title">Project Requirement Portfolio</span></th:block>
 </header>
 
-<main id="portfolioMain" class="container-fluid py-3 px-lg-4">
+<main id="portfolioMain" class="container-fluid py-3 px-lg-4" data-mutation-access="pending">
     <div id="portfolioError" class="alert alert-danger d-none" role="alert"></div>
     <div id="portfolioInfo" class="alert alert-info d-none" role="status"></div>
     <button id="portfolioSourceRetry" class="btn btn-sm btn-outline-primary mb-3" type="button" hidden
             th:text="#{startup.ui.sourceRetry}">Check the server again</button>
+    <p id="portfolioMutationAccessMessage" class="small text-body-secondary" role="status">Checking permission to edit the portfolio…</p>
 
     <div class="row g-3">
         <aside class="col-12 col-xl-3" aria-labelledby="projectListHeading">
@@ -93,7 +94,7 @@
                                 <button id="refreshPortfolioBtn" class="btn btn-outline-secondary" type="button">
                                     ↻ <span data-i18n="action.refresh">Refresh</span>
                                 </button>
-                                <button id="analyzeAllBtn" class="btn btn-primary" type="button">
+                                <button id="analyzeAllBtn" class="btn btn-primary" type="button" disabled>
                                     ▶ <span data-i18n="action.analyze.all">Analyze all</span>
                                 </button>
                                 <button id="proposeSolutionsBtn" class="btn btn-outline-primary" type="button">
@@ -112,6 +113,8 @@
                                         <li><a id="projectVersioningLink" class="dropdown-item" data-i18n="nav.project.versioning">Versioning</a></li>
                                     </ul>
                                 </div>
+                                <p id="analyzeAllUnavailable" class="small text-body-secondary mb-0 w-100"
+                                   data-i18n="error.analyze.empty" hidden>Add a requirement before analyzing this project.</p>
                             </div>
                         </div>
                     </div>

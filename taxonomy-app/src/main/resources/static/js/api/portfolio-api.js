@@ -218,8 +218,9 @@ window.TaxonomyPortfolioApi = (function () {
                 + '/elements/' + positiveInteger(mappingId, 'mappingId'), 'PATCH', body);
         },
         compareRequirementAnalyses: function (projectId, requirementId, newer, older) {
-            return getJson(requirementPath(projectId, requirementId) + '/analyses/' + encodeURIComponent(newer)
-                + '/diff/' + encodeURIComponent(older));
+            positiveInteger(requirementId, 'requirementId');
+            return getJson(projectPath(projectId) + '/snapshots/diff?older=' + encodeURIComponent(older)
+                + '&newer=' + encodeURIComponent(newer));
         },
         updateElementMapping: function (projectId, mappingId, body) {
             return sendJson(projectPath(projectId) + '/analysis-mappings/elements/' + positiveInteger(mappingId, 'mappingId'), 'PATCH', body);
