@@ -395,7 +395,7 @@
             <dependency>
                 <groupId>org.webjars.npm</groupId>
                 <artifactId>iconv-lite</artifactId>
-                <version>0.6.3</version>
+                <version>0.7.3</version>
             </dependency>
             <dependency>
                 <groupId>org.webjars.npm</groupId>
