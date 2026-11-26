@@ -184,7 +184,7 @@ final class QeaDatabase {
             case "t_xref" -> "SELECT xrefid, name, type, client, CASE WHEN lower(name) = 'stereotypes' THEN description END AS description" + from;
             case "usys_system" -> "SELECT property, CASE WHEN lower(property) = 'projectguid' THEN value END AS value" + from;
             case "t_objectproperties" -> mode == ReadMode.ADMBW_REFERENCES
-                    ? "SELECT " + String.join(", ", required) + ", value" + from
+                    ? "SELECT " + String.join(", ", required) + ", " + sourceTagValue(connection) + from
                         + " WHERE lower(property) IN ('quelle', 'source') AND object_id IN ("
                         + "SELECT object_id FROM t_object WHERE stereotype = 'ServiceSpecification')"
                     : "SELECT " + String.join(", ", required) + from;
@@ -242,6 +242,15 @@ final class QeaDatabase {
             }
         }
         return List.copyOf(result);
+    }
+
+    private static String sourceTagValue(Connection connection) throws SQLException {
+        try (var statement = connection.createStatement(); var rows = statement.executeQuery(
+                "SELECT 1 FROM pragma_table_info('t_objectproperties') WHERE lower(name)='notes'")) {
+            if (!rows.next()) return "value";
+            // EA templates can declare NOCASE. The memo sentinel is an exact, case-sensitive marker.
+            return "CASE WHEN value COLLATE BINARY='<memo>' THEN coalesce(nullif(notes COLLATE BINARY,''),value) ELSE value END AS value";
+        }
     }
 
     private String bounded(String value) {
