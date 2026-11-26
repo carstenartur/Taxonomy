@@ -283,7 +283,7 @@ class PortfolioUiAcceptanceIT {
         fill("versionText","The architecture shall retain immutable evidence for capability 9, including supplier clarifications.");
         fill("changeReason","Clarify requirement 9 after requirement 10 was completed");
         click(By.cssSelector("#newVersionForm button[type='submit']"));
-        click(By.cssSelector("#newVersionForm > .requirement-intake-review > [data-intake-choice='CHANGE']"));
+        click(By.cssSelector("#newVersionForm .modal-body > .requirement-intake-review > [data-intake-choice='CHANGE']"));
         try {
             wait.until(textPresent(By.id("currentText"),"supplier clarifications"));
         } catch (RuntimeException failure) {

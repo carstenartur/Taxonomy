@@ -49,7 +49,30 @@
         }
     }
     function node(tag, text) { var value = document.createElement(tag); if (text !== undefined) value.textContent = text; return value; }
-    function cancel(state) { state.cancellation++; state.selected=null; if (state.choose) { state.choose(null); state.choose = null; } }
+    function updateSubmitLabel(state) {
+        var submit = state.options.submitElement || state.form.querySelector?.('button[type="submit"]');
+        if (!submit) return;
+        var enabled = state.options.enabled?.() !== false;
+        state.section.hidden = !enabled;
+        submit.dataset.intakeLabel = !enabled ? state.options.inactiveSubmitLabel
+            : state.selected ? label('Save selection','Auswahl speichern') : label('Review text','Text prüfen');
+        var value = submit.dataset.intakePendingLabel || submit.dataset.intakeLabel;
+        submit.textContent = value; submit.setAttribute('aria-label',value);
+    }
+    function setPendingLabel(form, value) {
+        var state=forms.get(form), submit=state?.options.submitElement || form.querySelector?.('button[type="submit"]');
+        if(!submit)return;
+        if(!state && value && !submit.dataset.intakePendingLabel) submit.dataset.intakeIdleLabel=submit.textContent;
+        if(value)submit.dataset.intakePendingLabel=value;
+        else delete submit.dataset.intakePendingLabel;
+        if(state)updateSubmitLabel(state);
+        else {
+            submit.textContent=value || submit.dataset.intakeIdleLabel || submit.textContent;
+            submit.setAttribute('aria-label',submit.textContent);
+            if(!value)delete submit.dataset.intakeIdleLabel;
+        }
+    }
+    function cancel(state) { state.cancellation++; state.selected=null; updateSubmitLabel(state); if (state.choose) { state.choose(null); state.choose = null; } }
     function invalidate(state) {
         state.generation++; state.response = null; state.pending = null; state.commandCapture = null; cancel(state);
         state.section.replaceChildren(node('p', label('Review updates when the text is ready.', 'Die Prüfung wird nach der Texteingabe aktualisiert.')));
@@ -76,9 +99,11 @@
         }
         if (!options?.textElement) throw new Error('Requirement intake needs a text field');
         var section = node('section'); section.className = 'requirement-intake-review border rounded p-3 my-3';
+        section.tabIndex=-1;
         section.setAttribute('aria-label', label('Requirement review', 'Anforderungsprüfung')); section.setAttribute('aria-live', 'polite');
         var state = {form:form,options:options,section:section,generation:0,cancellation:0,response:null,pending:null,selected:null,choose:null,scope:scope()};
-        forms.set(form,state); form.append(section);
+        forms.set(form,state); (options.reviewContainer || form.querySelector?.('.modal-body') || form).append(section);
+        updateSubmitLabel(state);
         options.textElement.addEventListener('input',function () {
             if (options.textElement.value.trim()) clearFieldError(options.textElement);
             edited(state);
@@ -110,6 +135,7 @@
     ['taxonomy:entity-context-changed','taxonomy:architecture-source-changed','taxonomy:repository-context-changed']
         .forEach(function (event) { document.addEventListener(event,scopeChanged); });
     function review(state) {
+        if(state.options.enabled?.() === false)return Promise.resolve(null);
         var text = state.options.textElement.value;
         if (!text || !text.trim()) return Promise.resolve(null);
         if (!state.contextReady && window.TaxonomyArchitectureLifecycle?.ready) {
@@ -148,6 +174,7 @@
         state.selected = {choice:choice,projectId:candidate?.projectId ?? project(state),
             requirementId:candidate?.requirementId ?? null,expectedVersionId:candidate?.requirementVersionId ?? null,
             expectedContentHash:candidate?.contentHash ?? null,inputHash:response.inputHash};
+        updateSubmitLabel(state);
         if (state.choose) { var finish=state.choose;state.choose=null;finish(state.selected); }
     }
     function button(state,text,choice,candidate,capture,response) {
@@ -174,7 +201,11 @@
                 candidate.sourceVersion?label('Source version ','Quellversion ')+candidate.sourceVersion:null,
                 label('Commit ','Commit ')+candidate.sourceCommit.slice(0,12)
             ].filter(Boolean).join(' · ')));
-            if(candidate.classification) article.append(node('p',candidate.classification+(candidate.rationale?' — '+candidate.rationale:'')));
+            if(candidate.classification) {
+                var classifications=de?{DUPLICATE:'Duplikat',CHANGE:'Änderung',ADDITION:'Ergänzung',CONFLICT:'Konflikt',NONE:'Kein Bezug'}
+                    :{DUPLICATE:'Duplicate',CHANGE:'Change',ADDITION:'Addition',CONFLICT:'Conflict',NONE:'No relationship'};
+                article.append(node('p',(classifications[candidate.classification]||candidate.classification)+(candidate.rationale?' — '+candidate.rationale:'')));
+            }
             (candidate.quotes||[]).forEach(function(quote){article.append(node('blockquote',quote));});
             var local=candidate.repositoryId===response.scope?.repositoryId
                 && (candidate.workspaceId||'')===(response.scope?.workspaceId||'') && candidate.branch===response.scope?.branch;
@@ -195,7 +226,12 @@
             article.append(link);state.section.append(article);
         });
         state.section.append(button(state,label('Create a separate new requirement','Separate neue Anforderung erstellen'),'NEW',null,capture,response));
-        var stop=node('button',label('Cancel','Abbrechen'));stop.type='button';stop.className='btn btn-outline-secondary btn-sm mt-2';stop.addEventListener('click',function(){cancel(state);});state.section.append(stop);
+        var help=node('a',label('How requirement review works','So funktioniert die Anforderungsprüfung'));
+        var helpPath='/?lang='+(de?'de':'en')+'#help/PROJECT_REQUIREMENT_PORTFOLIO/requirement-intake';
+        help.href=window.TaxonomyI18n?.resolveUrl?.(helpPath)||helpPath;help.target='_blank';help.rel='noopener noreferrer';
+        help.className='d-block mt-2 small';state.section.append(help);
+        var stop=node('button',label('Continue editing text','Text weiterbearbeiten'));stop.type='button';stop.className='btn btn-outline-secondary btn-sm mt-2';stop.dataset.intakeAction='edit';
+        stop.addEventListener('click',function(){cancel(state);state.options.textElement.focus();});state.section.append(stop);
     }
     async function prepare(form,payload,projectId) {
         var state=forms.get(form);
@@ -217,6 +253,7 @@
         if(!choice){state.section.focus();choice=await new Promise(function(resolve){state.choose=resolve;});}
         if(!choice||!matching(state,capture)) return null;
         state.selected=null;
+        updateSubmitLabel(state);
         state.commandCapture=capture;
         return Object.assign({},choice,{requirement:payload});
     }
@@ -248,5 +285,5 @@
             [a,b,c,d,e,f,g,hh].forEach(function(value,index){h[index]=(h[index]+value)>>>0;});}
         return h.map(value=>value.toString(16).padStart(8,'0')).join('');
     }
-    window.TaxonomyRequirementIntake={attach:attach,prepare:prepare,prepareVersion:prepareVersion,inputHash:inputHash,isCurrent:isCurrent};
+    window.TaxonomyRequirementIntake={attach:attach,prepare:prepare,prepareVersion:prepareVersion,inputHash:inputHash,isCurrent:isCurrent,setPendingLabel:setPendingLabel};
 }());

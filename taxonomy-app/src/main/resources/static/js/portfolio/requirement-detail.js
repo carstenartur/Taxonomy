@@ -373,7 +373,10 @@
     function renderVersions() {
         const list = document.getElementById('versionList');
         list.textContent = '';
-        if (!state.versions.length) return renderEmpty(list, t('noVersions'));
+        if (!state.versions.length) {
+            updateVersionSelection();
+            return renderEmpty(list, t('noVersions'));
+        }
         state.versions.forEach(version => {
             const button = document.createElement('button');
             button.type = 'button';
@@ -395,6 +398,23 @@
     }
 
     function updateVersionSelection() {
+        const version = state.selectedVersion;
+        const action = document.getElementById('reanalyzeRequirement');
+        const number = version?.versionNumber ?? '—';
+        const label = locale === 'de' ? 'Version ' + number + ' analysieren' : 'Analyze version ' + number;
+        action.textContent = label;
+        action.setAttribute('aria-label', label);
+        const hint = document.getElementById('analysisVersionHint');
+        if (hint) {
+            const current = state.requirement?.currentVersion;
+            const historical = version && current && version.id !== current.id;
+            hint.hidden = !historical;
+            hint.textContent = historical ? (locale === 'de'
+                ? 'Ausgewählt ist eine frühere Version. Der aktuelle Anforderungstext ist Version ' + current.versionNumber + '.'
+                : 'An earlier version is selected. The current requirement text is version ' + current.versionNumber + '.') : '';
+            if (historical) action.setAttribute('aria-describedby', hint.id);
+            else action.removeAttribute('aria-describedby');
+        }
         document.getElementById('versionList').querySelectorAll('[data-version-id]').forEach(button => {
             const selected = Boolean(state.selectedVersion
                 && String(state.selectedVersion.id) === String(button.dataset.versionId));
@@ -1100,7 +1120,13 @@
     function versionRetryLabel(retry) {
         const button=document.querySelector('#newVersionForm button[type="submit"]');
         if(!button.dataset.versionOriginalLabel) button.dataset.versionOriginalLabel=button.textContent;
-        button.textContent=retry?(locale==='de'?'Gespeicherten Vorgang wiederholen':'Retry saved operation'):button.dataset.versionOriginalLabel;
+        const pending=retry?(locale==='de'?'Gespeicherten Vorgang wiederholen':'Retry saved operation'):null;
+        if(window.TaxonomyRequirementIntake?.setPendingLabel) {
+            window.TaxonomyRequirementIntake.setPendingLabel(document.getElementById('newVersionForm'),pending);
+        } else {
+            button.textContent=pending||button.dataset.versionOriginalLabel;
+            button.setAttribute?.('aria-label',button.textContent);
+        }
     }
 
     function showSavedRequirement(saved,message) {

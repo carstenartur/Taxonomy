@@ -201,7 +201,7 @@ window.TaxonomyPortfolioApi = (function () {
         updateRequirement: function (projectId, requirementId, body) {
             return sendJson(requirementPath(projectId, requirementId), 'PATCH', body);
         },
-        proposeSolutions: function (projectId, body) { return sendJson(projectPath(projectId) + '/solutions/propose', 'POST', body); },
+        proposeSolutions: function (projectId, body) { return sendJson(projectPath(projectId) + '/solutions/propose-from-taxonomy', 'POST', body); },
         detectConflicts: function (projectId, body) { return sendJson(projectPath(projectId) + '/conflicts/detect', 'POST', body); },
         analyzeProject: function (projectId, body) { return sendJson(projectPath(projectId) + '/analyses', 'POST', body); },
         analyzeRequirementJob: function (projectId, requirementId, body) {

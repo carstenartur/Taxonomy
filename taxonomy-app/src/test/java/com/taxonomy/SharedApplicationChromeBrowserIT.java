@@ -952,9 +952,8 @@ class SharedApplicationChromeBrowserIT {
                 Map.of("project", first, "requirements", List.of(requirement, other), "metrics", Map.of())));
         page.route("GET", "/taxonomy/api/projects/63/portfolio", request -> json(200,
                 Map.of("project", later, "requirements", List.of(), "metrics", Map.of())));
-        page.route("GET", "/taxonomy/api/projects/42/requirements/7/analyses", request -> json(200, List.of(summary)));
-        page.route("GET", "/taxonomy/api/projects/42/requirements/8/analyses", request -> json(200, List.of()));
-        page.route("GET", "/taxonomy/api/projects/42/requirements/7/analyses/frozen-7", request -> json(200, summary));
+        page.route("GET", "/taxonomy/api/projects/42/requirements/7/snapshots", request -> json(200, List.of(summary)));
+        page.route("GET", "/taxonomy/api/projects/42/requirements/8/snapshots", request -> json(200, List.of()));
         page.route("GET", "/taxonomy/api/projects/42/snapshots/frozen-7", request -> json(200,
                 Map.of("summary", summary, "elementMappings", List.of())));
         page.open("projects", "/taxonomy", "/projects", "en", """

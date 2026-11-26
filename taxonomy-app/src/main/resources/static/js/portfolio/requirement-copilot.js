@@ -30,6 +30,9 @@
             title: 'Copilot full analysis', run: 'Run full analysis', cancel: 'Cancel', resume: 'Resume processing',
             resumeHint: 'Resume interrupted processing with this operation’s saved settings.',
             permission: 'Business editing and analysis execution permissions are required.',
+            manualUnavailable: 'Manual full analysis is not ready. Check the configured AI provider and its availability.',
+            autopilotDisabled: 'Autopilot is disabled. Automatic execution must be enabled explicitly in the deployment configuration.',
+            automationHelp: 'Copilot and Autopilot setup',
             profile: 'Profile', standard: 'Standard', full: 'Full', exhaustive: 'Exhaustive',
             force: 'Force a new run even when the current state was already analysed',
             autopilotReady: 'Autopilot active: new requirement versions are analysed automatically.',
@@ -56,6 +59,9 @@
             title: 'Copilot-Vollanalyse', run: 'Vollanalyse starten', cancel: 'Abbrechen', resume: 'Verarbeitung fortsetzen',
             resumeHint: 'Unterbrochene Verarbeitung mit den gespeicherten Einstellungen dieses Vorgangs fortsetzen.',
             permission: 'Berechtigungen für fachliche Bearbeitung und Analyseausführung sind erforderlich.',
+            manualUnavailable: 'Die manuelle Vollanalyse ist nicht bereit. Prüfen Sie das konfigurierte KI-Ziel und seine Verfügbarkeit.',
+            autopilotDisabled: 'Autopilot ist deaktiviert. Automatische Ausführung muss in der Bereitstellungskonfiguration ausdrücklich aktiviert werden.',
+            automationHelp: 'Copilot und Autopilot einrichten',
             profile: 'Profil', standard: 'Standard', full: 'Vollständig', exhaustive: 'Umfassend',
             force: 'Neuen Lauf erzwingen, auch wenn dieser Stand bereits analysiert wurde',
             autopilotReady: 'Autopilot aktiv: Neue Anforderungsversionen werden automatisch analysiert.',
@@ -384,14 +390,25 @@
         const target = document.getElementById('copilotPolicy');
         if (!target || !status) return;
         const cls = status.autopilotReady ? 'text-bg-success' : 'text-bg-secondary';
+        const disabledInstruction = status.reason === 'Autopilot is disabled. Set TAXONOMY_AI_AUTOPILOT_ENABLED=true to opt in.';
+        const reason = disabledInstruction ? t('autopilotDisabled') : (status.reason || '');
+        const mayRun = architectureMutationAllowed && analysisExecutionAllowed;
+        manualCopilotReady = Boolean(status.manualCopilotReady && mayRun);
+        const unavailable = manualCopilotReady ? '' : mayRun ? t('manualUnavailable') : t('permission');
+        const helpPath = '/?lang=' + locale + '#help/COPILOT_AUTOPILOT';
+        const helpUrl = window.TaxonomyI18n?.resolveUrl?.(helpPath) || helpPath;
         target.innerHTML = '<span class="badge ' + cls + '">'
             + escapeHtml(status.autopilotReady ? t('autopilotReady') : t('autopilotOff'))
             + '</span><div class="small text-body-secondary mt-1">'
-            + escapeHtml(status.reason || '') + '</div>';
-        manualCopilotReady = Boolean(status.manualCopilotReady
-            && architectureMutationAllowed && analysisExecutionAllowed);
+            + escapeHtml(reason) + (disabledInstruction ? ' <a href="' + escapeHtml(helpUrl)
+                + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(t('automationHelp')) + '</a>' : '') + '</div>'
+            + (unavailable ? '<div id="copilotManualAvailability" class="small mt-1">' + escapeHtml(unavailable) + '</div>' : '');
         const button = document.getElementById('copilotRun');
-        if (button) button.title = manualCopilotReady ? '' : (status.reason || t('permission'));
+        if (button) {
+            button.title = unavailable;
+            if (unavailable) button.setAttribute('aria-describedby', 'copilotManualAvailability');
+            else button.removeAttribute('aria-describedby');
+        }
         setControls(Boolean(activeOperation && !terminal.has(activeOperation.status)));
     }
 

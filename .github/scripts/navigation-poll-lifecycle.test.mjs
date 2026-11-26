@@ -920,3 +920,33 @@ test('proposal cleanup respects the newer request and the currently allowed role
     assert.equal(spinner.classList.contains('d-none'), true);
     assert.equal(button.disabled, true);
 });
+
+for (const change of ['model revision','frozen evidence']) test(`proposal loading follows canonical ${change} changes within the same authorized repository`,async()=>{
+    const h=harness('browse',{proposals:true});
+    const scope={repositoryId:'repo',workspaceId:'work',branch:'draft'};
+    const chrome={architecture:{repositoryId:'repo',workspaceId:'work',branch:'draft',modelStand:'revision-3'},
+        source:{repositoryId:'repo',workspaceId:'work',branch:'draft',snapshotId:'frozen-1',requirementVersionId:11}};
+    h.window.TaxonomyArchitectureWorkspace={ready:async()=>true,getSource:()=>({kind:'working'})};
+    h.window.TaxonomyArchitectureWorkflow={getScope:()=>scope};
+    h.window.TaxonomyAppChrome={getContext:()=>chrome};
+    h.start();await settle();
+    const path='/api/proposals',old=h.requests(path)[0];assert.ok(old);
+    if(change==='model revision')chrome.architecture.modelStand='revision-4';else chrome.source=null;
+    h.sourceChanged();await settle();
+    assert.equal(old.init.signal.aborted,true);
+    assert.equal(h.requests(path).length,2,'The canonical context invalidated the first transport and must own one replacement read');
+    h.requests(path)[1].answer([]);await settle();old.answer([{id:90,status:'PENDING',sourceCode:'obsolete-evidence'}]);await settle();
+    assert.match(proposalPresentation(h).table,/browse.proposals.none/);
+    assert.doesNotMatch(proposalPresentation(h).table,/loading|obsolete-evidence/);
+    assert.equal(proposalPresentation(h).badge,'browse.proposals.pending 0');
+    h.sourceChanged();await settle();assert.equal(h.requests(path).length,2);
+    assert.deepEqual(h.errors,[]);
+});
+test('an expired proposal authorization cannot acquire a new read from a later source event',async()=>{
+    const h=harness('browse',{proposals:true});let chrome={architecture:{modelStand:'revision-1'}};
+    h.window.TaxonomyAppChrome={getContext:()=>chrome};h.start();await settle();
+    const old=h.requests('/api/proposals/pending')[0];old.answer({detail:'Sign in again'},401);await settle();
+    const before=h.requests('/api/proposals/pending').length;
+    chrome={architecture:{modelStand:'revision-2'}};h.sourceChanged();await settle();
+    assert.equal(h.requests('/api/proposals/pending').length,before);
+});

@@ -265,7 +265,8 @@
         loadProposals('PENDING');
         ['taxonomy:entity-context-changed', 'taxonomy:repository-context-changed', 'taxonomy:architecture-source-changed'].forEach(function (event) {
             document.addEventListener(event, function () {
-                if (!proposalRead || proposalSource === currentProposalSource()) return;
+                if (!proposalRead || proposalRead.authorizationCurrent?.() === false) return;
+                if (proposalSource === currentProposalSource() && proposalRead.contextCurrent?.() !== false) return;
                 document.getElementById('undoToast')?.remove();
                 loadProposals(S.currentProposalFilter);
             });
@@ -2319,7 +2320,8 @@
     // ── Relation Proposal Review ──────────────────────────────────────────────
 
     function currentProposalRead(controller) {
-        return startupPageActive && proposalRead === controller && !controller.signal.aborted;
+        return startupPageActive && proposalRead === controller && !controller.signal.aborted
+            && controller.contextCurrent?.() !== false;
     }
 
     function currentProposalSource() {
@@ -2334,6 +2336,12 @@
         if (!container || !startupPageActive) return;
         if (proposalRead) proposalRead.abort();
         const controller = new AbortController();
+        // Match the canonical transport's complete navigation identity, including
+        // model revision and frozen source evidence within the same repository.
+        // Authentication/page ownership is independent: a context event cannot
+        // revive a read after access was lost or the page departed.
+        controller.contextCurrent = window.TaxonomyApiClient?.captureContext?.();
+        controller.authorizationCurrent = window.TaxonomyApiClient?.captureContext?.({contextSensitive:false});
         proposalRead = controller;
         proposalSource = currentProposalSource();
         const badge = document.getElementById('proposalPendingBadge');

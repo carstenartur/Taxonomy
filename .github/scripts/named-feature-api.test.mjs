@@ -294,7 +294,7 @@ for (const [description, search, usesDefault] of [
 ]) {
 test(`an early portfolio with ${description} enables intake and creation for its confirmed source`, async () => {
   const requests = [], nodes = new Map();
-  const submit = {disabled: false};
+  const submit = {disabled: false, dataset: {}, closest: () => null};
   const stand = {workspaceId: 'ready-workspace', workspaceScopeKey: 'ready-workspace',
     repositoryId: 'ready-repository', branch: 'draft', revision: 1, commit: 'a'.repeat(40)};
   function element() {

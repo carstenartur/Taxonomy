@@ -4,7 +4,7 @@ const vm = require('node:vm');
 
 const [contract, templatePath, ...scriptPaths] = process.argv.slice(2);
 const template = readFileSync(templatePath, 'utf8');
-const paths = ['api/portfolio-api.js', 'portfolio/taxonomy-portfolio-async.js', 'portfolio/taxonomy-portfolio.js'];
+const paths = ['api/portfolio-api.js', 'portfolio/taxonomy-portfolio-async.js', 'portfolio/taxonomy-portfolio.js', 'portfolio/inventory-comparison.js'];
 const scripts = scriptPaths.map(path => readFileSync(path, 'utf8'));
 const contracts = new Map();
 const flush = () => new Promise(resolve => setImmediate(resolve));
@@ -50,7 +50,10 @@ class Element {
   set textContent(value) { this.replaceChildren(); this.text = String(value); }
   get isConnected() { return this === this.owner || this.parentElement?.isConnected === true; }
   set innerHTML(html) { this.replaceChildren(); this.owner.parse(html, this); }
-  getAttribute(name) { return this.attributes.get(name) ?? null; }
+  getAttribute(name) {
+    const dataKey=name.startsWith('data-')?name.slice(5).replace(/-([a-z])/g,(_,letter)=>letter.toUpperCase()):null;
+    return dataKey && this.dataset[dataKey] !== undefined ? String(this.dataset[dataKey]) : this.attributes.get(name) ?? null;
+  }
   setAttribute(name, value) {
     this.attributes.set(name, String(value));
     if (name.startsWith('data-')) {
@@ -78,6 +81,7 @@ class Element {
     if (this.isConnected) this.owner.changed();
   }
   focus() { this.owner.activeElement = this; }
+  reset() { this.querySelectorAll('input, select, textarea').forEach(field => { delete field.inputValue; }); }
   scrollIntoView() {}
   matches(selector) {
     if (selector.includes(',')) return selector.split(',').some(part => this.matches(part));
@@ -177,7 +181,7 @@ const projectSolution = {id: 11, projectId: 7, solution, status: 'PROPOSED', act
 const productCandidate = {id: 31, projectSolutionId: 11, product, coveragePercent: 65, confidence: 0,
   reviewStatus: 'PROPOSED', selectionStatus: 'CANDIDATE', openEvidence: 'Pending supplier confirmation'};
 const otherProject = {id: 8, projectKey: 'P-8', title: 'Project eight', status: 'PLANNING', requirementCount: 0, solutionCount: 0};
-const summary = {id: 'snapshot-a', projectId: 7, requirementId: 9, requirementKey: 'R-9', requirementVersionId: 101, requirementVersionNumber: 1, status: 'SUCCESS', provider: 'fixture', createdAt: '2026-11-26T00:00:00Z', durationMs: 400, warningCount: 0, commitSha: 'a'.repeat(40)};
+const summary = {id: 'snapshot-a', projectId: 7, requirementId: 9, requirementKey: 'R-9', requirementVersionId: 101, requirementVersionNumber: 1, status: 'SUCCESS', provider: 'fixture', createdAt: '2026-11-26T00:00:00Z', durationMs: 400, warningCount: 3, commitSha: 'a'.repeat(40)};
 const mapping = {id: 23, snapshotId: 'snapshot-a', nodeCode: 'CP-1', nodeTitle: 'Retention', taxonomyRoot: 'CP', directScore: 80, relevance: 0.8, confidence: 0.9, mappingOrigin: 'DIRECT_SCORE', selectedForImpact: true, reviewStatus: 'PROPOSED', actionStatus: 'CHANGE', actionEvidence: null};
 const olderSummary = {...summary, id: 'snapshot-b', createdAt: '2026-11-25T00:00:00Z'};
 const olderMapping = {...mapping, id: 24, snapshotId: 'snapshot-b'};
@@ -189,11 +193,28 @@ const kinds = {
   solution: {form: '.add-solution-coverage', id: 'solutionId', route: '/api/solutions/12/taxonomy-coverage'},
   product: {form: '.add-product-coverage', id: 'productId', route: '/api/products/19/taxonomy-coverage'}
 };
+const comparison = {id:'retained-comparison',createdAt:'2026-11-26T12:00:00Z',fingerprint:'retained-fingerprint',sources:[],
+  demand:{snapshotId:'snapshot-a',requirementVersionId:101,taxonomyFingerprint:'original-taxonomy',selectedNodes:['CP-1'],requirementText:'Original source text',
+    question:{mode:'START_WINDOW',start:'2026-11-01',endExclusive:'2026-12-01',organization:'Original organization',environment:'production'}},
+  candidates:[{id:'original-product:19',name:'Product record',kind:'TECHNOLOGY_PRODUCT',metadata:{citation:'Keep the original'},assertions:[]}],
+  findings:[
+    {candidateId:'original-product:19',criterion:'AVAILABILITY',outcome:'UNKNOWN',limitations:['NO_ADMISSIBLE_ASSERTION'],evidenceIds:[],
+      nextClarification:'Obtain explicit dated evidence for this criterion, organization and environment'},
+    {candidateId:'original-product:19',criterion:'CAPABILITY',outcome:'SUPPORTED',limitations:[],evidenceIds:['original-evidence'],
+      nextClarification:'Review the cited assertion and its planned/actual status'},
+    {candidateId:'original-product:19',criterion:'RELATIONSHIPS',outcome:'UNEXAMINED',limitations:['NOT_EXAMINED'],evidenceIds:[],
+      nextClarification:'Examine the required relationship evidence'},
+    {candidateId:'original-product:19',criterion:'RELATIONSHIPS',outcome:'UNKNOWN',limitations:['DIRECTED_REQUIREMENT_REQUIRED'],evidenceIds:[],
+      nextClarification:'Specify exact directed relationship requirements'},
+    {candidateId:'original-product:19',criterion:'ORIGINAL_CRITERION',outcome:'ORIGINAL_OUTCOME',limitations:['ORIGINAL_LIMIT','constructor'],evidenceIds:[],
+      nextClarification:'An original reviewer sentence.'}
+  ]};
 
 async function boot({readOnly = false, empty = false, holdMutation, products = [product], account,
-  compare = async () => snapshotDiff, holdOtherProject} = {}) {
+  compare = async () => snapshotDiff, holdOtherProject, locale = 'en', inventoryComparisons = []} = {}) {
   const document = new Document();
-  const writes = [], unexpected = [], dialogs = [];
+  document.documentElement.lang = locale;
+  const writes = [], unexpected = [], dialogs = [], downloads = [];
   const candidate = {...productCandidate};
   const portfolio = {project, metrics: {totalRequirements: empty ? 0 : 1}, requirements: empty ? [] : [requirement],
     solutions: [{...projectSolution, productCandidates: [candidate]}], conflicts: [], taxonomyNodes: []};
@@ -205,6 +226,10 @@ async function boot({readOnly = false, empty = false, holdMutation, products = [
     ['/api/projects/7/snapshots/snapshot-a', {summary, analysis: {warnings: []}, elementMappings: [snapshot], relationMappings: []}],
     ['/api/projects/7/snapshots/snapshot-b', {summary: olderSummary, analysis: {warnings: []}, elementMappings: [olderMapping], relationMappings: []}]
   ]);
+  reads.set('/api/projects/7/snapshots/snapshot-a/inventory-comparisons', inventoryComparisons);
+  reads.set('/api/projects/7/snapshots/snapshot-b/inventory-comparisons', []);
+  reads.set('/api/inventory-comparisons/retained-comparison', comparison);
+  reads.set('/api/inventory-comparisons/retained-comparison/reviews', []);
   const stored = new Map();
   const window = {
     location: new URL('https://taxonomy.example/projects'),
@@ -252,11 +277,18 @@ async function boot({readOnly = false, empty = false, holdMutation, products = [
         return Response.json(candidate);
       }
       if (path === '/api/projects/7/analyses' && init.method === 'POST') return Response.json({successfulItems: 1});
+      if (path === '/api/projects/7/solutions/propose-from-taxonomy' && init.method === 'POST') return Response.json([]);
+      if (path === '/api/projects/7/solutions/11' && init.method === 'PATCH') {
+        assert.deepEqual(body, {actionStatus: 'CREATE'});
+        return Response.json({...projectSolution, actionStatus: 'CREATE'});
+      }
+      if (path === '/api/products' && init.method === 'POST') return Response.json({...product, id: 20, productName: 'New product'});
       unexpected.push(`${init.method} ${path}`);
       throw new Error(`Unexpected request ${init.method} ${path}`);
     },
     addEventListener() {}, removeEventListener() {}, setTimeout() {}, clearTimeout() {},
     TaxonomyI18n: {ready: async () => {}, t: key => key, formatEnum: value => String(value ?? '')},
+    TaxonomyUtils: {hideModal() {}},
     TaxonomyApiClient: {
       captureContext: () => () => true,
       requestJson: async (path, init) => (await window.fetch(path, init)).json()
@@ -269,12 +301,15 @@ async function boot({readOnly = false, empty = false, holdMutation, products = [
       })}
     }
   };
-  const context = vm.createContext({window, document, bootstrap: window.bootstrap, console, URL, URLSearchParams, Request, Response, Headers,
+  class DownloadURL extends URL { static createObjectURL(blob) { downloads.push(blob); return 'blob:retained'; } static revokeObjectURL() {} }
+  const context = vm.createContext({window, document, bootstrap: window.bootstrap, console, URL:DownloadURL, URLSearchParams, Request, Response, Headers, Blob,
+    crypto: require('node:crypto').webcrypto,
+    FormData: class { constructor(form) { this.form = form; } forEach(consumer) { this.form.querySelectorAll('[name]').forEach(field => consumer(field.value, field.getAttribute('name'))); } },
     CustomEvent: Event, NodeFilter: {SHOW_TEXT: 4}, MutationObserver: class {constructor(callback) { document.observer = callback; } observe() {} }});
   paths.forEach((path, index) => vm.runInContext(scripts[index], context, {filename: path}));
   await document.dispatchEvent(new Event('DOMContentLoaded'));
   await flush();
-  return {document, writes, unexpected, dialogs, sharedStorage: window.localStorage,
+  return {document, writes, unexpected, dialogs, downloads, sharedStorage: window.localStorage,
     async selectSnapshot() {
       await document.querySelector('.requirement-snapshots').click();
       await flush();
@@ -363,10 +398,132 @@ contracts.set('compare-snapshots', async () => {
   await document.querySelector('.snapshot-compare').click();
   const diff = document.getElementById('snapshotDiff');
   assert.deepEqual(diff.querySelectorAll('strong').map(value => value.textContent), ['1', '2', '2']);
-  assert.match(diff.textContent, /Taxonomy changed: true/);
-  assert.match(diff.textContent, /Prompts changed: false/);
-  assert.match(diff.textContent, /Provider changed: true/);
+  assert.match(diff.textContent, /Taxonomy changed: Yes/);
+  assert.match(diff.textContent, /Prompts changed: No/);
+  assert.match(diff.textContent, /Provider changed: Yes/);
   assert.deepEqual(unexpected, []);
+});
+
+contracts.set('compare-snapshots-de', async () => {
+  const {document, selectSnapshot} = await boot({locale: 'de'});
+  await selectSnapshot();
+  await document.querySelector('.snapshot-compare').click();
+  const text = document.getElementById('snapshotDiff').textContent;
+  for (const label of ['Snapshot-Vergleich', 'Hinzugefügte Elemente', 'Entfernte Elemente', 'Score-Änderungen',
+    'Taxonomie geändert: Ja', 'Prompts geändert: Nein', 'Anbieter geändert: Ja']) assert.ok(text.includes(label), label);
+});
+
+contracts.set('compare-oldest-snapshot', async () => {
+  let comparisons = 0;
+  const {document, selectSnapshot} = await boot({compare: async () => { comparisons++; return snapshotDiff; }});
+  await selectSnapshot();
+  await document.querySelectorAll('.snapshot-select')[1].click();
+  await document.querySelector('.snapshot-compare').click();
+  assert.match(document.getElementById('snapshotDiff').textContent, /no earlier snapshot/i);
+  assert.equal(comparisons, 0);
+});
+
+contracts.set('propose-solutions', async () => {
+  const {document, writes, unexpected} = await boot();
+  await document.getElementById('proposeSolutionsBtn').click();
+  assert.deepEqual(writes, [{method: 'POST', path: '/api/projects/7/solutions/propose-from-taxonomy', body: {}}]);
+  assert.deepEqual(unexpected, []);
+  assert.match(document.getElementById('portfolioInfo').textContent, /0/);
+});
+
+contracts.set('save-solution-action', async () => {
+  const {document, writes, unexpected} = await boot();
+  document.querySelector('.solution-action-select').value = 'CREATE';
+  await document.querySelector('.save-solution-action').click();
+  assert.deepEqual(writes, [{method: 'PATCH', path: '/api/projects/7/solutions/11', body: {actionStatus: 'CREATE'}}]);
+  assert.deepEqual(unexpected, []);
+  assert.match(document.getElementById('portfolioInfo').textContent, /saved/i);
+});
+
+for (const initiallyEmpty of [false, true]) contracts.set(initiallyEmpty ? 'first-product-enables-candidates' : 'product-created-preserves-draft', async () => {
+  const {document, writes, unexpected} = await boot({products: initiallyEmpty ? [] : [product]});
+  const form = document.querySelector('.add-product-candidate');
+  const productField = form.querySelector('.candidate-product-id');
+  const coverage = form.querySelector('.candidate-coverage-percent');
+  const submit = form.querySelector('button[type="submit"]');
+  productField.value = initiallyEmpty ? '' : '19';
+  coverage.value = '42';
+  if (initiallyEmpty) {
+    assert.equal(submit.disabled, true);
+    assert.match(submit.getAttribute('title'), /create a sourced product/i);
+  }
+  await document.getElementById('productForm').dispatchEvent(new Event('submit'));
+  await flush();
+  assert.deepEqual(unexpected, []);
+  assert.equal(writes.length, 1);
+  assert.equal(document.querySelector('.add-product-candidate'), form, 'Product creation must not replace an unsaved solution form');
+  assert.equal(productField.value, initiallyEmpty ? '' : '19');
+  assert.equal(coverage.value, '42');
+  assert.ok(productField.querySelector('option[value="20"]'), 'New products are immediately available');
+  assert.equal(submit.disabled, false);
+  assert.equal(submit.getAttribute('title'), null);
+});
+
+contracts.set('labeled-coverage-fields', async () => {
+  const {document} = await boot();
+  for (const selector of ['.candidate-product-id', '.candidate-coverage-percent', '.solution-node-code',
+    '.solution-coverage-percent', '.product-node-code', '.product-coverage-percent', '.solution-action-select']) {
+    const field = document.querySelector(selector);
+    assert.ok(field.closest('label') || field.id && document.querySelector('label[for="' + field.id + '"]'), selector);
+  }
+});
+
+contracts.set('inventory-setup', async () => {
+  const {document, selectSnapshot, writes} = await boot();
+  await selectSnapshot();
+  const panel=document.querySelector('[data-inventory-comparison]');
+  const options=panel.querySelector('[data-inventory-options]');
+  assert.ok(options);assert.equal(Boolean(options.open),false);
+  const nodes=panel.querySelector('[data-inventory-nodes]');assert.ok(nodes);
+  assert.ok(nodes.querySelectorAll('input').every(input=>!input.checked));
+  const reopen=panel.querySelector('[data-inventory-reopen]');
+  assert.equal(reopen.disabled,true);
+  assert.match(reopen.getAttribute('title'),/select a retained comparison/i);
+  await reopen.click();assert.deepEqual(writes,[]);
+});
+
+contracts.set('snapshot-summary-dto',async()=>{
+  const {document,selectSnapshot,unexpected}=await boot();await selectSnapshot();
+  assert.match(document.getElementById('snapshotList').textContent,/Warnings: 3/);
+  assert.ok(document.getElementById('snapshotDetail').textContent.includes(mapping.mappingOrigin));
+  assert.ok(document.getElementById('snapshotDetail').textContent.includes(summary.commitSha));
+  assert.deepEqual(unexpected,[]);
+});
+
+for(const locale of ['de','en']) contracts.set('inventory-labels-'+locale,async()=>{
+  const {document, selectSnapshot, downloads, unexpected} = await boot({locale,inventoryComparisons:[comparison]});
+  await selectSnapshot();
+  const panel=document.querySelector('[data-inventory-comparison]');
+  const select=panel.querySelectorAll('label').find(label=>label.textContent.startsWith(locale==='de'?'Gespeicherte Abgleiche':'Retained comparisons')).querySelector('select');
+  const reopen=panel.querySelectorAll('button').find(button=>button.textContent===(locale==='de'?'Gespeicherten Abgleich öffnen':'Open retained comparison'));
+  assert.ok(select && reopen);
+  select.value='retained-comparison';await select.dispatchEvent(new Event('change'));
+  assert.equal(reopen.disabled,false);
+  await reopen.click();await flush();
+  const output=panel.querySelector('[data-inventory-result]');
+  const display=output.querySelector('table').textContent;
+  for(const original of ['Original organization','An original reviewer sentence.','ORIGINAL_CRITERION','ORIGINAL_OUTCOME','ORIGINAL_LIMIT','original-product:19'])
+    assert.ok(output.textContent.includes(original),original);
+  assert.ok(display.includes('constructor'),'Unknown limitation values must remain exact text');
+  if(locale==='de') {
+    for(const translated of ['Ungeklärt','Fähigkeit','Verfügbarkeit','Nicht geprüft','Technologieprodukt',
+      'Explizite datierte Nachweise','Zitierte Aussage','Erforderliche Beziehungsnachweise','Exakte gerichtete Beziehungsanforderungen'])
+      assert.ok(display.includes(translated),translated);
+    assert.ok(output.textContent.includes('Startfenster'));
+  } else {
+    for(const literal of comparison.findings.map(f=>f.nextClarification))assert.ok(display.includes(literal),literal);
+    assert.ok(output.textContent.includes('Start window'));
+  }
+  const download=output.querySelectorAll('button').find(button=>button.textContent.includes('JSON'));
+  await download.click();await flush();
+  assert.deepEqual(JSON.parse(await downloads[0].text()),comparison);
+  assert.equal(select.value,'retained-comparison');
+  assert.deepEqual(unexpected,[]);
 });
 
 contracts.set('compare-snapshot-read-failure', async () => {

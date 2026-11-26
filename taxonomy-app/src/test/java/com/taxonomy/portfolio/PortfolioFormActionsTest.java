@@ -23,6 +23,9 @@ class PortfolioFormActionsTest {
     @ValueSource(strings = {
             "review-confirmed", "review-rejected", "obsolete-mapping-decision", "other-tab-project-selection",
             "verbatim-human-review", "compare-snapshots", "compare-snapshot-read-failure", "obsolete-snapshot-comparison",
+            "compare-snapshots-de", "compare-oldest-snapshot", "propose-solutions", "save-solution-action",
+            "product-created-preserves-draft", "first-product-enables-candidates", "labeled-coverage-fields",
+            "inventory-setup", "inventory-labels-de", "inventory-labels-en", "snapshot-summary-dto",
             "solution-coverage-submit", "product-coverage-submit", "candidate-submit", "invalid-forms",
             "candidate-review-confirmed", "candidate-review-rejected", "busy-candidate-review",
             "stale-candidate-review", "stale-candidate-project",
@@ -37,9 +40,10 @@ class PortfolioFormActionsTest {
         Path api = copyResource("/static/js/api/portfolio-api.js");
         Path guidance = copyResource("/static/js/portfolio/taxonomy-portfolio-async.js");
         Path portfolio = copyResource("/static/js/portfolio/taxonomy-portfolio.js");
+        Path inventory = copyResource("/static/js/portfolio/inventory-comparison.js");
         Path log = directory.resolve("form-actions.log");
         Process process = new ProcessBuilder(node, script.toString(), contract, template.toString(),
-                api.toString(), guidance.toString(), portfolio.toString())
+                api.toString(), guidance.toString(), portfolio.toString(), inventory.toString())
                 .redirectErrorStream(true)
                 .redirectOutput(log.toFile())
                 .start();

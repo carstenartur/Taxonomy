@@ -7,9 +7,19 @@ import vm from 'node:vm';
 const source = await readFile(new URL('../../taxonomy-app/src/main/resources/static/js/shared/requirement-intake.js', import.meta.url), 'utf8');
 class Element {
   constructor(tag='div') { this.tagName=tag; this.children=[]; this.listeners=new Map(); this.value=''; this.dataset={}; this.classList={add(){},remove(){}}; }
-  append(...children) { this.children.push(...children); }
+  append(...children) { this.children.push(...children); children.forEach(child=>{child.parent=this;}); }
   replaceChildren(...children) { this.children=[...children]; }
-  setAttribute() {} closest() { return null; }
+  setAttribute(key,value) { this[key]=String(value); } getAttribute(key) { return this[key] ?? null; } closest() { return null; }
+  querySelectorAll(selector) {
+    const nodes=this.children.flatMap(child=>[child,...child.querySelectorAll('*')]);
+    if(selector==='*')return nodes;
+    return nodes.filter(child=>selector.split(',').some(part=>{
+      part=part.trim();if(part==='.modal-body')return child.className==='modal-body';
+      if(part==='button[type="submit"]')return child.tagName==='button'&&child.type==='submit';
+      return child.tagName===part;
+    }));
+  }
+  querySelector(selector) { return this.querySelectorAll(selector)[0]||null; }
   focus() { this.focused=true; }
   get validity() { return {customError:Boolean(this.validationMessage)}; }
   setCustomValidity(message) { this.validationMessage=message; }
@@ -17,14 +27,14 @@ class Element {
   addEventListener(name,fn) { this.listeners.set(name, [...(this.listeners.get(name)||[]),fn]); }
   dispatch(name) { for (const listener of this.listeners.get(name)||[]) listener({target:this,preventDefault(){}}); }
 }
-function harness(review, lifecycle) {
+function harness(review, lifecycle, locale='en') {
   let scope={repositoryId:'repo',workspaceId:'work',branch:'draft'};
   const timers=new Map(); let nextTimer=0;
   const window={setTimeout:fn=>{timers.set(++nextTimer,fn);return nextTimer;},clearTimeout:id=>timers.delete(id),
     TaxonomyArchitectureWorkflow:{getScope:()=>scope},
     TaxonomyArchitectureLifecycleApi:{reviewRequirementIntake:review},TaxonomyArchitectureLifecycle:lifecycle,
     location:{href:'https://example.test/'}};
-  const document=Object.assign(new Element('document'),{documentElement:{lang:'en'},createElement:tag=>new Element(tag)});
+  const document=Object.assign(new Element('document'),{documentElement:{lang:locale},createElement:tag=>new Element(tag)});
   vm.runInNewContext(source,{window,document,TextEncoder,Uint8Array,Uint32Array,DataView,URL,URLSearchParams,Promise,Set,Map,WeakMap,console});
   const form=new Element('form'),dialog=new Element('div');form.closest=()=>dialog;
   document.forms=[form];
@@ -33,6 +43,38 @@ function harness(review, lifecycle) {
     flushTimers(){const jobs=[...timers.values()];timers.clear();jobs.forEach(fn=>fn());},
     form,dialog,input:new Element('textarea')};
 }
+for (const locale of ['en','de']) test(locale+' intake review belongs inside the modal body and retains draft focus and submit intent',async()=>{
+  const h=harness(async()=>completedReview({repositoryId:'repo',workspaceId:'work',branch:'draft'}),null,locale);
+  const body=new Element('div');body.className='modal-body';const footer=new Element('div');
+  const submit=new Element('button');submit.type='submit';submit.textContent='Create';
+  footer.append(submit);body.append(h.input);h.form.append(body,footer);h.input.value='candidate';
+  const state=h.api.attach(h.form,{textElement:h.input,projectId:7});
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(state.section.parent,body);
+  assert.equal(state.section.tabIndex,-1);
+  assert.equal(submit.textContent,locale==='de'?'Text prüfen':'Review text');
+  assert.equal(submit['aria-label'],submit.textContent);
+  const pending=h.api.prepare(h.form,{text:'candidate'},7);
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(state.section.focused,true);
+  const stop=state.section.children.find(n=>n.dataset.intakeAction==='edit');
+  assert.ok(stop);stop.dispatch('click');
+  assert.equal(await pending,null);assert.equal(h.input.value,'candidate');assert.equal(h.input.focused,true);
+  state.section.children.find(n=>n.dataset.intakeChoice==='NEW').dispatch('click');
+  assert.equal(submit.textContent,locale==='de'?'Auswahl speichern':'Save selection');
+  const exact=await h.api.prepare(h.form,{text:'candidate'},7);assert.equal(exact.choice,'NEW');
+});
+test('pending retry retains visible and accessible priority over newer intake labels',async()=>{
+  const h=harness(async()=>completedReview({repositoryId:'repo',workspaceId:'work',branch:'draft'}));
+  const submit=new Element('button');submit.type='submit';submit.textContent='Create';h.form.append(submit);
+  h.input.value='candidate';h.api.attach(h.form,{textElement:h.input,projectId:7});
+  await new Promise(resolve=>setImmediate(resolve));
+  h.api.setPendingLabel(h.form,'Retry saved operation');
+  h.input.value='Newer unsaved draft';h.input.dispatch('input');
+  assert.equal(submit.textContent,'Retry saved operation');assert.equal(submit['aria-label'],'Retry saved operation');
+  h.api.setPendingLabel(h.form,null);
+  assert.equal(submit.textContent,'Review text');assert.equal(submit['aria-label'],'Review text');
+});
 test('portable digest preserves raw whitespace and Unicode when WebCrypto is absent',async()=>{
   const h=harness(()=>{throw new Error('No transport expected');});
   for(const text of ['abc',' a ','🧭\r\nÄ']) assert.equal(await h.api.inputHash(text),createHash('sha256').update(text,'utf8').digest('hex'));

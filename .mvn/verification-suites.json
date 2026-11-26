@@ -236,6 +236,7 @@
           "com.taxonomy.SharedAdminNavigationBrowserIT",
           "com.taxonomy.ArchitectureWorkspaceBrowserIT",
           "com.taxonomy.PortfolioMatrixReviewIT",
+          "com.taxonomy.PortfolioRemediationLayoutIT",
           "com.taxonomy.DocumentTemplateNavigationBrowserIT"
         ]
       },

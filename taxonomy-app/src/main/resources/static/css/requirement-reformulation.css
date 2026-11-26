@@ -25,7 +25,12 @@
 #reformulationOffers, #reformulationOffers [id] { scroll-margin-top: 5rem; }
 
 /* Adoption is a separate modal review; never a second editable requirement form. */
-.reformulation-adoption-dialog { width: min(95vw, 72rem); max-height: 90vh; overflow: auto; padding: 1.5rem; }
+.reformulation-adoption-dialog { box-sizing: border-box; width: min(72rem, calc(100vw - 1rem)); max-width: calc(100vw - 1rem); max-height: 90vh; max-height: 90dvh; padding: 0; overflow: hidden; border: 1px solid var(--bs-border-color); border-radius: .5rem; }
+.reformulation-adoption-dialog[open] { display: flex; flex-direction: column; }
+.reformulation-adoption-header { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; padding: 1rem; flex: 0 0 auto; border-bottom: 1px solid var(--bs-border-color); }
+.reformulation-adoption-header h2 { flex: 1 1 12rem; min-width: 0; overflow-wrap: anywhere; }
+.reformulation-adoption-header button { flex: 0 0 auto; max-width: 100%; margin-inline-start: auto; }
+.reformulation-adoption-body { min-height: 0; min-width: 0; overflow: auto; padding: 1rem; }
 .reformulation-adoption-dialog::backdrop { background: rgb(0 0 0 / 45%); }
 .reformulation-adoption-dialog pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 .reformulation-adoption-dialog label { display: block; margin: 1rem 0; }

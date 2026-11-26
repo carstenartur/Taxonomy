@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
+import {createHash} from 'node:crypto';
 import vm from 'node:vm';
 
 const root = new URL('../../taxonomy-app/src/main/resources/static/js/', import.meta.url);
@@ -33,7 +34,14 @@ class Element extends EventTarget {
   closest(selector) {
     return selector.includes(this.tagName) ? this : this.parent?.closest(selector);
   }
-  setAttribute() {}
+  setAttribute(name, value) { this[name] = String(value); }
+  querySelectorAll(selector) {
+    return this.descendants().filter(node => selector.split(',').some(part => {
+      if (part === 'button[type="submit"]') return node.tagName === 'button' && node.type === 'submit';
+      return node.tagName === part;
+    }));
+  }
+  querySelector(selector) { return this.querySelectorAll(selector)[0] || null; }
   focus() { this.focused = true; }
   showModal() { this.open = true; }
   close() {
@@ -49,22 +57,24 @@ class Element extends EventTarget {
   }
 }
 
-function harness(projects = [{id: 1, projectKey: 'P1', title: 'One'}, {id: 2, projectKey: 'P2', title: 'Two'}]) {
+function harness(projects = [{id: 1, projectKey: 'P1', title: 'One'}, {id: 2, projectKey: 'P2', title: 'Two'}], {locale = 'en', failProject = false} = {}) {
   const document = Object.assign(new EventTarget(), {
-    readyState: 'loading', documentElement: {lang: 'en'}, body: new Element('body'),
+    readyState: 'loading', documentElement: {lang: locale}, body: new Element('body'),
     createElement: tagName => new Element(tagName)
   });
   const suggestions = [], reviewRequests = [], writes = [];
   const source = {repositoryId: 'repo', workspaceId: 'work', branch: 'draft'};
   const input = new Element('textarea');
   const C = {
-    S: {}, runtime: {}, text: key => key, language: () => 'en', businessTextElement: () => input,
+    S: {}, runtime: {}, text: key => ({create: locale === 'de' ? 'Erstellen' : 'Create', saving: locale === 'de' ? 'Speichern…' : 'Saving…'}[key] || key),
+    language: () => locale, businessTextElement: () => input,
     currentPayload: () => ({businessText: input.value}), comparable: value => JSON.stringify(value),
     meaningful: value => Boolean(value.businessText),
     saveDraft: async () => true, showActionAlert() {},
     jsonRequest(path, options) {
       if (options.method === 'POST') {
         writes.push(path);
+        if (failProject) return Promise.reject(new Error('Project creation failed'));
         return Promise.resolve({id: 3});
       }
       if (path === '/api/projects') return Promise.resolve(projects);
@@ -75,28 +85,38 @@ function harness(projects = [{id: 1, projectKey: 'P1', title: 'One'}, {id: 2, pr
     __TaxonomyAnalysisSessionContext: C,
     TaxonomyApiClient: {captureContext: () => () => true},
     TaxonomyArchitectureWorkspace: {getSource: () => source},
-    TaxonomyArchitectureLifecycleApi: {reviewRequirementIntake(request) { reviewRequests.push(request); }},
+    TaxonomyArchitectureWorkflow: {getScope: () => source},
+    TaxonomyArchitectureLifecycleApi: {reviewRequirementIntake(request) {
+      reviewRequests.push(request);
+      return Promise.resolve({status: 'COMPLETE', scope: {...source}, candidates: [], inputHash: createHash('sha256').update(request.text).digest('hex')});
+    }},
     TaxonomyArchitectureLifecycle: {saveRequirement() { writes.push('saveRequirement'); }},
     location: {pathname: '/', search: '', assign() {}},
     setTimeout() {}, clearTimeout() {}
   };
-  const context = vm.createContext({window, document});
+  const context = vm.createContext({window, document, TextEncoder, Uint8Array, Uint32Array, DataView});
   vm.runInContext(intakeSource, context, {filename: 'requirement-intake.js'});
   vm.runInContext(projectsSource, context, {filename: 'taxonomy-analysis-session-projects.js'});
-  return {
-    suggestions, reviewRequests, writes, source,
-    async open(value = '') {
-      input.value = value;
-      window.TaxonomyAnalysisSession.addAsRequirement({preserveDraft: true});
-      await settle();
+  function controls() {
       const dialog = document.body.children.at(-1);
       const form = dialog.children[0];
       function control(labelText) {
         const label = form.descendants().find(node => node.tagName === 'label' && node.textContent === labelText);
         return form.descendants().find(node => node.id === label.htmlFor);
       }
-      return {dialog, form, control,
+      return {dialog, form, control, submit: form.querySelector('button[type="submit"]'),
         cancel: () => form.descendants().find(node => node.tagName === 'button' && node.textContent === 'cancel').fire('click')};
+  }
+  return {
+    suggestions, reviewRequests, writes, source,
+    async openProject() {
+      window.TaxonomyAnalysisSession.startNewProject();
+      await settle(); return controls();
+    },
+    async open(value = '') {
+      input.value = value;
+      window.TaxonomyAnalysisSession.addAsRequirement({preserveDraft: true});
+      await settle(); return controls();
     }
   };
 }
@@ -223,3 +243,39 @@ test('rejecting a blank first requirement still allows creating only the project
   assert.deepEqual(h.reviewRequests, []);
   assert.deepEqual(h.writes, ['/api/projects']);
 });
+
+for (const locale of ['en', 'de']) {
+  test(locale + ' project-only creation restores its submit intent after an HTTP failure', async () => {
+    const h = harness([], {locale, failProject: true});
+    const d = await h.openProject();
+    const create = locale === 'de' ? 'Erstellen' : 'Create';
+    assert.equal(d.submit.textContent, create);
+    d.form.fire('submit'); await settle();
+    assert.deepEqual(h.writes, ['/api/projects']);
+    assert.deepEqual(h.reviewRequests, []);
+    assert.equal(d.submit.disabled, false);
+    assert.equal(d.submit.textContent, create);
+    assert.equal(d.submit['aria-label'], create);
+    assert.equal(d.dialog.open, true);
+  });
+
+  test(locale + ' excluding the first requirement labels the actual project-only command and retains its draft', async () => {
+    const h = harness([], {locale, failProject: true});
+    const d = await h.open('Retained first requirement');
+    const check = d.control('createFirstRequirement');
+    const review = d.form.descendants().find(node => node.className?.includes('requirement-intake-review'));
+    const reviewLabel = locale === 'de' ? 'Text prüfen' : 'Review text';
+    const create = locale === 'de' ? 'Erstellen' : 'Create';
+    assert.equal(d.submit.textContent, reviewLabel);
+    check.checked = false; check.fire('change'); d.form.fire('change');
+    assert.equal(d.submit.textContent, create); assert.equal(d.submit['aria-label'], create);
+    assert.equal(review.hidden, true);
+    d.form.fire('submit'); await settle();
+    assert.deepEqual(h.writes, ['/api/projects']);
+    assert.equal(d.submit.disabled, false); assert.equal(d.submit.textContent, create);
+    assert.equal(d.control('requirementText').value, 'Retained first requirement');
+    check.checked = true; check.fire('change'); d.form.fire('change');
+    assert.equal(d.submit.textContent, reviewLabel); assert.equal(d.submit['aria-label'], reviewLabel);
+    assert.equal(review.hidden, false);
+  });
+}

@@ -146,7 +146,7 @@ class RequirementLifecycleBrowserIT {
             assertThat(page.driver().findElement(By.id("requirementTitle")).getDomProperty("value")).isEqualTo("New scoped requirement");
             assertThat(page.driver().findElement(By.id("requirementText")).getDomProperty("value")).isEqualTo(text);
             click(By.cssSelector("#requirementForm button[type='submit']"));
-            click(By.cssSelector("#requirementForm > .requirement-intake-review > [data-intake-choice='NEW']"));
+            click(By.cssSelector("#requirementForm .modal-body > .requirement-intake-review > [data-intake-choice='NEW']"));
             wait.until(ExpectedConditions.invisibilityOfElementLocated(By.id("requirementModal")));
             wait.until(ExpectedConditions.textToBePresentInElementLocated(By.cssSelector("#requirementsTable tbody"), "REQ-NEW"));
             var reviews = page.requests().stream().filter(request -> request.path().endsWith("/intake-review")).toList();
