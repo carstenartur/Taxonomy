@@ -24,7 +24,12 @@ public class ArchitecturePdfRenderer {
         if (projection == null || projection.scene() == null || projection.scene().isEmpty()) {
             throw new IllegalArgumentException("Architecture projection must contain a renderable scene");
         }
-        var metadata = new com.taxonomy.export.ArchitecturePdfRenderer.SnapshotMetadata(
+        return delegate.render(projection.scene(), metadata(projection), projection.nodeReasons(), projection.relationReasons(), locale);
+    }
+
+    /** Both standalone formats use the same frozen snapshot fields, never the current editor state. */
+    static com.taxonomy.export.ArchitecturePdfRenderer.SnapshotMetadata metadata(Projection projection) {
+        return new com.taxonomy.export.ArchitecturePdfRenderer.SnapshotMetadata(
                 projection.projectKey(),
                 projection.requirementKey(),
                 projection.snapshotId(),
@@ -33,6 +38,5 @@ public class ArchitecturePdfRenderer {
                 projection.commitSha(),
                 projection.warnings(),
                 projection.snapshotStatus() == null ? null : projection.snapshotStatus().name());
-        return delegate.render(projection.scene(), metadata, projection.nodeReasons(), projection.relationReasons(), locale);
     }
 }

@@ -31,7 +31,8 @@ public final class ArchitectureWordSectionRenderer {
                 (report.unresolvedGaps().isEmpty()
                                 ? List.of(labels.noneRecorded())
                                 : report.unresolvedGaps())
-                        .stream().map(List::of).toList());
+                        .stream().map(value -> com.taxonomy.export.GeneratedDiagnosticText.display(value, labels.german()))
+                        .map(List::of).toList());
         writer.heading(labels.architectureOverview(), 1, "architecture_figures");
         if (!report.diagram().title().equals(report.title()))
             writer.paragraph(report.diagram().title());
@@ -66,7 +67,7 @@ public final class ArchitectureWordSectionRenderer {
                                                                         + " · " + DiagramPresentation
                                                                                 .relationshipStatus(edge.metadata(), labels.german())))
                                         .toList());
-                writer.columnWidths(key, 12, 32, 32, 24);
+                writer.columnWidths(key, 14, 30, 30, 26);
             }
         }
         writer.heading(labels.legend(), 2, null);
@@ -102,7 +103,7 @@ public final class ArchitectureWordSectionRenderer {
                                                 e.depth() == null ? labels.unknown() : e.depth().toString(),
                                                 value(e.parentId(), labels)))
                         .toList());
-        writer.columnWidths(elements, 14, 29, 21, 13, 10, 13);
+        writer.columnWidths(elements, 14, 26, 21, 13, 9, 17);
         writeResponsibilities(writer, labels, report.diagram());
         if (!report.nodeReasons().isEmpty()) {
             writer.heading(labels.recordedNodeReasons(), 2, null);
@@ -135,7 +136,7 @@ public final class ArchitectureWordSectionRenderer {
                                                         + DiagramPresentation.relationshipStatus(metadataById.get(e.id()), labels.german()),
                                                 percentage(e.relevance())))
                         .toList());
-        writer.columnWidths(relations, 10, 16, 16, 15, 31, 12);
+        writer.columnWidths(relations, 13, 15, 15, 14, 31, 12);
         if (report.diagram().edges().stream().anyMatch(edge -> edge.metadata() != null
                 || report.relationReasons().containsKey(edge.id()))) {
             writer.heading(labels.relationshipProvenance(), 2, null);
@@ -150,7 +151,7 @@ public final class ArchitectureWordSectionRenderer {
                 details.forEach(detail -> writer.paragraph(detail).setSpacingAfter(20));
             }
         }
-        writer.heading(labels.provenance(), 1, "architecture_evidence");
+        writer.heading(labels.architectureProvenance(), 1, "architecture_evidence");
         var e = report.evidence();
         writer.table(
                 List.of(labels.titleLabel(), labels.identifier()),

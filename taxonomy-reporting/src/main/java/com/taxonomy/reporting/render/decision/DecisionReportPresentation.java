@@ -25,6 +25,12 @@ public final class DecisionReportPresentation {
                 "Diese Bewertung betrifft ausschließlich die Relevanz. Beziehungen und Umsetzungsbedarf erfordern eigene Nachweise.");
         return SCOPED_CONTRIBUTION_HEADING.matcher(localized).replaceAll("Beitragsvorschläge zur Anforderung:");
     }
+    /** Only explicitly typed fallback text is translated; original reasons remain byte-for-byte text. */
+    public static String reason(String value, DecisionRationaleReport.ReasonSource source, DecisionReportLabels labels) {
+        return source == DecisionRationaleReport.ReasonSource.DETERMINISTIC_TRACE
+                ? com.taxonomy.export.GeneratedDiagnosticText.deterministicReason(value, labels.german()) : value;
+    }
+
     /** One representative outcome per root, using the complete tree rather than the top-20 ranking. */
     public static List<String> compactReasons(DecisionRationaleReport report) {
         var labels = new DecisionReportLabels(report.languageTag());
@@ -53,6 +59,8 @@ public final class DecisionReportPresentation {
                         case DETERMINISTIC_TRACE -> labels.deterministicReason();
                         case MISSING -> labels.missingReason();
                     } : labels.aiReason();
+            if (legacyLeaf != null && report.scope().recordedReasons().get(code) == null)
+                reason = reason(reason, legacyLeaf.reasonSource(), labels);
             lines.add(reason == null || reason.isBlank() ? labels.missingReason() : provenance + ": " + reason);
         }
         return List.copyOf(lines);
@@ -88,7 +96,7 @@ public final class DecisionReportPresentation {
         lines.addAll(com.taxonomy.reporting.render.document.ReportInventory.tree(scope.decisionTree(), de));
         if (scope.options().includes(DecisionReportOptions.Section.ARCHITECTURE) && report.architecture() != null)
             lines.addAll(com.taxonomy.reporting.render.document.ReportInventory.diagram(report.architecture().diagram(), de));
-        lines.addAll(report.warnings());
+        report.warnings().stream().map(value -> com.taxonomy.export.GeneratedDiagnosticText.display(value, de)).forEach(lines::add);
         AnalysisModelEvidence.rows(scope.modelBinding(), scope.analysisScope(), labels)
                 .forEach(row -> lines.add(row.get(0) + ": " + row.get(1)));
         return List.copyOf(lines);

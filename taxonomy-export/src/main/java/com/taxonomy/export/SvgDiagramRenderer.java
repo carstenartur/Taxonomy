@@ -46,7 +46,7 @@ public class SvgDiagramRenderer {
 
     public String render(DiagramScene scene, Map<String, String> nodeReasons,
                          Map<String, Map<String, String>> relationReasons, Locale locale) {
-        return render(scene, nodeReasons, relationReasons, locale, null);
+        return render(scene, nodeReasons, relationReasons, locale, null, new DiagramExportContext(List.of(), List.of()));
     }
 
     public String renderCanonical(DiagramScene scene, DiagramCanonicalEvidence evidence) {
@@ -54,12 +54,21 @@ public class SvgDiagramRenderer {
     }
 
     public String renderCanonical(DiagramScene scene, DiagramCanonicalEvidence evidence, Locale locale) {
-        return render(scene, Map.of(), Map.of(), locale, Objects.requireNonNull(evidence, "canonical evidence"));
+        return renderCanonical(scene, null, evidence, locale);
+    }
+
+    public String renderCanonical(DiagramScene scene, String provenance, DiagramCanonicalEvidence evidence, Locale locale) {
+        return render(scene, Map.of(), Map.of(), locale, evidence, DiagramExportContext.canonical(provenance, evidence, locale));
+    }
+
+    public String render(DiagramScene scene, DiagramExportContext context, Map<String, String> nodeReasons,
+                         Map<String, Map<String, String>> relationReasons, Locale locale) {
+        return render(scene, nodeReasons, relationReasons, locale, null, Objects.requireNonNull(context, "export context"));
     }
 
     private String render(DiagramScene scene, Map<String, String> nodeReasons,
                           Map<String, Map<String, String>> relationReasons, Locale locale,
-                          DiagramCanonicalEvidence canonical) {
+                          DiagramCanonicalEvidence canonical, DiagramExportContext context) {
         var language = DiagramLanguage.from(locale);
         if (scene == null || scene.isEmpty())
             throw new IllegalArgumentException("Architecture scene must contain at least one node");
@@ -91,8 +100,19 @@ public class SvgDiagramRenderer {
         var summary = new ArrayList<String>();
         for (String line : DiagramPresentation.inventorySummary(scene, language, canonical)) summary.addAll(
                 DiagramTextWrapper.wrapMeasured(line, font(11, false), width - 28, Integer.MAX_VALUE, ""));
-        double footer = Math.max(scene.height(), scene.nodes().stream().mapToDouble(n -> n.y() + n.height() + 24).max().orElse(0));
-        double evidenceTitleY = footer + summary.size() * 16 + 40;
+        String title = DiagramExportContext.title(scene.title(), locale);
+        var titleLines = DiagramTextWrapper.wrapMeasured(title, font(18, true), width - 28, Integer.MAX_VALUE, "");
+        var headerLinesText = new ArrayList<String>();
+        for (String line : context.header()) headerLinesText.addAll(
+                DiagramTextWrapper.wrapMeasured(line, font(12, false), width - 28, Integer.MAX_VALUE, ""));
+        double graphOffset = 24 + titleLines.size() * 24 + headerLinesText.size() * 18;
+        var warningLines = new ArrayList<String>();
+        for (String warning : context.warnings()) warningLines.addAll(
+                DiagramTextWrapper.wrapMeasured(warning, font(EVIDENCE_FONT_SIZE, false), width - 28, Integer.MAX_VALUE, ""));
+        double footer = graphOffset + Math.max(scene.height(), scene.nodes().stream().mapToDouble(n -> n.y() + n.height() + 24).max().orElse(0));
+        double warningTop = footer + summary.size() * 16 + 32;
+        double evidenceTitleY = footer + summary.size() * 16 + 40
+                + (warningLines.isEmpty() ? 0 : 36 + warningLines.size() * EVIDENCE_LINE_HEIGHT);
         var columnHeaders = new ArrayList<List<String>>();
         int headerLines = 1;
         for (int column = 0; column < columns; column++) {
@@ -114,7 +134,7 @@ public class SvgDiagramRenderer {
             .append("<svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" role=\"img\" xml:lang=\"").append(language.tag()).append("\" viewBox=\"0 0 ")
             .append(number(width)).append(' ').append(number(height)).append("\" width=\"")
             .append(number(width)).append("\" height=\"").append(number(height)).append("\">\n")
-            .append("<title>").append(xml(scene.title())).append("</title>\n")
+            .append("<title>").append(xml(title)).append("</title>\n")
             .append("<desc>").append(canonical != null
                     ? language.text("Canonical architecture diagram. Shapes link to the visible inventory of complete labels and saved model states.", "Kanonisches Architekturdiagramm. Die Elemente verweisen auf das Inventar mit vollständigen Beschriftungen und gespeicherten Modellzuständen.")
                     : language.text(
@@ -131,6 +151,13 @@ public class SvgDiagramRenderer {
         });
         svg.append("</defs>\n<rect width=\"100%\" height=\"100%\" fill=\"")
                 .append(theme.canvasBackground()).append("\"/>\n");
+        for (int line = 0; line < titleLines.size(); line++)
+            text(svg, 14, 28 + line * 24, "start", 18, true, theme.canvasText("#0f172a"), titleLines.get(line));
+        for (int line = 0; line < headerLinesText.size(); line++)
+            text(svg, 14, 28 + titleLines.size() * 24 + line * 18, "start", 12, false,
+                    theme.canvasText("#334155"), headerLinesText.get(line));
+        // Keep all node/edge coordinates and routing unchanged inside one translated graph group.
+        svg.append("<g class=\"architecture-graph\" transform=\"translate(0,").append(number(graphOffset)).append(")\">\n");
         var captionFont = font(11, false);
         var captionContext = new FontRenderContext(null, true, true);
         var metrics = captionFont.getLineMetrics("Ag", captionContext);
@@ -218,8 +245,16 @@ public class SvgDiagramRenderer {
                     canonical == null ? node.type() + " · " + language.score(node) : node.type(), font(10, false), nodeTextWidth, 1, language.text("Unclassified", "Nicht klassifiziert")).getFirst());
             svg.append("</g></a>\n");
         }
+        svg.append("</g>\n");
         for (int i = 0; i < summary.size(); i++) text(svg, 14, footer + 16 + i * 16, "start", 11, false, theme.canvasText("#334155"),
                 summary.get(i));
+        if (!warningLines.isEmpty()) {
+            text(svg, 14, warningTop, "start", 16, true, theme.canvasText("#0f172a"),
+                    language.text("Recorded warnings and open work", "Gespeicherte Hinweise und offene Arbeit"));
+            for (int line = 0; line < warningLines.size(); line++) text(svg, 14,
+                    warningTop + 24 + line * EVIDENCE_LINE_HEIGHT, "start", EVIDENCE_FONT_SIZE, false,
+                    theme.canvasText("#334155"), warningLines.get(line));
+        }
         text(svg, 14, evidenceTitleY, "start", 16, true, theme.canvasText("#0f172a"), canonical == null ? language.text("Scores and complete explanations", "Bewertungen und vollständige Begründungen") : language.text("Canonical inventory", "Kanonisches Inventar"));
         for (int column = 0; column < columns; column++) {
             double x = 14 + column * EVIDENCE_COLUMN_WIDTH;
