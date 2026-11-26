@@ -335,6 +335,8 @@ Nach Prüfung der Taxonomieabdeckung werden Lösungen mit den von ihnen abgedeck
 
 Im Reiter **Produkte** werden belegte Hersteller-, Produkt- und Versionsangaben erfasst. Produktbehauptungen behalten Quelle und Prüfzeitpunkt. Produkte können als Kandidaten einer Lösung hinzugefügt, verglichen, in die engere Wahl genommen oder ausdrücklich ausgewählt werden. Harte Ausschlussgründe verhindern eine Auswahl.
 
+Bei einer Statusänderung bleiben vorhandene Bewertungen, Begründungen und Nachweise erhalten. Manuelle Ausschlussgründe werden getrennt von den Befunden eines Bestandsvergleichs gespeichert. Ein neuer geprüfter Bestandsvergleich ersetzt nur seine eigenen Befunde. Ein manuell gespeicherter Ausschlussgrund bleibt wirksam, bis er ausdrücklich korrigiert wird; gleicher Wortlaut belegt keine gemeinsame Herkunft.
+
 ## 7. Konflikte erkennen und auflösen
 
 Wählen Sie **Konflikte erkennen** im Projektarbeitsbereich.
@@ -378,6 +380,8 @@ Sie können:
 5. zwei unterschiedliche Branches über den semantischen Git-Merge-Dienst zusammenführen.
 
 Ändert sich der Zielbranch nach der Vorschau, wird die Materialisierung ohne Änderung der Portfoliodaten abgewiesen. Dadurch kann eine veraltete Prüfung keine neueren Arbeiten überschreiben.
+
+Produktkandidaten behalten ihre Vergleichskennung, den Fingerprint und gespeicherte Ausschlussgründe auch beim Import in einen neuen Arbeitsbereich. Ein Import kann bereits vorhandene Bestandsnachweise nicht ersetzen. Bei einem Widerspruch wird der betreffende Kandidat nicht übernommen und eine Warnung ausgegeben; seine gespeicherten Entscheidungen bleiben erhalten.
 
 <a id="portfolio-reports"></a>
 ## 10. Berichte und Exporte erzeugen

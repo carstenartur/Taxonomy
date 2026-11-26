@@ -1,10 +1,12 @@
-# Verification of the confirmed QA fixes — 2026-11-26
+# Initial verification of the confirmed QA fixes — 2026-11-26
+
+This is the historical first reconstruction checkpoint. For subsequent source corrections, fresh visual/report checks and integration evidence, see the [completion record](2026-11-26-qa-completion.md).
 
 ## Scope and source
 
 This change reconstructs fixes for the ten functional findings in the user-provided QA report against `89c32b5adba6d319c04352a412d2bc9c257aedb2`. It also repairs two adjacent broken API paths discovered while checking the real browser/server contracts. The implementation has new regression evidence; previous work whose source was lost is not used as proof that this code passes.
 
-The fixes are published incrementally on `fix/qa-export-workflow-20261126`. The verified code commit is `187d71fd35809a7761ee549966ee97f20bc2d015`; subsequent closing documentation does not change production or test code. Main is unchanged. This document records functional verification, not a complete release or Enterprise Architect acceptance.
+The first fixes were published incrementally on `fix/qa-export-workflow-20261126`. The verified code at this checkpoint was `187d71fd35809a7761ee549966ee97f20bc2d015`; its immediate closing documentation did not change production or test code. Main was unchanged at that checkpoint. Later implementation and merge status belong to the completion record above. This historical record covers functional verification, not a complete release or Enterprise Architect acceptance.
 
 ## Original findings
 

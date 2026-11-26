@@ -319,6 +319,8 @@ After reviewing taxonomy coverage, connect solutions to the requirements they co
 
 In the **Products** tab, create sourced manufacturer/product/version entries. Product claims retain their source and verification date. Add products as candidates to a solution, compare alternatives and explicitly shortlist or select them. Hard exclusions prevent selection.
 
+A status change preserves existing assessments, explanations and evidence. Manual exclusions are stored separately from inventory comparison findings. A newly reviewed inventory comparison replaces only its own findings. A manually recorded exclusion remains effective until explicitly corrected; identical wording does not establish common provenance.
+
 ## 7. Detect and resolve conflicts
 
 Choose **Detect conflicts** in the project workspace.
@@ -362,6 +364,8 @@ You can:
 5. merge two different branches through the semantic Git merge service.
 
 If the target branch changes after the preview, materialization is rejected without changing portfolio data. This prevents a stale review from overwriting newer work.
+
+Product candidates retain their comparison identity, fingerprint and saved exclusions when imported into a new workspace. An import cannot replace inventory evidence already retained there. If the evidence conflicts, the candidate is not applied and a warning is reported; its existing decisions remain intact.
 
 <a id="portfolio-reports"></a>
 ## 10. Create reports and exports

@@ -54,7 +54,11 @@ prove that an existing PNG was captured from that source. In particular, a
 `*-current-*` filename is not a freshness guarantee. New retained captures need the
 matching output and actual `documentation-screenshots.json` from a successful run.
 The retained guide refresh is documented in the [7 November visual review](../docs/qa/2026-11-07-documentation-screenshots.md)
-and its [unaltered generated manifest](../docs/images/documentation-screenshots.json).
+and its [original retained manifest](../docs/images/documentation-screenshots-2026-11-07.json).
+The later [26 November toolbar repair](../docs/qa/2026-11-26-help-and-capture-repair.md)
+retains its [unaltered CI manifest](../docs/images/documentation-screenshots-2026-11-26.json).
+The [active inventory](../docs/images/documentation-screenshots.json) combines these
+sources using explicit per-capture provenance; it is not a single generated run.
 
 The [October 25 application record](../docs/images/ui-documentation-2026-10-25.json),
 [focus-lens record](../docs/images/architecture-editor-focus-capture.json),
