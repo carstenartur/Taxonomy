@@ -29,7 +29,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class ArchitectureWorkbenchAssetContractTest {
 
-    private static final String D3 = "/webjars/d3/7.9.0/dist/d3.min.js";
+    private static final String D3 = "/webjars/d3/7.9.2/dist/d3.min.js";
     private static final String DIAGRAM = "/js/shared/architecture-diagram.js";
     private static final String RENDERER = "/js/architecture-editor-renderer.js";
     private static final String DIAGRAM_CSS = "/css/shared/architecture-diagram.css";

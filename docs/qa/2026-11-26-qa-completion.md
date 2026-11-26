@@ -59,7 +59,7 @@ The dependency repairs retain the existing Maven-owned verification and product 
 | PR | Correction and decision |
 | --- | --- |
 | [1606](https://github.com/carstenartur/Taxonomy/pull/1606), d3-hierarchy 3.1.3 | Compatible with both D3 versions; take before 1601. The management comment is version-neutral. |
-| [1601](https://github.com/carstenartur/Taxonomy/pull/1601), D3 7.9.2 | Update all 11 runtime/test resource consumers to the packaged version and align hierarchy 3.1.3 with the new lower bound. Actual bundled JS exposes the required functions. |
+| [1601](https://github.com/carstenartur/Taxonomy/pull/1601), D3 7.9.2 | Update all runtime and test resource consumers to the packaged version and align hierarchy 3.1.3 with the new lower bound. Actual bundled JS exposes the required functions. |
 | [1603](https://github.com/carstenartur/Taxonomy/pull/1603), CodeQL 4.39.4 | Keep the quality-evidence finalizer's action pin equal to the reviewed workflow pin. Existing metadata tests changed from 7/8 to 8/8. |
 | [1604](https://github.com/carstenartur/Taxonomy/pull/1604), iconv-lite 0.7.3 | Actual D3-DSV CLI passes Latin-1 CSV→JSON→CSV byte round trip and delimiter conversion with Commander 7.2.0. |
 | [1605](https://github.com/carstenartur/Taxonomy/pull/1605), Springdoc 3.2.1 | Declare the existing BOM-managed Jackson 2 Java Time module directly in reporting; the removed transitive dependency had broken `Instant` serialization. |

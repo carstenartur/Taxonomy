@@ -19,7 +19,7 @@ class TaxonomyTreeGeometryTest {
     void treeLayoutHonoursVisibleDepthAndOccupiedBounds(String scenario) throws Exception {
         Path script = copy("/tree-layout.cjs", "contract.cjs");
         Path views = copy("/static/js/core/taxonomy-views.js", "views.js");
-        Path d3 = copy("/META-INF/resources/webjars/d3/7.9.0/dist/d3.min.js", "d3.js");
+        Path d3 = copy("/META-INF/resources/webjars/d3/7.9.2/dist/d3.min.js", "d3.js");
         Path utils = copy("/static/js/shared/taxonomy-utils.js", "utils.js");
         Path matchScale = copy("/static/js/shared/match-scale.js", "match-scale.js");
         Path log = directory.resolve("result.log");

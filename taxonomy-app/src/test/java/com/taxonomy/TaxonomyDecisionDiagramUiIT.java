@@ -468,7 +468,7 @@ class TaxonomyDecisionDiagramUiIT {
         if(path.equals("/fixture")){bytes=HTML.getBytes(StandardCharsets.UTF_8);exchange.getResponseHeaders().set("Content-Type","text/html; charset=UTF-8");}
         else if(path.equals("/labels.js")){bytes=("window.fixtureLabels="+new tools.jackson.databind.ObjectMapper().writeValueAsString(LABELS)+";").getBytes(StandardCharsets.UTF_8);exchange.getResponseHeaders().set("Content-Type","application/javascript; charset=UTF-8");}
         else if(path.equals("/views.js")){try(var input=new ClassPathResource("static/js/core/taxonomy-views.js").getInputStream()){bytes=input.readAllBytes();}exchange.getResponseHeaders().set("Content-Type","application/javascript");}
-        else if(path.equals("/d3.js")){bytes=new ClassPathResource("META-INF/resources/webjars/d3/7.9.0/dist/d3.min.js").getInputStream().readAllBytes();exchange.getResponseHeaders().set("Content-Type","application/javascript");}
+        else if(path.equals("/d3.js")){bytes=new ClassPathResource("META-INF/resources/webjars/d3/7.9.2/dist/d3.min.js").getInputStream().readAllBytes();exchange.getResponseHeaders().set("Content-Type","application/javascript");}
         else {exchange.sendResponseHeaders(404,-1);exchange.close();return;}
         exchange.sendResponseHeaders(200,bytes.length);exchange.getResponseBody().write(bytes);exchange.close();
     }

@@ -449,7 +449,7 @@ test('native analysis/navigation component tests run in the installed-browser UI
   assert.match(runner, /BOOTSTRAP_CSS:\s*bootstrapCss/);
   assert.match(runner, /webjars\/bootstrap\/5\.3\.8\/dist\/css\/bootstrap\.min\.css/);
   assert.match(runner, /TAXONOMY_TEST_D3_SCRIPT:\s*d3Script/);
-  assert.match(runner, /webjars\/d3\/7\.9\.0\/dist\/d3\.min\.js/);
+  assert.match(runner, /webjars\/d3\/7\.9\.2\/dist\/d3\.min\.js/);
   assert.ok(specialModeShard.scenarios.includes('special-modes/text-spacing-and-offline'));
 });
 

@@ -627,7 +627,7 @@ class TaxonomyBrowseDecisionUiIT {
     private static void serve(HttpExchange exchange) throws IOException {
         String path = exchange.getRequestURI().getPath();
         if(path.equals("/d3.js")){
-            send(exchange,"application/javascript",new ClassPathResource("META-INF/resources/webjars/d3/7.9.0/dist/d3.min.js")
+            send(exchange,"application/javascript",new ClassPathResource("META-INF/resources/webjars/d3/7.9.2/dist/d3.min.js")
                     .getContentAsString(StandardCharsets.UTF_8));
             return;
         }
