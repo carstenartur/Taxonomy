@@ -1,6 +1,10 @@
 package com.taxonomy.composition.analysis;
 
+import com.taxonomy.analysis.usecase.AnalysisAdmissionModelPort;
+import com.taxonomy.analysis.usecase.PreviewRequirementUseCase;
 import com.taxonomy.catalog.model.TaxonomyNode;
+import com.taxonomy.catalog.snapshot.RetainedCataloguePreview;
+import com.taxonomy.dto.CatalogueAnalysisPreview;
 import com.taxonomy.catalog.provenance.CatalogueSourceJournal;
 import com.taxonomy.catalog.service.CatalogueOverlayService;
 import com.taxonomy.catalog.snapshot.CataloguePreviewIndex;
@@ -34,12 +38,13 @@ class CatalogueAnalysisPreviewControllerTest {
     private static final String COMMIT = "a".repeat(40);
     private static final WorkspaceContext WORKSPACE = new WorkspaceContext("reader", "desk", "design", "civic");
     private static final CatalogueSourceIdentity SOURCE = new CatalogueSourceIdentity("civic", "desk", "design", COMMIT);
-    private final SelectedArchitectureAdmissionModel models = mock(SelectedArchitectureAdmissionModel.class);
+    private final AnalysisAdmissionModelPort models = mock(AnalysisAdmissionModelPort.class);
     private final WorkspaceResolver workspaces = mock(WorkspaceResolver.class);
     private final CatalogueSnapshotService archives = mock(CatalogueSnapshotService.class);
     private final SemanticCataloguePreview semantic = mock(SemanticCataloguePreview.class);
     private final CatalogueAnalysisPreviewController controller =
-            new CatalogueAnalysisPreviewController(models, workspaces, archives, (key, defaultValue) -> 240, semantic);
+            new CatalogueAnalysisPreviewController(new PreviewRequirementUseCase(models, workspaces,
+                    (key, defaultValue) -> 240, new RetainedCataloguePreview(archives, semantic)));
 
     @Test
     void editedTextUsesTheAuthorizedPinnedCatalogueAndContextAncestorsHaveNoScore() {
@@ -53,7 +58,7 @@ class CatalogueAnalysisPreviewControllerTest {
         assertThat(first.catalogueRevision()).isEqualTo(REVISION);
         assertThat(first.commit()).isEqualTo(COMMIT);
         assertThat(first.method()).isEqualTo("CATALOGUE_LEXICAL");
-        assertThat(first.nodes()).extracting(CatalogueAnalysisPreviewController.Node::code).containsExactly("BP", "BP-1");
+        assertThat(first.nodes()).extracting(CatalogueAnalysisPreview.Node::code).containsExactly("BP", "BP-1");
         assertThat(first.nodes().getFirst().score()).isNull();
         assertThat(first.nodes().getLast().score()).isPositive();
         assertThat(controller.preview(request("zzzxq", Set.of())).getBody().nodes()).isEmpty();
@@ -111,8 +116,8 @@ class CatalogueAnalysisPreviewControllerTest {
                 Map.of(), List.of(), Set.of(), null));
     }
 
-    private static CatalogueAnalysisPreviewController.Request request(String text, Set<String> roots) {
-        return new CatalogueAnalysisPreviewController.Request(text, roots, COMMIT, null);
+    private static CatalogueAnalysisPreview.Request request(String text, Set<String> roots) {
+        return new CatalogueAnalysisPreview.Request(text, roots, COMMIT, null);
     }
 
     private static RootCatalogueSnapshot root() {

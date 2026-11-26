@@ -26,8 +26,6 @@ public class StreamRequirementAnalysisUseCase {
 
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private CatalogueSnapshotService catalogueSnapshots;
-    @org.springframework.beans.factory.annotation.Autowired
-    private com.taxonomy.catalog.snapshot.FrozenCatalogueEmbeddingService embeddingSnapshots;
     private final LlmService llmService;
     private final AiPromptBudgetPolicy promptBudgetPolicy;
 
@@ -131,7 +129,7 @@ public class StreamRequirementAnalysisUseCase {
                 }
             };
             try (var catalogue = AdmittedCatalogue.openForScoring(catalogueSnapshots, command.modelBinding(),
-                    command.workspace(), llmService, embeddingSnapshots)) {
+                    command.workspace(), llmService)) {
                 if (command.analysisScope().legacyFull()) llmService.analyzeStreaming(command.businessText(), callback);
                 else llmService.analyzeStreaming(command.businessText(), command.analysisScope(), callback);
             }

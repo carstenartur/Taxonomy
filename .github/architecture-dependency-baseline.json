@@ -230,7 +230,7 @@
       "fromPackage": "com.taxonomy.analysis.usecase",
       "toContext": "knowledge",
       "toPackage": "com.taxonomy.catalog.snapshot",
-      "classDependencyCount": 10
+      "classDependencyCount": 13
     },
     {
       "fromContext": "analysis",
@@ -244,7 +244,7 @@
       "fromPackage": "com.taxonomy.analysis.usecase",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
-      "classDependencyCount": 9
+      "classDependencyCount": 10
     },
     {
       "fromContext": "app-composition",
@@ -314,7 +314,7 @@
       "fromPackage": "com.taxonomy.composition.analysis",
       "toContext": "analysis",
       "toPackage": "com.taxonomy.analysis.usecase",
-      "classDependencyCount": 4
+      "classDependencyCount": 5
     },
     {
       "fromContext": "app-composition",

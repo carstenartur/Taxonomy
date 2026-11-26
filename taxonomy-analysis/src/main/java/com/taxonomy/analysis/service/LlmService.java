@@ -1611,7 +1611,7 @@ public class LlmService {
         int outputTokens = providerConfig.getCustomLlmMaxOutputTokens();
         var options = kind == ScoreAssessmentKind.ROOT_RELEVANCE
                 ? AssessmentCompletion.forRoot(nodes.getFirst().getCode(), outputTokens)
-                : AssessmentCompletion.forChildren(nodes, outputTokens);
+                : AssessmentCompletion.forChildren(nodes.stream().map(TaxonomyNode::getCode).toList(), outputTokens);
         return gateway.sendHttpRequest(prompt, apiKey, options);
     }
 

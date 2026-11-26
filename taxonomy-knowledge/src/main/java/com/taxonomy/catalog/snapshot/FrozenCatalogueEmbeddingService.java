@@ -34,6 +34,14 @@ public class FrozenCatalogueEmbeddingService {
         this.embeddings = Objects.requireNonNull(embeddings);
     }
 
+    List<RootCatalogueSnapshot> decorateForActor(String actor, CatalogueSourceIdentity source,
+                                               List<RootCatalogueSnapshot> capturedRoots, Set<String> requiredRoots) {
+        var repository = source.workspaceId() == null
+                ? RepositoryContext.centralRead(source.repositoryId(), source.branch(), actor)
+                : RepositoryContext.workspace(source.repositoryId(), source.workspaceId(), source.branch(), actor);
+        return decorate(repository, source, capturedRoots, requiredRoots);
+    }
+
     /**
      * Endpoint names may cross roots, so admission supplies one atomic all-root scalar capture.
      * Only required roots are returned for persistence; workers never load endpoint roots or relation projections.

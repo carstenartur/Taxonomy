@@ -84,6 +84,7 @@ test('Sunburst keeps an unassessed branch color when the preceding zero branch i
     const descendants=node=>node.children.flatMap(child=>[child,...descendants(child)]);
     function element(tagName) {
         return {tagName,children:[],attributes:{},style:{},classList:{add(){}},
+            getBBox(){return {width:(this.textContent||'').length*5,height:10};},
             set innerHTML(value){this.children=[];},
             setAttribute(key,value){this.attributes[key]=String(value);},
             getAttribute(key){return this.attributes[key]??null;},

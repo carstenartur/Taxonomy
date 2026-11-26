@@ -1,6 +1,5 @@
 package com.taxonomy.analysis.service;
 
-import com.taxonomy.catalog.model.TaxonomyNode;
 import com.taxonomy.dto.RootAssessment.Status;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -22,13 +21,13 @@ final class AssessmentCompletion {
         return new LlmCompletionOptions(ROOT_SCHEMA, object(Map.of(code, Map.of("anyOf", alternatives))), maxOutputTokens);
     }
 
-    static LlmCompletionOptions forChildren(List<TaxonomyNode> nodes, int maxOutputTokens) {
+    static LlmCompletionOptions forChildren(List<String> nodeCodes, int maxOutputTokens) {
         var assessment = new LinkedHashMap<String, Object>();
         assessment.put("score", Map.of("type", "number", "minimum", 0, "maximum", 100));
         assessment.put("reason", Map.of("type", "string", "minLength", 1));
         var properties = new LinkedHashMap<String, Object>();
-        for (var node : nodes) {
-            properties.put(node.getCode(), Map.of("$ref", "#/$defs/assessment"));
+        for (var code : nodeCodes) {
+            properties.put(code, Map.of("$ref", "#/$defs/assessment"));
         }
         var schema = new LinkedHashMap<>(object(properties));
         schema.put("$defs", Map.of("assessment", object(assessment)));

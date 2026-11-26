@@ -85,6 +85,8 @@ Owns requirement/LLM analysis, prompts, provider policy, response parsing, sessi
 and analysis abstractions. Stateful cross-context access uses explicit ports. The
 library, not `taxonomy-app`, owns its unit tests and feature resources.
 
+The HTTP adapter exposes interactive previews when both analysis and architecture are installed. It calls `PreviewRequirementUseCase`, which resolves the readable workspace and pins the architecture through `AnalysisAdmissionModelPort`. The knowledge facade `RetainedCataloguePreview` reopens that catalogue revision for each request and owns the vocabulary and vector indexes.
+
 ### `taxonomy-portfolio`
 
 Owns projects, versioned requirements, persisted analysis work/results/review state,

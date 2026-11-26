@@ -179,6 +179,30 @@ export async function runDiagramKeyboardWorkflow({ page, evidence }) {
   await evidence.saveRequiredViewportState('qa-german-sunburst-keyboard', '#taxonomyTree');
   evidence.passed('sunburst supports keyboard branch zoom with native Back and full-taxonomy controls');
 
+  const crowded = Array.from({length: 24}, (_, family) => ({
+    code: 'S' + family, name: 'Branch ' + family,
+    children: Array.from({length: 24}, (_, leaf) => ({
+      code: 'S' + family + '-' + leaf, name: 'Leaf ' + leaf, children: []
+    }))
+  }));
+  await render('renderSunburst', {fixture: crowded, scores: {},
+    context: {view: 'sunburst', analysisKey: 'dense-label-fit'}});
+  const firstLeaf = container.locator('[data-diagram-node="S0-0"]');
+  const leafLabel = container.locator('svg text').filter({hasText: /^S0-0$/});
+  await expect(visibleNodes()).toHaveCount(600);
+  await expect(container.locator('svg text').filter({hasText: /^S0$/})).toHaveAttribute('fill-opacity', '1');
+  await expect(leafLabel).toHaveAttribute('fill-opacity', '0');
+  await expect(firstLeaf).toHaveAttribute('aria-label', /Leaf 0/);
+  await firstLeaf.dispatchEvent('mousemove', {clientX: 10, clientY: 10});
+  await expect(page.locator('#tax-d3-tooltip')).toContainText('S0-0');
+  await container.locator('[data-diagram-node="S0"]').focus();
+  await page.keyboard.press('Enter');
+  await expect(leafLabel).toHaveAttribute('fill-opacity', '1');
+  await expect(visibleNodes()).toHaveCount(25);
+  await button('Gesamte Taxonomie anzeigen').click();
+  await expect(leafLabel).toHaveAttribute('fill-opacity', '0');
+  evidence.passed('dense Sunburst labels fit the overview and zoom while narrow sectors remain accessible');
+
   // Logical reading context survives view/root changes and automatic renderer changes.
   const treeContext = { analysisKey: 'viewport-regression-one', view: 'tree', treeRoot: 'QA-D' };
   await render('renderTreeDiagram', { context: treeContext });
