@@ -47,7 +47,7 @@ async function loadD3(page) {
     const source = process.env.TAXONOMY_TEST_D3_SCRIPT
         ? await readFile(process.env.TAXONOMY_TEST_D3_SCRIPT, 'utf8')
         : execFileSync('unzip', ['-p', path.join(process.env.MAVEN_REPO_LOCAL || path.join(os.homedir(), '.m2/repository'),
-                'org/webjars/npm/d3/7.9.0/d3-7.9.0.jar'), 'META-INF/resources/webjars/d3/7.9.0/dist/d3.min.js'], {encoding:'utf8'});
+                'org/webjars/npm/d3/7.9.2/d3-7.9.2.jar'), 'META-INF/resources/webjars/d3/7.9.2/dist/d3.min.js'], {encoding:'utf8'});
     await page.addScriptTag({content:source});
 }
 

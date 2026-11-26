@@ -86,11 +86,11 @@ class OfflineWebAssetsTest {
                 .doesNotContain("unpkg.com")
                 .contains("/webjars/bootstrap/5.3.8/dist/css/bootstrap.min.css")
                 .contains("/webjars/bootstrap/5.3.8/dist/js/bootstrap.bundle.min.js")
-                .contains("/webjars/d3/7.9.0/dist/d3.min.js")
+                .contains("/webjars/d3/7.9.2/dist/d3.min.js")
                 .contains("/webjars/jspdf/4.2.1/dist/jspdf.umd.min.js")
                 .contains("/webjars/svg2pdf.js/2.2.0/dist/svg2pdf.umd.min.js")
                 .contains("/css/taxonomy-ergonomics.css")
-                .containsOnlyOnce("src=\"/webjars/d3/7.9.0/dist/d3.min.js\"")
+                .containsOnlyOnce("src=\"/webjars/d3/7.9.2/dist/d3.min.js\"")
                 .doesNotContain("th:replace", "<th:block");
     }
 
@@ -98,7 +98,7 @@ class OfflineWebAssetsTest {
     void everyVersionedTemplateAssetExistsInTheResolvedWebJars() {
         assertPackagedResource("/META-INF/resources/webjars/bootstrap/5.3.8/dist/css/bootstrap.min.css");
         assertPackagedResource("/META-INF/resources/webjars/bootstrap/5.3.8/dist/js/bootstrap.bundle.min.js");
-        assertPackagedResource("/META-INF/resources/webjars/d3/7.9.0/dist/d3.min.js");
+        assertPackagedResource("/META-INF/resources/webjars/d3/7.9.2/dist/d3.min.js");
         assertPackagedResource("/META-INF/resources/webjars/jspdf/4.2.1/dist/jspdf.umd.min.js");
         assertPackagedResource("/META-INF/resources/webjars/svg2pdf.js/2.2.0/dist/svg2pdf.umd.min.js");
     }

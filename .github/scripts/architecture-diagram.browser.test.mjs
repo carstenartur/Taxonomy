@@ -12,7 +12,7 @@ const resources = process.env.TAXONOMY_TEST_RESOURCE_ROOT || path.resolve('taxon
 let browser, d3Source;
 before(async () => {
     d3Source = process.env.TAXONOMY_TEST_D3_SCRIPT ? await readFile(process.env.TAXONOMY_TEST_D3_SCRIPT, 'utf8')
-        : execFileSync('unzip', ['-p', path.join(process.env.MAVEN_REPO_LOCAL || path.join(os.homedir(), '.m2/repository'), 'org/webjars/npm/d3/7.9.0/d3-7.9.0.jar'), 'META-INF/resources/webjars/d3/7.9.0/dist/d3.min.js'], { encoding: 'utf8' });
+        : execFileSync('unzip', ['-p', path.join(process.env.MAVEN_REPO_LOCAL || path.join(os.homedir(), '.m2/repository'), 'org/webjars/npm/d3/7.9.2/d3-7.9.2.jar'), 'META-INF/resources/webjars/d3/7.9.2/dist/d3.min.js'], { encoding: 'utf8' });
     browser = await chromium.launch({ headless: true, ...(process.env.CHROMIUM_EXECUTABLE ? { executablePath: process.env.CHROMIUM_EXECUTABLE } : {}), args: ['--no-sandbox', '--disable-dev-shm-usage'] });
 });
 after(async () => { await browser?.close(); });
