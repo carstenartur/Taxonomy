@@ -3,6 +3,9 @@ package com.taxonomy;
 import com.taxonomy.catalog.definition.BundledCatalogue;
 import com.taxonomy.catalog.model.TaxonomyNode;
 import com.taxonomy.catalog.service.TaxonomyService;
+import com.taxonomy.portfolio.dto.CopilotDtos.AiAutomationStatus;
+import com.taxonomy.portfolio.model.AiCostPolicy;
+import com.taxonomy.portfolio.model.AnalysisAutomationProfile;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
@@ -19,6 +22,7 @@ import org.openqa.selenium.remote.Augmenter;
 import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.springframework.core.io.ClassPathResource;
 
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -34,6 +38,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @Tag("browser")
 @Tag("ci-app-shard-browser")
 class PortfolioRemediationLayoutIT {
+    private static final String NO_PROVIDER_REASON = "No provider configured for this browser fixture.";
     private static PortfolioClientTestPage page;
     private static HasCdp cdp;
     private static List<TaxonomyNode> catalogueNodes;
@@ -67,11 +72,31 @@ class PortfolioRemediationLayoutIT {
         Files.write(output.resolve(name + ".png"), page.driver().getScreenshotAs(OutputType.BYTES));
     }
 
+    private void configureIdleCopilotRoutes() {
+        page.route("GET", "/api/ai-automation", request -> json(200, new AiAutomationStatus(
+                AiCostPolicy.METERED, false, false, false, false, null, null,
+                AnalysisAutomationProfile.FULL, AnalysisAutomationProfile.FULL, 1, 1, 100,
+                NO_PROVIDER_REASON, List.of(), List.of("Human review remains required."))));
+        page.route("GET", REQUIREMENT + "/copilot/latest", request ->
+                new PortfolioClientTestPage.Response(204, "application/json", ""));
+    }
+
+    private void awaitIdleCopilotPolicy(PortfolioRequirementFixture fixture) {
+        // Policy rendering follows the completed status/latest/account reads, before any layout action.
+        fixture.wait.until(ExpectedConditions.textToBePresentInElementLocated(By.id("copilotPolicy"), NO_PROVIDER_REASON));
+        assertThat(page.driver().findElement(By.id("copilotManualAvailability")).getText()).isNotBlank();
+        assertThat(page.driver().findElement(By.id("copilotRun")).isEnabled()).isFalse();
+        assertThat(page.driver().findElement(By.id("copilotOperation")).isDisplayed()).isFalse();
+        assertThat(page.driver().findElement(By.id("copilotError")).isDisplayed())
+                .as("The idle Copilot fixture completed its initial reads without an HTTP error").isFalse();
+    }
+
     @ParameterizedTest
     @CsvSource({"de,390", "en,390", "de,1440", "en,1440"})
     void adoptionCloseRemainsVisibleAndClickableAfterScrollingLongEvidence(String locale, int width) throws Exception {
         viewport(width);
         var fixture = new PortfolioRequirementFixture(page);
+        configureIdleCopilotRoutes();
         String offer = REQUIREMENT + "/reformulations/layout-offer";
         String longText = (locale.equals("de")
                 ? "Aufgezeichnete Anforderung mit Herkunft und offenem Entscheidungsbedarf.\n"
@@ -85,6 +110,7 @@ class PortfolioRemediationLayoutIT {
         page.route("POST", offer + "/adoption-previews", request -> json(201, preview));
         page.route("GET", offer + "/adoptions", request -> json(200, List.of()));
         fixture.open(locale);
+        awaitIdleCopilotPolicy(fixture);
         page.driver().executeScript("""
                 window.TaxonomyReformulationAdoption.open({projectId:1,requirementId:2,
                     proposalId:'layout-offer',revision:1,language:arguments[0],isCurrent:()=>true});
@@ -133,15 +159,42 @@ class PortfolioRemediationLayoutIT {
     void inventoryKeepsLargeNodeSelectionBoundedAndOptionalSetupCollapsed(String locale, int width) throws Exception {
         viewport(width);
         var fixture = new PortfolioRequirementFixture(page);
+        configureIdleCopilotRoutes();
         page.route("GET", ROOT + "/snapshots/layout-snapshot/inventory-comparisons", request -> json(200, List.of()));
         fixture.open(locale);
+        awaitIdleCopilotPolicy(fixture);
         fixture.click("solutions-tab");
-        assertThat(page.driver().executeScript("""
+        var tabGeometry = (Map<?, ?>) page.driver().executeScript("""
                 const tabs=document.getElementById('detailTabs'),selected=document.getElementById('solutions-tab');
                 const r=selected.getBoundingClientRect(),t=tabs.getBoundingClientRect();
-                return getComputedStyle(selected).whiteSpace==='nowrap' && r.left>=t.left && r.right<=t.right
+                const passed=getComputedStyle(selected).whiteSpace==='nowrap' && r.left>=t.left && r.right<=t.right
                     && selected.getAttribute('aria-selected')==='true';
-                """)).as("The last tab remains readable and can be reached by a native click").isEqualTo(true);
+                const whiteSpace=getComputedStyle(selected).whiteSpace,ariaSelected=selected.getAttribute('aria-selected');
+                const scrollMetrics=element=>({scrollLeft:element.scrollLeft,scrollTop:element.scrollTop,
+                    clientWidth:element.clientWidth,clientHeight:element.clientHeight,
+                    scrollWidth:element.scrollWidth,scrollHeight:element.scrollHeight});
+                const visual=window.visualViewport;
+                return {passed,whiteSpace,ariaSelected,
+                    clauses:{nowrap:whiteSpace==='nowrap',leftWithinTabs:r.left>=t.left,
+                        rightWithinTabs:r.right<=t.right,selected:ariaSelected==='true'},
+                    rectangles:{selected:r.toJSON(),tabs:t.toJSON(),
+                        selectedParent:selected.parentElement.getBoundingClientRect().toJSON()},
+                    scroll:{selected:scrollMetrics(selected),tabs:scrollMetrics(tabs),
+                        document:scrollMetrics(document.documentElement)},
+                    viewport:{innerWidth,innerHeight,outerWidth,outerHeight,scrollX,scrollY,
+                        devicePixelRatio,visual:visual?{width:visual.width,height:visual.height,
+                            offsetLeft:visual.offsetLeft,offsetTop:visual.offsetTop,
+                            pageLeft:visual.pageLeft,pageTop:visual.pageTop,scale:visual.scale}:null}};
+                """);
+        Path diagnostics = Path.of("target/scenario-acceptance/portfolio-remediation");
+        Files.createDirectories(diagnostics);
+        String measuredGeometry = json(tabGeometry);
+        Files.writeString(diagnostics.resolve("tabs-" + locale + "-" + width + ".json"),
+                measuredGeometry, StandardCharsets.UTF_8);
+        screenshot("tabs-" + locale + "-" + width);
+        assertThat(tabGeometry.get("passed"))
+                .as("The last tab remains readable and can be reached by a native click (%s, %d): %s",
+                        locale, width, measuredGeometry).isEqualTo(true);
         var mappings = catalogueNodes.stream().map(node -> Map.of("nodeCode", node.getCode(),
                 "nodeTitle", locale.equals("de") && node.getNameDe() != null ? node.getNameDe() : node.getNameEn())).toList();
         page.driver().executeScript("""

@@ -47,6 +47,16 @@ function element(tag = 'div') {
         setAttribute(name, value) {attributes.set(name, String(value));},
         getAttribute: name => attributes.get(name) ?? null,
         removeAttribute: name => attributes.delete(name),
+        closest(selector) {
+            const selectors = selector.split(',').map(value => value.trim());
+            assert.ok(selectors.every(value => /^(?:\.[\w-]+|[a-z][\w-]*)$/i.test(value)),
+                `Unsupported fixture closest selector ${selector}`);
+            for (let node = this; node; node = node.parentNode) {
+                if (selectors.some(value => value.startsWith('.')
+                    ? node.classList.contains(value.slice(1)) : node.tagName === value.toUpperCase())) return node;
+            }
+            return null;
+        },
         append(...values) {for (const value of values) {this.children.push(value); value.parentNode = this;}},
         appendChild(value) {this.append(value); return value;},
         prepend(value) {this.children.unshift(value); value.parentNode = this;},
@@ -538,6 +548,8 @@ async function portfolioRequirements(transition) {
     app.context.TextEncoder=TextEncoder;
     app.context.TaxonomyArchitectureWorkflow.setScope(base);
     const form=app.nodes.get('requirementForm'),modal=app.nodes.get('requirementModal');
+    modal.classList.add('modal');
+    modal.append(form);
     const controls={requirementKey:app.nodes.get('requirementKey'),title:app.nodes.get('requirementTitle'),
         requirementType:app.nodes.get('requirementType'),text:app.nodes.get('requirementText')};
     Object.entries(controls).forEach(([name,control])=>{control.name=name;control.type='text';});
