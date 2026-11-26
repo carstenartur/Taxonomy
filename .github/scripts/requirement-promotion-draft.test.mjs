@@ -86,6 +86,67 @@ function detailStartup({holdOffers=false,forbidden=false,copilot=false,probe=fal
 }
 const settleStartup=async()=>{for(let i=0;i<6;i++)await new Promise(resolve=>setImmediate(resolve));};
 
+function detailTabViewport(h, left, right) {
+  const tabs = h.get('detailTabs');
+  const tab = h.get('solutions-tab');
+  const scrolls = [];
+  const initialScroll = 200;
+  Object.assign(tabs, {
+    clientLeft: 0, clientWidth: 364, scrollWidth: 1000, scrollLeft: initialScroll, scrollTop: 1,
+    getBoundingClientRect: () => ({left: 13, right: 377}),
+    scrollBy({left, top = 0}) {
+      scrolls.push({left, top});
+      this.scrollLeft += left;
+      this.scrollTop += top;
+    }
+  });
+  Object.assign(tab, {
+    getAttribute: name => ({role: 'tab', 'aria-selected': 'true'})[name],
+    closest: selector => selector === '[role="tablist"]' ? tabs : null,
+    getBoundingClientRect: () => {
+      const shift = initialScroll - tabs.scrollLeft;
+      return {left: left + shift, right: right + shift};
+    }
+  });
+  h.window.getComputedStyle = node => {
+    assert.equal(node, tabs);
+    return {paddingLeft: '8px', paddingRight: '8px'};
+  };
+  return {tabs, tab, scrolls};
+}
+
+for (const [position, start, end, offset] of [
+  ['off-screen right', 428, 588, 219],
+  ['off-screen left', -135, 15, -156],
+  ['at the fractional right boundary', 186.765625, 377.078125, 9],
+  ['at the fractional left boundary', 12.921875, 203.234375, -9],
+  ['already fully in view', 40, 240, 0]
+]) {
+  test(`showing an owned selected requirement tab ${position} preserves the horizontal gutter`, async () => {
+    const h = detailStartup();
+    const {tabs, tab, scrolls} = detailTabViewport(h, start, end);
+    const started = h.start(); h.releaseLifecycle(); await started; await settleStartup();
+    const requests = h.requests.length;
+    await tabs.fire('shown.bs.tab', tab);
+    assert.deepEqual(scrolls, offset ? [{left: offset, top: 0}] : []);
+    const bounds = tab.getBoundingClientRect();
+    assert.ok(bounds.left >= 21 && bounds.right <= 369, 'The tab fits within the measured viewing gutter');
+    assert.equal(tabs.scrollTop, 1);
+    assert.equal(h.requests.length, requests);
+  });
+}
+
+test('the requirement tab strip ignores stale, nested and unrelated shown events', async () => {
+  const h = detailStartup();
+  const {tabs, tab, scrolls} = detailTabViewport(h, 428, 588);
+  const started = h.start(); h.releaseLifecycle(); await started;
+  await tabs.fire('shown.bs.modal', tab);
+  await tabs.fire('shown.bs.tab', {...tab, getAttribute: name => ({role: 'tab', 'aria-selected': 'false'})[name]});
+  await tabs.fire('shown.bs.tab', {...tab, getAttribute: name => ({role: 'button', 'aria-selected': 'true'})[name]});
+  await tabs.fire('shown.bs.tab', {...tab, closest: () => h.get('nestedTablist')});
+  assert.deepEqual(scrolls, []);
+});
+
 test('the reformulation editor separates saved draft wording from collapsed taxonomy evidence',async()=>{
   const h=detailStartup({lifecycleFetch:async url=>{
     if(!url.pathname.endsWith('/reformulations/offer'))return;

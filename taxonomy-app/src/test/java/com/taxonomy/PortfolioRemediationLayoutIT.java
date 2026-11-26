@@ -16,8 +16,10 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.openqa.selenium.By;
 import org.openqa.selenium.Dimension;
+import org.openqa.selenium.Keys;
 import org.openqa.selenium.OutputType;
 import org.openqa.selenium.chromium.HasCdp;
+import org.openqa.selenium.interactions.Actions;
 import org.openqa.selenium.remote.Augmenter;
 import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.springframework.core.io.ClassPathResource;
@@ -154,6 +156,60 @@ class PortfolioRemediationLayoutIT {
                 """)).as("Dialog bounds, scrollable body and unobscured Close control").isEqualTo(true);
     }
 
+    private void assertKeyboardTabVisibility(PortfolioRequirementFixture fixture, String locale, int width) throws Exception {
+        fixture.click("text-tab");
+        assertThat(page.driver().switchTo().activeElement().getDomAttribute("id")).isEqualTo("text-tab");
+        // Establish the initial scroll position before keyboard input; do not scroll the requested tab into view.
+        page.driver().executeScript("document.getElementById('detailTabs').scrollLeft=0;");
+        if (width < 600) {
+            assertThat(page.driver().executeScript("""
+                    return document.getElementById('solutions-tab').getBoundingClientRect().right
+                        > document.getElementById('detailTabs').getBoundingClientRect().right;
+                    """)).as("The narrow viewport starts with the last tab outside the visible strip").isEqualTo(true);
+        }
+        Number originalScrollY = (Number) page.driver().executeScript("return window.scrollY;");
+        new Actions(page.driver()).sendKeys(Keys.END).perform();
+        assertKeyboardTabGeometry(fixture, "solutions-tab", "solutionsPane", locale, width, originalScrollY);
+        if (width < 600) {
+            assertThat(page.driver().executeScript("""
+                    return document.getElementById('text-tab').getBoundingClientRect().left
+                        < document.getElementById('detailTabs').getBoundingClientRect().left;
+                    """)).as("End moves the narrow strip away from the first tab").isEqualTo(true);
+        }
+        new Actions(page.driver()).sendKeys(Keys.HOME).perform();
+        assertKeyboardTabGeometry(fixture, "text-tab", "textPane", locale, width, originalScrollY);
+    }
+
+    private void assertKeyboardTabGeometry(PortfolioRequirementFixture fixture, String tabId, String paneId,
+                                          String locale, int width, Number originalScrollY) throws Exception {
+        fixture.wait.until(driver -> {
+            var pane = driver.findElement(By.id(paneId));
+            return pane.isDisplayed() && List.of(pane.getDomAttribute("class").split("\\s+"))
+                    .containsAll(List.of("show", "active"));
+        });
+        var geometry = (Map<?, ?>) page.driver().executeScript("""
+                const selected=document.getElementById(arguments[0]),tabs=document.getElementById('detailTabs');
+                const r=selected.getBoundingClientRect(),t=tabs.getBoundingClientRect();
+                const focused=document.activeElement===selected,ariaSelected=selected.getAttribute('aria-selected');
+                const active=selected.classList.contains('active'),verticalUnchanged=scrollY===arguments[1];
+                return {passed:focused && ariaSelected==='true' && active && r.left>=t.left && r.right<=t.right
+                    && verticalUnchanged,focused,ariaSelected,active,verticalUnchanged,
+                    expectedScrollY:arguments[1],scrollY,scrollLeft:tabs.scrollLeft,
+                    selected:r.toJSON(),tabs:t.toJSON()};
+                """, tabId, originalScrollY);
+        String measured = json(geometry);
+        if (!Boolean.TRUE.equals(geometry.get("passed"))) {
+            Path diagnostics = Path.of("target/scenario-acceptance/portfolio-remediation");
+            Files.createDirectories(diagnostics);
+            String name = "keyboard-" + tabId + "-" + locale + "-" + width;
+            Files.writeString(diagnostics.resolve(name + ".json"), measured, StandardCharsets.UTF_8);
+            screenshot(name);
+        }
+        assertThat(geometry.get("passed"))
+                .as("Native keyboard activation keeps %s focused, selected and fully visible without moving the document (%s, %d): %s",
+                        tabId, locale, width, measured).isEqualTo(true);
+    }
+
     @ParameterizedTest
     @CsvSource({"de,390", "en,390", "de,1440", "en,1440"})
     void inventoryKeepsLargeNodeSelectionBoundedAndOptionalSetupCollapsed(String locale, int width) throws Exception {
@@ -163,6 +219,7 @@ class PortfolioRemediationLayoutIT {
         page.route("GET", ROOT + "/snapshots/layout-snapshot/inventory-comparisons", request -> json(200, List.of()));
         fixture.open(locale);
         awaitIdleCopilotPolicy(fixture);
+        assertKeyboardTabVisibility(fixture, locale, width);
         fixture.click("solutions-tab");
         var tabGeometry = (Map<?, ?>) page.driver().executeScript("""
                 const tabs=document.getElementById('detailTabs'),selected=document.getElementById('solutions-tab');
