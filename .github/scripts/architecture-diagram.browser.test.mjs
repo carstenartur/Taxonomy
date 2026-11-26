@@ -680,7 +680,8 @@ test('responsive panel reordering keeps the native fullscreen snapshot connected
             }));
         });
         await page.locator('#fullscreenArchitecture').click();
-        await page.waitForFunction(() => document.fullscreenElement?.id === 'architectureWorkbench');
+        await page.waitForFunction(() => document.fullscreenElement?.id === 'architectureWorkbench'
+            && fullscreenChanges.length >= 1);
         // A fullscreen window cannot be resized through Browser.setWindowBounds.
         // Change its real content viewport without replacing the native fullscreen API.
         const cdp = await page.context().newCDPSession(page);
@@ -698,7 +699,8 @@ test('responsive panel reordering keeps the native fullscreen snapshot connected
             && JSON.stringify(snapshotAdapter.getSource()) === retainedFullscreenSource), true);
         assert.equal(await page.locator('[data-node-id="B"]').getAttribute('aria-pressed'), 'true');
         await page.locator('#fullscreenArchitecture').click();
-        await page.waitForFunction(() => document.fullscreenElement === null);
+        // Chromium can clear fullscreenElement before it dispatches fullscreenchange.
+        await page.waitForFunction(() => document.fullscreenElement === null && fullscreenChanges.length >= 2);
         assert.deepEqual(await page.evaluate(() => fullscreenChanges), [
             { trusted: true, active: 'architectureWorkbench' }, { trusted: true, active: null }
         ]);
