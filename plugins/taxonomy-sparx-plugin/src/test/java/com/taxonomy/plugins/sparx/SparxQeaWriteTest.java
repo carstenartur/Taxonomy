@@ -176,6 +176,145 @@ class SparxQeaWriteTest {
         }
     }
 
+    @Test void newObjectLeavesExistingNativeObjectReferencesUnresolved() throws Exception {
+        try (var fixture = new QeaFixture(directory)) {
+            fixture.sql("UPDATE t_connector SET End_Object_ID=101 WHERE Connector_ID=20");
+            fixture.sql("UPDATE t_object SET ParentID=102, Classifier=103 WHERE Object_ID=11");
+            fixture.sql("CREATE TABLE t_attribute (ID INTEGER PRIMARY KEY, Object_ID INTEGER, Notes TEXT)");
+            fixture.sql("INSERT INTO t_attribute VALUES (1,104,'106')");
+            fixture.sql("CREATE TABLE t_operation (OperationID INTEGER PRIMARY KEY, Object_ID INTEGER)");
+            fixture.sql("INSERT INTO t_operation VALUES (1,105)");
+            byte[] basis = fixture.bytes();
+            var newObject = new Artifact(NEW_ELEMENT, ArtifactKind.ELEMENT, "Component", "Added", "",
+                    Map.of(), Map.of("canonicalType", "Component"));
+            byte[] result = write(basis, FileExportMode.UPDATE_COPY, document(MODEL, List.of(newObject), List.of(), List.of())).content();
+            assertEquals("unresolved:object:101", read(result).relations().stream().filter(r -> r.id().equals(C)).findFirst().orElseThrow().target());
+            assertEquals(List.of("106"), query(result, "SELECT Object_ID FROM t_object WHERE Name='Added'"));
+            assertEquals(query(basis, "SELECT * FROM t_attribute"), query(result, "SELECT * FROM t_attribute"));
+            assertArrayEquals(basis, fixture.bytes());
+        }
+    }
+
+    @Test void aFrozenObjectIdCannotResolveAnUnselectedConnectorEndpoint() throws Exception {
+        try (var fixture = new QeaFixture(directory)) {
+            fixture.sql("UPDATE t_connector SET End_Object_ID=201 WHERE Connector_ID=20");
+            var newObject = new Artifact(NEW_ELEMENT, ArtifactKind.ELEMENT, "Component", "Added", "",
+                    Map.of("ea:t_object:ea_guid", NEW_ELEMENT, "ea:t_object:object_id", "201"), Map.of("canonicalType", "Component"));
+            byte[] basis = fixture.bytes();
+            var failure = assertThrows(QeaFailure.class, () -> write(basis, FileExportMode.UPDATE_COPY,
+                    document(MODEL, List.of(newObject), List.of(), List.of())));
+            assertTrue(failure.getMessage().startsWith("QEA_DUPLICATE_IDENTITY:"), failure.getMessage());
+            assertArrayEquals(basis, fixture.bytes());
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void aPackageCannotCaptureAnotherPackagesMirror(boolean frozen) throws Exception {
+        try (var fixture = new QeaFixture(directory)) {
+            // The existing mirror still resolves by GUID. Its dangling PDATA1 must stay unresolved.
+            fixture.sql("UPDATE t_object SET PDATA1='3' WHERE Object_ID=100");
+            fixture.sql("UPDATE t_object SET PDATA1='4' WHERE Object_ID=10");
+            byte[] basis = fixture.bytes();
+            var attributes = frozen ? Map.of("ea:t_package:ea_guid", NEW_PACKAGE, "ea:t_package:package_id", "3")
+                    : Map.<String, String>of();
+            var added = new Artifact(NEW_PACKAGE, ArtifactKind.SPECIFICATION, "Package", "Added", "", attributes, Map.of());
+            var selected = document(MODEL, List.of(added), List.of(), List.of());
+            if (frozen) {
+                var failure = assertThrows(QeaFailure.class, () -> write(basis, FileExportMode.UPDATE_COPY, selected));
+                assertTrue(failure.getMessage().startsWith("QEA_DUPLICATE_IDENTITY:"), failure.getMessage());
+            } else {
+                byte[] result = write(basis, FileExportMode.UPDATE_COPY, selected).content();
+                assertEquals(List.of("4"), query(result, "SELECT Package_ID FROM t_package WHERE Name='Added'"));
+                assertEquals(query(basis, "SELECT * FROM t_object WHERE Object_ID=100"), query(result, "SELECT * FROM t_object WHERE Object_ID=100"));
+            }
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void rejectsSuppliedAliasChangesEvenWhenTheTitleAlsoChanges(boolean rename) throws Exception {
+        try (var fixture = new QeaFixture(directory)) {
+            byte[] basis = fixture.bytes();
+            var original = artifact(read(basis), A);
+            var selected = new Artifact(A, original.kind(), original.type(), rename ? "Reviewed name" : original.title(),
+                    original.text(), Map.of("ea:t_object:alias", "Reviewed alias"), original.extensions());
+            var failure = assertThrows(QeaFailure.class, () -> write(basis, FileExportMode.UPDATE_COPY,
+                    document(MODEL, List.of(selected), List.of(), List.of())));
+            assertTrue(failure.getMessage().contains("ea:t_object:alias"), failure.getMessage());
+            assertArrayEquals(basis, fixture.bytes());
+        }
+    }
+
+    @Test void changedNativeEvidenceCannotBeLostDuringASupportedConnectorEdit() throws Exception {
+        try (var fixture = new QeaFixture(directory)) {
+            byte[] basis = fixture.bytes();
+            var selected = new Relation(C, "Dependency", B, A, Map.of("ea:t_connector:notes", "Reviewed connector notes"),
+                    Map.of("canonicalType", "DEPENDS_ON", "direction", "Source -> Destination"));
+            var failure = assertThrows(QeaFailure.class, () -> write(basis, FileExportMode.UPDATE_COPY,
+                    document(MODEL, List.of(), List.of(selected), List.of())));
+            assertTrue(failure.getMessage().contains("ea:t_connector:notes"), failure.getMessage());
+        }
+    }
+
+    @Test void aReviewedRenameCanCarryTheMatchingNativeNameWithoutSupplyingAlias() throws Exception {
+        try (var fixture = new QeaFixture(directory)) {
+            byte[] basis = fixture.bytes();
+            var old = artifact(read(basis), A);
+            var selected = new Artifact(A, old.kind(), old.type(), "Reviewed name", old.text(),
+                    Map.of("ea:t_object:name", "Reviewed name"), old.extensions());
+            var output = write(basis, FileExportMode.UPDATE_COPY, document(MODEL, List.of(selected), List.of(), List.of()));
+            assertEquals(List.of("Reviewed name|source alias"), query(output.content(), "SELECT Name,Alias FROM t_object WHERE Object_ID=10"));
+        }
+    }
+
+    @Test void aDanglingDeclaredForeignKeyCannotAcquireANewNativeTarget() throws Exception {
+        try (var fixture = new QeaFixture(directory)) {
+            fixture.sql("PRAGMA foreign_keys=OFF");
+            fixture.sql("CREATE TABLE vendor_attachment (owner INTEGER REFERENCES t_object(Object_ID))");
+            fixture.sql("INSERT INTO vendor_attachment VALUES (101)");
+            byte[] basis = fixture.bytes();
+            var added = new Artifact(NEW_ELEMENT, ArtifactKind.ELEMENT, "Component", "Added", "", Map.of(),
+                    Map.of("canonicalType", "Component"));
+            var failure = assertThrows(QeaFailure.class, () -> write(basis, FileExportMode.UPDATE_COPY,
+                    document(MODEL, List.of(added), List.of(), List.of())));
+            assertTrue(failure.getMessage().startsWith("QEA_SELECTION_DEPENDENCY:"), failure.getMessage());
+            assertArrayEquals(basis, fixture.bytes());
+        }
+    }
+
+    @Test void aSavedNativeReportCannotAcquireANewPackageAsItsRoot() throws Exception {
+        try (var fixture = new QeaFixture(directory)) {
+            fixture.sql("CREATE TABLE t_rtfreport (Template TEXT, RootPackage INTEGER)");
+            fixture.sql("INSERT INTO t_rtfreport VALUES ('Saved report',3)");
+            byte[] basis = fixture.bytes();
+            var added = new Artifact(NEW_PACKAGE, ArtifactKind.SPECIFICATION, "Package", "Added", "", Map.of(), Map.of());
+            var result = write(basis, FileExportMode.UPDATE_COPY, document(MODEL, List.of(added), List.of(), List.of()));
+            assertEquals(List.of("3|NULL"), query(result.content(),
+                    "SELECT r.RootPackage,p.Name FROM t_rtfreport r LEFT JOIN t_package p ON p.Package_ID=r.RootPackage"));
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void sparsePreserveOnlyConnectorsRetainOriginalEndpointsAndEvidence(boolean unresolved) throws Exception {
+        try (var fixture = new QeaFixture(directory)) {
+            if (unresolved) fixture.sql("UPDATE t_connector SET End_Object_ID=101 WHERE Connector_ID=20");
+            byte[] basis = fixture.bytes();
+            var old = read(basis).relations().getFirst();
+            var extensions = Map.of("nativeProjection", "PRESERVE_ONLY");
+            var selected = new Relation(C, old.type(), old.source(), old.target(),
+                    Map.of("ea:t_connector:name", "depends"), extensions);
+            assertArrayEquals(basis, write(basis, FileExportMode.UPDATE_COPY,
+                    document(MODEL, List.of(), List.of(selected), List.of())).content());
+            for (var attributes : List.of(Map.of("ea:t_connector:name", "Different"), Map.of("tag:owner", "Different"))) {
+                var changed = new Relation(C, old.type(), old.source(), old.target(), attributes, extensions);
+                assertThrows(QeaFailure.class, () -> write(basis, FileExportMode.UPDATE_COPY,
+                        document(MODEL, List.of(), List.of(changed), List.of())));
+            }
+        }
+    }
+
     @Test void updatingNoReviewedItemsReturnsTheExactBasisBytes() throws Exception {
         try (var fixture = new QeaFixture(directory)) {
             byte[] basis = fixture.bytes();

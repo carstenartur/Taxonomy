@@ -43,7 +43,7 @@ final class AdmbwQeaWriter {
         if (projects.size() != 1) throw fail("QEA_MODEL_IDENTITY", "The basis needs a unique EA project GUID");
         QeaIds.guid(projects.getFirst().text("value"), "QEA_MODEL_IDENTITY");
         UUID namespace = stableUuid(snapshot.sha256() + "\0" + root + "\0" + delivery.projectCode() + "\0" + delivery.commit());
-        return QeaWriteDatabase.writeCopy(basis, true, database -> {
+        return QeaWriteDatabase.writeCopy(basis, snapshot, true, database -> {
             var copy = new DeliveryCopy(snapshot, database, namespace);
             for (View view : delivery.views()) copy.writeView(view, roots.getFirst().id("package_id"),
                     delivery.commit(), delivery.coverageNotes());
@@ -62,9 +62,6 @@ final class AdmbwQeaWriter {
         private final Map<String, List<Row>> objects = new HashMap<>();
         private final Map<String, List<Row>> stereotypes = new HashMap<>();
         private final Set<String> guids = new HashSet<>();
-        private final Set<Long> referencedObjectIds = new HashSet<>();
-        private final Set<Long> referencedDiagramIds = new HashSet<>();
-        private final Set<Long> referencedConnectorIds = new HashSet<>();
 
         DeliveryCopy(Snapshot basis, QeaWriteDatabase database, UUID namespace) {
             this.basis = basis;
@@ -77,22 +74,7 @@ final class AdmbwQeaWriter {
             }
             for (Row row : basis.rows("t_object")) {
                 objects.computeIfAbsent(key(row.text("ea_guid")), ignored -> new ArrayList<>()).add(row);
-                referencedObjectIds.add(row.number("parentid"));
             }
-            for (Row row : basis.rows("t_objectproperties")) referencedObjectIds.add(row.number("object_id"));
-            for (Row row : basis.rows("t_diagramobjects")) {
-                referencedObjectIds.add(row.number("object_id"));
-                referencedDiagramIds.add(row.number("diagram_id"));
-            }
-            for (Row row : basis.rows("t_diagramlinks")) {
-                referencedDiagramIds.add(row.number("diagramid"));
-                referencedConnectorIds.add(row.number("connectorid"));
-            }
-            for (Row row : basis.rows("t_connector")) {
-                referencedObjectIds.add(row.number("start_object_id"));
-                referencedObjectIds.add(row.number("end_object_id"));
-            }
-            for (Row row : basis.rows("t_connectortag")) referencedConnectorIds.add(row.number("elementid"));
             for (Row row : basis.rows("t_xref")) if (row.text("name").equalsIgnoreCase("Stereotypes"))
                 stereotypes.computeIfAbsent(key(row.text("client")), ignored -> new ArrayList<>()).add(row);
             for (String table : List.of("t_package", "t_object", "t_diagram", "t_connector", "t_objectproperties", "t_xref")) {
@@ -107,9 +89,7 @@ final class AdmbwQeaWriter {
                 if (row.number("package_id") == packageId && row.text("name").equalsIgnoreCase(view.name()))
                     throw fail("QEA_ADMBW_DIAGRAM_EXISTS", "This diagram already exists in the target package. Select the original QEA basis for a fresh delivery");
             }
-            long diagramId;
-            do { diagramId = database.next("t_diagram", "diagram_id"); }
-            while (referencedDiagramIds.contains(diagramId));
+            long diagramId = database.next("t_diagram", "diagram_id");
             database.insert("t_diagram", Map.of("diagram_id", diagramId, "package_id", packageId,
                     "ea_guid", guid("diagram:" + view.viewpoint()), "name", view.name(), "diagram_type", "Custom",
                     "styleex", "MDGDgm=" + AdmbwQeaProfile.DIAGRAM_TYPES.get(view.viewpoint()) + ";",
@@ -142,9 +122,7 @@ final class AdmbwQeaWriter {
                 String type = AdmbwQeaProfile.connectorType(connector, elements.get(connector.client()), elements.get(connector.supplier()));
                 var from = occurrences.get(connector.client());
                 var to = occurrences.get(connector.supplier());
-                long id;
-                do { id = database.next("t_connector", "connector_id"); }
-                while (referencedConnectorIds.contains(id));
+                long id = database.next("t_connector", "connector_id");
                 String guid = guid("connector:" + view.viewpoint() + ":" + id);
                 database.insert("t_connector", Map.of("connector_id", id, "ea_guid", guid, "connector_type", type,
                         "stereotype", connector.stereotype(), "start_object_id", from.objectId(), "end_object_id", to.objectId(),
@@ -172,7 +150,7 @@ final class AdmbwQeaWriter {
                 long id = database.next("t_package", "package_id");
                 String guid = guid("package:" + id);
                 database.insert("t_package", Map.of("package_id", id, "parent_id", parent, "ea_guid", guid, "name", name));
-                database.insert("t_object", Map.of("object_id", allocateObject(),
+                database.insert("t_object", Map.of("object_id", database.next("t_object", "object_id"),
                         "object_type", "Package", "package_id", parent, "parentid", 0, "pdata1", Long.toString(id),
                         "ea_guid", guid, "name", name));
                 packages.put(key, List.of(id));
@@ -199,16 +177,8 @@ final class AdmbwQeaWriter {
             return id;
         }
 
-        private long allocateObject() throws SQLException {
-            // Reserve IDs mentioned in existing parent, tag or connector rows, including dangling references.
-            long id;
-            do { id = database.next("t_object", "object_id"); }
-            while (referencedObjectIds.contains(id));
-            return id;
-        }
-
         private long newElement(Element element, long packageId) throws SQLException {
-            long id = allocateObject();
+            long id = database.next("t_object", "object_id");
             String guid = guid("element:" + element.ref());
             database.insert("t_object", Map.of("object_id", id, "object_type", AdmbwQeaProfile.ELEMENT_TYPES.get(element.stereotype()),
                     "package_id", packageId, "parentid", 0, "ea_guid", guid, "name", element.name(),

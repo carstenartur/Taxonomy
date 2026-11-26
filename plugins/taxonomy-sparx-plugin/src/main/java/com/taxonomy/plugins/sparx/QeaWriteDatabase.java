@@ -47,12 +47,13 @@ final class QeaWriteDatabase implements AutoCloseable {
     @FunctionalInterface
     interface CopyChanges { void apply(QeaWriteDatabase database) throws SQLException; }
 
-    static byte[] writeCopy(byte[] basis, boolean writeDiagramLinks, CopyChanges changes) {
+    static byte[] writeCopy(byte[] basis, QeaDatabase.Snapshot snapshot, boolean writeDiagramLinks, CopyChanges changes) {
         Path directory = null;
         try {
             directory = Files.createTempDirectory("taxonomy-qea-write-");
             Path copy = Files.write(directory.resolve("copy.qea"), basis);
             try (var database = new QeaWriteDatabase(copy, writeDiagramLinks)) {
+                QeaReferencedIds.reserveSnapshot(snapshot, database.allocations);
                 changes.apply(database);
                 database.commit();
                 if (!database.dirty) return basis;
@@ -101,6 +102,8 @@ final class QeaWriteDatabase implements AutoCloseable {
             }
             schema(writeDiagramLinks);
             connection.setAutoCommit(false);
+            // An insert could otherwise resolve an old violation in a preserved vendor table.
+            checkDeclaredReferences();
         } catch (SQLException | RuntimeException failure) {
             try { connection.close(); } catch (SQLException closing) { failure.addSuppressed(closing); }
             throw failure;
@@ -144,25 +147,41 @@ final class QeaWriteDatabase implements AutoCloseable {
 
     boolean hasColumn(String table, String column) { return tables.getOrDefault(table, Map.of()).containsKey(column); }
 
-    long next(String table, String id) throws SQLException {
-        allowed(table, id); required(table, Set.of(id));
+    private long current(String table, String id) throws SQLException {
+        allowed(table, id);
+        required(table, Set.of(id));
         String key = table + ":" + id;
-        Long previous = counters.get(key);
-        if (previous == null) {
-            try (var statement = connection.createStatement(); var rows = statement.executeQuery("SELECT coalesce(max(\"" + id + "\"),0) FROM \"" + table + "\"")) {
-                rows.next(); previous = rows.getLong(1);
-            }
-            // AUTOINCREMENT tables may have a higher historical allocation than their surviving rows.
-            try (var exists = connection.createStatement(); var found = exists.executeQuery("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='sqlite_sequence'")) {
-                if (found.next()) try (var sequence = connection.prepareStatement("SELECT seq FROM sqlite_sequence WHERE lower(name)=?")) {
-                    sequence.setString(1, table);
-                    try (var rows = sequence.executeQuery()) { while (rows.next()) previous = Math.max(previous, rows.getLong(1)); }
-                }
-            }
-            floors.put(key, previous);
+        Long current = counters.get(key);
+        if (current != null) return current;
+        long floor;
+        try (var statement = connection.createStatement(); var rows = statement.executeQuery("SELECT coalesce(max(\"" + id + "\"),0) FROM \"" + table + "\"")) {
+            rows.next();
+            floor = rows.getLong(1);
         }
-        if (previous < 0 || previous >= Integer.MAX_VALUE) throw fail("QEA_LIMIT", "Native integer identities have exhausted the supported range");
-        counters.put(key, previous + 1); allocations.computeIfAbsent(key, ignored -> new HashSet<>()).add(previous + 1); return previous + 1;
+        // AUTOINCREMENT tables may have a higher historical allocation than their surviving rows.
+        try (var exists = connection.createStatement(); var found = exists.executeQuery("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='sqlite_sequence'")) {
+            if (found.next()) try (var sequence = connection.prepareStatement("SELECT seq FROM sqlite_sequence WHERE lower(name)=?")) {
+                sequence.setString(1, table);
+                try (var rows = sequence.executeQuery()) { while (rows.next()) floor = Math.max(floor, rows.getLong(1)); }
+            }
+        }
+        if (floor < 0 || floor >= Integer.MAX_VALUE) throw fail("QEA_LIMIT", "Native integer identities have exhausted the supported range");
+        QeaReferencedIds.reserveAdditional(connection, key, floor, allocations.computeIfAbsent(key, ignored -> new HashSet<>()));
+        floors.put(key, floor);
+        counters.put(key, floor);
+        return floor;
+    }
+
+    long next(String table, String id) throws SQLException {
+        String key = table + ":" + id;
+        long number = current(table, id);
+        var used = allocations.get(key);
+        do {
+            if (number == Integer.MAX_VALUE) throw fail("QEA_LIMIT", "Native integer identities have exhausted the supported range");
+            number++;
+        } while (!used.add(number));
+        counters.put(key, number);
+        return number;
     }
 
     long allocate(String table, String id, String frozen) throws SQLException {
@@ -171,12 +190,11 @@ final class QeaWriteDatabase implements AutoCloseable {
         try { number = Long.parseLong(frozen); if (number <= 0 || number > Integer.MAX_VALUE) throw new NumberFormatException(); }
         catch (NumberFormatException invalid) { throw fail("QEA_REFERENCE_INVALID", "A frozen native row identity must be a positive bounded integer"); }
         String key = table + ":" + id;
-        if (!floors.containsKey(key)) {
-            long tentative = next(table, id); allocations.get(key).remove(tentative); counters.put(key, tentative - 1);
-        }
-        if (number <= floors.get(key) || !allocations.computeIfAbsent(key, ignored -> new HashSet<>()).add(number))
-            throw fail("QEA_DUPLICATE_IDENTITY", "A frozen new native row ID collides with an existing or allocated identity");
-        counters.put(key, Math.max(counters.get(key), number)); return number;
+        long previous = current(table, id);
+        if (number <= floors.get(key) || !allocations.get(key).add(number))
+            throw fail("QEA_DUPLICATE_IDENTITY", "A frozen new native row ID collides with an existing, referenced or allocated identity");
+        counters.put(key, Math.max(previous, number));
+        return number;
     }
 
     void validateEmptyTemplate() throws SQLException {
@@ -239,6 +257,13 @@ final class QeaWriteDatabase implements AutoCloseable {
         if (!tables.containsKey(table) || !tables.get(table).keySet().containsAll(columns))
             throw fail("QEA_SCHEMA_UNSUPPORTED", "The native schema lacks columns required for a selected change in " + table);
     }
+    static boolean writableEvidence(String field) {
+        int tableEnd = field.indexOf(':', 3);
+        if (tableEnd < 0) return false;
+        String table = field.substring(3, tableEnd);
+        String column = field.substring(field.lastIndexOf(':') + 1);
+        return WRITABLE.getOrDefault(table, Set.of()).contains(column);
+    }
     private static void allowed(String table, String column) {
         if (!WRITABLE.getOrDefault(table, Set.of()).contains(column)) throw new IllegalStateException("Undeclared QEA mutation column");
     }
@@ -248,10 +273,13 @@ final class QeaWriteDatabase implements AutoCloseable {
         try (var statement = connection.createStatement(); var rows = statement.executeQuery("PRAGMA quick_check(1)")) {
             if (!rows.next() || !"ok".equals(rows.getString(1))) throw fail("QEA_FILE_INVALID", "Native output failed SQLite integrity validation");
         }
-        try (var statement = connection.createStatement(); var rows = statement.executeQuery("PRAGMA foreign_key_check")) {
-            if (rows.next()) throw fail("QEA_SELECTION_DEPENDENCY", "Native output violates a declared reference constraint");
-        }
+        checkDeclaredReferences();
         connection.commit();
+    }
+    private void checkDeclaredReferences() throws SQLException {
+        try (var statement = connection.createStatement(); var rows = statement.executeQuery("PRAGMA foreign_key_check")) {
+            if (rows.next()) throw fail("QEA_SELECTION_DEPENDENCY", "The native database violates a declared reference constraint");
+        }
     }
     private boolean expired() { return System.nanoTime() > deadline || Thread.currentThread().isInterrupted(); }
     void budget() { if (expired()) throw fail("QEA_LIMIT", "Native QEA writing exceeded its bounded work budget"); }

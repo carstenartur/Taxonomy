@@ -41,7 +41,7 @@ final class QeaWriter {
         var snapshot = basis;
         var templateRoot = originalRoot;
         var losses = new ArrayList<MappingLoss>();
-        byte[] result = QeaWriteDatabase.writeCopy(bytes, false, database -> {
+        byte[] result = QeaWriteDatabase.writeCopy(bytes, snapshot, false, database -> {
             if (request.mode() == FileExportMode.NEW_PROJECT) database.validateEmptyTemplate();
             model.allocate(database);
             if (request.mode() == FileExportMode.NEW_PROJECT) {
@@ -118,6 +118,10 @@ final class QeaWriter {
                     throw fail("QEA_DIAGRAM_LINK_UNSUPPORTED", "Changing connector occurrence identity, visibility or routing is unsupported");
             }
         }
+        if (before != null) {
+            checkNativeEvidence(artifact.attributes(), before.attributes(), null);
+            checkNativeEvidence(artifact.extensions(), before.extensions(), null);
+        }
         if (old != null && unchanged(artifact, before)) return;
         var fields = new LinkedHashMap<String, Object>(); fields.put("name", artifact.title());
         fields.put(artifact.kind() == ArtifactKind.SPECIFICATION || artifact.kind() == ArtifactKind.VIEW ? "notes" : "note", artifact.text());
@@ -185,12 +189,17 @@ final class QeaWriter {
     }
     private static void relation(Relation relation, QeaWriteModel model, QeaWriteDatabase database, QeaWriteTags tags) throws SQLException {
         NativeObject nativeObject = model.nativeObjects.get(relation.id()); Row old = nativeObject.original(); Relation before = model.beforeRelations.get(relation.id());
+        boolean preserve = "PRESERVE_ONLY".equals(relation.extensions().get("nativeProjection"));
+        if (before != null) {
+            checkNativeEvidence(relation.attributes(), before.attributes(), preserve ? before.attributes() : null);
+            checkNativeEvidence(relation.extensions(), before.extensions(), preserve ? before.extensions() : null);
+        }
         if (old != null && before != null && relation.type().equals(before.type()) && relation.source().equals(before.source()) && relation.target().equals(before.target())
                 && relation.extensions().equals(before.extensions()) && relation.attributes().equals(before.attributes())) return;
-        if (relation.extensions().getOrDefault("nativeProjection", "ARCHITECTURE_RELATION").equals("PRESERVE_ONLY")) {
+        if (preserve) {
             if (old == null || before == null || !relation.type().equals(before.type())
                     || !relation.source().equals(before.source()) || !relation.target().equals(before.target())
-                    || !relation.attributes().equals(before.attributes())
+                    || relation.attributes().entrySet().stream().anyMatch(e -> !e.getValue().equals(before.attributes().get(e.getKey())))
                     || relation.extensions().entrySet().stream().filter(e -> !e.getKey().equals("nativeProjection"))
                             .anyMatch(e -> !e.getValue().equals(before.extensions().get(e.getKey()))))
                 throw fail("QEA_RELATION_MAPPING_REQUIRED", "Preserve-only connectors cannot request changed identity, endpoints or values");
@@ -212,6 +221,19 @@ final class QeaWriter {
         tags.tags(nativeObject.id(), relation.id(), true, QeaSemanticProfile.tags(relation.attributes(), relation.extensions(), canonical, true, direction));
         tags.stereotype(relation.id(), canonical, true);
     }
+    // Raw native fields are evidence, never SQL instructions. A candidate can carry both a reviewed
+    // semantic edit and its projected native value. Check read-only fields before short-circuiting,
+    // then confirm that any supplied change to a writable field really appeared in the output.
+    private static void checkNativeEvidence(Map<String, String> supplied, Map<String, String> before, Map<String, String> output) {
+        for (var entry : supplied.entrySet()) {
+            String field = entry.getKey();
+            if (!field.startsWith("ea:") || entry.getValue().equals(before.get(field))) continue;
+            boolean supported = output == null ? QeaWriteDatabase.writableEvidence(field) : entry.getValue().equals(output.get(field));
+            if (!supported) throw fail("QEA_NATIVE_FIELD_UNSUPPORTED", "The reviewed native field change cannot be applied: "
+                    + field.substring(0, Math.min(128, field.length())));
+        }
+    }
+
     static Map<String, Object> delta(Row row, Map<String, Object> requested) {
         var changed = new LinkedHashMap<String, Object>();
         requested.forEach((key, value) -> {
@@ -228,6 +250,11 @@ final class QeaWriter {
             Artifact found = artifacts.get(selected.id());
             if (found == null || found.kind() != selected.kind() || !found.title().equals(selected.title()) || !found.text().equals(selected.text()))
                 throw fail("QEA_WRITE_CONFLICT", "Native read-back did not retain the reviewed artifact identity and values");
+            Artifact before = model.beforeArtifacts.get(selected.id());
+            if (before != null) {
+                checkNativeEvidence(selected.attributes(), before.attributes(), found.attributes());
+                checkNativeEvidence(selected.extensions(), before.extensions(), found.extensions());
+            }
             if (selected.kind() == ArtifactKind.ELEMENT && selected.extensions().containsKey("canonicalType")
                     && !Objects.equals(selected.extensions().get("canonicalType"), found.extensions().get("canonicalType")))
                 throw fail("QEA_WRITE_CONFLICT", "Native read-back did not retain the reviewed element meaning");
@@ -239,6 +266,11 @@ final class QeaWriter {
             if (found == null || !found.source().equals(selected.source()) || !found.target().equals(selected.target())
                     || !Objects.equals(found.extensions().get("canonicalType"), selected.extensions().get("canonicalType")))
                 throw fail("QEA_WRITE_CONFLICT", "Native read-back did not retain the reviewed relation meaning and endpoints");
+            Relation before = model.beforeRelations.get(selected.id());
+            if (before != null) {
+                checkNativeEvidence(selected.attributes(), before.attributes(), found.attributes());
+                checkNativeEvidence(selected.extensions(), before.extensions(), found.extensions());
+            }
         }
     }
 }

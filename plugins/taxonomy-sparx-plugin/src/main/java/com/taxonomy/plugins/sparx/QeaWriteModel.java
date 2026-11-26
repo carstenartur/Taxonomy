@@ -80,7 +80,11 @@ final class QeaWriteModel {
             Relation prior = beforeRelations.get(id);
             if (prior != null && prior.type().equals(relation.type()) && prior.source().equals(relation.source()) && prior.target().equals(relation.target())
                     && prior.attributes().equals(relation.attributes()) && prior.extensions().equals(relation.extensions())) continue;
-            relations.put(id, new Relation(id, relation.type(), reference(relation.source()), reference(relation.target()), relation.attributes(), relation.extensions()));
+            // A preserve-only request can retain an originally unresolved endpoint verbatim.
+            boolean preserve = prior != null && "PRESERVE_ONLY".equals(relation.extensions().get("nativeProjection"));
+            String source = preserve && relation.source().equals(prior.source()) ? prior.source() : reference(relation.source());
+            String target = preserve && relation.target().equals(prior.target()) ? prior.target() : reference(relation.target());
+            relations.put(id, new Relation(id, relation.type(), source, target, relation.attributes(), relation.extensions()));
         }
         Set<String> selectedPlacements = new HashSet<>();
         for (Placement placement : document.placements()) {
