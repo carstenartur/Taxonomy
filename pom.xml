@@ -191,8 +191,8 @@
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
-            <!-- The aggregate D3 WebJar references 3.0.1, whose generated Maven
-                 metadata is incomplete. Manage the compatible 3.1.2 release so
+            <!-- Some aggregate D3 WebJar releases reference incomplete generated Maven
+                 metadata. Manage a compatible release with complete metadata so
                  clean builds resolve complete dependency metadata without a
                  warning while retaining D3's supported 3.x range. -->
             <dependency>
