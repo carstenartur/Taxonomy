@@ -30,6 +30,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.web.context.request.RequestContextHolder;
 
 import java.io.IOException;
 import java.util.List;
@@ -209,9 +210,15 @@ class GitNativeSyncIntegrationServiceTest {
         when(memberships.canRead(sourceMetadata, "alice")).thenReturn(canReadSource);
         var mvc = syncStatusMvc(manager, memberships);
 
-        assertThatThrownBy(() -> mvc.perform(get("/api/workspace/sync-state")
-                .header(WorkspaceContextResolver.WORKSPACE_HEADER, "workspace-a")))
-                .hasRootCauseInstanceOf(AccessDeniedException.class);
+        var previousRequest = RequestContextHolder.getRequestAttributes();
+        try {
+            assertThatThrownBy(() -> mvc.perform(get("/api/workspace/sync-state")
+                    .header(WorkspaceContextResolver.WORKSPACE_HEADER, "workspace-a")))
+                    .hasRootCauseInstanceOf(AccessDeniedException.class);
+        } finally {
+            // Standalone MockMvc leaves the request bound when dispatch propagates an exception.
+            RequestContextHolder.setRequestAttributes(previousRequest);
+        }
         verifyNoInteractions(repositoryFactory, syncStateRepository);
     }
 
