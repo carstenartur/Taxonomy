@@ -3,8 +3,10 @@ package com.taxonomy.reporting.render.document;
 import com.taxonomy.dto.RequirementNodeAssessment;
 import com.taxonomy.dto.RequirementNodeAssessment.EvidenceStatus;
 import com.taxonomy.reporting.render.decision.DecisionReportLabels;
+import org.apache.poi.xwpf.usermodel.XWPFParagraph;
 import org.springframework.web.util.HtmlUtils;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -55,18 +57,21 @@ public final class RequirementEvidenceSection {
         assessments.forEach((code, claims) -> {
             writer.heading(code, 2, null);
             for (var claim : claims) {
+                var paragraphs = new ArrayList<XWPFParagraph>();
                 var status = writer.paragraph(label(claim.evidenceStatus(), german));
-                status.setKeepNext(true);
+                paragraphs.add(status);
                 status.getRuns().getFirst().setBold(true);
                 status.getRuns().getFirst().setColor(color(claim.evidenceStatus()));
                 var contribution = status.createRun();
                 contribution.setFontSize(10);
                 contribution.setText(" · " + label(claim.contributionType(), german));
                 if (!claim.requirementQuote().isEmpty()) {
-                    writer.paragraph(originalQuote(german)).setKeepNext(true);
-                    writer.paragraph(claim.requirementQuote());
+                    paragraphs.add(writer.paragraph(originalQuote(german)));
+                    paragraphs.add(writer.paragraph(claim.requirementQuote()));
                 }
-                fields(claim, german, (name, value) -> writer.paragraph(name + ": " + value));
+                fields(claim, german, (name, value) -> paragraphs.add(writer.paragraph(name + ": " + value)));
+                // Keep the claim together and allow a page break before the next claim.
+                paragraphs.subList(0, paragraphs.size() - 1).forEach(paragraph -> paragraph.setKeepNext(true));
             }
         });
     }

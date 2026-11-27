@@ -5,13 +5,11 @@ import com.taxonomy.portfolio.repository.ProjectRequirementVersionRepository;
 import com.taxonomy.portfolio.service.PortablePortfolioGitService;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import org.junit.jupiter.api.Test;
-import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.lang.reflect.Method;
 import java.util.Collection;
-import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -28,15 +26,7 @@ class ReformulationEvidenceConcurrencyAndQueryContractTest {
     }
 
     @Test
-    void adoptionEvidenceLoadsPortableAssociationsWithoutPerReceiptQueries() throws Exception {
-        Method method = ReformulationAdoptionRepository.class.getDeclaredMethod(
-                "findByScopeKeyOrderByCreatedAtAsc", String.class);
-        EntityGraph graph = method.getAnnotation(EntityGraph.class);
-
-        assertThat(graph).isNotNull();
-        assertThat(List.of(graph.attributePaths()))
-                .contains("preview", "version", "version.requirement", "version.requirement.project");
-
+    void adoptionEvidenceSourceVersionsCanBeLoadedInBulk() throws Exception {
         Method bulkVersions = ProjectRequirementVersionRepository.class.getDeclaredMethod(
                 "findByScopeKeyAndIdIn", String.class, Collection.class);
         assertThat(bulkVersions).isNotNull();

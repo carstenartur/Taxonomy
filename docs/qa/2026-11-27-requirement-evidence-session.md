@@ -155,9 +155,51 @@ The independent review covered all **34 new claims: 25 accepted, nine qualified 
 
 The nine qualified judgements remain part of the result. They concern directionally ambiguous SUPPORTS relationships and cases in which the general infrastructure function is better established than the more specialized catalogue node. Examples include a possible application helping a monitoring requirement versus the requirement supporting the application, and ordinary cross-site data exchange versus a particular higher-level IP service. No automated correction or new obligation was inserted to erase these qualifications. The per-claim rationales and the before/after audit remain available with the raw run evidence. This is evidence of improvement on selected known errors, not a general accuracy rate or proof that green model proposals are always correct.
 
-The evidence package includes the actual HTML/JSON reports. Word export contents were checked by the live harness, but the complete Word layout was not visually inspected, so Word is not included as a visually validated deliverable. Browser captures remain internal inspection evidence. The third-stage complete browser check, a new full traversal under v3, the full repository test suite and external CI remain separate verification boundaries.
+At the end of the first implementation pass, the evidence package contained the actual HTML/JSON reports. Word contents had been checked but their complete layout had not been visually inspected. The continuation below records the subsequent Word inspection and corrections. Browser captures remain internal inspection evidence. A new full traversal under v3 remains outside the completed component regression.
 
 The independent code review found no remaining Critical or Important findings in its reviewed scope. Its final pass also verified the nine delivery records and original/new prompt hashes, and prompted two harness corrections: the existing `real-llm` class tag and a guard protecting interrupted runs from accidental overwrite. A subsequent guard smoke rejected reuse, preserved every recorded byte and left the request count at nine. Review approval does not certify the outstanding runtime or semantic boundaries above.
+
+## Completion follow-up after the interrupted session
+
+The continuation recovered PR #1612 at remote commit `247a172a03008f054e2a37f0a8de67aade82172a`; its complete tree matched the retained local implementation. It preserves the original three snapshots, all 50 delivered responses, the failed semantic review and the nine separate post-fix component calls. No new inference is counted in the recovery checks below.
+
+### Word output and safe text rendering
+
+Visual inspection found 23 short claim blocks split between pages in the initial Word reports. The report renderer now keeps the paragraphs within each claim together, ending the keep-with-next chain at the final paragraph of that claim. Independent claims are not chained. A regression against the actual generated DOCX first failed with the original renderer; all five focused report cases then passed.
+
+The authoritative corrected files were downloaded from the running application's normal authenticated report endpoint in continuation recovery run 08. They were not reconstructed from the public JSON report, which intentionally omits internal selected-node data. Every report preserves its original snapshot/version, scope, selected-root order and editable text apart from the export timestamp.
+
+| Version | Word pages | Evidence pages | Claims | Open questions | Conditions | Split claim blocks |
+| --- | ---: | --- | ---: | ---: | ---: | ---: |
+| Product | 24 | 4–9 | 16 | 6 | 0 | 0 |
+| Storage/service | 51 | 5–17 | 38 | 6 | 0 | 0 |
+| Operations/process | 91 | 6–33 | 81 | 3 | 7 | 0 |
+
+The rendered pages were inspected for legibility, clipping, blank body pages and claim continuity. The three DOCX SHA-256 digests are respectively `25cc790930ef9fe4a96abf10273c6298f7ad3b8af4eac8bf921a15770409cc29`, `85c2441c308ab8aa7ce78ca8d779f94a4cad3f67642823cf4a0885a993882e28` and `110b5c6d1e1f734cf1b8d6a5e474d5a3d16d80bf97d49726f3e5e4f5bed0abaf`. These are visually validated exports of the retained historical analyses; the third report still contains the two original semantic issues identified above.
+
+A separate test-only CodeQL finding was corrected by checking mixed-case script input, its exact escaped text, case-insensitive absence of a raw script element and absence of a percentage separately. All five JavaScript cases passed. CodeQL completed successfully on remote correction `682e3d9246718e0ec4b444eab0ab501c2ba51f7c`; the final combined source change still requires its own CI result.
+
+### Actual persistence read-path correction
+
+The earlier streaming JSON correction did not prevent Hibernate from first hydrating supposedly lazy adoption/preview/proposal/snapshot associations through non-primary-key joins. The retained example contains two proposal baselines of 17,721,331 and 17,956,960 characters plus two snapshot payloads of 5,728,459 and 5,781,800 characters. Loading that graph expanded approximately 47 million characters before the codec could skip unused fields.
+
+Evidence reads now use a scalar adoption projection and an explicitly scoped ancestry query on the Hibernate-owned JDBC connection. The query retains physical proposal, project, requirement, source-version, snapshot and canonical-baseline validation. Left joins retain missing ancestry as an explicit integrity failure. Pending transaction changes are flushed when required before the JDBC read. CLOB/NCLOB data uses the bounded reader; text columns use their character-stream interface. PostgreSQL's TEXT driver path may still materialize a string, so the HSQL memory observation is not generalized into a constant-memory claim for every database driver.
+
+A real Hibernate/HSQL regression first observed the unwanted snapshot entity load on the old code. The corrected read has zero proposal/snapshot entity hydration for both current evidence and version-pinned freezing, preserving the same portable evidence. The focused run passed 11 tests, including the existing codec/query contracts and visibility of a pending baseline update within the transaction.
+
+Continuation recovery run 08 then completed through the ordinary application: lifecycle HTTP 200, exact saved-snapshot JSON equality, all three authenticated Word downloads with the correct response headers, and unchanged original snapshot/completion hashes. It used the real retained database and catalogue. This was an application/API/export check, not a successful browser check.
+
+### Remaining runtime checks and review
+
+The first continuation attempt at the canonical Maven `architecture-tests` profile was terminated with signal 9 at application build metadata. A second, smaller-heap attempt reached compilation of the application's 831 test sources and was also terminated with signal 9. Neither reached a failing test assertion or completed the canonical profile. Earlier successful focused and architecture-suite runs remain separately identified above; they are not relabeled as a successful complete Maven invocation.
+
+The combined application/browser continuation run 09 authenticated and loaded the real page assets, but the application was terminated before the browser's lifecycle request completed. No Java out-of-memory exception was captured and no kernel attribution was available. Its recorded concurrent peak was approximately 687 MiB of proportional resident memory. It did not produce a successful final browser marker.
+
+A final continuation run 10 reduced the application heap to 256 MiB after the persistence fix. The lifecycle warm-up again returned HTTP 200 and Chrome authenticated, but the application was terminated with signal 9 while the real page assets loaded, before the browser's lifecycle/snapshot requests. Its last captured collection recorded approximately 140 MiB used out of 227 MiB committed; no Java out-of-memory exception was captured. The complete third-stage expanded desktop/narrow browser verification therefore remains unverified. No response replay, truncated catalogue or substituted page was used to manufacture a passing result.
+
+The regular full-scope PR CI is the remaining integration gate. Its core reactor job runs all 23 suites selected by the standalone architecture profile and the same fail-on-empty selector anchor, in addition to its normal tests; the app shards, browser shards, coverage and CodeQL gates remain enabled. A passing final-head CI result can establish those suites without claiming that the locally terminated standalone command succeeded. The PR check records are authoritative for the final published revision.
+
+An independent review of the complete continuation code delta, including the new persistence reader and actual report regression, found no remaining Critical, Important or Minor findings. This is a code-review result, separate from the incomplete runtime checks. The production change remains Java/Maven-based; the small recovery driver is temporary verification tooling, not a new application runtime or service dependency.
 
 ## Reproducing the two distinct checks
 

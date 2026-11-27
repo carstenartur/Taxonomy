@@ -11,7 +11,6 @@ import com.taxonomy.dsl.parser.TaxDslParser;
 import com.taxonomy.dsl.serializer.TaxDslSerializer;
 import com.taxonomy.identity.StableIdentityHash;
 import com.taxonomy.portfolio.model.ArchitectureProject;
-import com.taxonomy.portfolio.model.ProjectRequirement;
 import com.taxonomy.portfolio.model.ProjectRequirementVersion;
 import com.taxonomy.portfolio.model.PortfolioTenantIdentity;
 import com.taxonomy.reformulation.ReformulationBaseline;
@@ -61,7 +60,7 @@ public class ReformulationEvidenceCodec {
     private final ArchitectureProjectRepository projects;
     private final ProjectRequirementRepository requirements;
     private final ProjectRequirementVersionRepository versions;
-    private final ReformulationProposalRepository proposals;
+    private final ReformulationAncestryRepository ancestryRepository;
     private final TaxDslParser parser = new TaxDslParser();
     private final TaxDslSerializer serializer = new TaxDslSerializer();
 
@@ -72,14 +71,14 @@ public class ReformulationEvidenceCodec {
             ArchitectureProjectRepository projects,
             ProjectRequirementRepository requirements,
             ProjectRequirementVersionRepository versions,
-            ReformulationProposalRepository proposals) {
+            ReformulationAncestryRepository ancestryRepository) {
         this.json = json;
         this.adoptions = adoptions;
         this.importedEvidence = importedEvidence;
         this.projects = projects;
         this.requirements = requirements;
         this.versions = versions;
-        this.proposals = proposals;
+        this.ancestryRepository = ancestryRepository;
     }
 
     /**
@@ -148,7 +147,7 @@ public class ReformulationEvidenceCodec {
 
     public LineageSnapshot freezeSource(String scopeKey, Long requirementId, Long versionId,
             String projectKey, String requirementKey, int versionNumber, String contentHash) {
-        var receipts = adoptions.findByRequirementIdAndTargetVersionIdAndScopeKey(
+        var receipts = adoptions.findEvidenceByRequirementVersion(
                 requirementId, versionId, scopeKey);
         var local = sourceEvidenceFor(receipts, scopeKey);
         List<Evidence> roots = new ArrayList<>(local.roots());
@@ -238,7 +237,7 @@ public class ReformulationEvidenceCodec {
                         scopeKey)) {
             merge(byHash, fromStored(stored));
         }
-        var local = sourceEvidenceFor(adoptions.findByScopeKeyOrderByCreatedAtAsc(scopeKey), scopeKey);
+        var local = sourceEvidenceFor(adoptions.findEvidenceByScopeKey(scopeKey), scopeKey);
         local.roots().forEach(evidence -> merge(byHash, evidence));
         local.ancestors().forEach(evidence -> merge(byHash, evidence));
 
@@ -328,17 +327,11 @@ public class ReformulationEvidenceCodec {
         }
     }
 
-    private LineageSnapshot ancestry(ReformulationAdoption receipt, String scopeKey, Long previewSourceVersionId) {
-        var proposal = proposals.findById(receipt.getProposalId())
+    private LineageSnapshot ancestry(String proposalId, Long requirementId, String scopeKey, Long previewSourceVersionId) {
+        var proposal = ancestryRepository.read(proposalId, scopeKey, requirementId, previewSourceVersionId,
+                reader -> json.read(reader, AncestryBaseline.class))
                 .orElseThrow(() -> PortfolioException.conflict("Adopted proposal is missing"));
-        if (!scopeKey.equals(receipt.getScopeKey()) || !scopeKey.equals(proposal.getScopeKey())
-                || !Objects.equals(receipt.getRequirementId(), proposal.getRequirementId())) {
-            throw PortfolioException.conflict("Adopted proposal scope is inconsistent");
-        }
-        if (!Objects.equals(previewSourceVersionId, proposal.getSourceVersionId())) {
-            throw PortfolioException.conflict("Adopted source baseline does not match preview");
-        }
-        AncestryBaseline baseline = json.read(proposal.getBaselinePayload(), AncestryBaseline.class);
+        AncestryBaseline baseline = proposal.baseline();
         PortfolioTenantIdentity tenant = PortfolioTenantIdentity.parse(scopeKey);
         String workspaceId = tenant.workspaceScope().equals(PortfolioTenantIdentity.CENTRAL_SCOPE)
                 ? null : tenant.workspaceScope().substring(PortfolioTenantIdentity.WORKSPACE_SCOPE_PREFIX.length());
@@ -346,10 +339,10 @@ public class ReformulationEvidenceCodec {
                 || !tenant.repositoryId().equals(baseline.scope().repositoryId())
                 || !Objects.equals(workspaceId, baseline.scope().workspaceId())
                 || !tenant.branch().equals(baseline.scope().branch())
-                || !Objects.equals(proposal.getProjectId(), baseline.scope().projectId())
-                || !Objects.equals(proposal.getRequirementId(), baseline.scope().requirementId())
-                || !Objects.equals(proposal.getSourceVersionId(), baseline.sourceVersionId())
-                || !Objects.equals(proposal.getSnapshotId(), baseline.snapshotId())) {
+                || !Objects.equals(proposal.projectId(), baseline.scope().projectId())
+                || !Objects.equals(proposal.requirementId(), baseline.scope().requirementId())
+                || !Objects.equals(proposal.sourceVersionId(), baseline.sourceVersionId())
+                || !Objects.equals(proposal.snapshotId(), baseline.snapshotId())) {
             throw PortfolioException.conflict("Adopted proposal baseline does not match physical scope and source");
         }
         String frozen = baseline.adoptedLineage();
@@ -362,35 +355,34 @@ public class ReformulationEvidenceCodec {
         return lineage;
     }
 
-    private SourceEvidence sourceEvidenceFor(List<ReformulationAdoption> rows, String scopeKey) {
+    private SourceEvidence sourceEvidenceFor(List<ReformulationAdoptionRepository.EvidenceSource> rows, String scopeKey) {
         if (rows.isEmpty()) return new SourceEvidence(List.of(), List.of());
 
         record SourceRow(
-                ReformulationAdoption adoption,
+                ReformulationAdoptionRepository.EvidenceSource adoption,
                 ReformulationAdoptionDtos.Result receipt,
                 ReformulationAdoptionDtos.PreviewContent preview) {}
 
         List<SourceRow> sources = new ArrayList<>(rows.size());
         var sourceVersionIds = new LinkedHashSet<Long>();
-        for (ReformulationAdoption adoption : rows) {
+        for (var adoption : rows) {
             ReformulationAdoptionDtos.Result receipt =
-                    json.read(adoption.getPayload(), ReformulationAdoptionDtos.Result.class);
+                    json.read(adoption.receiptPayload(), ReformulationAdoptionDtos.Result.class);
             if (receipt == null
-                    || !Objects.equals(adoption.getProposalId(), receipt.proposalId())
-                    || !Objects.equals(adoption.getPreviewId(), receipt.previewId())
-                    || !Objects.equals(adoption.getTargetVersionId(), receipt.targetVersionId())) {
+                    || !scopeKey.equals(adoption.scopeKey())
+                    || !Objects.equals(adoption.proposalId(), receipt.proposalId())
+                    || !Objects.equals(adoption.previewId(), receipt.previewId())
+                    || !Objects.equals(adoption.targetVersionId(), receipt.targetVersionId())) {
                 throw PortfolioException.conflict(
                         "Stored adoption receipt is inconsistent with its reformulation evidence");
             }
-            ReformulationAdoptionPreview previewRow = adoption.getPreview();
-            if (previewRow == null
-                    || !StableIdentityHash.sha256(previewRow.getPayload())
-                            .equals(previewRow.getContentHash())) {
+            if (adoption.previewPayload() == null
+                    || !StableIdentityHash.sha256(adoption.previewPayload()).equals(adoption.previewHash())) {
                 throw PortfolioException.conflict(
                         "Stored adoption preview integrity check failed");
             }
             ReformulationAdoptionDtos.PreviewContent preview =
-                    json.read(previewRow.getPayload(), ReformulationAdoptionDtos.PreviewContent.class);
+                    json.read(adoption.previewPayload(), ReformulationAdoptionDtos.PreviewContent.class);
             if (preview == null || preview.currentRequirement() == null
                     || preview.currentRequirement().currentVersion() == null
                     || preview.revision() == null) {
@@ -410,28 +402,25 @@ public class ReformulationEvidenceCodec {
         List<Evidence> result = new ArrayList<>(sources.size());
         List<Evidence> ancestors = new ArrayList<>();
         for (SourceRow row : sources) {
-            ReformulationAdoption adoption = row.adoption();
+            var adoption = row.adoption();
             ReformulationAdoptionDtos.Result receipt = row.receipt();
             ReformulationAdoptionDtos.PreviewContent preview = row.preview();
 
-            ProjectRequirementVersion target = adoption.getVersion();
-            ProjectRequirement requirement = target == null ? null : target.getRequirement();
-            ArchitectureProject project = requirement == null ? null : requirement.getProject();
             ProjectRequirementVersion source = sourceVersions.get(preview.sourceVersionId());
-            if (target == null || requirement == null || project == null
+            if (adoption.targetVersion() == null || adoption.actualRequirementId() == null || adoption.projectKey() == null
                     || source == null
-                    || !scopeKey.equals(target.getScopeKey())
-                    || !scopeKey.equals(requirement.getScopeKey())
-                    || !scopeKey.equals(project.getScopeKey())
+                    || !scopeKey.equals(adoption.targetScope())
+                    || !scopeKey.equals(adoption.requirementScope())
+                    || !scopeKey.equals(adoption.projectScope())
                     || !scopeKey.equals(source.getScopeKey())
-                    || !Objects.equals(adoption.getRequirementId(), requirement.getId())
-                    || !Objects.equals(source.getRequirementId(), requirement.getId())) {
+                    || !Objects.equals(adoption.requirementId(), adoption.actualRequirementId())
+                    || !Objects.equals(source.getRequirementId(), adoption.actualRequirementId())) {
                 throw PortfolioException.conflict(
                         "Adoption business identity is inconsistent with portable reformulation evidence");
             }
 
             int previousVersion = preview.currentRequirement().currentVersion().versionNumber();
-            if (target.getVersionNumber() != receipt.targetVersionNumber()
+            if (adoption.targetVersion() != receipt.targetVersionNumber()
                     || receipt.previousVersionId()
                     != preview.currentRequirement().currentVersionId()
                     || !preview.originalText().equals(source.getText())
@@ -441,28 +430,28 @@ public class ReformulationEvidenceCodec {
             }
 
             Payload value = new Payload(
-                    project.getProjectKey(),
-                    requirement.getRequirementKey(),
+                    adoption.projectKey(),
+                    adoption.requirementKey(),
                     source.getVersionNumber(),
                     previousVersion,
-                    target.getVersionNumber(),
+                    adoption.targetVersion(),
                     preview.analysisSnapshotId(),
                     preview.originalText(),
                     preview.finalText(),
-                    target.getContentHash(),
+                    adoption.targetHash(),
                     receipt.proposalRevision(),
                     receipt.actor(),
                     receipt.rationale(),
                     preview.revision());
-            LineageSnapshot ancestry = ancestry(adoption, scopeKey, preview.sourceVersionId());
+            LineageSnapshot ancestry = ancestry(adoption.proposalId(), adoption.requirementId(), scopeKey, preview.sourceVersionId());
             ancestors.addAll(ancestry.entries());
             for (String ancestor : ancestry.roots()) {
                 Evidence parent = ancestry.entries().stream().filter(e -> e.evidenceHash().equals(ancestor))
                         .findFirst().orElseThrow(() -> PortfolioException.conflict("Adopted source ancestry is missing"));
                 if (parent.targetVersionNumber() != source.getVersionNumber()
                         || !parent.targetTextHash().equals(source.getContentHash())
-                        || !parent.projectKey().equalsIgnoreCase(project.getProjectKey())
-                        || !parent.requirementKey().equalsIgnoreCase(requirement.getRequirementKey())) {
+                        || !parent.projectKey().equalsIgnoreCase(adoption.projectKey())
+                        || !parent.requirementKey().equalsIgnoreCase(adoption.requirementKey())) {
                     throw PortfolioException.conflict("Adopted source ancestry does not match source version");
                 }
             }

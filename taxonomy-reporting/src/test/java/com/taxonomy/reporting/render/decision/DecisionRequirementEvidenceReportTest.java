@@ -5,6 +5,7 @@ import com.taxonomy.extension.api.report.ReportRenderContext;
 import com.taxonomy.reporting.api.decision.DecisionRationaleReport;
 import org.apache.poi.xwpf.extractor.XWPFWordExtractor;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
+import org.apache.poi.xwpf.usermodel.XWPFParagraph;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -51,6 +52,23 @@ class DecisionRequirementEvidenceReportTest {
                 var extractor = new XWPFWordExtractor(document)) {
             assertThat(extractor.getText()).contains("Requirement contributions and evidence", QUOTE, "Supported", "Clarification needed",
                     "If archive copies are required", QUESTION);
+        }
+    }
+
+    @Test
+    void docxKeepsEachClaimTogetherAcrossPagination() throws Exception {
+        var renderer = new DecisionRationaleDocxRenderer(new DecisionChapterDiagramRenderer());
+        try (var document = new XWPFDocument(new ByteArrayInputStream(renderer.render(assessedReport())))) {
+            var paragraphs = document.getParagraphs();
+            var texts = paragraphs.stream().map(XWPFParagraph::getText).toList();
+            int firstStart = texts.indexOf("Supported · Supports");
+            int firstEnd = texts.indexOf("Interpretation: Archive copies support recovery.");
+            int secondStart = texts.indexOf("Clarification needed · Direct subject");
+            int secondEnd = texts.indexOf("Open question: " + QUESTION);
+            assertThat(paragraphs.subList(firstStart, firstEnd)).allMatch(XWPFParagraph::isKeepNext);
+            assertThat(paragraphs.get(firstEnd).isKeepNext()).isFalse();
+            assertThat(paragraphs.subList(secondStart, secondEnd)).allMatch(XWPFParagraph::isKeepNext);
+            assertThat(paragraphs.get(secondEnd).isKeepNext()).isFalse();
         }
     }
 

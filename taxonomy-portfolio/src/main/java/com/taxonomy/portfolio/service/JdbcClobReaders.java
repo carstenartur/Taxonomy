@@ -8,12 +8,12 @@ import java.sql.SQLFeatureNotSupportedException;
 import java.util.Objects;
 
 /** Complete JDBC text with bounded driver windows; the caller still owns and frees the locator. */
-final class JdbcClobReaders {
+public final class JdbcClobReaders {
     // Aligns HSQL's compressed 512-KiB parts without its default one-MiB output arrays.
     private static final int RANGE_CHARACTERS = 262_144;
     private JdbcClobReaders() { }
 
-    static Reader open(Clob clob) throws SQLException {
+    public static Reader open(Clob clob) throws SQLException {
         long length = clob.length();
         if (length < 0) throw new SQLException("Negative JDBC CLOB length");
         if (length <= RANGE_CHARACTERS) return clob.getCharacterStream();
