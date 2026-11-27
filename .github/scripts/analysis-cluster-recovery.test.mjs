@@ -22,7 +22,7 @@ function snapshot(status = 'RUNNING', sequence = 2) {
         cluster: { completedRoots: status === 'COMPLETED' ? 1 : 0, totalRoots: 1, tasks: [] } };
 }
 const flush = () => new Promise(resolve => setImmediate(resolve));
-function fixture({ status = 'COMPLETED', requestInput, requestResult, startRequest, localProgress = false, sourceReady = true } = {}) {
+function fixture({ status = 'COMPLETED', requestInput, requestResult, startRequest, localProgress = false, localScores = {CP:80}, sourceReady = true } = {}) {
     const elements = new Map(), timers = new Map(), listeners = new Map(), calls = [], streams = [];
     let serial = 0;
     class Element {
@@ -86,7 +86,7 @@ function fixture({ status = 'COMPLETED', requestInput, requestResult, startReque
             const path = new URL(url, 'https://taxonomy.example').pathname;
             let body = path.endsWith('/request') ? requestInput ? await requestInput() : input
                 : path.endsWith('/result') ? requestResult ? await requestResult() : result
-                    : path === '/api/analysis-runs' ? [snapshot(status)] : {...snapshot(status), ...(localProgress ? {transport: 'local', rawScores: {CP: 80}} : {})};
+                    : path === '/api/analysis-runs' ? [snapshot(status)] : {...snapshot(status), ...(localProgress ? {transport: 'local', rawScores: localScores} : {})};
             return new Response(JSON.stringify(body), { status: 200 });
         }
     };
@@ -240,3 +240,92 @@ test('recent durable runs load after source readiness that follows the draft-onl
     assert.ok(f.buttons().some(button => /Retrieve result/.test(button.textContent)));
     assert.ok(f.calls.every(call => !call.options.method || call.options.method === 'GET'));
 });
+
+test('a revoked progressive operation cannot publish queued scores or a late result after edit and revert', async () => {
+    let deliver;
+    const f = fixture({status:'RUNNING', startRequest:() => new Promise(resolve => { deliver = resolve; })});
+    await flush();
+    let current = true, bound;
+    const presentations = [];
+    const owner = {current:() => current, bind(operation, cancel) { bound = {operation,cancel}; return true; },
+        present(operation, update) {presentations.push({operation, update});}};
+    const pending = f.window.TaxonomyScoring.runAnalysis({refinement:owner});
+    await f.tick();
+    assert.equal(bound?.operation, id);
+    await f.streams[0].send({...snapshot('RUNNING',3),rawScores:{CP:50}});
+    assert.equal(f.state.currentEffectiveScores.CP,50);
+    assert.equal(presentations.at(-1).update.scores.CP,50);
+    current = false;
+    f.state.currentRawScores = {CP:17}; f.state.currentEffectiveScores = {CP:17};
+    await f.streams[0].send({...snapshot('RUNNING',4),rawScores:{CP:70}});
+    deliver(Response.json(result)); await pending;
+    assert.equal(f.state.currentRawScores.CP,17,'a late response cannot replace a newer manual score');
+    assert.equal(presentations.at(-1).update.scores.CP,50);
+});
+
+test('a lost managed progressive POST keeps the monitor observable and never promotes live numeric placeholders',async()=>{
+    let refuse;
+    const f=fixture({status:'RUNNING',localProgress:true,localScores:{product:60},startRequest:()=>new Promise((_,reject)=>{refuse=reject;})});
+    f.state.taxonomyData=[{code:'family',children:[{code:'product',analysisRole:'PRODUCT',parentCode:'family'}]}];
+    await flush();
+    const updates=[]; let stop;
+    const refinement={current:()=>true,bind(_,cancel){stop=cancel;return true;},present(id,update){updates.push(update);}};
+    const pending=f.window.TaxonomyScoring.runAnalysis({refinement,recoveryManaged:true});
+    await f.tick();
+    assert.equal(updates.at(-1).details.product.effectiveRelevance,null);
+    assert.equal(updates.at(-1).scores.product,0,'the live numeric envelope still has its placeholder');
+    refuse(new Error('response lost')); await assert.rejects(pending); await flush();
+    assert.equal(updates.at(-1)?.status,'CHECKING');
+    assert.equal(updates.at(-1).scores,undefined);
+    assert.notEqual(f.state.lastAnalysisStatus,'ERROR');
+    stop();
+    assert.equal(f.elements.get('analysisLiveProgress').textContent.includes('finished'),false);
+});
+
+test('further extension progress cannot reclassify changed local evidence as an owned projection', async () => {
+    const f = fixture({status:'RUNNING'});
+    await flush();
+    let projectedReason = '', remembered = 0;
+    f.window.TaxonomyScoring.runAnalysis({
+        continuation:{analysisScope:input.analysisScope}, recoveryManaged:true,
+        canProjectProgress:() => (f.state.currentReasons.CP || '') === projectedReason,
+        rememberProgressEvidence() { projectedReason = f.state.currentReasons.CP || ''; remembered++; }
+    });
+    await f.tick();
+    const [stream] = f.streams;
+    await stream.send({...snapshot('RUNNING', 3), rawScores:{CP:66}, reasons:{CP:'Interim'}});
+    assert.equal(f.state.currentScores.CP, 66);
+    const beforeEdit = remembered;
+    f.state.currentReasons.CP = 'Manual assessment';
+    await stream.send({...snapshot('RUNNING', 4), rawScores:{CP:71}, reasons:{CP:'Later progress'}});
+    assert.equal(f.state.currentScores.CP, 66);
+    assert.equal(f.state.currentReasons.CP, 'Manual assessment');
+    assert.equal(remembered, beforeEdit);
+});
+
+for (const transport of ['POST','Artemis']) {
+ test(`a successful ${transport} terminal delivery retains a competing assessment for managed review`, async () => {
+    let deliver;
+    const f = fixture({status:'RUNNING', startRequest:()=>new Promise(resolve=>{deliver=resolve;})});
+    await flush();
+    const shown = [], conflicts = [];
+    const owner = {current:()=>true, bind:()=>true, present:(id,update)=>shown.push(update)};
+    const pending = f.window.TaxonomyScoring.runAnalysis({continuation:{analysisScope:input.analysisScope},
+        recoveryManaged:true, refinement:owner, canProjectProgress:()=>f.state.currentReasons.CP !== 'Reviewed manually',
+        onEvidenceConflict:saved=>conflicts.push(saved)});
+    await f.tick();
+    await f.streams[0].send({...snapshot('RUNNING',3), rawScores:{CP:66}});
+    f.state.currentScores.CP = 92;
+    f.state.currentReasons.CP = 'Reviewed manually';
+    if (transport === 'POST') deliver(Response.json(result));
+    else await f.streams[0].send(snapshot('COMPLETED',4));
+    await pending;
+    assert.equal(f.state.currentScores.CP,92);
+    assert.equal(f.state.currentReasons.CP,'Reviewed manually');
+    assert.equal(conflicts.length,1);
+    assert.equal(conflicts[0].scores.CP,80);
+    assert.ok(shown.every(update=>update.status === 'IN_PROGRESS'));
+    assert.equal(f.elements.get('analyzeBtn').disabled,false);
+    if (transport === 'Artemis') {deliver(Response.json(result));await flush();assert.equal(conflicts.length,1);}
+ });
+}

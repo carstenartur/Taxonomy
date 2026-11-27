@@ -391,6 +391,7 @@ window.TaxonomyUtils = (function () {
                 if (score === null) return;
                 var state = window.TaxonomyState;
                 if (state) {
+                    document.dispatchEvent(new CustomEvent('taxonomy:analysis-manual-edit'));
                     state.currentScores = state.currentScores || {};
                     state.currentReasons = state.currentReasons || {};
                     state.currentScores[code] = score;

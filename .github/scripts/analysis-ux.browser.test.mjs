@@ -2055,3 +2055,127 @@ test('projection rebuild keeps an admitted central repository and refreshes the 
         await page.close();
     }
 });
+
+// Component transport fixture. Names and hierarchy are taken from the bilingual 25AUG2025
+// workbook; these scores exercise presentation and are not measurements of a provider.
+const recordsCandidates = [
+    ['CR','CR',null,'Core Services','Kerndienste',null],
+    ['CR','CR-1000','CR','Core Services','Kerndienste',null],
+    ['CR','CR-1011','CR-1000','Business Support Services','Dienste zur Geschäftsunterstützung',null],
+    ['CR','CR-1038','CR-1011','Information Management Services','Dienste zum Informationsmanagement',null],
+    ['CR','CR-1198','CR-1038','Records Management Services','Dienste zur Schriftgutverwaltung',76],
+    ['UA','UA',null,'User Applications','Benutzeranwendungen',null],
+    ['UA','UA-1000','UA','User Applications','Benutzeranwendungen',null],
+    ['UA','UA-1273','UA-1000','Information Management Applications','Anwendungen für Informationsmanagement',null],
+    ['UA','UA-1237','UA-1273','Formal Records Management Applications','Anwendungen für formelle Schriftgutverwaltung',72]
+].map(([taxonomyRoot,code,parentCode,nameEn,nameDe,score]) => ({taxonomyRoot,code,parentCode,nameEn,nameDe,score,
+    analysisRole:'CATEGORY',architectureCandidate:score != null}));
+
+for (const locale of ['en','de']) for (const width of [390,1180]) {
+    test(`progressive architecture keeps its component positions and focus in ${locale} at ${width}px`, async () => {
+        const page = await browser.newPage({viewport:{width,height:850}});
+        const errors = []; page.on('pageerror', error => errors.push(error.message));
+        try {
+            await page.route('http://progressive.fixture/taxonomy/', route => route.fulfill({
+                contentType:'text/html', body:'<!doctype html><html></html>'}));
+            await page.goto('http://progressive.fixture/taxonomy/');
+            const template = await readFile(path.join(resources,'templates/index.html'),'utf8');
+            const preview = template.match(/<details id="analysisPreview"[\s\S]*?<\/details>/)[0];
+            await page.setContent(`<html lang="${locale}"><body><main class="container-fluid p-3">
+                <div class="card"><div class="card-body"><textarea id="businessText" class="form-control mb-3"></textarea>
+                ${preview}<button id="analyzeBtn" hidden></button></div></div></main></body></html>`);
+            const bootstrap = process.env.BOOTSTRAP_CSS ? await readFile(process.env.BOOTSTRAP_CSS,'utf8')
+                : execFileSync('unzip',['-p',path.join(process.env.MAVEN_REPO_LOCAL || path.join(os.homedir(),'.m2/repository'),
+                    'org/webjars/npm/bootstrap/5.3.8/bootstrap-5.3.8.jar'),
+                    'META-INF/resources/webjars/bootstrap/5.3.8/dist/css/bootstrap.min.css'],{encoding:'utf8'});
+            await page.addStyleTag({content:bootstrap});
+            await page.addStyleTag({path:path.join(resources,'static/css/taxonomy.css')});
+            await page.evaluate(({messages, nodes}) => {
+                const scope = {repositoryId:'catalogue',workspaceId:'private',branch:'draft'};
+                window.TaxonomyI18n = {t:(key,...args) => (messages[key] || key).replace(/\{(\d+)\}/g,(_,i) => args[i])};
+                for (const el of document.querySelectorAll('[th\\:text]')) {
+                    const key = el.getAttribute('th:text').slice(2,-1); el.textContent = TaxonomyI18n.t(key);
+                }
+                window.TaxonomyAnalysisScope = {read:() => ({taxonomyRoots:['CR','UA'],mode:'FULL'})};
+                window.TaxonomyArchitectureWorkflow = {getScope:() => scope};
+                window.TaxonomyArchitectureWorkspace = {ready:async () => true,open:async (kind) => { window.opened = kind; return true; }};
+                window.TaxonomyArchitectureLifecycle = {ready:async () => ({}),selectedAnalysisModel:() => ({expectedSemanticRevision:3})};
+                window.TaxonomyAnalysisSession = {state:() => ({workspaceId:'private',ready:true})};
+                window.TaxonomyRoleSurface = {ready:Promise.resolve(),getContext:() => ({analysisExecutionAllowed:true})};
+                window.AnalysisApi = {preparePreview:async () => {},preview:async () => ({method:'CATALOGUE_LEXICAL',
+                    catalogueRevision:'fixture-catalogue', semanticRevision:3, nodes, associations:[]})};
+                window.TaxonomyAnalysisRecovery = {startPlan:() => ({kind:'NEW'}), startManagedAnalysis(job) {
+                    window.TaxonomyState = {currentArchView:{includedElements:[]}};
+                    window.refinement = job; job.bind('fixture-run',() => {}); return new Promise(() => {});
+                }};
+                document.getElementById('analysisPreview').hidden = false;
+            },{messages:await applicationMessages(locale),nodes:recordsCandidates});
+            await page.addScriptTag({path:path.join(resources,'static/js/core/taxonomy-analysis-preview.js')});
+            const input = page.locator('#businessText');
+            await input.fill(locale === 'de' ? 'Wir brauchen eine Anwendung zur Schriftgutverwaltung.' : 'We need an application for formal records management.');
+            await page.locator('#analysisPreview summary').click();
+            const cards = page.locator('#analysisPreviewComponents li');
+            await cards.first().waitFor();
+            assert.equal(await cards.count(),2);
+            assert.equal(await page.evaluate(() => Boolean(window.refinement)),false);
+            const offsets = () => cards.evaluateAll(items => items.map(el => {
+                const bounds = el.getBoundingClientRect(); return [bounds.left, bounds.top + window.scrollY];
+            }));
+            const initial = await offsets();
+            await page.locator('#analysisPreviewRefine').click();
+            assert.deepEqual(await offsets(),initial);
+            await page.locator('#analysisPreviewComponents').focus();
+            await page.evaluate(() => {
+                refinement.present('fixture-run',{scores:{'CR-1198':65},status:'IN_PROGRESS',
+                    details:{'CR-1198':{kind:'HIERARCHICAL_RELEVANCE',parentCode:'CR-1038',effectiveRelevance:65}}});
+            });
+            assert.match(await cards.first().innerText(),/65\/100/);
+            assert.equal(await page.evaluate(() => document.activeElement.id),'analysisPreviewComponents');
+            assert.deepEqual(await offsets(),initial);
+            assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),true);
+            await page.evaluate(() => refinement.present('fixture-run',{scores:{'CR-1198':65,'UA-1237':71},status:'PARTIAL',architecture:true}));
+            assert.equal(await page.locator('#analysisPreviewArchitectureLink').isVisible(),true);
+            assert.deepEqual(await offsets(),initial);
+            if (process.env.TAXONOMY_UI_OUTPUT_ROOT) {
+                const directory = path.join(process.env.TAXONOMY_UI_OUTPUT_ROOT,'progressive-analysis');
+                await mkdir(directory,{recursive:true});
+                await page.screenshot({path:path.join(directory,`components-${locale}-${width}.png`),fullPage:true});
+            }
+            await page.locator('#analysisPreviewArchitectureLink').click();
+            assert.equal(await page.evaluate(() => window.opened),'analysis');
+            assert.deepEqual(errors,[]);
+        } finally { await page.close(); }
+    });
+}
+
+test('the capturing manual score dialog invalidates a running refinement before committing the confirmed value', async () => {
+    const page = await browser.newPage();
+    try {
+        await page.setContent('<html lang="en"><body><div role="treeitem" data-code="CP">'
+            + '<button class="tax-manual-btn">Edit score</button></div><p id="a11yStatus"></p></body></html>');
+        await page.evaluate(() => {
+            window.TaxonomyState = {currentScores:{CP:66}, currentReasons:{CP:'Streamed'}};
+            window.signals = [];
+            document.addEventListener('taxonomy:analysis-manual-edit', () => {
+                signals.push({score:TaxonomyState.currentScores.CP,reason:TaxonomyState.currentReasons.CP});
+            });
+            document.querySelector('.tax-manual-btn').onclick = () => signals.push('target handler reached');
+        });
+        await page.addScriptTag({path:path.join(resources,'static/js/shared/taxonomy-utils.js')});
+        const edit = page.getByRole('button',{name:'Edit score'});
+        await edit.click();
+        await page.getByRole('button',{name:'Cancel'}).click();
+        assert.deepEqual(await page.evaluate(() => signals),[]);
+        await edit.click();
+        await page.getByRole('spinbutton').fill('110');
+        await page.getByRole('button',{name:'Apply'}).click();
+        assert.equal(await page.getByRole('alert').isVisible(),true);
+        assert.deepEqual(await page.evaluate(() => signals),[]);
+        await page.getByRole('spinbutton').fill('92');
+        await page.getByRole('button',{name:'Apply'}).click();
+        await page.waitForFunction(() => TaxonomyState.currentScores.CP === 92);
+        assert.deepEqual(await page.evaluate(() => signals),[{score:66,reason:'Streamed'}]);
+        assert.equal(await page.evaluate(() => TaxonomyState.currentReasons.CP),'Set manually by the user');
+        assert.equal(await page.locator('#a11yStatus').innerText(),'CP: 92%');
+    } finally { await page.close(); }
+});

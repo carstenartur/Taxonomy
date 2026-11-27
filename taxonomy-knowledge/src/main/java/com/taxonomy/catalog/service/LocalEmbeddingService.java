@@ -9,6 +9,13 @@ import com.taxonomy.catalog.snapshot.CatalogueRuntimePolicy;
 import com.taxonomy.catalog.snapshot.FrozenCatalogueContext;
 import com.taxonomy.dto.TaxonomyNodeDto;
 import com.taxonomy.error.SearchUnavailableException;
+import com.taxonomy.identity.StableIdentityHash;
+
+import com.taxonomy.catalog.service.EmbeddingRuntimeInformation.ConfiguredProfile;
+import com.taxonomy.catalog.service.EmbeddingRuntimeInformation.LoadedArtifact;
+import com.taxonomy.catalog.service.EmbeddingRuntimeInformation.Provenance;
+import com.taxonomy.catalog.service.EmbeddingRuntimeInformation.Source;
+import com.taxonomy.catalog.service.EmbeddingRuntimeInformation.State;
 import jakarta.annotation.PreDestroy;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
@@ -115,6 +122,7 @@ public class LocalEmbeddingService {
     private volatile ZooModel<String, float[]> model;
     private volatile EmbeddingModelIdentity loadedModelIdentity;
     private volatile boolean modelLoadFailed;
+    private volatile boolean modelLoading;
     private volatile boolean closed;
     private final Object modelLock = new Object();
     private final ReentrantReadWriteLock modelLifecycleLock = new ReentrantReadWriteLock();
@@ -175,6 +183,7 @@ public class LocalEmbeddingService {
                                         + "(TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD=false)");
                     }
                     log.info("Loading embedding model via DJL / ONNX Runtime (profile={})", modelProfile);
+                    modelLoading = true;
                     try {
                         model = loadModel(url);
                         log.info("Embedding model loaded successfully.");
@@ -185,6 +194,8 @@ public class LocalEmbeddingService {
                             throw exception;
                         }
                         throw new Exception("Native library loading failed", primary);
+                    } finally {
+                        modelLoading = false;
                     }
                 }
             }
@@ -391,6 +402,8 @@ public class LocalEmbeddingService {
                     + "option.mapLocation=true\n"
                     + "option.includeTokenTypes=true\n";
 
+    private static final String SERVING_PROPERTIES_SHA256 = StableIdentityHash.sha256(SERVING_PROPERTIES_CONTENT);
+
     private void ensureServingProperties(String url) {
         try {
             String path = url.startsWith("file://")
@@ -509,6 +522,35 @@ public class LocalEmbeddingService {
     }
 
     public String embeddingIndexKey() throws Exception { return embeddingIdentity().globalIndexKey(); }
+
+    /** Observes the current model without waiting for a load, touching files or starting inference. */
+    public EmbeddingRuntimeInformation runtimeInformation() {
+        String url = effectiveModelUrl();
+        boolean profileDefault = (modelDir == null || modelDir.isBlank())
+                && (url.equals(modelProfile.modelUrl()) || url.equals(modelProfile.modelUrl() + "/"));
+        var configured = new ConfiguredProfile(modelProfile.name(),
+                profileDefault ? Source.PROFILE_DEFAULT : Source.OPERATOR_OVERRIDE, modelProfile.upstreamModel());
+        // Read the identity before closed because shutdown clears it after publishing closed.
+        // A model becomes observable as ready only after both its handle and its identity are published.
+        var identity = model == null ? null : loadedModelIdentity;
+        State state = observedState(identity);
+        LoadedArtifact artifact = null;
+        if (state == State.READY) {
+            boolean verified = modelProfile.matchesLoadedBundle(identity, SERVING_PROPERTIES_SHA256);
+            artifact = new LoadedArtifact(verified ? Provenance.VERIFIED_UPSTREAM : Provenance.CUSTOM_OR_UNKNOWN,
+                    verified ? configured.upstream() : null, identity.modelSha256(), identity.tokenizerSha256(),
+                    identity.inferenceVersion(), identity.indexKey());
+        }
+        return new EmbeddingRuntimeInformation(state, configured, artifact);
+    }
+
+    private State observedState(EmbeddingModelIdentity identity) {
+        if (closed) return State.STOPPED;
+        if (!embeddingEnabled) return State.DISABLED;
+        if (identity != null) return State.READY;
+        if (modelLoadFailed) return State.FAILED;
+        return modelLoading ? State.LOADING : State.NOT_LOADED;
+    }
 
     /** Exact loaded artifact identity. Does not confuse a configured URL with the bytes used for inference. */
     public EmbeddingModelIdentity embeddingIdentity() throws Exception {

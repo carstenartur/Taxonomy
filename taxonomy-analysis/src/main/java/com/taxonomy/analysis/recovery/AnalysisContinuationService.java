@@ -65,6 +65,7 @@ public class AnalysisContinuationService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Taxonomy and relations sources are mutually exclusive");
         var input = store.taxonomyInput(decision, scope);
         var saved = input.request();
+        AnalysisRequestModelAdmission.requireCatalogue(saved.getModelBinding(), decision.getExpectedCatalogueRevision());
         AnalysisRequestModelAdmission.requireExpected(saved.getModelBinding(), decision.getExpectedCommit(), decision.getExpectedSemanticRevision());
         requireTaxonomyExpectations(decision, saved);
         var frozen = mapper.readValue(mapper.writeValueAsString(saved), AnalysisRequest.class);
@@ -146,6 +147,7 @@ public class AnalysisContinuationService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Relations extension requires a durable source revision");
         var input = store.relationInput(decision, scope);
         var saved = input.request();
+        AnalysisRequestModelAdmission.requireCatalogue(saved.getModelBinding(), decision.getExpectedCatalogueRevision());
         AnalysisRequestModelAdmission.requireExpected(saved.getModelBinding(),
                 decision.getExpectedCommit(), decision.getExpectedSemanticRevision());
         boolean replay = saved.getRelationSourceContinuationId() != null;
@@ -259,6 +261,7 @@ public class AnalysisContinuationService {
                         request.getExpectedSemanticRevision(), request.getAnalysisScope())
                 : AnalysisRequestModelAdmission.requireExpected(original.getModelBinding(),
                         request.getExpectedCommit(), request.getExpectedSemanticRevision());
+        AnalysisRequestModelAdmission.requireCatalogue(model, request.getExpectedCatalogueRevision());
         frozen.setModelBinding(model);
         String originalAuthority = original == null ? null : original.getContinuationAuthority();
         Authority savedAuthority = originalAuthority == null ? null : mapper.readValue(originalAuthority, Authority.class);
@@ -305,6 +308,7 @@ public class AnalysisContinuationService {
         if (request.getRelationSourceContinuationId() == null
                 || !"START".equals(Objects.toString(request.getContinuationAction(), "START"))) return null;
         var input = store.relationInput(request, scope);
+        AnalysisRequestModelAdmission.requireCatalogue(input.request().getModelBinding(), request.getExpectedCatalogueRevision());
         AnalysisRequestModelAdmission.requireExpected(input.request().getModelBinding(),
                 request.getExpectedCommit(), request.getExpectedSemanticRevision());
         return input.request().getRelationSourceContinuationId() != null && !"RUNNING".equals(input.recovery().state())

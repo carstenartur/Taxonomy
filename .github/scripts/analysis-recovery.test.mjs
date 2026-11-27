@@ -22,7 +22,7 @@ function harness(language = 'en') {
   const fields = { businessText: Object.assign(node(),{value:'Hospital communications'}),
     copilotBtn:node(),analyzeBtn:node(),copilotSpinner:node(),providerSelect:Object.assign(node(),{value:'CUSTOM_OPENAI'}) };
   const S = {}, runtime = {workspaceId:'ws-a', analysisGeneration:0};
-  const requests=[], analyses=[], saved=[], panels=[], renderedReports=[], derivedRequests=[], derivedBodies=[], readResponses=[], copied=[];
+  const requests=[], analyses=[], scoreOptions=[], saved=[], panels=[], renderedReports=[], derivedRequests=[], derivedBodies=[], readResponses=[], copied=[];
   let openOptions=[], snapshot;
   const ui = { update(message){ this.message=message; }, close(){ this.opened=false; }, error(message){ this.errorText=message; },
     isOpen(){return Boolean(this.opened);}, isDismissed(){return false;},
@@ -42,7 +42,7 @@ function harness(language = 'en') {
       return {ok:true,json:async()=>snapshot};
     }},
     TaxonomyScoring:{renderArchitectureView(){},renderSuggestedRelations(){},
-      runAnalysis(options){analyses.push(options.continuation);return new Promise((resolve,reject)=>{pending=resolve;rejectPending=reject;});}},
+      runAnalysis(options){scoreOptions.push(options);analyses.push(options.continuation);return new Promise((resolve,reject)=>{pending=resolve;rejectPending=reject;});}},
     TaxonomyAnalysis:{runCopilotFlow:async()=>{followups++;},renderCopilotResult:value=>renderedReports.push(value),renderPartialCopilot:message=>panels.push(message)} };
   const document={documentElement:{lang:language},createElement:tagName=>Object.assign(node(),{tagName}),
     getElementById:id=>fields[id]||null,addEventListener:(name,fn)=>{if(!listeners.has(name))listeners.set(name,[]);listeners.get(name).push(fn);}};
@@ -92,10 +92,10 @@ function harness(language = 'en') {
     vm.runInNewContext(readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/core/taxonomy-relations-extension.js',import.meta.url),'utf8'),context);
   }
   return {S,runtime,ui,analyses,requests,saved,panels,fields,timers,storage,window,document,complete,loadAnalysis,loadRelationsExtension,derivedRequests,derivedBodies,readResponses,copied,
-    snapshot:()=>snapshot,
+    scoreOptions,snapshot:()=>snapshot,
     followups:()=>followups,renderedReports,options:()=>openOptions,
     act:id=>openOptions.find(o=>o.id===id).handler(),emit:(name,detail={})=>(listeners.get(name)||[]).forEach(fn=>fn({detail})),
-    reject: error=>rejectPending(error), recovery:window.TaxonomyAnalysisRecovery};
+    deliver: result=>pending(result), reject: error=>rejectPending(error), recovery:window.TaxonomyAnalysisRecovery};
 }
 async function settle(){for(let i=0;i<8;i++)await new Promise(resolve=>setImmediate(resolve));}
 
@@ -1488,3 +1488,146 @@ test('retained node-only relation controls recompute eligibility when source rea
  assert.equal(starts,0,'Readiness alone never starts relationship search');
  fields.extendAnalysisRelationsBtn.fire('click');assert.equal(starts,1);
 });
+
+test('revoking an explicitly refined revision releases its continuation without hydrating the late result',async()=>{
+  const h=harness(), lifetime=new AbortController();
+  const owner={signal:lifetime.signal,current:()=>!lifetime.signal.aborted,
+    pins:{expectedCommit:'a'.repeat(40),expectedSemanticRevision:3,expectedCatalogueRevision:'preview-catalogue'}};
+  const pending=h.recovery.startManagedAnalysis(owner);
+  assert.equal(h.analyses.length,1);
+  assert.equal(h.analyses[0].expectedCatalogueRevision,'preview-catalogue');
+  lifetime.abort();
+  h.S.currentScores={manuallyReviewed:37}; h.S.currentReasons={manuallyReviewed:'Reviewed'};
+  h.deliver({status:'SUCCESS',recovery:{id:h.analyses[0].continuationId,state:'COMPLETED',version:3},
+    scores:{late:80},reasons:{late:'obsolete'}}); await pending;
+  assert.equal(h.S.recoveryContext,null);
+  assert.equal(h.S.analysisRecovery,null);
+  assert.deepEqual(h.S.currentScores,{manuallyReviewed:37});
+  assert.deepEqual(h.S.currentReasons,{manuallyReviewed:'Reviewed'});
+  assert.equal(h.analyses.length,1);
+});
+
+for(const firstState of ['COMPLETED','RUNNING']){
+ test(`a lost refinement START publishes the accepted journal result after ${firstState}`,async()=>{
+  const h=harness(),controller=new AbortController(), published=[];
+  const owner={signal:controller.signal,current:()=>!controller.signal.aborted,pins:{},
+    reconcile:result=>published.push(result)};
+  const pending=h.recovery.startManagedAnalysis(owner), request=h.analyses[0];
+  const result={status:'SUCCESS',scores:{BP:80},effectiveScores:{BP:80},architectureView:{includedElements:[]},
+    recovery:{id:request.continuationId,state:'COMPLETED',version:2,openQuestions:[]}};
+  const saved=state=>({ok:true,json:async()=>({request,recovery:{...result.recovery,state},result})});
+  h.readResponses.push(saved(firstState)); h.reject(new Error('response lost'));await pending;
+  if(firstState==='RUNNING'){
+   assert.equal(published.length,0);
+   h.readResponses.push(saved('COMPLETED'));await h.recovery.refresh();
+  }
+  assert.equal(published.length,1);assert.equal(published[0].status,'SUCCESS');
+  assert.equal(h.S.currentArchView,result.architectureView);assert.equal(h.analyses.length,1);
+ });
+}
+for(const manual of [false,true])test(`revoking an extension preserves eligible source evidence, manual=${manual}`,async()=>{
+ const h=harness();let selected={taxonomyRoots:['BP'],mode:'TAXONOMIES_ONLY'};
+ h.window.TaxonomyAnalysisScope={read:()=>selected,restrictsGlobalAnalysis:()=>true};
+ h.recovery.startManagedAnalysis();h.complete('COMPLETED');await settle();
+ const source=h.S.recoveryContext, recovery=h.S.analysisRecovery;
+ const controller=new AbortController(), owner={signal:controller.signal,current:()=>!controller.signal.aborted,pins:{}};
+ selected={taxonomyRoots:['CP'],mode:'TAXONOMIES_ONLY'};const targetRun=h.recovery.startManagedAnalysis(owner);
+ h.S.currentScores=h.S.currentEffectiveScores=h.S.currentRawScores={...h.S.currentRawScores,CP:66};
+ h.S.currentReasons.CP='Interim score';
+ h.scoreOptions.at(-1).rememberProgressEvidence();
+ if(manual)h.S.currentReasons.BP='Manual edit added during run';
+ controller.abort();
+ if(manual) assert.equal(h.S.currentReasons.BP,'Manual edit added during run');
+ else{
+  assert.equal(h.S.recoveryContext,source);assert.equal(h.S.analysisRecovery,recovery);
+  assert.equal(h.recovery.nodeEvidenceMatches(source),true);
+  assert.equal(h.S.currentScores.CP,undefined);assert.equal(h.S.currentReasons.CP,undefined);
+ }
+ h.deliver({status:'SUCCESS',scores:{late:80}});await targetRun;
+});
+
+test('a rejected refinement with no saved execution ends checking without accepting live scores',async()=>{
+ const h=harness(), controller=new AbortController();let rejected=0;
+ const owner={signal:controller.signal,current:()=>true,pins:{},rejected:()=>rejected++};
+ const pending=h.recovery.startManagedAnalysis(owner);
+ h.readResponses.push({ok:false,status:404,json:async()=>({detail:'No such continuation'})});
+ h.reject(Object.assign(new Error('Source revision changed'),{httpStatus:409}));await pending;
+ assert.equal(rejected,1);
+ assert.equal(h.analyses.length,1);
+});
+
+for (const edited of [false, true]) {
+ test(`a lost streaming extension START ${edited ? 'protects a later manual edit' : 'hydrates and publishes its final journal evidence'}`, async () => {
+  const h = harness();
+  let selected = {taxonomyRoots:['BP'], mode:'TAXONOMIES_ONLY'};
+  h.window.TaxonomyAnalysisScope = {read:()=>selected, restrictsGlobalAnalysis:()=>true};
+  const sourceRun = h.recovery.startManagedAnalysis();
+  const source = h.complete('COMPLETED');
+  await sourceRun;
+  h.S.lastAnalyzedText = h.fields.businessText.value;
+
+  const controller = new AbortController(), published = [];
+  const owner = {signal:controller.signal, current:()=>!controller.signal.aborted, pins:{},
+   reconcile:result=>published.push(result)};
+  selected = {taxonomyRoots:['CP'], mode:'TAXONOMIES_ONLY'};
+  const extension = h.recovery.startManagedAnalysis(owner);
+  const request = h.analyses.at(-1);
+  assert.equal(request.taxonomySourceContinuationId, source.recovery.id);
+  h.S.currentScores = h.S.currentEffectiveScores = h.S.currentRawScores = {...source.rawScores, CP:66};
+  h.S.currentReasons = {...source.reasons, CP:'Interim score'};
+  h.scoreOptions.at(-1).rememberProgressEvidence();
+  if (edited) h.S.currentReasons.CP = 'User assessment';
+
+  const scores = {...source.rawScores, CP:90};
+  const result = {status:'SUCCESS', rawScores:scores, scores, reasons:{...source.reasons, CP:'Final assessment'},
+   recovery:{id:request.continuationId, state:'COMPLETED', version:3, openQuestions:[]}};
+  h.readResponses.push({ok:true, json:async()=>({request, recovery:result.recovery, result})});
+  h.reject(new Error('START response lost after live assessment'));
+  await extension;
+
+  assert.equal(h.S.recoveryContext.evidenceConflict, edited);
+  assert.equal(h.S.currentScores.CP, edited ? 66 : 90);
+  assert.equal(h.S.currentReasons.CP, edited ? 'User assessment' : 'Final assessment');
+  assert.deepEqual(published, edited ? [] : [result]);
+  assert.equal(h.analyses.length, 2, 'Reconciliation never repeats the extension START');
+ });
+}
+
+for (const plan of ['NEW','EXTEND']) for (const delivery of ['successful response','recovered journal']) {
+ test(`a ${delivery} for ${plan} keeps edited evidence until explicit journal adoption`,async()=>{
+  const h=harness(), controller=new AbortController(), published=[];
+  if (plan === 'EXTEND') {
+   let selected = {mode:'TAXONOMIES_ONLY',taxonomyRoots:['BP']};
+   h.window.TaxonomyAnalysisScope = {read:()=>selected,restrictsGlobalAnalysis:()=>true};
+   const source = h.recovery.startManagedAnalysis(); h.complete('COMPLETED'); await source;
+   h.S.lastAnalyzedText = h.fields.businessText.value;
+   selected = {mode:'TAXONOMIES_ONLY',taxonomyRoots:['CP']};
+  }
+  let retained=0;
+  const owner={signal:controller.signal,current:()=>true,pins:{},retainLocalEvidence:()=>retained++,
+    reconcile:value=>published.push(value)};
+  const pending=h.recovery.startManagedAnalysis(owner);
+  const request=h.analyses.at(-1), options=h.scoreOptions.at(-1);
+  assert.equal(Boolean(request.taxonomySourceContinuationId),plan === 'EXTEND');
+  h.S.currentScores=h.S.currentEffectiveScores=h.S.currentRawScores={...h.S.currentScores,CP:66};
+  h.S.currentReasons={CP:'Interim'};options.rememberProgressEvidence();
+  h.S.currentReasons.CP='User assessment';
+  assert.equal(options.canProjectProgress(),false);
+  const result={status:'SUCCESS',scores:{CP:90},rawScores:{CP:90},reasons:{CP:'Final'},
+    recovery:{id:request.continuationId,version:4,state:'COMPLETED',openQuestions:[]}};
+  const saved={ok:true,json:async()=>({request,recovery:result.recovery,result})};
+  if(delivery==='successful response'){options.onEvidenceConflict(result);h.deliver(result);}
+  else{h.readResponses.push(saved);h.reject(new Error('response lost'));}
+  await pending;
+  assert.equal(h.S.recoveryContext.evidenceConflict,true);
+  assert.equal(h.S.analysisRecovery.state,'COMPLETED');
+  assert.equal(retained,1);
+  assert.equal(h.S.currentScores.CP,66);assert.equal(h.S.currentReasons.CP,'User assessment');
+  assert.deepEqual(published,[]);
+  h.readResponses.push(saved);
+  await h.act('analysisRecoveryLoadResult');
+  assert.equal(h.S.recoveryContext.evidenceConflict,false);
+  assert.equal(h.S.currentScores.CP,90);assert.equal(h.S.currentReasons.CP,'Final');
+  assert.deepEqual(published,[result]);assert.equal(h.analyses.length,plan === 'EXTEND' ? 2 : 1);
+ });
+}

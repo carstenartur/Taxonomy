@@ -13,7 +13,211 @@
     const t = (key, ...args) => window.TaxonomyI18n.t('analysis.preview.' + key, ...args);
     let page = window.location.hash.slice(1) || 'analyze';
     let timer, controller, requestKey;
-    let generation = 0;
+    let generation = 0, basis, owner, confirmed, localStatus, accountAllowed = false;
+    const action = byId('analysisPreviewRefine'), refinement = byId('analysisPreviewRefinement');
+    const architectureLink = byId('analysisPreviewArchitectureLink');
+    const components = byId('analysisPreviewComponents');
+    const assessedLabels = new Map();
+    const componentGroups = new Map();
+    let layoutSource;
+    const decimal = new Intl.NumberFormat(document.documentElement.lang, {maximumFractionDigits:1});
+
+    function assessmentLabel(code) {
+        const span = element('span', '', 'analysis-preview-assessed ms-2');
+        if (!assessedLabels.has(code)) assessedLabels.set(code, []);
+        assessedLabels.get(code).push(span);
+        return span;
+    }
+
+    function position(parent, child, index) {
+        if (parent.children[index] === child) return;
+        const before = parent.children[index];
+        if (before) parent.insertBefore(child, before);
+        else parent.append(child);
+    }
+
+    function componentLayout(nodes, byCode, source) {
+        if (!components) return;
+        const groups = new Map();
+        const candidates = nodes.filter(node => node.architectureCandidate === true && node.score != null);
+        candidates.sort((a,b) => a.taxonomyRoot.localeCompare(b.taxonomyRoot)
+            || (a.sourceOrder ?? Infinity) - (b.sourceOrder ?? Infinity) || a.code.localeCompare(b.code));
+        for (const node of candidates) {
+            if (!groups.has(node.taxonomyRoot)) groups.set(node.taxonomyRoot, []);
+            groups.get(node.taxonomyRoot).push(node);
+        }
+        const selected = JSON.stringify([window.TaxonomyArchitectureWorkflow?.getScope?.(),
+            source.catalogueRevision, source.commit, source.semanticRevision]);
+        if (selected !== layoutSource) {
+            components.replaceChildren();
+            componentGroups.clear();
+            layoutSource = selected;
+        }
+        for (const [root, group] of componentGroups) {
+            if (!groups.has(root)) { group.section.remove(); componentGroups.delete(root); }
+        }
+        if (!groups.size) { components.textContent = t('noComponents'); return; }
+        if (!componentGroups.size) components.replaceChildren();
+        let column = 0;
+        for (const [root, entries] of groups) {
+            let group = componentGroups.get(root);
+            if (!group) {
+                group = {section:element('section'), list:element('ul'), cards:new Map()};
+                group.section.append(element('h3', byCode.has(root) ? label(byCode.get(root)) : root, 'h6'), group.list);
+                componentGroups.set(root, group);
+            }
+            position(components, group.section, column++);
+            const retained = new Set(entries.map(node => node.code));
+            for (const [code, card] of group.cards) {
+                if (!retained.has(code)) { card.row.remove(); group.cards.delete(code); }
+            }
+            entries.forEach((node, index) => {
+                let card = group.cards.get(node.code);
+                if (!card) {
+                    card = {row:element('li'), local:element('small'), assessed:element('small', '', 'analysis-preview-assessed')};
+                    card.row.dataset.code = node.code;
+                    card.row.append(element('span',label(node),'d-block'), card.local, card.assessed);
+                    group.cards.set(node.code,card);
+                }
+                card.local.textContent = t('localScore', decimal.format(node.score));
+                card.assessed.textContent = '';
+                assessedLabels.get(node.code).push(card.assessed);
+                position(group.list, card.row, index);
+            });
+        }
+    }
+
+    function currentBasis() {
+        const account = window.TaxonomyRoleSurface?.getContext?.();
+        return JSON.stringify([input.value.trim(), window.TaxonomyAnalysisScope.read(),
+            window.TaxonomyAnalysisSession?.state?.().workspaceId, account?.username, account?.analysisExecutionAllowed,
+            window.TaxonomyArchitectureWorkflow?.getScope?.(), window.location.search,
+            window.TaxonomyArchitectureLifecycle?.selectedAnalysisModel?.(), byId('providerSelect')?.value,
+            Boolean(byId('interactiveMode')?.checked), Boolean(byId('includeArchitectureView')?.checked),
+            window.TaxonomyContentLanguage?.analysis?.()]);
+    }
+
+    function clearDetail() {
+        const prior = owner; owner = null; prior?.abort();
+        confirmed = null;
+        assessedLabels.clear();
+        if (action) { action.disabled = true; action.hidden = true; }
+        if (architectureLink) architectureLink.hidden = true;
+        if (refinement) refinement.textContent = '';
+    }
+
+    function providerLabel() {
+        const picker = byId('providerSelect');
+        return picker?.selectedOptions?.[0]?.textContent?.trim() || picker?.value || t('serverDefault');
+    }
+
+    function actionStatus() {
+        if (!action || !confirmed || owner) return;
+        const session = window.TaxonomyAnalysisSession?.state?.();
+        const standard = byId('analyzeBtn'), recovery = window.TaxonomyAnalysisRecovery;
+        const manual = byId('providerSelect')?.value === 'MANUAL' || byId('interactiveMode')?.checked;
+        const available = accountAllowed && session?.ready && session.workspaceId
+            && !session.conflict && !session.restoring && recovery?.startManagedAnalysis && standard && !standard.disabled
+            && window.TaxonomyStartupProgress?.analysisReady?.() !== false;
+        const plan = available && !manual ? recovery.startPlan(true) : null;
+        const oldScores = window.TaxonomyState?.currentScores;
+        // A new run clears the previous display. Keep that choice in the ordinary review workflow.
+        const replaces = plan?.kind === 'NEW' && oldScores && Object.keys(oldScores).length > 0;
+        const admitted = plan && ['NEW','EXTEND','RELATIONS'].includes(plan.kind) && !replaces;
+        action.hidden = false;
+        action.disabled = !admitted;
+        refinement.textContent = t(manual ? 'manual' : !available ? 'unavailableRun' : replaces ? 'retained'
+            : admitted ? 'ready' : 'review', providerLabel());
+    }
+
+    function beginDetail() {
+        actionStatus();
+        if (action.disabled || owner || !confirmed || currentBasis() !== basis) return;
+        const source = confirmed, selected = basis, lifetime = new AbortController();
+        const candidates = source.nodes.map(node => ({node, labels:assessedLabels.get(node.code) || []}));
+        let operation, cancelRun, finishRecovered, canonicalView, accepted = false, terminal = false, awaitingReview = false;
+        const job = {
+            signal:lifetime.signal,
+            pins:{expectedCommit:source.commit, expectedSemanticRevision:source.semanticRevision,
+                expectedCatalogueRevision:source.catalogueRevision},
+            current() {
+                if (lifetime.signal.aborted || owner !== job || selected !== basis) return false;
+                try { return selected === currentBasis(); } catch (_) { return false; }
+            },
+            canOpenArchitecture() { return job.current() && terminal && canonicalView
+                    && canonicalView === window.TaxonomyState?.currentArchView; },
+            bind(id, cancel, finish) {
+                if (!job.current() || operation) return false;
+                operation = id; cancelRun = cancel; finishRecovered = finish;
+                return true;
+            },
+            hasAcceptedResult() { return accepted; },
+            rejected() {
+                if (!job.current() || terminal) return;
+                terminal = true;
+                refinement.textContent = t('failed');
+                finishRecovered?.('REJECTED');
+            },
+            retainLocalEvidence(status) {
+                if (!job.current() || terminal || awaitingReview) return;
+                awaitingReview = true;
+                finishRecovered?.(status);
+                refinement.textContent = t('review');
+                architectureLink.hidden = true;
+            },
+            acceptsRecovered(result) {
+                return job.current() && Boolean(operation) && (!result?.analysisOperationId || result.analysisOperationId === operation);
+            },
+            reconcile(result) {
+                if (!job.acceptsRecovered(result) || terminal) return;
+                // The authenticated continuation journal has already admitted and hydrated this result.
+                job.present(operation, {status:result.status, scores:result.effectiveScores || result.scores,
+                    architecture:Boolean(result.architectureView)});
+                finishRecovered?.(result.status);
+            },
+            // A scoped presentation callback. Only the managed scorer that bound this operation may publish.
+            present(id, update) {
+                if (!job.current() || id !== operation || terminal) return;
+                if (awaitingReview && ['IN_PROGRESS','CHECKING'].includes(update.status)) return;
+                if (update.status === 'CHECKING') { refinement.textContent = t('checking'); return; }
+                if (update.status === 'IN_PROGRESS') refinement.textContent = t('running', providerLabel());
+                for (const {node, labels} of candidates) {
+                    let score = update.scores?.[node.code];
+                    if (update.status === 'IN_PROGRESS') {
+                        const detail = update.details?.[node.code];
+                        const kind = node.analysisRole === 'PRODUCT' ? 'PRODUCT_SUITABILITY'
+                            : node.parentCode ? 'HIERARCHICAL_RELEVANCE' : 'ROOT_RELEVANCE';
+                        // A previous draft can have a different catalogue. Only present live interpretations
+                        // matching the role and direct parent of this exact preview; final scores are server-typed.
+                        if (detail?.kind !== kind || (detail.parentCode ?? null) !== (node.parentCode ?? null)
+                            || detail.effectiveRelevance !== score) score = null;
+                    }
+                    for (const span of labels) span.textContent = Number.isFinite(score) ? t('assessed',decimal.format(score)) : '';
+                }
+                if (update.status === 'IN_PROGRESS') return;
+                terminal = true; accepted = true;
+                canonicalView = update.architecture ? window.TaxonomyState?.currentArchView : null;
+                const statusKey = {SUCCESS:'success', PARTIAL:'partial', CANCELLED:'cancelled'}[update.status] || 'failed';
+                refinement.textContent = t(statusKey) + (update.architecture ? ' ' + t('relationships') : '');
+                architectureLink.hidden = !canonicalView;
+            },
+            abort() {
+                lifetime.abort();
+                if (!terminal && !awaitingReview) cancelRun?.();
+            }
+        };
+        owner = job; action.disabled = true; retry.hidden = true; refinement.textContent = t('running', providerLabel());
+        const start = window.TaxonomyAnalysisRecovery.startManagedAnalysis(job);
+        function settled() {
+            if (!job.current() || terminal) return;
+            // A bound operation may still be running after a lost START response.
+            if (operation) return;
+            owner = null;
+            actionStatus();
+            refinement.textContent = t('review');
+        }
+        Promise.resolve(start).then(settled, settled);
+    }
 
     function element(tag, text, className) {
         const node = document.createElement(tag);
@@ -54,8 +258,9 @@
                 item.append(element('span', label(node)));
                 if (node.score != null) {
                     const score = node.score > 0 && node.score < 0.1 ? '<' + points.format(0.1) : points.format(node.score);
-                    item.append(element('span', ' ' + score + '/100', 'analysis-preview-score'));
+                    item.append(element('span', ' ' + t('localScore',score), 'analysis-preview-score'));
                 }
+                item.append(assessmentLabel(node.code));
                 if (children.has(node.code)) item.append(list(node.code));
                 group.append(item);
             }
@@ -73,9 +278,14 @@
         retry.hidden = data.method !== 'CATALOGUE_LEXICAL';
         status.textContent = t(data.method === 'CATALOGUE_ONNX' ? 'semantic' : 'lexical') + ' '
             + (count ? t('matched', count) : t('noMatches'));
+        localStatus = status.textContent;
         results.hidden = !count;
+        confirmed = data;
+        actionStatus();
+        assessedLabels.clear();
         if (!count) return;
         const byCode = renderTree(data.nodes);
+        componentLayout(data.nodes, byCode, data);
         associations.replaceChildren();
         if (data.associations.length) {
             const list = element('ul', null, 'ps-3 mb-0');
@@ -98,6 +308,7 @@
     }
 
     function cancel() {
+        if (!owner) clearDetail();
         generation++;
         clearTimeout(timer);
         controller?.abort();
@@ -110,8 +321,16 @@
 
     function refresh(force) {
         const text = input.value.trim();
+        let nextBasis;
+        try { nextBasis = currentBasis(); } catch (_) { nextBasis = null; }
+        if (nextBasis !== basis) { clearDetail(); basis = nextBasis; }
         if (!panel.open || page !== 'analyze') {
             cancel();
+            return;
+        }
+        if (owner && confirmed && accountAllowed) {
+            status.textContent = localStatus;
+            results.hidden = !confirmed.nodes.some(node => node.score != null);
             return;
         }
         let scope;
@@ -127,7 +346,7 @@
             window.location.search, lifecycle?.selectedAnalysisModel?.()]);
         const selectedQuery = window.location.search;
         const requestedModel = lifecycle?.selectedAnalysisModel?.() || {};
-        const key = JSON.stringify([text, scope.taxonomyRoots, selection()]);
+        const key = JSON.stringify([basis, selection()]);
         if (key === requestKey && !force) return;
         cancel();
         requestKey = key;
@@ -140,7 +359,9 @@
                 if (roles) await roles.ready;
                 const account = roles ? roles.getContext() : await window.TaxonomyApiClient.getAccountContext();
                 if (ticket !== generation) return;
-                if (account?.analysisExecutionAllowed !== true) {
+                accountAllowed = account?.analysisExecutionAllowed === true;
+                if (!accountAllowed) {
+                    clearDetail();
                     status.textContent = t('permission');
                     return;
                 }
@@ -189,6 +410,7 @@
                 render(data, scope.taxonomyRoots);
             } catch (failure) {
                 if (ticket !== generation || !text) return;
+                clearDetail();
                 results.hidden = true;
                 const reason = failure.status === 400 ? 'invalid' : failure.status === 401 || failure.status === 403
                     ? (failure.status === 401 ? 'signedOut' : 'denied') : [404,409,503].includes(failure.status) ? 'unavailable' : 'error';
@@ -200,6 +422,25 @@
         }, text ? 300 : 0);
     }
 
+    action?.addEventListener('click', beginDetail);
+    architectureLink?.addEventListener('click', () => {
+        if (!owner?.canOpenArchitecture() || architectureLink.hidden) return;
+        const scope = window.TaxonomyArchitectureWorkflow?.getScope?.();
+        const workspace = window.TaxonomyArchitectureWorkspace;
+        workspace?.open?.('analysis', {source:scope}).catch(() => {
+            if (owner?.current()) refinement.textContent = t('openFailed');
+        });
+    });
+    for (const id of ['providerSelect','interactiveMode','includeArchitectureView']) byId(id)?.addEventListener('change', () => refresh());
+    if (action && byId('analyzeBtn') && typeof MutationObserver !== 'undefined')
+        new MutationObserver(actionStatus).observe(byId('analyzeBtn'), {attributes:true, attributeFilter:['disabled']});
+    document.addEventListener('taxonomy:content-language-changed', () => refresh());
+    document.addEventListener('taxonomy:analysis-recovery-updated', () => {
+        actionStatus();
+        if (owner && architectureLink && !owner.canOpenArchitecture()) architectureLink.hidden = true;
+    });
+    for (const event of ['taxonomy:analysis-evidence-imported','taxonomy:analysis-invalidated','taxonomy:analysis-draft-reset',
+        'taxonomy:analysis-manual-edit']) document.addEventListener(event, () => { clearDetail(); refresh(true); });
     input.addEventListener('input', () => refresh());
     panel.addEventListener('toggle', () => refresh());
     retry.addEventListener('click', () => refresh(true));
@@ -208,8 +449,12 @@
         'taxonomy:analysis-source-ready', 'taxonomy:repository-context-changed']) {
         document.addEventListener(name, () => refresh());
     }
-    document.addEventListener('taxonomy:entity-context-changed', () => refresh(true));
-    document.addEventListener('taxonomy:roles-ready', () => refresh(true));
+    document.addEventListener('taxonomy:entity-context-changed', () => refresh());
+
+    document.addEventListener('taxonomy:roles-ready', () => {
+        if (window.TaxonomyRoleSurface?.getContext?.()?.analysisExecutionAllowed !== true) { accountAllowed = false; clearDetail(); }
+        refresh(true);
+    });
     document.addEventListener('DOMContentLoaded', () => {
         window.TaxonomyArchitectureLifecycle?.onStandChange?.(() => refresh());
         refresh();

@@ -196,6 +196,7 @@ public class AnalysisApiController {
 
         AnalysisModelBinding admittedModel = request.isResumable() ? null : AnalysisRequestModelAdmission.capture(
                 admissionModels, context, request.getExpectedCommit(), request.getExpectedSemanticRevision(), analysisScope);
+        if (!request.isResumable()) AnalysisRequestModelAdmission.requireCatalogue(admittedModel, request.getExpectedCatalogueRevision());
         String operationId = newOperationId();
         try {
             if (clusterExecution != null) {

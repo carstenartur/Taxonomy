@@ -2150,6 +2150,23 @@
     white-space: nowrap;
 }
 
+.analysis-preview-components {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr));
+    align-items: start;
+    gap: .75rem;
+}
+.analysis-preview-components section {
+    background: var(--bs-tertiary-bg);
+    border: 1px solid var(--bs-border-color);
+    border-radius: .375rem;
+    padding: .625rem;
+    overflow-wrap: anywhere;
+}
+.analysis-preview-components ul { list-style: none; padding: 0; margin: 0; }
+.analysis-preview-components li + li { border-top: 1px solid var(--bs-border-color); margin-top: .35rem; padding-top: .35rem; }
+.analysis-preview-components .analysis-preview-assessed { display: block; min-block-size: 1.5em; }
+.analysis-preview-assessed { color: var(--bs-emphasis-color); font-weight: 600; }
 .analysis-preview-scroll {
     max-height: min(40vh, 24rem);
     overflow-y: auto;

@@ -1,5 +1,7 @@
 package com.taxonomy;
 
+import com.taxonomy.catalog.service.EmbeddingRuntimeInformation.Provenance;
+import com.taxonomy.catalog.service.EmbeddingRuntimeInformation.State;
 import com.taxonomy.catalog.service.LocalEmbeddingService;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -52,5 +54,10 @@ class OnnxEmbeddingServiceTest {
         embeddingService.embed("trigger lazy load");
         assertThat(embeddingService.isEnabled()).isTrue();
         assertThat(embeddingService.isAvailable()).isTrue();
+        var snapshot = embeddingService.runtimeInformation();
+        assertThat(snapshot.state()).isEqualTo(State.READY);
+        assertThat(snapshot.loadedArtifact().provenance()).isEqualTo(Provenance.VERIFIED_UPSTREAM);
+        assertThat(snapshot.loadedArtifact().modelSha256())
+                .isEqualTo("98a01d88b7de996cdea58c32ca71208c09968d143798814b2ea09d3439dc334f");
     }
 }

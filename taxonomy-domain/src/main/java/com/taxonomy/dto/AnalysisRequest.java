@@ -4,12 +4,18 @@ public class AnalysisRequest {
 
     private String expectedCommit;
     private Long expectedSemanticRevision;
+    private String expectedCatalogueRevision;
     private AnalysisModelBinding modelBinding;
 
     public String getExpectedCommit() { return expectedCommit; }
     public void setExpectedCommit(String value) { expectedCommit = value; }
     public Long getExpectedSemanticRevision() { return expectedSemanticRevision; }
     public void setExpectedSemanticRevision(Long value) { expectedSemanticRevision = value; }
+
+    /** Optional precondition when refining an earlier read-only catalogue preview. */
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+    public String getExpectedCatalogueRevision() { return expectedCatalogueRevision; }
+    public void setExpectedCatalogueRevision(String value) { expectedCatalogueRevision = value; }
 
     /** Stored with a durable request. The HTTP adapter clears untrusted input before admission. */
     public AnalysisModelBinding getModelBinding() { return modelBinding; }

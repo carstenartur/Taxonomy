@@ -348,6 +348,10 @@ Klappen Sie den **Systemstatus** unter der Arbeitsbereichsnavigation auf, um die
 - 🟢 **Grünes Badge** — die Anbieterbereitschaft wird angezeigt. Prüfen Sie den Funktionsumfang: Lokale Embeddings ermöglichen keine generative Relationsbewertung oder Textsynthese.
 - 🔴 **Rotes Badge** — kein LLM-Anbieter ist konfiguriert; die Analyse ist nicht verfügbar. Kontaktieren Sie Ihren Administrator.
 
+Öffnen Sie auf der Analyseseite **Hilfe → Über diese Anwendung** und gehen Sie zu **KI und Modelle**. Der lokale Encoder zeigt seinen Status und unter **Konfiguriertes Embedding-Profil** das erwartete Modell. Nach dem Laden zeigt **Geladenes Embedding-Artefakt** die Prüfsummen von Modell und Tokenizer sowie die Inferenzidentität. **Verifiziertes Upstream-Paket** bedeutet, dass die geladenen Dateien mit dem festgelegten Paket übereinstimmen. Die Anzeige nennt dessen Herkunft, Lizenz und Revision. Andere geladene Pakete tragen den Hinweis **Benutzerdefinierte oder unbekannte Herkunft**.
+
+Unter **Serverseitig konfigurierter Analyseanbieter** stehen der Standardanbieter der Installation und sein Ausführungsmodus. Für einen einzelnen Lauf gilt die dafür getroffene Anbieterauswahl.
+
 ---
 
 <a id="3-understanding-the-interface"></a>
@@ -453,12 +457,12 @@ Die Dokumentsprache steuert generierte Überschriften und Beschriftungen in Word
 
 ### Standardanalyse
 
-Öffnen Sie im Anforderungsformular **Änderungen am Anforderungstext ausprobieren** und wählen Sie eine oder mehrere Teiltaxonomien. Schreiben Sie beispielsweise „Wir benötigen eine Gehaltsabrechnung“ und ersetzen Sie „Gehaltsabrechnung“ durch „E-Mail-Verwaltung“. Nach jeder Schreibpause zeigt der vorläufige Decision Tree bis zu zwölf Treffer pro gewählter Teiltaxonomie. Vorfahren ohne eigene Punktzahl geben den Pfad im Baum an.
+Für eine Vorschau beim Schreiben öffnen Sie im Anforderungsformular **Änderungen am Anforderungstext ausprobieren** und wählen eine oder mehrere Teiltaxonomien. Schreiben Sie beispielsweise „Wir benötigen eine Gehaltsabrechnung“ und ersetzen Sie „Gehaltsabrechnung“ durch „E-Mail-Verwaltung“. Nach einer Schreibpause aktualisiert der Anwendungsserver anhand lokaler Katalogtreffer die Ansichten **Vorläufiger Decision Tree** und **Vorläufige Architekturbausteine**. Der Baum zeigt bis zu zwölf Treffer je gewählter Teiltaxonomie samt Pfad. Die Vorschau nennt das Verfahren. Solange lokale Vektoren fehlen, gleicht sie Katalogbegriffe ab. Mit verfügbaren Vektoren nutzt sie die ONNX-Ähnlichkeitssuche. Unter **Zusammenhänge zwischen Teiltaxonomien** stehen unabhängig gefundene Einträge mit einem gemeinsamen Titelbegriff aus der Anforderung.
 
-Die Anzeige nennt das verwendete Verfahren. Während die lokalen Modellvektoren vorbereitet werden oder wenn das eingebettete Modell deaktiviert ist, vergleicht die Vorschau Katalogbegriffe. Mit vorbereitetem ONNX-Modell misst sie die inhaltliche Ähnlichkeit. Ein möglicher Zusammenhang nennt zwei unabhängig gefundene Einträge und den gemeinsamen Begriff aus der Anforderung. Für eine gespeicherte Architektur mit bewerteten Beziehungen starten Sie die vollständige Analyse.
+Wählen Sie in einem bereiten, beschreibbaren Arbeitsbereich mit automatischer Analyse **Detailanalyse für diesen Stand starten**. Damit startet der ausgewählte Anbieter für den aktuellen Text und Analyseumfang. Sobald Bewertungen vorliegen, zeigen die passenden Bausteine und Baumeinträge neben **Lokaler Treffer** auch **Bewertete Relevanz**. Liefert der Lauf eine Architektur, öffnen Sie über **Bewertete Architektur ansehen** das zugehörige Ergebnis mit den darin verfügbaren Beziehungen.
 
 1. Geben Sie Ihre Anforderung im Textbereich ein.
-2. Wählen Sie die Teiltaxonomien und den vollständigen Modus oder **Nur Knotenbewertung** wie oben beschrieben. Lassen Sie **Interactive Mode** für einen automatischen hierarchischen Lauf deaktiviert.
+2. Wählen Sie die Teiltaxonomien und den vollständigen Modus oder **Nur Knotenbewertung**. Für einen automatischen hierarchischen Lauf bleibt **Interaktiver Modus** ausgeschaltet. [Analyseumfang und Fortschritt](#analysis-scope-and-progress)
 3. Klicken Sie auf die Schaltfläche **Analyze with AI**.
 4. Der Fortschritt erscheint im Analyse-Status direkt im Analysebereich. Sobald Ergebnisse eintreffen, zeigt der Taxonomiebaum im linken Panel farbcodierte Bewertungsbalken.
 5. Nach Abschluss zeigt der Analyse-Status eine Zusammenfassung; die Export-Schaltflächen werden verfügbar.
