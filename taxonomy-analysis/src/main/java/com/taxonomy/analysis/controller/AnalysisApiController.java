@@ -1,5 +1,6 @@
 package com.taxonomy.analysis.controller;
 
+import com.taxonomy.analysis.service.AiPromptBudgetPolicy;
 import com.taxonomy.analysis.service.AnalysisRuntimeSettings;
 import com.taxonomy.analysis.cluster.ClusterAnalysisExecution;
 import com.taxonomy.analysis.cluster.ClusterAnalysisObservationDetachedException;
@@ -842,7 +843,7 @@ public class AnalysisApiController {
     }
 
     private int businessTextLimit() {
-        return AnalysisRuntimeSettings.businessTextLimit(analysisRuntimeSettings);
+        return AiPromptBudgetPolicy.businessTextLimit(analysisRuntimeSettings);
     }
 
     private void enforceBusinessTextLimit(String businessText) {

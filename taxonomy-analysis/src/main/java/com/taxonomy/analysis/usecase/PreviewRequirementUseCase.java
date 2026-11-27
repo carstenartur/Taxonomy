@@ -1,5 +1,6 @@
 package com.taxonomy.analysis.usecase;
 
+import com.taxonomy.analysis.service.AiPromptBudgetPolicy;
 import com.taxonomy.analysis.service.AnalysisRuntimeSettings;
 import com.taxonomy.catalog.snapshot.RetainedCataloguePreview;
 import com.taxonomy.dto.AnalysisMode;
@@ -34,7 +35,7 @@ public class PreviewRequirementUseCase {
 
     public CatalogueAnalysisPreview preview(Request request) {
         if (request == null || request.businessText() == null || request.businessText().isBlank()
-                || request.businessText().length() > AnalysisRuntimeSettings.businessTextLimit(settings)) {
+                || request.businessText().length() > AiPromptBudgetPolicy.businessTextLimit(settings)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A requirement within the configured length limit is required");
         }
         var selection = admit(request);
