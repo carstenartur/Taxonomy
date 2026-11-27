@@ -23,6 +23,19 @@ final class JunitReportVerificationChecks {
         check(run(root, "TEST-Good-other.xml", "1") != 0, "A different Surefire suffix was accepted");
     }
 
+    static void rejectsReportsFromPreviousSessions(Path root) throws Exception {
+        report(root, "Good", "tests=\"1\" failures=\"0\" errors=\"0\" skipped=\"0\"", "<testcase name=\"a\"/>");
+        Path report = root.resolve("TEST-Good.xml");
+        long start = 1600000000000L;
+        Files.setLastModifiedTime(report, java.nio.file.attribute.FileTime.fromMillis(start));
+        check(run(root, "--since-epoch-millis=" + start, "TEST-Good.xml", "1") == 0,
+                "Current-session evidence was rejected");
+        check(run(root, "--since-epoch-millis=" + (start + 1), "TEST-Good.xml", "1") != 0,
+                "A previous run's successful report was accepted");
+        check(run(root, "--since-epoch-millis=unresolved", "TEST-Good.xml", "1") != 0,
+                "An unresolved build timestamp disabled freshness checking");
+    }
+
     static void rejectsMissingOrEmptyEvidence(Path root) throws Exception {
         check(run(root, "TEST-Missing.xml", "1") != 0, "Missing report accepted");
         report(root, "Empty", "tests=\"0\" failures=\"0\" errors=\"0\" skipped=\"0\"", "");

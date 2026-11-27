@@ -363,6 +363,8 @@ mistaken for completion of the Java/Maven-only requirement.
 | SQL Server | `./mvnw -B verify -Pdatabase-mssql` | Docker |
 | Oracle | `./mvnw -B verify -Pdatabase-oracle` | Docker |
 | Local ONNX pipeline | `./mvnw -B verify -Ponnx` | Docker |
+| Compare live vLLM architectures | `./mvnw -B -pl taxonomy-app -am test -Pvllm-architecture` | [Configure a vLLM endpoint and model](custom-llm.md#compare-two-requirements-against-a-live-vllm-server). Both requirements run against the same three-node catalogue. |
+| Scenario and rendered Word/Visio exports | `./mvnw -B -pl taxonomy-app -am verify -Ptest-local,scenario-acceptance` | [Local browser, LibreOffice Writer/Draw and Poppler](../testing/scenario-acceptance.md#ausführen). |
 | Keycloak security only | `./mvnw -B verify -pl taxonomy-app -am -DskipITs=false -Dit.test=KeycloakSecurityContainerIT` | Docker |
 | Browser and accessibility only | `./mvnw -B verify -Pui-tests -DskipTests -DskipITs=true` | permission to install browser OS libraries |
 | Documentation screenshots | `./mvnw -B verify -Pscreenshots` | Docker |
@@ -393,9 +395,10 @@ default Surefire execution to `*Onnx*Test`, `*Onnx*Tests` and
 `WorkerRuntimeFootprintTest`; it disables the unrelated isolated product demo.
 It retains upstream unit tests, build-policy guards, model provisioning and both
 Failsafe suites selected by `onnx`: `LocalOnnxPipelineIT` and `OnnxSeleniumIT`.
-The workflow requires positive JUnit evidence for all seven selected unit suites
-(39 cases) and both integration suites (nine cases each). It checks out the PR
-head for reference measurements. No global tag filter is applied: reference unit
+During `verify`, the build checks this Maven session's JUnit reports for eight
+unit suites (at least 41 cases) and both integration suites (nine cases each).
+Missing, stale, failed or skipped evidence fails the build. The workflow checks
+out the PR head for reference measurements. No global tag filter is applied: reference unit
 tests include untagged classes, and the integration suites also require Docker.
 The companion disables partial aggregate coverage; complete coverage remains
 owned by the canonical CI aggregate. Standalone `-Ponnx` and canonical `-Pci`
@@ -715,22 +718,7 @@ before browser scenarios execute.
 
 ## Workflow responsibilities
 
-Every workflow is classified in `.mvn/verification-suites.json`; the table below
-must remain synchronized with that executable catalogue.
-
-| Workflow | Responsibility |
-|---|---|
-| `ci-cd.yml` | Build one commit-bound application, run catalogued Maven app-test shards alongside core tests, aggregate full-reactor coverage after both, separate required production-image verification, CI plugin packaging checks, UI shards and other lanes, then gate all results and digest-bound evidence |
-| `database-compatibility.yml` | Schedule/select database environments and call Maven profiles |
-| `jgit-storage-hibernate-contract.yml` | Run the consumer-owned storage compatibility contract through catalogued Maven selectors |
-| `codeql.yml` | External CodeQL source analysis |
-| `security-scan.yml` | External Trivy analysis |
-| `dependency-submission.yml` | Publish the Maven dependency graph |
-| `documentation-screenshots.yml` | Invoke the Maven screenshot profile and publish reviewed output |
-| `delivery.yml` | Publish reports/images and trigger deployment after verified CI |
-| `deploy-release.yml` | Execute the repository release state machine |
-| `protected-release-main-advance.yml` | Verify and hand off the protected next-development snapshot to `main` |
-| `cleanup-workflow-runs.yml` | Retain Actions history according to policy |
+The [verification catalogue](../../.mvn/verification-suites.json) classifies each workflow under `workflowResponsibilities`. The [developer guide](../de/DEVELOPER_GUIDE.md#github-workflows-lokal-zuordnen) maps the files to local commands and identifies the native cluster, installer, external scanner and publication steps.
 
 `WorkflowTestAuthorityPolicyTest` is a JUnit contract in `taxonomy-app`. It fails
 when a new workflow runs browser/a11y scripts directly, selects Java tests,

@@ -11,6 +11,9 @@
     <artifactId>taxonomy-reporting</artifactId>
     <name>Taxonomy Reporting</name>
     <description>Report rendering, figures, template contributions and report adapters</description>
+    <properties>
+        <taxonomy.test.agent>${taxonomy.test.mockitoAgent}</taxonomy.test.agent>
+    </properties>
     <dependencies>
         <dependency><groupId>com.taxonomy</groupId><artifactId>taxonomy-templates-api</artifactId><version>${project.version}</version></dependency>
         <dependency>

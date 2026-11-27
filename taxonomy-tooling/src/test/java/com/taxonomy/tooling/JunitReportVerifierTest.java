@@ -7,6 +7,7 @@ import java.nio.file.Path;
 class JunitReportVerifierTest {
     @TempDir Path root;
     @Test void acceptsExecutedSuites() throws Exception { JunitReportVerificationChecks.acceptsExecutedSuites(root); }
+    @Test void rejectsReportsFromPreviousSessions() throws Exception { JunitReportVerificationChecks.rejectsReportsFromPreviousSessions(root); }
     @Test void rejectsMissingOrEmptyEvidence() throws Exception { JunitReportVerificationChecks.rejectsMissingOrEmptyEvidence(root); }
     @Test void rejectsFailedSkippedAndUnderExecutedSuites() throws Exception { JunitReportVerificationChecks.rejectsFailedSkippedAndUnderExecutedSuites(root); }
     @Test void rejectsMalformedOrInconsistentCounters() throws Exception { JunitReportVerificationChecks.rejectsMalformedOrInconsistentCounters(root); }

@@ -11,6 +11,9 @@
     <artifactId>taxonomy-interop</artifactId>
     <name>Taxonomy Interoperability</name>
     <description>Reviewed external-tool exchanges, durable mappings and OSLC integration</description>
+    <properties>
+        <taxonomy.test.agent>${taxonomy.test.mockitoAgent}</taxonomy.test.agent>
+    </properties>
     <dependencies>
         <!-- Own the API annotation dependency, as the other REST-bearing feature modules do. -->
         <dependency>

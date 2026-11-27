@@ -22,17 +22,18 @@ class OnnxProfileWiringTest {
         assertThrows(AssertionError.class, () -> OnnxProfileContract.verifyPom(broken));
     }
 
-    @Test void workflowRequiresExecutionEvidenceAndPreservesEarlyFailures() throws Exception {
+    @Test void workflowRunsTheProofAndPreservesEarlyFailures() throws Exception {
         OnnxProfileContract.verifyWorkflow(Files.readString(root().resolve(".github/workflows/local-onnx-reference.yml")));
     }
 
-    @Test void missingReferenceUnitOrIntegrationEvidenceCannotPassTheWorkflowContract() throws Exception {
-        String workflow = Files.readString(root().resolve(".github/workflows/local-onnx-reference.yml"));
-        for (String report : new String[]{"OnnxReferenceCasesTest.xml", "OnnxMultilingualReferenceEvaluationTest.xml",
-                "OnnxReferenceEvaluationTest.xml", "OnnxDisclosureInteractionContractTest.xml",
-                "WorkerRuntimeFootprintTest.xml", "OnnxSeleniumIT.xml"}) {
-            assertThrows(AssertionError.class, () -> OnnxProfileContract.verifyWorkflow(
-                    workflow.replace(report, "MISSING.xml")), report);
+    @Test void mavenCompanionRequiresFreshEvidenceFromRealSuiteSources() throws Exception {
+        var root = root();
+        String pom = Files.readString(root.resolve("taxonomy-build/pom.xml"));
+        OnnxProfileContract.verifyEvidencePom(pom, root);
+        for (String required : java.util.List.of("verify-executed-onnx-reports", "session.request.startTime.time",
+                "OnnxReferenceCasesTest.xml", "OnnxSeleniumIT.xml")) {
+            assertThrows(AssertionError.class, () -> OnnxProfileContract.verifyEvidencePom(
+                    pom.replace(required, "missing"), root), required);
         }
     }
 

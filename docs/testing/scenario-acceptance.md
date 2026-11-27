@@ -107,25 +107,29 @@ Versuchen verdeckt.
 
 ## Ausführen
 
-Abnahme ohne Docker und ohne LLM-Schlüssel, mit lokalem Chrome/ChromeDriver
-(siehe [Voraussetzungen und GUI-Vorschau](docker-free-tests.md)):
+Für die Abnahme werden Java 25, LibreOffice Writer und Draw sowie Poppler benötigt.
+Mit lokalem Chrome und passendem ChromeDriver läuft sie ohne Docker und ohne LLM-Schlüssel
+(siehe [Voraussetzungen und GUI-Vorschau](docker-free-tests.md)).
 
 ```bash
-./mvnw -B -ntp -pl taxonomy-app -am test \
+./mvnw -B -ntp -pl taxonomy-app -am verify \
   -Ptest-local,scenario-acceptance
 ```
 
-Browserabnahme und Dokumentationsbilder mit Docker/Selenium:
+Mit Docker/Selenium führt die CI dieselbe Abnahme aus.
 
 ```bash
-./mvnw -B -ntp -pl taxonomy-app -am test -Pscenario-acceptance
+./mvnw -B -ntp -pl taxonomy-app -am verify -Pscenario-acceptance
 ```
 
 Alternativ kann ein lokal installiertes zusammenpassendes Chrome/ChromeDriver-Paar
 mit `-Dwebdriver.chrome.driver=/absolute/path/chromedriver` und optional
 `-Dscenario.chrome.binary=/absolute/path/chrome` verwendet werden.
 Das Profil `scenario-acceptance` setzt `generateScreenshots=true` und aktiviert damit
-Browser und Screenshots. `-DgenerateScreenshots=false` schaltet beides aus.
+Browser und Screenshots. Für einen kürzeren Durchlauf ohne Browser kann die Phase
+`test` mit `-DgenerateScreenshots=false` ausgeführt werden. Die vollständige
+Abnahme in `verify` verlangt die benannten erfolgreichen Browserfälle. Jeder
+Durchlauf des Profils ersetzt die zuvor generierten Szenarionachweise unter `taxonomy-app/target/`.
 HTML-Inhalte, vorbereitete Analyseergebnisse und erfolgreiche Auftragszustände
 werden nicht injiziert; ersetzt werden ausschließlich die entfernten Provider-Antworten.
 Der Container-Browser vertraut ausschließlich der dynamischen HTTP-Testadresse
@@ -208,11 +212,14 @@ Aufwand einer neuen Analyse. Korpus, Referenz und aktuelle Prüfläufe können s
 weiterentwickeln; ihre Fingerabdrücke und tatsächlichen Ergebnisse sind jeweils
 getrennt zu lesen.
 
-Die CI rendert die tatsächlichen Dateien zusätzlich mit:
+In der Phase `verify` prüft Maven die benannten JUnit-Berichte und rendert die
+tatsächlichen Word- und Visio-Dateien aus beiden Szenarioverzeichnissen.
+Für eine erneute Dokumentprüfung mit bereits erzeugten Dateien genügen folgende Befehle.
 
 ```bash
 ./mvnw -B -ntp -pl taxonomy-tooling -am compile -DskipTests
 java -cp taxonomy-tooling/target/classes com.taxonomy.tooling.TaxonomyTooling check-scenario-documents --artifacts taxonomy-app/target/scenario-acceptance
+java -cp taxonomy-tooling/target/classes com.taxonomy.tooling.TaxonomyTooling check-scenario-documents --reformulation-only --artifacts taxonomy-app/target/reformulation-scenario-acceptance
 ```
 
 Dafür werden LibreOffice Writer/Draw und Poppler benötigt. `document-qa/` enthält

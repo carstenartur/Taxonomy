@@ -47,20 +47,8 @@ jobs:
         uses: ./.github/actions/document-rendering
         with:
           variant: writer-draw
-      - name: Run sourced example scenario with real browser and remote LLM playback
-        run: >-
-          ./mvnw -B -ntp -pl taxonomy-app -am test -Pscenario-acceptance
-      - name: Independently render and check Word and Visio exports
-        run: |
-          ./mvnw -B -ntp -pl taxonomy-tooling -am compile -DskipTests
-          java -cp taxonomy-tooling/target/classes com.taxonomy.tooling.TaxonomyTooling check-junit-reports \
-            taxonomy-app/target/surefire-reports/TEST-com.taxonomy.acceptance.ReformulationScenarioAcceptanceTest.xml 1 \
-            taxonomy-app/target/surefire-reports/TEST-com.taxonomy.acceptance.ReformulationScenarioBrowserTest.xml 1 \
-            taxonomy-app/target/surefire-reports/TEST-com.taxonomy.acceptance.ReformulationAuthoredScenarioTest.xml 2 \
-            taxonomy-app/target/surefire-reports/TEST-com.taxonomy.acceptance.ScenarioLlmPlaybackTest.xml 17 \
-            taxonomy-app/target/surefire-reports/TEST-com.taxonomy.portfolio.reformulation.ReformulationBrowserTest.xml 1
-          java -cp taxonomy-tooling/target/classes com.taxonomy.tooling.TaxonomyTooling check-scenario-documents --artifacts taxonomy-app/target/scenario-acceptance
-          java -cp taxonomy-tooling/target/classes com.taxonomy.tooling.TaxonomyTooling check-scenario-documents --reformulation-only --artifacts taxonomy-app/target/reformulation-scenario-acceptance
+      - name: Run sourced example scenario and verify browser evidence and rendered exports
+        run: ./mvnw -B -ntp -pl taxonomy-app -am verify -Pscenario-acceptance
       - name: Preserve architecture, exports, screenshots and verification evidence
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7

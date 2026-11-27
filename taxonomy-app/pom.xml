@@ -11,6 +11,9 @@
     <artifactId>taxonomy-app</artifactId>
     <name>Taxonomy Application</name>
     <description>Spring Boot composition and deployment root, security and supporting application adapters</description>
+    <properties>
+        <taxonomy.test.agent>${taxonomy.test.mockitoAgent}</taxonomy.test.agent>
+    </properties>
     <dependencies>
         <dependency><groupId>com.taxonomy</groupId><artifactId>taxonomy-tooling</artifactId><version>${project.version}</version><scope>test</scope></dependency>
         <dependency><groupId>com.taxonomy</groupId><artifactId>taxonomy-templates-api</artifactId><version>${project.version}</version></dependency>
@@ -684,6 +687,75 @@
     </build>
 
     <profiles>
+        <profile>
+            <id>scenario-acceptance</id>
+            <properties>
+                <!-- Scenario evidence includes fresh browser downloads and files outside the cached JAR. -->
+                <maven.build.cache.enabled>false</maven.build.cache.enabled>
+            </properties>
+            <build><plugins><plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-antrun-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>prepare-scenario-evidence</id>
+                        <phase>initialize</phase>
+                        <goals><goal>run</goal></goals>
+                        <configuration><skip>false</skip><target>
+                            <delete dir="${project.build.directory}/scenario-acceptance"/>
+                            <delete dir="${project.build.directory}/reformulation-scenario-acceptance"/>
+                        </target></configuration>
+                    </execution>
+                </executions>
+            </plugin><plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>${exec-maven-plugin.version}</version>
+                <configuration>
+                    <executable>${java.home}/bin/java</executable>
+                    <workingDirectory>${project.basedir}</workingDirectory>
+                    <skip>false</skip>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>verify-scenario-junit</id>
+                        <phase>verify</phase>
+                        <goals><goal>exec</goal></goals>
+                        <configuration><arguments>
+                            <argument>-cp</argument><argument>${maven.multiModuleProjectDirectory}/taxonomy-tooling/target/classes</argument>
+                            <argument>com.taxonomy.tooling.TaxonomyTooling</argument><argument>check-junit-reports</argument>
+                            <argument>--since-epoch-millis=${session.request.startTime.time}</argument>
+                            <argument>target/surefire-reports/TEST-com.taxonomy.acceptance.ReformulationScenarioAcceptanceTest.xml</argument><argument>1</argument>
+                            <argument>target/surefire-reports/TEST-com.taxonomy.acceptance.ReformulationScenarioBrowserTest.xml</argument><argument>1</argument>
+                            <argument>target/surefire-reports/TEST-com.taxonomy.acceptance.ReformulationAuthoredScenarioTest.xml</argument><argument>2</argument>
+                            <argument>target/surefire-reports/TEST-com.taxonomy.acceptance.ScenarioLlmPlaybackTest.xml</argument><argument>17</argument>
+                            <argument>target/surefire-reports/TEST-com.taxonomy.portfolio.reformulation.ReformulationBrowserTest.xml</argument><argument>1</argument>
+                        </arguments></configuration>
+                    </execution>
+                    <execution>
+                        <id>verify-scenario-documents</id>
+                        <phase>verify</phase>
+                        <goals><goal>exec</goal></goals>
+                        <configuration><arguments>
+                            <argument>-cp</argument><argument>${maven.multiModuleProjectDirectory}/taxonomy-tooling/target/classes</argument>
+                            <argument>com.taxonomy.tooling.TaxonomyTooling</argument><argument>check-scenario-documents</argument>
+                            <argument>--artifacts</argument><argument>target/scenario-acceptance</argument>
+                        </arguments></configuration>
+                    </execution>
+                    <execution>
+                        <id>verify-reformulation-documents</id>
+                        <phase>verify</phase>
+                        <goals><goal>exec</goal></goals>
+                        <configuration><arguments>
+                            <argument>-cp</argument><argument>${maven.multiModuleProjectDirectory}/taxonomy-tooling/target/classes</argument>
+                            <argument>com.taxonomy.tooling.TaxonomyTooling</argument><argument>check-scenario-documents</argument>
+                            <argument>--reformulation-only</argument><argument>--artifacts</argument>
+                            <argument>target/reformulation-scenario-acceptance</argument>
+                        </arguments></configuration>
+                    </execution>
+                </executions>
+            </plugin></plugins></build>
+        </profile>
         <profile>
             <id>ci-ui-application-package</id>
             <!-- Module caching cannot restore the root-level runtime SBOM or the

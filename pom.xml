@@ -135,6 +135,12 @@
         <taxonomy.frontend.directory>${maven.multiModuleProjectDirectory}/target/test-runtime/frontend</taxonomy.frontend.directory>
         <taxonomy.node.binary>node</taxonomy.node.binary>
         <taxonomy.node.executable>${taxonomy.frontend.directory}/node/${taxonomy.node.binary}</taxonomy.node.executable>
+        <!-- JaCoCo prepares coverage arguments at initialize. Callers can supply additional argLine options. -->
+        <argLine/>
+        <taxonomy.test.coverageArgLine/>
+        <!-- Modules using Mockito enable its resolved test JAR in their forked JVMs. -->
+        <taxonomy.test.agent/>
+        <taxonomy.test.mockitoAgent>"-javaagent:${project.artifactMap(org.mockito:mockito-core).file}"</taxonomy.test.mockitoAgent>
         <taxonomy.test.browser.version>149.0.7827.55</taxonomy.test.browser.version>
         <taxonomy.test.browser.cache>${maven.multiModuleProjectDirectory}/target/test-runtime/selenium</taxonomy.test.browser.cache>
         <!-- The prefix converts Maven's Boolean setting to a String for Surefire/Failsafe. -->
@@ -467,23 +473,29 @@
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-surefire-plugin</artifactId>
-                    <configuration><systemPropertyVariables>
-                        <taxonomy.node.executable>${taxonomy.node.executable}</taxonomy.node.executable>
-                        <taxonomy.test.browser.version>${taxonomy.test.browser.version}</taxonomy.test.browser.version>
-                        <taxonomy.test.browser.cache>${taxonomy.test.browser.cache}</taxonomy.test.browser.cache>
-                        <taxonomy.test.browser.offline>${taxonomy.test.browser.offline}</taxonomy.test.browser.offline>
-                    </systemPropertyVariables></configuration>
+                    <configuration>
+                        <argLine>@{taxonomy.test.coverageArgLine} ${argLine} ${taxonomy.test.agent}</argLine>
+                        <systemPropertyVariables>
+                            <taxonomy.node.executable>${taxonomy.node.executable}</taxonomy.node.executable>
+                            <taxonomy.test.browser.version>${taxonomy.test.browser.version}</taxonomy.test.browser.version>
+                            <taxonomy.test.browser.cache>${taxonomy.test.browser.cache}</taxonomy.test.browser.cache>
+                            <taxonomy.test.browser.offline>${taxonomy.test.browser.offline}</taxonomy.test.browser.offline>
+                        </systemPropertyVariables>
+                    </configuration>
                 </plugin>
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-failsafe-plugin</artifactId>
-                    <configuration><systemPropertyVariables>
-                        <taxonomy.node.executable>${taxonomy.node.executable}</taxonomy.node.executable>
-                        <taxonomy.observability.performance.enabled>${taxonomy.observability.performance.enabled}</taxonomy.observability.performance.enabled>
-                        <taxonomy.test.browser.version>${taxonomy.test.browser.version}</taxonomy.test.browser.version>
-                        <taxonomy.test.browser.cache>${taxonomy.test.browser.cache}</taxonomy.test.browser.cache>
-                        <taxonomy.test.browser.offline>${taxonomy.test.browser.offline}</taxonomy.test.browser.offline>
-                    </systemPropertyVariables></configuration>
+                    <configuration>
+                        <argLine>@{taxonomy.test.coverageArgLine} ${argLine} ${taxonomy.test.agent}</argLine>
+                        <systemPropertyVariables>
+                            <taxonomy.node.executable>${taxonomy.node.executable}</taxonomy.node.executable>
+                            <taxonomy.observability.performance.enabled>${taxonomy.observability.performance.enabled}</taxonomy.observability.performance.enabled>
+                            <taxonomy.test.browser.version>${taxonomy.test.browser.version}</taxonomy.test.browser.version>
+                            <taxonomy.test.browser.cache>${taxonomy.test.browser.cache}</taxonomy.test.browser.cache>
+                            <taxonomy.test.browser.offline>${taxonomy.test.browser.offline}</taxonomy.test.browser.offline>
+                        </systemPropertyVariables>
+                    </configuration>
                 </plugin>
             </plugins>
         </pluginManagement>
@@ -534,6 +546,7 @@
                 <executions>
                     <execution>
                         <id>prepare-agent</id>
+                        <configuration><propertyName>taxonomy.test.coverageArgLine</propertyName></configuration>
                         <goals><goal>prepare-agent</goal></goals>
                     </execution>
                 </executions>
@@ -936,8 +949,28 @@
             </properties>
         </profile>
         <profile>
+            <id>vllm-architecture</id>
+            <properties>
+                <test>RequirementArchitectureVllmLiveTest</test>
+                <groups>real-llm</groups>
+                <excludedGroups>onnx</excludedGroups>
+                <surefire.failIfNoSpecifiedTests>false</surefire.failIfNoSpecifiedTests>
+                <taxonomy.productDemo.testPhase>none</taxonomy.productDemo.testPhase>
+                <maven.build.cache.enabled>false</maven.build.cache.enabled>
+            </properties>
+            <build><plugins><plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration><systemPropertyVariables>
+                    <taxonomy.architecture.evaluateLive>true</taxonomy.architecture.evaluateLive>
+                </systemPropertyVariables></configuration>
+            </plugin></plugins></build>
+        </profile>
+        <profile>
             <id>scenario-acceptance</id>
             <properties>
+                <!-- Its browser and application cases run in Surefire, including with test-local. -->
+                <skipITs>true</skipITs>
                 <test>ScenarioArchitectureAcceptanceTest,ScenarioLlmPlaybackTest,ReformulationScenarioAcceptanceTest,ReformulationAuthoredScenarioTest,ReformulationScenarioBrowserTest,ReformulationBrowserTest</test>
                 <taxonomy.productDemo.testPhase>none</taxonomy.productDemo.testPhase>
                 <taxonomy.productDemo.defaultTestExclude></taxonomy.productDemo.defaultTestExclude>

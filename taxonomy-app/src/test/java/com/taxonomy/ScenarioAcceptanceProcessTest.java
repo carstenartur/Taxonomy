@@ -1,14 +1,25 @@
 package com.taxonomy;
 
+import com.taxonomy.support.SpringTestProcessAgents;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.Mockito;
+
+import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** The scenario owns its application settings; only explicit UI test flags go on argv. */
 class ScenarioAcceptanceProcessTest {
+    @Test
+    void springChildStartsTheResolvedMockitoAgentExactlyOnce() throws Exception {
+        Path mockitoJar = Path.of(Mockito.class.getProtectionDomain().getCodeSource().getLocation().toURI());
+        assertEquals(1L, SpringTestProcessAgents.arguments().stream().filter(("-javaagent:" + mockitoJar)::equals).count());
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {
             "custom.llm.api.key", "spring.datasource.password", "taxonomy.admin-password",

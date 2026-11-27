@@ -26,7 +26,7 @@ publication are documented separately in
 | Dependency or workflow policy | `./mvnw -B verify -Pquality -DskipTests -DskipITs=true` | `./mvnw -B verify -Pci` |
 | Release plan or release code | `./mvnw -B -Prelease-check validate -DreleaseVersion=X.Y.Z -DnextDevelopmentVersion=X.Y.Z-SNAPSHOT` | `./mvnw -B -Prelease-check,ci clean verify` with the same versions |
 | Documentation screenshots | `./mvnw -B verify -Pscreenshots` | manual visual review before publication |
-| Scenario Copilot and exports | `./mvnw -B test -pl taxonomy-app -am -Pscenario-acceptance -DgenerateScreenshots=false` (no browser/Docker) | Omit `-DgenerateScreenshots=false` for the real browser run, using Docker/Selenium or configured local Chrome/ChromeDriver; [setup and evidence](../testing/scenario-acceptance.md#ausführen) |
+| Scenario Copilot and exports | `./mvnw -B test -pl taxonomy-app -am -Pscenario-acceptance -DgenerateScreenshots=false` (no browser/Docker) | `./mvnw -B -pl taxonomy-app -am verify -Pscenario-acceptance` covers the browser and renders the Office exports. Add `test-local` for local Chrome/ChromeDriver. [setup and evidence](../testing/scenario-acceptance.md#ausführen) |
 
 ## Stable lifecycle scopes
 

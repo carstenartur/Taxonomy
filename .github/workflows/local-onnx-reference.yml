@@ -8,6 +8,8 @@ on:
       - '.github/workflows/local-onnx-reference.yml'
       - 'pom.xml'
       - 'taxonomy-app/pom.xml'
+      - 'taxonomy-build/pom.xml'
+      - 'taxonomy-tooling/src/main/java/com/taxonomy/tooling/JunitReportVerifier.java'
       - '.github/scripts/download-embedding-model.sh'
       - 'taxonomy-build/src/test/java/com/taxonomy/build/OnnxProfile*'
       - 'taxonomy-app/src/test/java/com/taxonomy/LocalOnnxPipelineIT.java'
@@ -64,19 +66,6 @@ jobs:
           mkdir -p target
           set -o pipefail
           ./mvnw -B verify -Ponnx,ci-onnx-reference -T 2 2>&1 | tee target/local-onnx-reference.log
-      - name: Require executed ONNX tests
-        run: |
-          java -cp taxonomy-tooling/target/classes com.taxonomy.tooling.TaxonomyTooling check-junit-reports \
-            taxonomy-knowledge/target/surefire-reports/TEST-com.taxonomy.relations.service.BranchGraphVectorOnnxTest.xml 1 \
-            taxonomy-app/target/surefire-reports/TEST-com.taxonomy.OnnxEmbeddingServiceTest.xml 4 \
-            taxonomy-app/target/surefire-reports/TEST-com.taxonomy.OnnxRestEndpointTest.xml 5 \
-            taxonomy-app/target/surefire-reports/TEST-com.taxonomy.acceptance.OnnxReferenceCasesTest.xml 11 \
-            taxonomy-app/target/surefire-reports/TEST-com.taxonomy.acceptance.OnnxMultilingualReferenceEvaluationTest.xml 3 \
-            taxonomy-app/target/surefire-reports/TEST-com.taxonomy.acceptance.OnnxReferenceEvaluationTest.xml 14 \
-            taxonomy-app/target/surefire-reports/TEST-com.taxonomy.ui.OnnxDisclosureInteractionContractTest.xml 1 \
-            taxonomy-app/target/surefire-reports/TEST-com.taxonomy.composition.analysis.artemis.WorkerRuntimeFootprintTest.xml 1 \
-            taxonomy-app/target/failsafe-reports/TEST-com.taxonomy.LocalOnnxPipelineIT.xml 9 \
-            taxonomy-app/target/failsafe-reports/TEST-com.taxonomy.OnnxSeleniumIT.xml 9
       - name: Upload local inference evidence
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7

@@ -11,6 +11,9 @@
     <artifactId>taxonomy-portfolio</artifactId>
     <name>Taxonomy Portfolio</name>
     <description>Project portfolio, analysis jobs, snapshots, reviews and recovery</description>
+    <properties>
+        <taxonomy.test.agent>${taxonomy.test.mockitoAgent}</taxonomy.test.agent>
+    </properties>
     <dependencies>
         <dependency>
             <groupId>com.vladsch.flexmark</groupId>

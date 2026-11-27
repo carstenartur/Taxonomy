@@ -30,6 +30,24 @@ with identical requirements, catalogue and top-K=10. Only requirement text is se
 to the search endpoints: expected IDs and titles are never supplied as answers.
 There is no response playback or parallel embedding/search implementation.
 
+### Requirement changes in the office applications catalogue
+
+The real-model Spring REST test pins one workspace commit and selects the User
+Applications (UA) root. It prepares the preview and waits for native ONNX
+inference. Switching from email delivery to payroll must change both the preview
+matches and the set of assessed nodes selected as architecture anchors. Every
+preview child must have its parent in the result. Architecture anchors must
+carry a bounded score from the assessment, and any displayed relationship must
+connect elements in the view.
+
+Run this case with the profile's pinned model and the in-process Spring application:
+
+```bash
+./mvnw -B -pl taxonomy-app -am test -Ponnx \
+  '-Dtest=OnnxRestEndpointTest#changingAnOfficeRequirementChangesTheOnnxPreviewAndScoredArchitecture' \
+  -Dsurefire.failIfNoSpecifiedTests=false
+```
+
 ## Evidence, errors and limits
 
 * Require enabled/available/modelAvailable AND semanticReady, a node-ready index state

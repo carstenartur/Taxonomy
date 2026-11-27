@@ -11,6 +11,9 @@
     <artifactId>taxonomy-knowledge</artifactId>
     <name>Taxonomy Knowledge</name>
     <description>Catalogue, knowledge relations, full-text search and local semantic embeddings</description>
+    <properties>
+        <taxonomy.test.agent>${taxonomy.test.mockitoAgent}</taxonomy.test.agent>
+    </properties>
     <dependencies>
         <dependency><groupId>com.taxonomy</groupId><artifactId>taxonomy-extension-runtime</artifactId><version>${project.version}</version></dependency>
         <dependency>
