@@ -260,14 +260,19 @@
     }
 
     function exportJson(scores, reasons, businessText, provider) {
-        if (!scores || Object.keys(scores).length === 0) {
+        var nodeAssessments = window.TaxonomyState?.currentNodeAssessments || {};
+        var hasAssessments = Object.values(nodeAssessments).some(function (claims) {
+            return Array.isArray(claims) && claims.length > 0;
+        });
+        if ((!scores || Object.keys(scores).length === 0) && !hasAssessments) {
             return unavailable('export.json.no.scores');
         }
         var isCurrent = window.TaxonomyApiClient.captureContext();
         window.ExportApi.scoreExport({
-            requirement: businessText || '',
-            scores: scores,
+            requirement: window.TaxonomyState?.lastAnalyzedText ?? businessText ?? '',
+            scores: scores || {},
             reasons: reasons || {},
+            nodeAssessments: nodeAssessments,
             provider: provider || '',
             copilot: window.TaxonomyState?.currentCopilot || null,
             modelBinding: window.TaxonomyState?.currentModelBinding || null,

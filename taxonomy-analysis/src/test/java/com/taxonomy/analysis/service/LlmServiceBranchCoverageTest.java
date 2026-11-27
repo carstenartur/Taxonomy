@@ -7,6 +7,8 @@ import com.taxonomy.dto.AiAvailabilityLevel;
 import com.taxonomy.dto.AnalysisCoverage;
 import com.taxonomy.dto.AnalysisResult;
 import com.taxonomy.dto.LlmCallDetail;
+import com.taxonomy.dto.ProductCoverageGap;
+import com.taxonomy.dto.TaxonomyDiscrepancy;
 import com.taxonomy.dto.TaxonomyNodeDto;
 import com.taxonomy.catalog.service.LocalEmbeddingService;
 import com.taxonomy.analysis.service.PromptTemplateService;
@@ -263,7 +265,40 @@ class LlmServiceBranchCoverageTest {
         verify(callback).onError(eq("PARTIAL"), anyString(),
                 argThat(scores -> scores.containsKey("BP")),
                 argThat(reasons -> "retained evidence".equals(reasons.get("BP"))),
-                anyList(), anyList(), anyList(), any(com.taxonomy.dto.AnalysisCoverage.class));
+                anyList(), anyList(), anyList(), any(com.taxonomy.dto.AnalysisCoverage.class), eq(Map.of()));
+    }
+
+    @Test
+    void legacyStreamingListenerReceivesOnePartialFailureWithCompletedRootScores() {
+        when(taxonomyService.getRootNodes()).thenReturn(new ArrayList<>(List.of(
+                node("BP", null, "BP"), node("CP", null, "CP"))));
+        when(taxonomyService.getChildrenOf("BP")).thenReturn(List.of());
+        when(gateway.sendHttpRequest("rendered prompt", "test-key"))
+                .thenReturn("completed-root").thenThrow(new IllegalStateException("provider unavailable"));
+        when(gateway.extractResponseText("completed-root"))
+                .thenReturn("{\"BP\":{\"score\":80,\"reason\":\"retained evidence\"}}");
+        var terminalStatuses = new ArrayList<String>();
+        AnalysisEventCallback legacy = new AnalysisEventCallback() {
+            @Override public void onPhase(String message, int progressPercent) { }
+            @Override public void onScores(Map<String, Double> scores, Map<String, String> reasons,
+                                           String description, LlmCallDetail detail) { }
+            @Override public void onExpanding(String parentCode, List<String> childCodes) { }
+            @Override public void onComplete(String status, Map<String, Double> scores, List<String> warnings,
+                                             List<TaxonomyDiscrepancy> discrepancies,
+                                             List<ProductCoverageGap> gaps) {
+                throw new AssertionError("A failed stream must not complete successfully");
+            }
+            @Override public void onError(String status, String message, Map<String, Double> scores,
+                                          List<String> warnings, List<TaxonomyDiscrepancy> discrepancies,
+                                          List<ProductCoverageGap> gaps) {
+                terminalStatuses.add(status);
+                assertThat(scores).containsEntry("BP", 80d).doesNotContainKey("CP");
+            }
+        };
+
+        service.analyzeStreaming("requirement", legacy);
+
+        assertThat(terminalStatuses).containsExactly("PARTIAL");
     }
 
     @Test
@@ -290,7 +325,7 @@ class LlmServiceBranchCoverageTest {
                 argThat(detail -> detail.getError() != null && detail.getRawResponse().equals("{}")));
         verify(callback).onComplete(eq("PARTIAL"), eq(Map.of("BP", 100d)), anyMap(),
                 argThat(warnings -> warnings.stream().anyMatch(w -> w.contains("CP"))), anyList(), anyList(),
-                any(com.taxonomy.dto.AnalysisCoverage.class));
+                any(com.taxonomy.dto.AnalysisCoverage.class), eq(Map.of()));
     }
 
     @Test
@@ -511,15 +546,15 @@ class LlmServiceBranchCoverageTest {
         verify(callback).onPhase(anyString(), anyInt());
         verify(callback).onExpanding("R", List.of("C"));
         verify(callback).onComplete(anyString(), any(), anyMap(), anyList(), anyList(), anyList(),
-                org.mockito.ArgumentMatchers.isNull());
+                org.mockito.ArgumentMatchers.isNull(), eq(Map.of()));
         verify(callback, never()).onError(
-                anyString(), anyString(), any(), anyMap(), anyList(), anyList(), anyList(), any());
+                anyString(), anyString(), any(), anyMap(), anyList(), anyList(), anyList(), any(), anyMap());
 
         when(gateway.sendHttpRequest(anyString(), anyString())).thenThrow(new IllegalStateException("stream failed"));
         service.analyzeStreaming("requirement", callback);
         verify(callback).onError(
                 anyString(), anyString(), any(), anyMap(), anyList(), anyList(), anyList(),
-                any(com.taxonomy.dto.AnalysisCoverage.class));
+                any(com.taxonomy.dto.AnalysisCoverage.class), eq(Map.of()));
     }
 
     @org.junit.jupiter.params.ParameterizedTest
@@ -622,9 +657,10 @@ class LlmServiceBranchCoverageTest {
                         .anyMatch(warning -> warning.contains("product provider timed out"))),
                 anyList(),
                 anyList(), argThat(coverage -> coverage != null
-                        && coverage.nodes().get("IP-P1").state() == com.taxonomy.dto.AnalysisCoverage.State.UNKNOWN));
+                        && coverage.nodes().get("IP-P1").state() == com.taxonomy.dto.AnalysisCoverage.State.UNKNOWN),
+                eq(Map.of()));
         verify(callback, never()).onError(
-                anyString(), anyString(), any(), anyMap(), anyList(), anyList(), anyList(), any());
+                anyString(), anyString(), any(), anyMap(), anyList(), anyList(), anyList(), any(), anyMap());
     }
 
 

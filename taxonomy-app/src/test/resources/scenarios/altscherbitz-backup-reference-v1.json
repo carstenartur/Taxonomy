@@ -1,0 +1,150 @@
+{
+  "schemaVersion": 1,
+  "referenceId": "altscherbitz-backup-2026-v1",
+  "evidenceKind": "PUBLIC_SOURCE_WITH_AUTHORED_MAPPING_ORACLE",
+  "frozenBeforeModelInferenceUtc": "2026-11-27T10:24:45Z",
+  "catalogueSha256": "000b695bcd09a2ec7aff889cf62b2f83929861a3f147eaa3c2b60e2bf77b7f9d",
+  "source": {
+    "title": "Modernisierung der Backup- und Datensicherungsinfrastruktur",
+    "issuer": "Sächsisches Krankenhaus Altscherbitz",
+    "procedureId": "4fb5b799-3ba3-4d7b-a6d0-74ba336ac02f",
+    "procedureReference": "230039",
+    "noticeId": "33fd4d73-a507-4d18-b4b7-aa0aa1cc8e20",
+    "version": "01",
+    "transmittedAt": "2026-11-10T15:19:00+01:00",
+    "retrievedOn": "2026-11-27",
+    "retrievedPdfSha256": "f271b93870c4dc44b73f6096544650af478884728c6859ef9d2525601eddcccf",
+    "renderingVersion": "eforms-de-2.1",
+    "scope": [
+      "Section 2.1, description (PDF pp. 1–3)",
+      "Section 5.1, LOT-0000 (PDF p. 4)",
+      "Notice identification, version and transmission date (PDF p. 7)"
+    ],
+    "url": "https://oeffentlichevergabe.de/api/notices/33fd4d73-a507-4d18-b4b7-aa0aa1cc8e20?format=pdf",
+    "limitations": "Public tender notice in a non-binding eForms PDF rendition. The full procurement specification, award, operational deployment and externally certified taxonomy mappings are outside this evidence. The digest identifies the PDF bytes retrieved on the stated date."
+  },
+  "obligations": [
+    {
+      "id": "existing-backup-environment",
+      "source": "Section 2.1, PDF p. 1",
+      "fact": "Existing backups use VEEAM, a NetApp storage system and a tape system. The tape system provides a media break and long-term backup storage. These products describe the existing environment."
+    },
+    {
+      "id": "product-delivery",
+      "source": "Sections 2.1 and 5.1, PDF pp. 1–2 and 4",
+      "fact": "Extend the existing VEEAM licensing, acquire and implement an additional NetApp storage system, and replace the existing tape system with a new tape library."
+    },
+    {
+      "id": "second-site-and-replication",
+      "source": "Section 2.1, PDF p. 2",
+      "fact": "Install the additional NetApp component at a second site and use NetApp snapshot and replication mechanisms between the systems so that backups can support recovery and protection against site-specific outages."
+    },
+    {
+      "id": "integration-and-media-break",
+      "source": "Section 2.1, PDF p. 2",
+      "fact": "Integrate the new storage and tape components with the backup environment. The replacement tape library continues to provide a media break and long-term backup storage."
+    },
+    {
+      "id": "operations-and-agreed-optimization",
+      "source": "Section 2.1, PDF pp. 2–3",
+      "fact": "Account for existing backup jobs, backup policies and operating processes, and optimize them when needed in consultation with the buyer. The notice also seeks easier monitoring of backups and traceable recovery processes."
+    },
+    {
+      "id": "implementation-and-acceptance",
+      "source": "Sections 2.1 and 5.1, PDF pp. 3–4",
+      "fact": "The scope includes planning, installation, configuration, migration, instruction, documentation, and support for acceptance and commissioning of the integrated solution."
+    }
+  ],
+  "openQuestions": [
+    "Backup and replication schedule, protected data scope and quantitative retention periods",
+    "Recovery time and recovery point objectives, recovery request channel and authorization roles",
+    "Concrete acceptance scenarios, criteria and evidence"
+  ],
+  "cases": [
+    {
+      "id": "product",
+      "requirement": "Das Sächsische Krankenhaus Altscherbitz modernisiert seine Backup-Infrastruktur. Die bestehende Umgebung nutzt VEEAM, ein NetApp-Storage-System und ein Tape-System. Die bestehende VEEAM-Lizenzierung ist zu erweitern, ein zusätzliches NetApp-Storage-System zu beschaffen und zu implementieren und das vorhandene Tape-System durch eine neue Tape-Library zu ersetzen. Der Standort der zusätzlichen Komponente, die technische Ausgestaltung und die Betriebsabläufe sind in dieser ersten Fassung noch offen.",
+      "expectedSubjectKinds": [
+        "PRODUCT"
+      ],
+      "requiredMappingGroups": []
+    },
+    {
+      "id": "storage-service",
+      "requirement": "Das Sächsische Krankenhaus Altscherbitz modernisiert seine Backup-Infrastruktur. Die bestehende Umgebung nutzt VEEAM, ein NetApp-Storage-System und ein Tape-System. Die bestehende VEEAM-Lizenzierung ist zu erweitern, ein zusätzliches NetApp-Storage-System zu beschaffen und zu implementieren und das vorhandene Tape-System durch eine neue Tape-Library zu ersetzen. Das zusätzliche Storage-System ist an einem zweiten Standort zu installieren und soll den bestehenden Backup-Speicher ergänzen. Die Lösung soll Sicherungsdaten mit NetApp-Snapshot- und Replikationsmechanismen standortübergreifend vorhalten und damit Wiederherstellungen unterstützen. Die neue Tape-Library ist in die Backup-Umgebung zu integrieren und dient weiterhin als Medienbruch und zur langfristigen Aufbewahrung von Sicherungsdaten. Die Anforderungen an die Betriebsabläufe und die Abnahme sind in dieser Fassung noch offen.",
+      "expectedSubjectKinds": [
+        "PRODUCT",
+        "SERVICE"
+      ],
+      "requiredMappingGroups": [
+        {
+          "ids": [
+            "CR-1091"
+          ],
+          "contributionTypes": [
+            "PROVIDES",
+            "DIRECT_SUBJECT"
+          ],
+          "evidenceStatus": "SUPPORTED"
+        }
+      ]
+    },
+    {
+      "id": "operations-process",
+      "requirement": "Das Sächsische Krankenhaus Altscherbitz modernisiert seine Backup-Infrastruktur. Die bestehende Umgebung nutzt VEEAM, ein NetApp-Storage-System und ein Tape-System. Die bestehende VEEAM-Lizenzierung ist zu erweitern, ein zusätzliches NetApp-Storage-System zu beschaffen und zu implementieren und das vorhandene Tape-System durch eine neue Tape-Library zu ersetzen. Das zusätzliche Storage-System ist an einem zweiten Standort zu installieren und soll den bestehenden Backup-Speicher ergänzen. Die Lösung soll Sicherungsdaten mit NetApp-Snapshot- und Replikationsmechanismen standortübergreifend vorhalten und damit Wiederherstellungen unterstützen. Die neue Tape-Library ist in die Backup-Umgebung zu integrieren und dient weiterhin als Medienbruch und zur langfristigen Aufbewahrung von Sicherungsdaten. Bestehende Backup-Jobs, Sicherungsrichtlinien und Betriebsprozesse sind bei der Umsetzung zu berücksichtigen und bei Bedarf in Abstimmung mit dem Auftraggeber zu optimieren. Die Verwaltung der Sicherungsprozesse soll übersichtlich und möglichst automatisierbar sein. Die Überwachung der Sicherungen soll vereinfacht werden, die Wiederherstellungsprozesse sollen nachvollziehbar sein. Der Leistungsumfang umfasst Planung, Installation, Konfiguration, Migration, Einweisung und Dokumentation sowie Unterstützung bei Abnahme und Inbetriebnahme der Gesamtlösung.",
+      "expectedSubjectKinds": [
+        "PRODUCT",
+        "SERVICE",
+        "PROCESS"
+      ],
+      "requiredMappingGroups": [
+        {
+          "ids": [
+            "CR-1091"
+          ],
+          "contributionTypes": [
+            "PROVIDES",
+            "DIRECT_SUBJECT"
+          ],
+          "evidenceStatus": "SUPPORTED"
+        },
+        {
+          "ids": [
+            "BP-1503",
+            "BP-2009"
+          ],
+          "contributionTypes": [
+            "DIRECT_SUBJECT"
+          ],
+          "evidenceStatus": "SUPPORTED"
+        }
+      ]
+    }
+  ],
+  "allowedContextNodes": [
+    "CR-1047",
+    "CR-1075",
+    "CR-1004",
+    "BP-1536"
+  ],
+  "clarificationCandidate": {
+    "id": "UA-1193",
+    "rule": "The license extension and recovery goals do not establish any specific user-operated fault recovery workflow. A conditional, contextual or unresolved candidate is acceptable if a separate basis or question is stated."
+  },
+  "unsupportedDirectDeliveryNodes": {
+    "CR-1197": "Snapshot, replication and long-term retention do not establish content-addressed storage or hash-based addressing.",
+    "CR-1142": "Common interfaces for data consumption and specific access control methods are not specified.",
+    "CR-1137": "Replication between sites does not establish distributed object storage or object-level granularity.",
+    "UA-1347": "Backup appears in this maritime application definition but the notice does not concern that domain.",
+    "BP-1529": "Replicating existing backup data does not establish a business process for creating or collecting new information.",
+    "BP-1524": "Backup resilience and generic recovery do not require a force protection incident response process."
+  },
+  "method": "Freeze requirements and source facts before inference. Use the full original catalogue with TAXONOMIES_ONLY scope for Business Processes, Core Services and User Applications, then evaluate actual saved results without supplying this oracle to the responder. At the product stage a direct BP, CR or UA mapping is not required. Existing installed products are context, whereas explicit extensions and new components are delivery. The second stage covers the persistent backup-storage aspect. CR-1047 can accompany it as a broader ancestor. CR-1075 and CR-1004 can be argued as contextual candidates, especially for long-term tape retention, without claiming enduring-record archive functions. The third stage supplies evidence of specific backup operating processes. BP-1503 is preferred for backup job handling; BP-2009 may satisfy the group with a specific service operations basis. An ancestor or broad contextual match is valuable but does not satisfy the specific group by itself. Preserve the condition on optimizing existing jobs, policies and processes. Partial or unassessed cases are inconclusive. Schema/source validation and authored semantic review are separate outcomes.",
+  "catalogueOverlay": {
+    "resource": "data/nato-taxonomy.json",
+    "sha256": "f82b7d614d00700760bb009ece94949080148d244974b2363037bed3d3b10d3e",
+    "mappingVersion": "information-products-2026-08-28-v1",
+    "scope": "866 existing Information Products hierarchy patches only; no BP/CR/UA patches. Required to load the complete original workbook with its known invalid IP parent references.",
+    "recordedBeforeFirstModelInference": true
+  }
+}

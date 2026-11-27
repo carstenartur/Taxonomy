@@ -108,7 +108,7 @@ public class DecisionRationaleScoreSemanticsAdapter {
                                 || report.scope().selectedNodeCodes().contains(entry.getKey()))
                         .collect(java.util.stream.Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue,
                                 (left, right) -> left, LinkedHashMap::new)),
-                report.architecture(), report.scope().withScoreSemanticsFingerprint(detailFingerprint));
+                report.architecture(), report.scope().withScoreSemanticsFingerprint(detailFingerprint), report.nodeAssessments());
     }
 
     private DecisionChapter adaptChapter(

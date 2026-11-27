@@ -6,6 +6,7 @@ import com.taxonomy.analysis.dag.AnalysisOperationContext;
 import com.taxonomy.analysis.dag.AnalysisTaskType;
 import com.taxonomy.analysis.dag.TaxonomyShardRoot;
 import com.taxonomy.analysis.service.AnalysisProgressRegistry;
+import com.taxonomy.analysis.service.AnalysisNodeAssessmentPreview;
 import com.taxonomy.dto.AnalysisProvenance;
 import com.taxonomy.dto.AnalysisResult;
 import com.taxonomy.workspace.service.WorkspaceContext;
@@ -265,6 +266,8 @@ public final class DurableClusterAnalysisObservation implements ClusterAnalysisO
                         requirement.snapshotId(), null, requirement.requirementVersionId());
         var reasons = com.taxonomy.analysis.service.AnalysisReasonPreview.from(scores.rawScores(),
                 durable.result() == null ? null : durable.result().getReasons());
+        var assessments = new AnalysisNodeAssessmentPreview();
+        assessments.retain(durable.nodeAssessments());
         var snapshot = new AnalysisProgressRegistry.Snapshot(context.operationId(), status, phase, durable.progress().node(),
                 durable.state() == ClusterAnalysisState.CANCELLED ? "CANCELLED" : null,
                 durable.revision(), durable.createdAt(), durable.updatedAt(), now, scores.evaluatedNodes(), scores.scoresTruncated(),
@@ -272,7 +275,7 @@ public final class DurableClusterAnalysisObservation implements ClusterAnalysisO
                 terminal ? durable.updatedAt() : null, Math.max(0, end - durable.createdAt()), executionStart,
                 Math.max(0, (executionStart == null ? end : executionStart) - durable.createdAt()),
                 executionStart == null ? 0 : Math.max(0, end - executionStart), durable.progress().nodes(), durable.progress().relations(),
-                reasons.reasons(), reasons.truncated());
+                reasons.reasons(), reasons.truncated(), assessments.assessments(), assessments.truncated());
         return new ClusterAnalysisView(snapshot, ClusterAnalysisView.Transport.ARTEMIS,
                 new ClusterAnalysisView.ObservationScope(authority.workspaceId(), authority.repositoryId(),
                         authority.branch(), authority.sourceCommit()),

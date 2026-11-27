@@ -13,7 +13,7 @@ import java.io.ByteArrayOutputStream;
 import java.math.BigInteger;
 import java.util.*;
 
-/** Native Word rendering of frozen documents and a typed adapter for the legacy live report. */
+/** Native Word rendering of frozen documents and architecture analysis reports. */
 @Component
 public final class ArchitectureReportDocxRenderer {
     public byte[] render(ArchitectureReportDocument report) {
@@ -38,6 +38,8 @@ public final class ArchitectureReportDocxRenderer {
             navigation.put("architecture_evidence", labels.provenance());
             writer.contents(navigation);
             new ArchitectureWordSectionRenderer().write(document, report);
+            RequirementEvidenceSection.writeWord(writer, report.nodeAssessments(),
+                    report.elements().stream().map(ArchitectureReportDocument.ElementRow::id).toList(), labels);
             writer.completeContents();
             document.write(output);
             return output.toByteArray();
@@ -57,6 +59,10 @@ public final class ArchitectureReportDocxRenderer {
     }
 
     public byte[] render(ArchitectureReport report, String language, Map<String, String> nodeReasons) {
+        return render(report, language, nodeReasons, null);
+    }
+
+    byte[] render(ArchitectureReport report, String language, Map<String, String> nodeReasons, Boolean retainedAnalysis) {
         try (var document = new XWPFDocument();
                 var output = new ByteArrayOutputStream()) {
             page(document);
@@ -69,7 +75,13 @@ public final class ArchitectureReportDocxRenderer {
             if (report.getCopilot() != null) {
                 w.paragraph("Copilot: " + labels.retainedCopilotStatus(report.getCopilot().state()));
                 report.getCopilot().notes().forEach(w::paragraph);
-            } else w.paragraph(labels.liveReportNotice());
+            } else if (Boolean.TRUE.equals(retainedAnalysis)) {
+                w.paragraph(labels.retainedReportNotice());
+            } else if (Boolean.FALSE.equals(retainedAnalysis)) {
+                w.paragraph(labels.liveReportNotice());
+            } else {
+                w.paragraph(labels.reportSourceUnspecified());
+            }
             var view = report.getArchitectureView();
             if (view != null) {
                 w.heading(labels.architectureSummary(), 1, null);
@@ -128,6 +140,8 @@ public final class ArchitectureReportDocxRenderer {
                                 .toList());
                 ArchitectureWordSectionRenderer.writeResponsibilities(w, labels, graph);
             }
+            RequirementEvidenceSection.writeWord(w, report.getNodeAssessments(),
+                    report.getScores() == null ? Set.of() : report.getScores().keySet(), labels);
             if (nodeReasons != null && !nodeReasons.isEmpty()) {
                 w.heading(labels.recordedNodeReasons(), 1, null);
                 nodeReasons.entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(entry -> {

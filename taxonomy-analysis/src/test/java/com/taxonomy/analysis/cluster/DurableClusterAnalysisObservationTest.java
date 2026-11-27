@@ -5,6 +5,9 @@ import com.taxonomy.analysis.dag.*;
 import com.taxonomy.analysis.service.AnalysisProgressRegistry;
 import com.taxonomy.analysis.usecase.AnalyzeRequirementCommand;
 import com.taxonomy.dto.AnalysisReasonLength;
+import com.taxonomy.dto.AnalysisResult;
+import com.taxonomy.dto.LlmCallDetail;
+import com.taxonomy.dto.RootAssessment;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import org.junit.jupiter.api.Test;
@@ -134,6 +137,72 @@ class DurableClusterAnalysisObservationTest {
                     .andExpect(jsonPath("$.prompt").value("PRIVATE-REQUEST")).andExpect(jsonPath("$.response").value("PRIVATE-ANSWER"));
             new org.springframework.jdbc.core.JdbcTemplate(db.bean.getDataSource()).update("update analysis_cluster_call set task_id='foreign-task'");
             assertEquals(HttpStatus.NOT_FOUND, assertThrows(ResponseStatusException.class, () -> observer.callDetail(context.operationId(), call, "alice", SCOPE)).getStatusCode());
+        }
+    }
+
+    @Test void scopedPollAndEventExposeCompletedCallEvidenceBeforeTheShardSubmitsItsResult() throws Exception {
+        try (var db = new Database(); var observer = new DurableClusterAnalysisObservation(
+                db.store, new ClusterAnalysisSignals(), AnalysisEventPublisher.NONE, Runnable::run)) {
+            var context = context("running-assessment-observe");
+            db.admitFrozen(context);
+            var resolver = mock(WorkspaceResolver.class);
+            when(resolver.resolveCurrentUsername()).thenReturn("alice");
+            when(resolver.resolveCurrentContext()).thenReturn(SCOPE);
+            var mvc = MockMvcBuilders.standaloneSetup(new AnalysisProgressController(
+                    new AnalysisProgressRegistry(new StandardEnvironment()), resolver, observer)).build();
+            String url = "/api/analysis-runs/" + context.operationId();
+
+            var cp = db.task(CP);
+            var cpInput = db.store.start(cp);
+            var cpSession = db.store.diagnostics(cp, cpInput.deliveryAttempt());
+            var legacy = new LlmCallDetail();
+            legacy.setScores(Map.of("CP", 58d));
+            cpSession.completed(cpSession.started("Mock", "CP"), legacy, 1);
+            mvc.perform(get(url)).andExpect(status().isOk()).andExpect(jsonPath("$.nodeAssessments").isEmpty())
+                    .andExpect(jsonPath("$.nodeAssessmentsTruncated").value(false));
+
+            var supported = new LlmCallDetail();
+            supported.setScores(Map.of("CP", 0d));
+            supported.setNodeAssessments(Map.of("CP", List.of(
+                    RequirementAssessmentClusterTest.supported("requirement", "Existing capability supports recovery."))));
+            cpSession.completed(cpSession.started("Mock", "CP"), supported, 1);
+            mvc.perform(get(url)).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("RUNNING"))
+                    .andExpect(jsonPath("$.cluster.completedRoots").value(0))
+                    .andExpect(jsonPath("$.nodeAssessments.CP[0].evidenceStatus").value("SUPPORTED"))
+                    .andExpect(jsonPath("$.nodeAssessmentsTruncated").value(false));
+            var cpResult = result("CP", 0);
+            cpResult.setNodeAssessments(supported.getNodeAssessments());
+            db.store.accept(db.complete(cp, cpResult));
+
+            var ip = db.task(IP);
+            var ipInput = db.store.start(ip);
+            var ipSession = db.store.diagnostics(ip, ipInput.deliveryAttempt());
+            var open = RequirementAssessmentClusterTest.open();
+            var clarification = new LlmCallDetail();
+            clarification.setScores(Map.of());
+            clarification.setRootAssessments(Map.of("IP", new RootAssessment(RootAssessment.Status.UNRESOLVED,
+                    null, open.rationale(), open.question())));
+            clarification.setError("ROOT_UNRESOLVED: " + open.question());
+            clarification.setNodeAssessments(Map.of("IP", List.of(open)));
+            ipSession.completed(ipSession.started("Mock", "IP"), clarification, 1);
+            mvc.perform(get(url)).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("RUNNING"))
+                    .andExpect(jsonPath("$.cluster.completedRoots").value(1))
+                    .andExpect(jsonPath("$.rawScores.IP").doesNotExist())
+                    .andExpect(jsonPath("$.nodeAssessments.IP[0].question").value(open.question()));
+            var initialEvent = connect(observer, context.operationId(), 0);
+            assertTrue(initialEvent.getResponse().getContentAsString().contains(open.question()));
+
+            when(resolver.resolveCurrentContext()).thenReturn(new WorkspaceContext("alice", "workspace", "foreign", "repo"));
+            mvc.perform(get(url)).andExpect(status().isNotFound());
+            when(resolver.resolveCurrentContext()).thenReturn(SCOPE);
+            var ipResult = new AnalysisResult(Map.of(), List.of());
+            ipResult.setStatus("PARTIAL");
+            ipResult.setNodeAssessments(clarification.getNodeAssessments());
+            db.store.accept(db.complete(ip, ipResult));
+            mvc.perform(get(url + "/result")).andExpect(status().isOk())
+                    .andExpect(jsonPath("$.nodeAssessments.CP[0].requirementQuote").value("requirement"))
+                    .andExpect(jsonPath("$.nodeAssessments.IP[0].question").value(open.question()))
+                    .andExpect(jsonPath("$.nodeAssessmentsTruncated").doesNotExist());
         }
     }
 

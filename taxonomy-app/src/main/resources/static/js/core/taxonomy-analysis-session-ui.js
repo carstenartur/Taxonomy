@@ -159,6 +159,7 @@
         S.scoreSemanticsVersion = 0;
         S.currentScoreSemanticsWarnings = [];
         S.currentReasons = {};
+        S.currentNodeAssessments = {};
         S.lastAnalysisReasonLength = null;
         S.lastAnalysisLanguage = null;
         S.activeAnalysisLanguage = null;

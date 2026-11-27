@@ -9,6 +9,7 @@ import com.taxonomy.analysis.service.AnalysisEventCallback;
 import com.taxonomy.analysis.service.LlmProvider;
 import com.taxonomy.analysis.service.LlmService;
 import com.taxonomy.dto.LlmCallDetail;
+import com.taxonomy.dto.RequirementNodeAssessment;
 import com.taxonomy.dto.ProductCoverageGap;
 import com.taxonomy.dto.TaxonomyDiscrepancy;
 import org.springframework.context.i18n.LocaleContextHolder;
@@ -94,9 +95,18 @@ public class StreamRequirementAnalysisUseCase {
                                        List<String> warnings, List<TaxonomyDiscrepancy> discrepancies,
                                        List<ProductCoverageGap> productCoverageGaps,
                                        com.taxonomy.dto.AnalysisCoverage coverage) {
+                    onComplete(status, allScores, allReasons, warnings, discrepancies, productCoverageGaps, coverage, Map.of());
+                }
+
+                @Override
+                public void onComplete(String status, Map<String, Double> allScores, Map<String, String> allReasons,
+                                       List<String> warnings, List<TaxonomyDiscrepancy> discrepancies,
+                                       List<ProductCoverageGap> productCoverageGaps,
+                                       com.taxonomy.dto.AnalysisCoverage coverage,
+                                       Map<String, List<RequirementNodeAssessment>> nodeAssessments) {
                     handler.handle(new AnalysisStreamEvent.Complete(
                             status, allScores, warnings, discrepancies, productCoverageGaps, allReasons,
-                            elapsedMillis(startedNanos), coverage));
+                            elapsedMillis(startedNanos), coverage, nodeAssessments));
                 }
 
                 @Override
@@ -123,9 +133,20 @@ public class StreamRequirementAnalysisUseCase {
                                     List<String> warnings, List<TaxonomyDiscrepancy> discrepancies,
                                     List<ProductCoverageGap> productCoverageGaps,
                                     com.taxonomy.dto.AnalysisCoverage coverage) {
+                    onError(status, errorMessage, partialScores, partialReasons,
+                            warnings, discrepancies, productCoverageGaps, coverage, Map.of());
+                }
+
+                @Override
+                public void onError(String status, String errorMessage,
+                                    Map<String, Double> partialScores, Map<String, String> partialReasons,
+                                    List<String> warnings, List<TaxonomyDiscrepancy> discrepancies,
+                                    List<ProductCoverageGap> productCoverageGaps,
+                                    com.taxonomy.dto.AnalysisCoverage coverage,
+                                    Map<String, List<RequirementNodeAssessment>> nodeAssessments) {
                     handler.handle(new AnalysisStreamEvent.Error(
                             status, errorMessage, partialScores, warnings, discrepancies,
-                            productCoverageGaps, partialReasons, elapsedMillis(startedNanos), coverage));
+                            productCoverageGaps, partialReasons, elapsedMillis(startedNanos), coverage, nodeAssessments));
                 }
             };
             try (var catalogue = AdmittedCatalogue.openForScoring(catalogueSnapshots, command.modelBinding(),

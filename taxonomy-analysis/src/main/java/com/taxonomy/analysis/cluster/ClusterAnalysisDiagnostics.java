@@ -1,8 +1,11 @@
 package com.taxonomy.analysis.cluster;
 
 import com.taxonomy.analysis.dag.*;
+import com.taxonomy.analysis.assessment.RequirementAssessmentContract;
+import com.taxonomy.analysis.usecase.AnalyzeRequirementCommand;
 import com.taxonomy.analysis.service.*;
 import com.taxonomy.dto.LlmCallDetail;
+import com.taxonomy.dto.RequirementNodeAssessment;
 import jakarta.persistence.EntityManager;
 import org.springframework.http.HttpStatus;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -84,6 +87,7 @@ public final class ClusterAnalysisDiagnostics {
         private final Deque<Long> active = new ArrayDeque<>();
         private int ordinal;
         private final Set<String> catalogue;
+        private final String originalRequirement;
         private Session(AnalysisTaskMessage task, int delivery) {
             this.task = task; this.delivery = delivery;
             var work = store.diagnosticWork(task);
@@ -93,28 +97,53 @@ public final class ClusterAnalysisDiagnostics {
             var root = store.progressRoot(task);
             catalogue = root == null ? Set.of() : root.nodes().stream().map(com.taxonomy.catalog.snapshot.RootCatalogueSnapshot.Node::code)
                     .collect(java.util.stream.Collectors.toUnmodifiableSet());
+            var run = store.diagnosticAuthority(task, delivery);
+            originalRequirement = root == null ? null : json.readValue(run.commandJson, AnalyzeRequirementCommand.class).businessText();
             var scores = previous == null ? Map.<String, Double>of() : previous.scores();
-            work.progressJson = json.writeValueAsString(new ClusterAnalysisProgress.Worker(execution, delivery,
-                    store.diagnosticAuthority(task, delivery).revision, null, null, scores, null));
+            var assessments = previous == null ? Map.<String, List<RequirementNodeAssessment>>of() : previous.nodeAssessments();
+            work.progressJson = encode(new ClusterAnalysisProgress.Worker(execution, delivery,
+                    run.revision, null, null, scores, null, assessments));
         }
         @Override public String operationId() { return task.envelope().operationId(); }
         @Override public void phase(String phase, String node) {
             progress(current -> current.phase(Objects.requireNonNull(phase), node));
         }
-        @Override public void assessment(LlmCallDetail detail) { assessment(detail, true); }
-        private void assessment(LlmCallDetail detail, boolean requireCurrent) {
+        @Override public void assessment(LlmCallDetail detail) {
             Objects.requireNonNull(detail);
-            if (task.taskType() != AnalysisTaskType.SUBTAXONOMY_ANALYSIS) return;
-            progress(current -> {
-                if (detail.getError() != null && !detail.getError().isBlank() || detail.getScores() == null) return current;
-                var scores = new LinkedHashMap<>(current.scores());
-                detail.getScores().forEach((code, value) -> {
-                    if (catalogue.contains(code) && value != null && Double.isFinite(value) && value >= 0 && value <= 100)
-                        scores.put(code, value);
-                });
-                return current.scores(scores);
-            }, requireCurrent);
+            if (task.taskType() == AnalysisTaskType.SUBTAXONOMY_ANALYSIS)
+                progress(current -> retainAssessment(current, detail));
         }
+
+        private ClusterAnalysisProgress.Worker retainAssessment(ClusterAnalysisProgress.Worker current, LlmCallDetail detail) {
+            boolean clarification = RootAssessmentEvidence.isClarification(detail);
+            if (!clarification && (detail.getError() != null && !detail.getError().isBlank() || detail.getScores() == null))
+                return current;
+            var acceptedCodes = new LinkedHashSet<String>();
+            var scores = new LinkedHashMap<>(current.scores());
+            if (clarification) {
+                String root = task.routingRoot().code();
+                if (catalogue.contains(root) && detail.getRootAssessments().containsKey(root)) {
+                    acceptedCodes.add(root);
+                    scores.remove(root);
+                }
+            } else {
+                detail.getScores().forEach((code, value) -> {
+                    if (catalogue.contains(code) && value != null && Double.isFinite(value) && value >= 0 && value <= 100) {
+                        acceptedCodes.add(code);
+                        scores.put(code, value);
+                    }
+                });
+            }
+            RequirementAssessmentContract.validateRecorded(detail.getNodeAssessments(), originalRequirement, acceptedCodes);
+            var assessments = new LinkedHashMap<>(current.nodeAssessments());
+            for (String code : acceptedCodes) {
+                var claims = detail.getNodeAssessments().get(code);
+                if (claims == null) assessments.remove(code);
+                else assessments.put(code, claims);
+            }
+            return current.evidence(scores, assessments);
+        }
+
         @Override public void relations(com.taxonomy.dto.RelationSearchProgress value) {
             if (task.taskType() != AnalysisTaskType.RELATION_ANALYSIS)
                 throw new IllegalStateException("Relation progress requires a relation task");
@@ -137,24 +166,37 @@ public final class ClusterAnalysisDiagnostics {
                 return current.relations(value);
             });
         }
-        private void progress(java.util.function.UnaryOperator<ClusterAnalysisProgress.Worker> update) { progress(update, true); }
-        private void progress(java.util.function.UnaryOperator<ClusterAnalysisProgress.Worker> update, boolean requireCurrent) {
+        private void progress(java.util.function.UnaryOperator<ClusterAnalysisProgress.Worker> update) {
             tx.executeWithoutResult(status -> {
-                var run = store.diagnosticAuthority(task, requireCurrent ? delivery : null); var work = store.diagnosticWork(task);
-                var previous = ClusterAnalysisProgress.read(work.progressJson, json);
-                if (run.state.terminal() || !"RUNNING".equals(work.state) || work.attempts != delivery
-                        || work.resultJson != null || work.failureReason != null || previous == null
-                        || !execution.equals(previous.execution()) || delivery != previous.delivery()) {
-                    if (!requireCurrent) return; // Late diagnostic responses remain historical evidence only.
-                    throw new IllegalStateException("Worker progress delivery was superseded");
-                }
-                var next = Objects.requireNonNull(update.apply(previous));
-                if (previous.equals(next)) return;
-                String encoded = json.writeValueAsString(next.at(run.revision + 1));
-                if (encoded.length() > ClusterAnalysisProgress.MAX_JSON) throw new IllegalArgumentException("Worker progress exceeds operation bound");
-                work.progressJson = encoded; store.diagnosticChanged(run); em.flush();
+                var run = store.diagnosticAuthority(task, delivery);
+                recordProgress(run, update, true);
+                em.flush();
             });
         }
+
+        private void recordProgress(ClusterAnalysisRun run, java.util.function.UnaryOperator<ClusterAnalysisProgress.Worker> update,
+                                    boolean requireCurrent) {
+            var work = store.diagnosticWork(task);
+            var previous = ClusterAnalysisProgress.read(work.progressJson, json);
+            if (run.state.terminal() || !"RUNNING".equals(work.state) || work.attempts != delivery
+                    || work.resultJson != null || work.failureReason != null || previous == null
+                    || !execution.equals(previous.execution()) || delivery != previous.delivery()) {
+                if (!requireCurrent) return; // Late diagnostic responses remain historical evidence only.
+                throw new IllegalStateException("Worker progress delivery was superseded");
+            }
+            var next = Objects.requireNonNull(update.apply(previous));
+            if (previous.equals(next)) return;
+            work.progressJson = encode(next.at(run.revision + 1));
+            store.diagnosticChanged(run);
+        }
+
+        private String encode(ClusterAnalysisProgress.Worker progress) {
+            String encoded = json.writeValueAsString(progress);
+            if (encoded.length() > ClusterAnalysisProgress.MAX_JSON)
+                throw new IllegalArgumentException("Worker progress exceeds operation bound");
+            return encoded;
+        }
+
         @Override public long started(String provider, String node) {
             int logicalOrdinal = ++ordinal;
             long number = tx.execute(status -> {
@@ -180,9 +222,6 @@ public final class ClusterAnalysisDiagnostics {
         @Override public void completed(long callId, LlmCallDetail detail, long durationMillis) {
             finish(callId, detail, durationMillis, RootAssessmentEvidence.isClarification(detail) ? "CLARIFICATION"
                     : detail.getError() == null || detail.getError().isBlank() ? "COMPLETED" : "FAILED", detail.getError());
-            // Ordinary scoring reports parsed evidence here; checkpoint replay also
-            // invokes assessment(). Frozen identities deduplicate both paths.
-            assessment(detail, false);
         }
         @Override public void failed(long callId, String failure, long durationMillis) { finish(callId, null, durationMillis, "FAILED", failure); }
         @Override public void stopped(AnalysisStoppedException.Reason reason) {
@@ -207,7 +246,12 @@ public final class ClusterAnalysisDiagnostics {
                 }
                 call.state = "STOPPED".equals(call.state) ? "STOPPED" : state; call.prompt = prompt; call.response = response;
                 call.promptLength = promptLength; call.responseLength = responseLength; call.error = failure; call.durationMillis = duration;
-                store.diagnosticChanged(run); call.eventRevision = run.revision; em.flush();
+                store.diagnosticChanged(run); call.eventRevision = run.revision;
+                // The call record and its structured evidence commit together. Replay
+                // enters separately through assessment() and deduplicates by identity.
+                if (detail != null && task.taskType() == AnalysisTaskType.SUBTAXONOMY_ANALYSIS)
+                    recordProgress(run, current -> retainAssessment(current, detail), false);
+                em.flush();
             });
             active.remove(callId);
         }

@@ -169,9 +169,10 @@ function harness(locale = 'en') {
     startPolling() {
       let receive;
       window.TaxonomyAnalysisSession = { state: () => ({ ready: true, workspaceId: 'workspace-a' }) };
-      window.TaxonomyAnalysisProgress = { start(operationId, onSnapshot) {
+      window.TaxonomyAnalysisProgress = { start(operationId, onSnapshot, onResult) {
         receive = onSnapshot;
-        return { acceptsResult: () => true };
+        receive.complete = onResult;
+        return { acceptsResult: () => true, finish(...args) { receive.finished = args; } };
       } };
       controls.includeArchitectureView = { checked: false };
       context.crypto = { randomUUID: () => 'cb2a3d71-e849-4a50-9855-1f9cb8f81402' };
@@ -250,6 +251,38 @@ function summaryHarness() {
     details() { return container.querySelector('.summary-view').children.find(child => child.id === 'summarySelectionDetails'); }
   };
 }
+
+test('recorded contribution assessments survive incremental and terminal events independently of numerical scores', () => {
+  const h = harness();
+  const supported = {requirementQuote:'A requirement',subjectKinds:['PRODUCT'],requirementKinds:['FUNCTIONAL'],
+    contributionType:'SUPPORTS',evidenceStatus:'SUPPORTED',evidenceBasis:'INFERRED',necessity:'CONTEXT',
+    scope:'EXISTING_ENVIRONMENT',condition:'',rationale:'Supports the existing process.',question:''};
+  h.send('scores', {scores:{BP:5},nodeAssessments:{BP:[supported]}});
+  assert.equal(h.state.currentNodeAssessments.BP[0].contributionType, 'SUPPORTS');
+  h.send('scores', {scores:{IP:95}});
+  assert.equal(h.state.currentNodeAssessments.BP[0].evidenceStatus, 'SUPPORTED');
+  const unresolved = {...supported,contributionType:'DIRECT_SUBJECT',evidenceStatus:'UNRESOLVED',question:'Which process?'};
+  h.send('complete', {status:'PARTIAL',totalScores:{BP:5,IP:95},nodeAssessments:{BP:[supported,unresolved]}});
+  assert.equal(h.state.currentNodeAssessments.BP.length, 2);
+  assert.equal(h.state.currentNodeAssessments.BP[1].question, 'Which process?');
+  h.api.runStreamingAnalysis();
+  assert.deepEqual(Object.keys(h.state.currentNodeAssessments), [], 'a new analysis must not reuse source-bound assessments');
+});
+
+test('the progress result bridge replaces preview claims and identifies the full final evidence to its monitor', () => {
+  const h = harness(), progress = h.startPolling();
+  progress({rawScores: {BP: 20}, reasons: {}, nodeAssessments: {BP: [{requirementQuote: 'A requirement',
+    evidenceStatus: 'UNRESOLVED', question: 'Which process?'}]}, nodeAssessmentsTruncated: true});
+  assert.equal(h.state.currentNodeAssessments.BP[0].question, 'Which process?');
+  const final = {scores: {BP: 20}, rawScores: {BP: 20}, status: 'PARTIAL', nodeAssessments: {
+    BP: [{requirementQuote: 'A requirement', evidenceStatus: 'SUPPORTED', contributionType: 'SUPPORTS'},
+      {requirementQuote: 'A requirement', evidenceStatus: 'UNRESOLVED', question: 'Which process?'}],
+    CR: [{requirementQuote: 'A requirement', evidenceStatus: 'SUPPORTED', contributionType: 'PROVIDES'}]
+  }};
+  progress.complete(final);
+  assert.deepEqual(h.state.currentNodeAssessments, final.nodeAssessments);
+  assert.equal(progress.finished[3], final, 'only the accepted canonical result can clear its bounded-progress notice');
+});
 
 test('Summary intentional selection updates Graph Explorer without replaying selection on render', () => {
   const h = summaryHarness();
@@ -855,6 +888,13 @@ test('a partial interactive batch keeps valid results but allows retry of missin
   assert.equal(h.state.evaluatedNodes.has('IP'), false);
   assert.equal(h.classes.has('tax-has-unevaluated'), true);
   assert.equal(h.errors.length, 0);
+});
+
+test('interactive expansion keeps the recorded contribution map without manufacturing evidence for other nodes', async () => {
+  const claim = {requirementQuote:'A requirement',contributionType:'PROVIDES',evidenceStatus:'SUPPORTED'};
+  const h = interactiveHarness({ scores:{'IP-1065':80}, reasons:{},nodeAssessments:{'IP-1065':[claim]} });
+  await h.run();
+  assert.deepEqual(JSON.parse(JSON.stringify(h.state.currentNodeAssessments)), {'IP-1065':[claim]});
 });
 
 test('a complete interactive zero is evaluated evidence, not an error or retry loop', async () => {

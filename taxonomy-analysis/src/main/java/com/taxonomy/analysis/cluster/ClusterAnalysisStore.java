@@ -50,6 +50,10 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
     public record Snapshot(String operationId, ClusterAnalysisState state, long revision,
                            int completedRoots, int totalRoots, int runningTasks, int queuedTasks,
                            long createdAt, long updatedAt, List<TaskView> tasks, AnalysisResult result, ClusterAnalysisProgress.View progress) {
+        public Map<String, List<RequirementNodeAssessment>> nodeAssessments() {
+            return result == null ? progress.nodeAssessments() : result.getNodeAssessments();
+        }
+
         public Snapshot(String operationId, ClusterAnalysisState state, long revision, int completedRoots, int totalRoots,
                         int runningTasks, int queuedTasks, long createdAt, long updatedAt, List<TaskView> tasks, AnalysisResult result) {
             this(operationId, state, revision, completedRoots, totalRoots, runningTasks, queuedTasks, createdAt, updatedAt,
@@ -590,7 +594,7 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
                             ? run.relationPlanJson : null, retained, mapper);
             if (progress.relations() != null) progress = new ClusterAnalysisProgress.View(progress.nodes(),
                     progress.relations().withBudget(committed == null ? relationBudget(command, progress.relations().budget())
-                            : committed.budget()), progress.phase(), progress.node());
+                            : committed.budget()), progress.phase(), progress.node(), progress.nodeAssessments());
             var tasks = work.stream().map(w -> new TaskView(w.taskId, w.taskType, w.root, w.state,
                     w.attempts, w.startedAt, w.finishedAt)).toList();
             return new Snapshot(run.id, run.state, run.revision, run.completedRoots, run.totalRoots,
@@ -741,6 +745,7 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
             if (run.state != ClusterAnalysisState.FINALIZING) return;
             var result = read(run.resultJson, AnalysisResult.class);
             if (!result.getRawScores().equals(enriched.getRawScores())
+                    || !result.getNodeAssessments().equals(enriched.getNodeAssessments())
                     || !Objects.equals(result.getRelationSearchReport(), enriched.getRelationSearchReport()))
                 throw new IllegalArgumentException("Enrichment cannot replace committed assessment evidence");
             result.setArchitectureView(enriched.getArchitectureView());
@@ -840,7 +845,10 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
         var raw = new LinkedHashMap<String, Double>(); var reasons = new LinkedHashMap<String, String>();
         retained.getRawScores().forEach((code, score) -> { if (codes.contains(code)) raw.put(code, score); });
         retained.getReasons().forEach((code, reason) -> { if (codes.contains(code)) reasons.put(code, reason); });
+        var assessments = new LinkedHashMap<String, List<RequirementNodeAssessment>>();
+        retained.getNodeAssessments().forEach((code, value) -> { if (codes.contains(code)) assessments.put(code, value); });
         var result = new AnalysisResult(raw, tree); result.setReasons(reasons); result.setProvider(retained.getProvider());
+        result.setNodeAssessments(assessments);
         result.setAnalysisScope(new AnalysisScope(Set.of(root), AnalysisMode.TAXONOMIES_ONLY));
         var missing = new LinkedHashMap<String, String>();
         if (retained.getAnalysisCoverage() != null) retained.getAnalysisCoverage().nodes().forEach((code, assessment) -> {
@@ -858,6 +866,7 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
     private AnalysisResult aggregate(ClusterAnalysisRun run, RelationHandoff handoff) {
         var scores = new LinkedHashMap<String, Double>(); var reasons = new LinkedHashMap<String, String>();
         var contexts = new LinkedHashMap<String, AnalysisScoreSemantics.NodeContext>();
+        var assessments = new LinkedHashMap<String, List<RequirementNodeAssessment>>();
         List<TaxonomyNodeDto> tree = new ArrayList<>(); List<String> warnings = new ArrayList<>();
         List<TaxonomyDiscrepancy> discrepancies = new ArrayList<>(); List<ProductCoverageGap> gaps = new ArrayList<>();
         var coverage = new ClusterAnalysisCoverage();
@@ -881,6 +890,10 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
                     throw new IllegalStateException("Conflicting catalogue identities across root results");
             }
             reasons.putAll(result.getReasons()); contexts.putAll(result.getScoreSemanticsContext());
+            result.getNodeAssessments().forEach((code, values) -> {
+                if (assessments.putIfAbsent(code, values) != null)
+                    throw new IllegalStateException("Conflicting requirement evidence across root results");
+            });
             if (result.getTree() != null) tree.addAll(result.getTree());
             warnings.addAll(result.getWarnings()); discrepancies.addAll(result.getDiscrepancies());
             gaps.addAll(result.getProductCoverageGaps()); provider = result.getProvider();
@@ -890,7 +903,10 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
         var result = retained == null ? new AnalysisResult(scores, tree) : read(json(retained), AnalysisResult.class);
         // Aggregate new work before computing reports; never reuse an earlier completion claim.
         result.setCopilot(null);
-        if (retained == null) { result.setReasons(reasons); result.setScoreSemanticsContext(contexts); }
+        if (retained == null) {
+            result.setReasons(reasons); result.setScoreSemanticsContext(contexts);
+            result.setNodeAssessments(assessments);
+        }
         var context = read(run.contextJson, AnalysisOperationContext.class);
         if (retained == null) result.setAnalysisCoverage(coverage.combine(context.authority(),
                 root -> read(shard(context, TaxonomyShardRoot.of(root)), RootCatalogueSnapshot.class)));

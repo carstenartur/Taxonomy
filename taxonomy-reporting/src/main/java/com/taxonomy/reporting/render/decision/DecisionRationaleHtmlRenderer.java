@@ -3,6 +3,7 @@ package com.taxonomy.reporting.render.decision;
 import com.taxonomy.reporting.api.document.DecisionTreeOverview;
 import com.taxonomy.reporting.render.document.DecisionTreeFigureRenderer;
 import com.taxonomy.reporting.render.document.RequirementReportText;
+import com.taxonomy.reporting.render.document.RequirementEvidenceSection;
 
 import com.taxonomy.reporting.api.decision.DecisionRationaleReport;
 import com.taxonomy.reporting.api.decision.DecisionReportOptions;
@@ -132,6 +133,7 @@ public class DecisionRationaleHtmlRenderer implements ReportRendererExtension {
             else renderExecutiveSummary(html, report, labels, reasonCodes);
             html.append("</div>");
         }
+        RequirementEvidenceSection.appendHtml(html, report.nodeAssessments(), report.scope().selectedNodeCodes(), labels);
         if (options.includes(DecisionReportOptions.Section.TREE)) renderTree(html, report, labels, reasonCodes, visibleTree);
         if (options.includes(DecisionReportOptions.Section.ARCHITECTURE) && report.architecture() != null) {
             var architecture = report.architecture();

@@ -2174,3 +2174,15 @@
     border: 1px solid var(--bs-border-color);
     border-radius: var(--bs-border-radius);
 }
+/* Requirement evidence remains readable in a narrow detail pane and in dark mode. */
+.requirement-evidence { min-width: 0; overflow-wrap: anywhere; }
+.requirement-evidence summary { cursor: pointer; overflow-wrap: anywhere; }
+.requirement-evidence-status { display: inline-block; border-radius: .3rem; padding: .15rem .45rem; font-size: .8rem; white-space: normal; }
+.requirement-evidence-meta { display: grid; grid-template-columns: minmax(6rem, 10rem) minmax(0, 1fr); column-gap: 1rem; margin-bottom: .5rem; }
+.requirement-evidence-meta dd { margin: 0 0 .35rem; }
+.requirement-evidence blockquote { white-space: pre-wrap; border-left: .2rem solid var(--bs-border-color, #ced4da); padding-left: .75rem; margin: .4rem 0; }
+.requirement-evidence-claim p { white-space: pre-wrap; margin-bottom: .25rem; }
+@media (max-width: 480px) {
+    .requirement-evidence-meta { grid-template-columns: 1fr; }
+    .requirement-evidence-meta dd { margin-bottom: .6rem; }
+}

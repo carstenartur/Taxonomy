@@ -198,7 +198,7 @@ public class RequirementRelationSearchService {
                 + "/max-depth=" + maxDepth + "/standard-batch=" + (batchSize == null ? 10 : batchSize)
                 + "/standard-prompt=" + (maxPromptCharacters == null ? 120_000 : maxPromptCharacters)
                 + "/batch-override=" + batchSize + "/prompt-override=" + maxPromptCharacters
-                + "/" + PromptTemplateService.FUNCTIONAL_SCOPE_POLICY;
+                + "/" + RelationSearchProtocol.promptPolicyFingerprint();
         if (templates != null && !RelationSearchProtocol.Templates.DEFAULT.equals(templates)) {
             fingerprint += "/relation-templates-v1=" + AnalysisCheckpointSession.digest(
                     templates.sources(), templates.navigate(), templates.verify());

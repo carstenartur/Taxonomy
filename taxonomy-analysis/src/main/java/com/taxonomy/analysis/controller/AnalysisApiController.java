@@ -442,7 +442,7 @@ public class AnalysisApiController {
                 } catch (AnalysisStoppedException stopped) {
                     emit.handle(new AnalysisStreamEvent.Error("PARTIAL", stopped.getMessage(),
                             stopped.partialScores(), List.of(stopped.getMessage()),
-                            stopped.partialDiscrepancies(), List.of(), stopped.partialReasons()));
+                            stopped.partialDiscrepancies(), List.of(), stopped.partialReasons(), null, null, stopped.partialNodeAssessments()));
                 } catch (UnknownAnalysisProviderException failure) {
                     emit.handle(new AnalysisStreamEvent.Error("ERROR", "Unknown provider: " + failure.getProvider(),
                             Map.of(), List.of(), List.of(), List.of()));
@@ -587,6 +587,7 @@ public class AnalysisApiController {
             payload.put("partialScores", snapshot.result().getScores());
             payload.put("totalMatched", snapshot.result().getScores().values().stream().filter(score -> score > 0).count());
         }
+        payload.put("nodeAssessments", snapshot.nodeAssessments());
         payload.put("analysisScope", scope); payload.put("revision", snapshot.revision());
         payload.put("operationState", snapshot.state().name()); payload.put("completedRoots", snapshot.completedRoots());
         payload.put("totalRoots", snapshot.totalRoots()); payload.put("runningTasks", snapshot.runningTasks());
@@ -771,12 +772,12 @@ public class AnalysisApiController {
         if (event instanceof AnalysisStreamEvent.Complete complete && complete.analysisDurationMillis() == null) {
             return new AnalysisStreamEvent.Complete(complete.status(), complete.allScores(), complete.warnings(),
                     complete.discrepancies(), complete.productCoverageGaps(), complete.allReasons(),
-                    Math.max(0L, (System.nanoTime() - startedNanos) / 1_000_000L), complete.analysisCoverage());
+                    Math.max(0L, (System.nanoTime() - startedNanos) / 1_000_000L), complete.analysisCoverage(), complete.nodeAssessments());
         }
         if (event instanceof AnalysisStreamEvent.Error error && error.analysisDurationMillis() == null) {
             return new AnalysisStreamEvent.Error(error.status(), error.errorMessage(), error.partialScores(),
                     error.warnings(), error.discrepancies(), error.productCoverageGaps(), error.partialReasons(),
-                    Math.max(0L, (System.nanoTime() - startedNanos) / 1_000_000L), error.analysisCoverage());
+                    Math.max(0L, (System.nanoTime() - startedNanos) / 1_000_000L), error.analysisCoverage(), error.nodeAssessments());
         }
         return event;
     }
@@ -786,13 +787,13 @@ public class AnalysisApiController {
         if (event instanceof AnalysisStreamEvent.Complete complete) {
             return new AnalysisStreamEvent.Error("ERROR", message, complete.allScores(), complete.warnings(),
                     complete.discrepancies(), complete.productCoverageGaps(), complete.allReasons(), complete.analysisDurationMillis(),
-                    complete.analysisCoverage());
+                    complete.analysisCoverage(), complete.nodeAssessments());
         }
         var error = (AnalysisStreamEvent.Error) event;
         String prior = error.errorMessage();
         return new AnalysisStreamEvent.Error("ERROR", prior == null || prior.isBlank() ? message : prior + " " + message,
                 error.partialScores(), error.warnings(), error.discrepancies(), error.productCoverageGaps(),
-                error.partialReasons(), error.analysisDurationMillis(), error.analysisCoverage());
+                error.partialReasons(), error.analysisDurationMillis(), error.analysisCoverage(), error.nodeAssessments());
     }
 
     /** No catalogue lookup, derived-score fabrication, or retry of the failed mapper. */
@@ -800,6 +801,7 @@ public class AnalysisApiController {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("rawScores", error.partialScores());
         payload.put("reasons", error.partialReasons() == null ? Map.of() : error.partialReasons());
+        payload.put("nodeAssessments", error.nodeAssessments());
         payload.put("discrepancies", error.discrepancies());
         payload.put("productCoverageGaps", error.productCoverageGaps());
         payload.put("scoreSemanticsUnavailable", true);
@@ -832,13 +834,13 @@ public class AnalysisApiController {
             var terminal = run.finishAndGet(complete.status());
             return new AnalysisStreamEvent.Complete(terminal.resultStatus(), complete.allScores(),
                     terminal.warnings(complete.warnings()), complete.discrepancies(), complete.productCoverageGaps(),
-                    complete.allReasons(), complete.analysisDurationMillis(), complete.analysisCoverage());
+                    complete.allReasons(), complete.analysisDurationMillis(), complete.analysisCoverage(), complete.nodeAssessments());
         }
         if (event instanceof AnalysisStreamEvent.Error error) {
             var terminal = run.finishAndGet(error.status());
             return new AnalysisStreamEvent.Error(terminal.resultStatus(), terminal.message(error.errorMessage()),
                     error.partialScores(), terminal.warnings(error.warnings()), error.discrepancies(),
-                    error.productCoverageGaps(), error.partialReasons(), error.analysisDurationMillis(), error.analysisCoverage());
+                    error.productCoverageGaps(), error.partialReasons(), error.analysisDurationMillis(), error.analysisCoverage(), error.nodeAssessments());
         }
         return event;
     }

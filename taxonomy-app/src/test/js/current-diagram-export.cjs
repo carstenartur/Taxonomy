@@ -8,7 +8,7 @@ const source = readFileSync(path.resolve(__dirname, '../../main/resources/static
 function fixture(view = {viewTitle: 'Existing result', includedElements: [{nodeCode: 'A'}], includedRelationships: []}) {
     const elements = new Map();
     function element(tag) {
-        const e = {tagName: tag, children: [], attributes: {}, disabled: false, listeners: {},
+        const e = {tagName: tag, children: [], attributes: {}, disabled: false, listeners: {}, style: {},
             addEventListener(name, handler) {this.listeners[name] = handler;},
             classList: {add() {}, remove() {}}, textContent: '',
             appendChild(child) { this.children.push(child); if (child.id) elements.set(child.id, child); return child; },
@@ -44,6 +44,59 @@ function fixture(view = {viewTitle: 'Existing result', includedElements: [{nodeC
         emitWindow(type){for(const handler of windowListeners.get(type)||[])handler({type});},
         api:window.TaxonomyExport,run:()=>window.TaxonomyExport.exportVisio('original')};
 }
+
+test('portable JSON exports source-bound unresolved evidence without inventing a numeric score', async () => {
+    const f = fixture(null);
+    f.state.currentScores = {};
+    f.state.currentNodeAssessments = {BP: [{requirementQuote: 'original', subjectKinds: ['PRODUCT'],
+        requirementKinds: ['FUNCTIONAL'], contributionType: 'SUPPORTS', evidenceStatus: 'UNRESOLVED',
+        evidenceBasis: 'INFERRED', necessity: 'UNDETERMINED', scope: 'UNSPECIFIED', condition: '',
+        rationale: 'The process owner is not named.', question: 'Which process owns recovery?'}]};
+    f.api.exportJson({}, {}, 'Edited input', 'LOCAL');
+    assert.equal(f.requests.length, 1, 'recorded assessments qualify for portable exchange independently of scores');
+    const body = JSON.parse(f.requests[0].options.body);
+    assert.deepEqual(body.scores, {});
+    assert.equal(body.requirement, 'original');
+    assert.deepEqual(body.nodeAssessments, f.state.currentNodeAssessments);
+    f.resolve({ok: true, json: async () => body});
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(f.downloads.length, 1);
+    assert.deepEqual(JSON.parse(await f.downloads[0].text()).nodeAssessments, f.state.currentNodeAssessments);
+});
+
+for (const empty of [{}, {BP: []}]) test('portable JSON still rejects empty score and assessment evidence ' + JSON.stringify(empty), () => {
+    const f = fixture(null);
+    f.state.currentScores = {};
+    f.state.currentNodeAssessments = empty;
+    f.api.exportJson({}, {}, 'original', 'LOCAL');
+    assert.equal(f.requests.length, 0);
+    assert.equal(f.downloads.length, 0);
+    assert.equal(f.alerts.length, 1);
+});
+
+test('evidence-only export visibility keeps CSV and legacy Markdown score-dependent and clears when evidence is removed', () => {
+    const f = fixture(null);
+    const csv = f.element('button'); f.elements.set('exportCsv', csv);
+    const markdown = f.element('button'); f.elements.set('exportReportMd', markdown);
+    f.state.currentScores = {};
+    f.state.currentNodeAssessments = {BP: [{requirementQuote: 'original', evidenceStatus: 'UNRESOLVED',
+        question: 'Which process owns recovery?'}]};
+    const browse = readFileSync(path.resolve(__dirname, '../../main/resources/static/js/core/taxonomy-browse.js'), 'utf8');
+    vm.runInNewContext(browse, {window: f.window, document: f.document,
+        TaxonomyI18n: {t: key => key}, TaxonomyUtils: {escapeHtml: value => value}});
+    f.window.TaxonomyBrowse.updateExportGroupVisibility();
+    assert.equal(f.elements.get('exportGroup').style.display, '');
+    assert.equal(csv.disabled, true);
+    assert.equal(markdown.disabled, true, 'legacy Markdown does not carry requirement-assessment evidence');
+    f.state.currentScores = {BP: 0};
+    f.window.TaxonomyBrowse.updateExportGroupVisibility();
+    assert.equal(csv.disabled, false, 'a recorded zero remains a usable numeric score');
+    assert.equal(markdown.disabled, false);
+    f.state.currentScores = {};
+    f.state.currentNodeAssessments = {BP: []};
+    f.window.TaxonomyBrowse.updateExportGroupVisibility();
+    assert.equal(f.elements.get('exportGroup').style.display, 'none');
+});
 
 for (const recordedProvider of ['Recorded provider', null]) {
     test(`the score JSON button uses ${recordedProvider ? 'the recorded provider' : 'an absent provider'} independently of the next run`, async () => {

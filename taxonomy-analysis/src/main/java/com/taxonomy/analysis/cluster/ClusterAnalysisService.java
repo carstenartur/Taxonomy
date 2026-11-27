@@ -46,6 +46,7 @@ public final class ClusterAnalysisService {
                 if (result == null) {
                     result = new AnalysisResult(stopped.partialScores(), List.of());
                     result.setReasons(stopped.partialReasons()); result.setDiscrepancies(stopped.partialDiscrepancies());
+                    result.setNodeAssessments(stopped.partialNodeAssessments());
                 }
                 var warnings = new ArrayList<>(result.getWarnings());
                 if (!warnings.contains(reason)) warnings.add(reason);

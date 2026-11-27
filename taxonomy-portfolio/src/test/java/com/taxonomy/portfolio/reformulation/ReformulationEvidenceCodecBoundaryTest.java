@@ -10,10 +10,22 @@ import com.taxonomy.identity.StableIdentityHash;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
 
+import java.io.Reader;
+import java.io.StringReader;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.function.Function;
+import com.taxonomy.portfolio.model.PortfolioTenantIdentity;
+import org.springframework.test.util.ReflectionTestUtils;
+import tools.jackson.core.StreamReadConstraints;
+import tools.jackson.core.json.JsonFactory;
+import tools.jackson.databind.json.JsonMapper;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -30,8 +42,7 @@ class ReformulationEvidenceCodecBoundaryTest {
             mock(ProjectRequirementRepository.class);
     private final ProjectRequirementVersionRepository versions =
             mock(ProjectRequirementVersionRepository.class);
-    private final ReformulationProposalRepository proposals =
-            mock(ReformulationProposalRepository.class);
+    private final ReformulationAncestryRepository ancestry = mock(ReformulationAncestryRepository.class);
 
     private final ReformulationEvidenceCodec codec = new ReformulationEvidenceCodec(
             new PortfolioJsonCodec(new ObjectMapper()),
@@ -40,7 +51,7 @@ class ReformulationEvidenceCodecBoundaryTest {
             projects,
             requirements,
             versions,
-            proposals);
+            ancestry);
 
     @Test
     void emptyDocumentsContainNoPortableEvidence() {
@@ -97,12 +108,30 @@ class ReformulationEvidenceCodecBoundaryTest {
     }
 
     @Test
+    void ancestryReadsRecordedLineageWithoutMaterializingUnrelatedFrozenText() {
+        var factory = JsonFactory.builder().streamReadConstraints(
+                StreamReadConstraints.builder().maxStringLength(1024).build()).build();
+        var json = new PortfolioJsonCodec(JsonMapper.builder(factory).build());
+        var limited = new ReformulationEvidenceCodec(json, adoptions, imported, projects, requirements, versions, ancestry);
+        String scopeKey = new PortfolioTenantIdentity(
+                "repo", "WORKSPACE:workspace", "main").scopeKey();
+        var context = Map.of("catalogue", "catalogue text ".repeat(5000), "adoptedLineage",
+                "{\"entries\":[],\"roots\":[\"recorded-root\"],\"decisionContext\":\"historical context\"}");
+        var baseline = new ReformulationBaseline(new ReformulationBaseline.Scope("repo", "workspace", "main", 10L, 20L),
+                40L, "original", StableIdentityHash.sha256("original"), "snapshot", "{}", context, "en", "v1");
+        givenBaseline(scopeKey, json.write(baseline));
+
+        ReformulationEvidenceCodec.LineageSnapshot lineage = ReflectionTestUtils.invokeMethod(
+                limited, "ancestry", "proposal", 20L, scopeKey, 40L);
+        assertThat(lineage.roots()).containsExactly("recorded-root");
+        assertThat(lineage.decisionContext()).isEqualTo("historical context");
+    }
+
+    @Test
     void ancestryRejectsBaselineOutsidePhysicalProposalAndReceipt() {
         var json = new PortfolioJsonCodec(new ObjectMapper());
-        String scopeKey = new com.taxonomy.portfolio.model.PortfolioTenantIdentity(
+        String scopeKey = new PortfolioTenantIdentity(
                 "repo", "WORKSPACE:workspace", "main").scopeKey();
-        var receipt = new ReformulationAdoption("receipt", "proposal", "preview", scopeKey, "command",
-                20L, 30L, "{}", java.time.Instant.now());
         for (var scope : List.of(
                 new ReformulationBaseline.Scope("other-repo", "workspace", "main", 10L, 20L),
                 new ReformulationBaseline.Scope("repo", "other-workspace", "main", 10L, 20L),
@@ -110,13 +139,19 @@ class ReformulationEvidenceCodecBoundaryTest {
                 new ReformulationBaseline.Scope("repo", "workspace", "main", 99L, 20L),
                 new ReformulationBaseline.Scope("repo", "workspace", "main", 10L, 99L))) {
             var baseline = new ReformulationBaseline(scope, 40L, "original", StableIdentityHash.sha256("original"),
-                    "snapshot", "{}", java.util.Map.of("adoptedLineage", "{\"entries\":[],\"roots\":[],\"decisionContext\":\"[]\"}"), "en", "v1");
-            when(proposals.findById("proposal")).thenReturn(java.util.Optional.of(
-                    new ReformulationProposal("proposal", scopeKey, 10L, 20L, 40L, "snapshot",
-                            json.write(baseline), "actor", java.time.Instant.now())));
-            assertThatThrownBy(() -> org.springframework.test.util.ReflectionTestUtils.invokeMethod(
-                    codec, "ancestry", receipt, scopeKey))
+                    "snapshot", "{}", Map.of("adoptedLineage", "{\"entries\":[],\"roots\":[],\"decisionContext\":\"[]\"}"), "en", "v1");
+            givenBaseline(scopeKey, json.write(baseline));
+            assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(
+                    codec, "ancestry", "proposal", 20L, scopeKey, 40L))
                     .isInstanceOf(PortfolioException.class).hasMessageContaining("baseline");
         }
+    }
+
+    private void givenBaseline(String scopeKey, String storedJson) {
+        when(ancestry.read(eq("proposal"), eq(scopeKey), eq(20L), eq(40L), any())).thenAnswer(invocation -> {
+            Function<Reader, Object> decode = invocation.getArgument(4);
+            return Optional.of(new ReformulationAncestryRepository.ProposalBaseline<>(
+                    10L, 20L, 40L, "snapshot", decode.apply(new StringReader(storedJson))));
+        });
     }
 }

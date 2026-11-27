@@ -14,6 +14,7 @@
         scoreSemanticsVersion: 0,
         currentScoreSemanticsWarnings: [],
         currentReasons: {},   // code → reason string
+        currentNodeAssessments: {}, // recorded requirement contributions, separate from numeric scores
         currentDiscrepancies: [], // TaxonomyDiscrepancy list from analysis
         currentProductCoverageGaps: [], // relevant product families without a suitable product
         currentRelationSearchReport: null, // independent of the optional architecture diagram

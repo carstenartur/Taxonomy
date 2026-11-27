@@ -395,6 +395,7 @@ window.TaxonomyUtils = (function () {
                     state.currentScores = state.currentScores || {};
                     state.currentReasons = state.currentReasons || {};
                     state.currentScores[code] = score;
+                    if (state.currentNodeAssessments) delete state.currentNodeAssessments[code];
                     state.currentReasons[code] = currentLanguage() === 'de'
                         ? 'Manuell durch den Benutzer gesetzt'
                         : 'Set manually by the user';

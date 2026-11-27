@@ -98,7 +98,7 @@ public class SavedAnalysisService {
      * <ul>
      *   <li>{@code version} must be within the supported version range</li>
      *   <li>{@code requirement} must not be blank</li>
-     *   <li>{@code scores} must not be null or empty</li>
+     *   <li>At least one score or requirement assessment must be present</li>
      *   <li>Unknown node codes in {@code scores} generate warnings but do not fail</li>
      * </ul>
      *
@@ -122,9 +122,9 @@ public class SavedAnalysisService {
         if (saved.getRequirement() == null || saved.getRequirement().isBlank()) {
             throw new IllegalArgumentException("requirement must not be blank");
         }
-        if (saved.getScores() == null || saved.getScores().isEmpty()) {
-            throw new IllegalArgumentException("scores must not be null or empty");
-        }
+        if ((saved.getScores() == null || saved.getScores().isEmpty()) && saved.getNodeAssessments().isEmpty())
+            throw new IllegalArgumentException("A saved analysis requires scores or requirement assessments");
+        if (saved.getScores() == null) saved.setScores(Map.of());
 
         validateCoverageEvidence(saved);
 
@@ -139,6 +139,7 @@ public class SavedAnalysisService {
 
     /** Declared scope and version-3 evidence use real catalogue identities on both exchange paths. */
     public void validateCoverageEvidence(SavedAnalysis saved) {
+        saved.validateNodeAssessments();
         var scope = saved.getAnalysisScope();
         boolean selectedRoots = scope != null && !scope.taxonomyRoots().isEmpty();
         if (scope != null) {
@@ -148,11 +149,22 @@ public class SavedAnalysisService {
                 if (saved.getScores() != null) codes.addAll(saved.getScores().keySet());
                 if (saved.getRawScores() != null) codes.addAll(saved.getRawScores().keySet());
                 if (saved.getAnalysisCoverage() != null) codes.addAll(saved.getAnalysisCoverage().nodes().keySet());
+                saved.getNodeAssessments().forEach((code, claims) -> {
+                    if (claims.stream().anyMatch(claim -> claim.evidenceStatus() !=
+                            com.taxonomy.dto.RequirementNodeAssessment.EvidenceStatus.OUT_OF_SCOPE)) codes.add(code);
+                });
                 for (String code : codes) {
                     taxonomyService.validateNodeRootMembership(code, scope.taxonomyRoots());
                 }
             }
         }
+        saved.getNodeAssessments().forEach((code, claims) -> {
+            if ((!selectedRoots || claims.stream().allMatch(claim -> claim.evidenceStatus() ==
+                    com.taxonomy.dto.RequirementNodeAssessment.EvidenceStatus.OUT_OF_SCOPE))
+                    && taxonomyService.getNodeByCode(code) == null) {
+                throw new IllegalArgumentException("Unknown catalogue node in requirement assessment: " + code);
+            }
+        });
         saved.validateCoverageEvidence();
         if (saved.getVersion() >= 3 && saved.getAnalysisCoverage() != null && !selectedRoots) {
             for (String code : saved.getAnalysisCoverage().nodes().keySet()) {

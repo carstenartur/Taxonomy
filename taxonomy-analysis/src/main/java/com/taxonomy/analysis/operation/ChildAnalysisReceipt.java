@@ -1,5 +1,6 @@
 package com.taxonomy.analysis.operation;
 
+import com.taxonomy.analysis.assessment.RequirementAssessmentContract;
 import com.taxonomy.analysis.service.AnalysisFollowUpProviders.Binding;
 import com.taxonomy.analysis.usecase.AnalyzeNodeChildrenResult;
 import com.taxonomy.analysis.usecase.JustifyLeafResult;
@@ -38,11 +39,12 @@ public final class ChildAnalysisReceipt {
                 var source = source(stored, operationId);
                 JsonNode result = stored.path("result");
                 allowed(result, Set.of("scores", "reasons", "prompt", "rawResponse", "provider", "durationMs", "error",
-                        "analysisOperationId", "analysisProviderId", "analysisReasonLength", "analysisLanguage"));
+                        "analysisOperationId", "analysisProviderId", "analysisReasonLength", "analysisLanguage", "nodeAssessments"));
                 if (!result.path("scores").isObject() || !result.path("reasons").isObject()
                         || !result.path("durationMs").isIntegralNumber() || !result.path("prompt").isString()
                         || !result.path("rawResponse").isString() || !result.path("prompt").asString().isEmpty()
                         || !result.path("rawResponse").asString().isEmpty()) throw invalid();
+                validateNodeAssessments(result);
                 var node = JSON.treeToValue(result, AnalyzeNodeChildrenResult.class);
                 if (node.scores().values().stream().anyMatch(score -> !com.taxonomy.dto.AnalysisPercentages.valid(score))
                         || node.durationMs() < 0 || node.analysisOperationId() == null || node.analysisProviderId() == null
@@ -118,6 +120,16 @@ public final class ChildAnalysisReceipt {
                 }
             }
             default -> throw invalid();
+        }
+    }
+
+    private static void validateNodeAssessments(JsonNode result) {
+        var assessments = result.path("nodeAssessments");
+        if (assessments.isMissingNode()) return;
+        if (!assessments.isObject() || !result.path("scores").propertyNames().containsAll(assessments.propertyNames()))
+            throw invalid();
+        for (var entry : assessments.properties()) {
+            RequirementAssessmentContract.decodeRecorded(JSON.treeToValue(entry.getValue(), Object.class));
         }
     }
 

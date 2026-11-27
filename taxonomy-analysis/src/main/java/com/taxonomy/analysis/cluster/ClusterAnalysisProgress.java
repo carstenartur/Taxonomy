@@ -13,24 +13,41 @@ import java.util.*;
 final class ClusterAnalysisProgress {
     static final int MAX_JSON = 8 * 1024 * 1024;
     record Worker(String execution, int delivery, long revision, String phase, String node,
-                  Map<String, Double> scores, RelationSearchProgress relations) {
+                  Map<String, Double> scores, RelationSearchProgress relations,
+                  @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_EMPTY)
+                  Map<String, List<RequirementNodeAssessment>> nodeAssessments) {
+        Worker(String execution, int delivery, long revision, String phase, String node,
+               Map<String, Double> scores, RelationSearchProgress relations) {
+            this(execution, delivery, revision, phase, node, scores, relations, Map.of());
+        }
+
         Worker {
             ClusterAnalysisDiagnostics.uuid(execution);
             if (delivery < 1 || revision < 1 || phase != null && !phase.matches("[A-Z_]{1,64}")
                     || node != null && node.length() > 512) throw new IllegalArgumentException("Invalid worker progress identity");
             scores = Map.copyOf(scores);
+            nodeAssessments = RequirementNodeAssessment.immutableMap(nodeAssessments);
             for (var entry : scores.entrySet()) if (entry.getKey().isBlank() || !Double.isFinite(entry.getValue())
                     || entry.getValue() < 0 || entry.getValue() > 100) throw new IllegalArgumentException("Invalid worker coverage");
             validateRelations(relations);
         }
-        Worker at(long sequence) { return new Worker(execution, delivery, sequence, phase, node, scores, relations); }
+        Worker at(long sequence) { return new Worker(execution, delivery, sequence, phase, node, scores, relations, nodeAssessments); }
         Worker phase(String value, String current) { return new Worker(execution, delivery, revision, value,
-                current == null ? node : ClusterAnalysisDiagnostics.clip(current, 512), scores, relations); }
-        Worker scores(Map<String, Double> values) { return new Worker(execution, delivery, revision, phase, node, values, relations); }
-        Worker relations(RelationSearchProgress value) { return new Worker(execution, delivery, revision, phase, node, scores, value); }
+                current == null ? node : ClusterAnalysisDiagnostics.clip(current, 512), scores, relations, nodeAssessments); }
+        Worker evidence(Map<String, Double> values, Map<String, List<RequirementNodeAssessment>> assessments) {
+            return new Worker(execution, delivery, revision, phase, node, values, relations, assessments);
+        }
+        Worker relations(RelationSearchProgress value) {
+            return new Worker(execution, delivery, revision, phase, node, scores, value, nodeAssessments);
+        }
     }
-    record View(AnalysisNodeProgress nodes, RelationSearchProgress relations, String phase, String node) {
-        static final View EMPTY = new View(null, null, null, null);
+    record View(AnalysisNodeProgress nodes, RelationSearchProgress relations, String phase, String node,
+                Map<String, List<RequirementNodeAssessment>> nodeAssessments) {
+        static final View EMPTY = new View(null, null, null, null, Map.of());
+
+        View {
+            nodeAssessments = RequirementNodeAssessment.immutableMap(nodeAssessments);
+        }
     }
     private record ProgressNode(String code, String parentCode, boolean budgetLeaf) { }
     static final class Catalogue {
@@ -102,22 +119,33 @@ final class ClusterAnalysisProgress {
         var current = workers.entrySet().stream().filter(entry -> "RUNNING".equals(entry.getKey().state)
                         && entry.getValue().delivery() == entry.getKey().attempts)
                 .max(Comparator.comparingLong(entry -> entry.getValue().revision())).map(Map.Entry::getValue).orElse(null);
-        return new View(nodes(work, workers, roots, json), relations(state, work, workers, planJson, retained, json),
+        var assessments = new LinkedHashMap<String, List<RequirementNodeAssessment>>();
+        return new View(nodes(work, workers, roots, json, assessments), relations(state, work, workers, planJson, retained, json),
                 state.terminal() || current == null ? null : current.phase(),
-                state.terminal() || current == null ? null : current.node());
+                state.terminal() || current == null ? null : current.node(), assessments);
     }
 
     private static AnalysisNodeProgress nodes(List<ClusterAnalysisWork> work, Map<ClusterAnalysisWork, Worker> workers,
-                                              Map<String, Catalogue> roots, ObjectMapper json) {
+                                              Map<String, Catalogue> roots, ObjectMapper json,
+                                              Map<String, List<RequirementNodeAssessment>> assessments) {
         var parts = new ArrayList<AnalysisNodeProgress.Taxonomy>();
+        boolean completeCatalogue = true;
         int total = 0, assessed = 0, excluded = 0;
         for (var task : work) {
             if (!AnalysisTaskType.SUBTAXONOMY_ANALYSIS.name().equals(task.taskType)) continue;
+            var result = task.resultJson == null ? null : json.readValue(task.resultJson, AnalysisResult.class);
+            var live = workers.get(task);
+            if (result != null && task.settled) assessments.putAll(result.getNodeAssessments());
+            else if (live != null && live.delivery() == task.attempts)
+                assessments.putAll(live.nodeAssessments());
             var root = roots.get(task.root);
-            if (root == null) return null;
+            if (root == null) {
+                completeCatalogue = false;
+                continue;
+            }
             var scores = new HashMap<String, Double>();
-            var live = workers.get(task); if (live != null) scores.putAll(live.scores());
-            if (task.resultJson != null) scores.putAll(json.readValue(task.resultJson, AnalysisResult.class).getRawScores());
+            if (live != null) scores.putAll(live.scores());
+            if (result != null) scores.putAll(result.getRawScores());
             var pruning = new HashMap<String, Boolean>();
             int direct = 0, pruned = 0, positive = 0;
             double allocated = 0;
@@ -132,7 +160,7 @@ final class ClusterAnalysisProgress {
                     direct, pruned, root.size() - direct - pruned, positive, allocated, scores.get(task.root)));
             total += root.size(); assessed += direct; excluded += pruned;
         }
-        return parts.isEmpty() ? null : new AnalysisNodeProgress(total, assessed, excluded, total - assessed - excluded, parts);
+        return !completeCatalogue || parts.isEmpty() ? null : new AnalysisNodeProgress(total, assessed, excluded, total - assessed - excluded, parts);
     }
     private static boolean excluded(String code, Map<String, ProgressNode> nodes, Map<String, Double> scores,
                                     Map<String, Boolean> memo) {

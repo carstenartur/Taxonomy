@@ -191,6 +191,7 @@ public class AnalyzeRequirementUseCase {
                 AnalysisRunControl.planNodes(command.analysisScope().selectedTree(result.getTree()));
                 var retainedEvidence = new com.taxonomy.dto.LlmCallDetail();
                 retainedEvidence.setScores(result.getRawScores()); retainedEvidence.setProvider(result.getProvider());
+                retainedEvidence.setNodeAssessments(result.getNodeAssessments());
                 // Publish accepted source coverage without fabricating a new provider attempt.
                 AnalysisRunControl.assessment(retainedEvidence);
             }

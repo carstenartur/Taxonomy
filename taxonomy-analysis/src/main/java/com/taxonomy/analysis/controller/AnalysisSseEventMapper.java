@@ -72,6 +72,7 @@ public class AnalysisSseEventMapper {
             payload.put("totalScores", semantics.effectiveScores());
             payload.put("rawScores", complete.allScores());
             payload.put("reasons", complete.allReasons() == null ? Map.of() : complete.allReasons());
+            payload.put("nodeAssessments", complete.nodeAssessments());
             payload.put("effectiveScores", semantics.effectiveScores());
             payload.put("productSuitabilityScores", semantics.productSuitabilityScores());
             payload.put("scoreDetails", semantics.scoreDetails());
@@ -93,6 +94,7 @@ public class AnalysisSseEventMapper {
             payload.put("partialScores", semantics.effectiveScores());
             payload.put("rawScores", error.partialScores());
             payload.put("reasons", error.partialReasons() == null ? Map.of() : error.partialReasons());
+            payload.put("nodeAssessments", error.nodeAssessments());
             payload.put("effectiveScores", semantics.effectiveScores());
             payload.put("productSuitabilityScores", semantics.productSuitabilityScores());
             payload.put("scoreDetails", semantics.scoreDetails());
@@ -124,6 +126,7 @@ public class AnalysisSseEventMapper {
         payload.put("description", scores.description());
         payload.put("message", scores.description());
         LlmCallDetail detail = scores.detail();
+        payload.put("nodeAssessments", detail == null ? Map.of() : detail.getNodeAssessments());
         if (detail != null) {
             if (!detail.getRootAssessments().isEmpty()) payload.put("rootAssessments", detail.getRootAssessments());
             payload.put("prompt", detail.getPrompt() != null ? detail.getPrompt() : "");

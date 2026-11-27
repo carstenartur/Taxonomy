@@ -1,6 +1,7 @@
 package com.taxonomy.analysis.cluster;
 
 import com.taxonomy.analysis.dag.*;
+import com.taxonomy.analysis.assessment.RequirementAssessmentContract;
 import com.taxonomy.analysis.dag.json.AnalysisMessageCodec;
 import com.taxonomy.analysis.relations.RelationSearchDistribution;
 import com.taxonomy.analysis.usecase.AnalyzeRequirementCommand;
@@ -87,7 +88,7 @@ public final class ClusterAnalysisBackupRestorer {
                 var progress = ClusterAnalysisProgress.read(work.progressJson(), json);
                 if (progress != null) restored.progressJson = json.writeValueAsString(new ClusterAnalysisProgress.Worker(
                         UUID.randomUUID().toString(), progress.delivery(), progress.revision(), progress.phase(), progress.node(),
-                        progress.scores(), progress.relations()));
+                        progress.scores(), progress.relations(), progress.nodeAssessments()));
                 if (task.taskType() == AnalysisTaskType.RELATION_ANALYSIS) {
                     if (work.inputJson() != null) {
                         restored.inputJson = json.writeValueAsString(remapGrant(read(work.inputJson(), RelationSearchDistribution.Work.class), run.id));
@@ -210,23 +211,30 @@ public final class ClusterAnalysisBackupRestorer {
                 && Objects.equals(json.valueToTree(sourceCommand.retainedAnalysis()), json.valueToTree(command.retainedAnalysis())),
                 "Restore cannot change the captured analysis request");
         var state = ClusterAnalysisState.valueOf(run.sourceState());
-        if (state.terminal()) {
-            require(run.resultJson() != null, "Terminal archived result is missing");
-            var result = read(run.resultJson(), AnalysisResult.class);
-            require(Objects.equals(result.getModelBinding(), sourceCommand.modelBinding()),
+        if (state.terminal()) require(run.resultJson() != null, "Terminal archived result is missing");
+        var aggregate = run.resultJson() == null ? null : read(run.resultJson(), AnalysisResult.class);
+        if (state.terminal())
+            require(Objects.equals(aggregate.getModelBinding(), sourceCommand.modelBinding()),
                     "Archived result differs from its admitted model evidence");
-        }
         var taskIds = new HashSet<String>(); var ordinals = new HashSet<Integer>(); var roots = new HashSet<String>();
         var inputRoots = new HashSet<String>(); var sourceIds = new HashSet<SourceRecordId>(); int completed = 0;
         long characters = bounded(run.commandJson()) + bounded(run.viewJson()) + bounded(run.resultJson()) + bounded(run.relationPlanJson());
         CatalogueDefinition.Spec definition = null;
+        var frozenRoots = new HashMap<String, RootCatalogueSnapshot>();
+        var archivedAssessments = new LinkedHashMap<String, List<RequirementNodeAssessment>>();
+        com.taxonomy.catalog.snapshot.CatalogueSourceIdentity originalCatalogue = null;
         var restored = state.terminal() && archive.work().stream().allMatch(work -> work.attempts() == 0 && work.startedAt() == null);
         for (var input : archive.inputs()) {
             requireReference(input.sourceId(), "analysis.cluster-input", input.run(), run, sourceIds);
             require(TaxonomyShardRoot.of(input.root()).catalogueIdentifier() && inputRoots.add(input.root()), "Invalid frozen root reference");
             require(input.inputJson() != null && !input.inputJson().isBlank(), "Missing frozen root input"); characters += bounded(input.inputJson());
+            var snapshot = ClusterAnalysisProgress.Catalogue.frozen(input.inputJson(), json, source, input.root(), restored);
+            if (snapshot != null) {
+                require(originalCatalogue == null || originalCatalogue.equals(snapshot.source()), "Conflicting archived progress sources");
+                originalCatalogue = snapshot.source();
+                frozenRoots.put(input.root(), snapshot);
+            }
             if (!TaxonomyShardRoot.of(input.root()).defaultCatalogueRoot()) {
-                var snapshot = ClusterAnalysisProgress.Catalogue.frozen(input.inputJson(), json, source, input.root(), restored);
                 require(snapshot != null && snapshot.catalogueDefinition() != null, "Configured root is missing its frozen definition");
                 require(definition == null || definition.equals(snapshot.catalogueDefinition()), "Conflicting archived catalogue definitions");
                 definition = snapshot.catalogueDefinition();
@@ -249,14 +257,29 @@ public final class ClusterAnalysisBackupRestorer {
             if (task.taskType() == AnalysisTaskType.SUBTAXONOMY_ANALYSIS) {
                 require(roots.add(work.root()), "Duplicate archived root work");
                 if (work.settled()) completed++;
-                if (work.resultJson() != null) read(work.resultJson(), AnalysisResult.class);
+                if (work.resultJson() != null) {
+                    var shardResult = read(work.resultJson(), AnalysisResult.class);
+                    verifyAssessments(shardResult.getNodeAssessments(), sourceCommand.businessText(),
+                            frozenCodes(work.root(), frozenRoots), archivedAssessments);
+                }
             }
             var progress = ClusterAnalysisProgress.read(work.progressJson(), json);
             validateProgress(progress, run.revision(), work.attempts(), work.sourceState(), task);
-            validateProgressCatalogue(progress, task, archive);
+            validateProgressCatalogue(progress, task, archive, frozenRoots);
+            if (progress != null && !progress.nodeAssessments().isEmpty()) {
+                verifyAssessments(progress.nodeAssessments(), sourceCommand.businessText(),
+                        frozenCodes(work.root(), frozenRoots), archivedAssessments);
+            }
             characters += bounded(work.messageJson()) + bounded(work.inputJson()) + bounded(work.resultJson()) + bounded(work.progressJson());
         }
         require(roots.size() == run.totalRoots() && completed == run.completedRoots() && inputRoots.containsAll(roots), "Incomplete archived root closure");
+        var aggregateCodes = new HashSet<String>();
+        for (String root : roots) aggregateCodes.addAll(frozenCodes(root, frozenRoots));
+        if (aggregate != null) verifyAssessments(aggregate.getNodeAssessments(), sourceCommand.businessText(),
+                aggregateCodes, archivedAssessments);
+        if (sourceCommand.retainedAnalysis() != null)
+            verifyAssessments(sourceCommand.retainedAnalysis().getNodeAssessments(), sourceCommand.businessText(),
+                    aggregateCodes, archivedAssessments);
         for (var work : archive.work()) if (decode(work.messageJson()) instanceof RelationAnalysisTask relation)
             require(taskIds.containsAll(relation.prerequisiteTasks().stream().map(AnalysisTaskId::value).toList()), "Missing archived relation prerequisite");
         if (run.relationPlanJson() != null) {
@@ -303,26 +326,31 @@ public final class ClusterAnalysisBackupRestorer {
         if (progress == null) return;
         require(progress.revision() <= revision && (progress.delivery() <= attempts
                 || attempts == 0 && !Set.of("WAITING_PREDECESSOR", "QUEUED", "RUNNING").contains(state)), "Invalid archived worker progress delivery");
-        require(task.taskType() == AnalysisTaskType.SUBTAXONOMY_ANALYSIS || progress.scores().isEmpty(), "Foreign worker coverage");
+        require(task.taskType() == AnalysisTaskType.SUBTAXONOMY_ANALYSIS
+                || progress.scores().isEmpty() && progress.nodeAssessments().isEmpty(), "Foreign worker coverage");
         require(task.taskType() == AnalysisTaskType.RELATION_ANALYSIS || progress.relations() == null, "Foreign relation progress");
     }
 
-    private void validateProgressCatalogue(ClusterAnalysisProgress.Worker progress, AnalysisTaskMessage task, Archive archive) {
-        if (progress == null || progress.scores().isEmpty() && progress.relations() == null) return;
-        var roots = new HashMap<String, RootCatalogueSnapshot>();
-        boolean restored = ClusterAnalysisState.valueOf(archive.run().sourceState()).terminal()
-                && archive.work().stream().allMatch(work -> work.attempts() == 0 && work.startedAt() == null);
-        com.taxonomy.catalog.snapshot.CatalogueSourceIdentity original = null;
-        for (var input : archive.inputs()) {
-            var root = ClusterAnalysisProgress.Catalogue.frozen(input.inputJson(), json, archive.run().context(), input.root(), restored);
-            if (root == null) continue;
-            require(original == null || original.equals(root.source()), "Conflicting archived progress sources");
-            original = root.source(); roots.put(input.root(), root);
-        }
+    private static Set<String> frozenCodes(String root, Map<String, RootCatalogueSnapshot> roots) {
+        var snapshot = roots.get(root);
+        if (snapshot == null) return Set.of(root);
+        return snapshot.nodes().stream().map(RootCatalogueSnapshot.Node::code).collect(java.util.stream.Collectors.toSet());
+    }
+
+    private static void verifyAssessments(Map<String, List<RequirementNodeAssessment>> assessments, String original,
+                                          Set<String> catalogue, Map<String, List<RequirementNodeAssessment>> recorded) {
+        RequirementAssessmentContract.validateRecorded(assessments, original, catalogue);
+        RequirementAssessmentContract.mergeRecorded(recorded, assessments);
+    }
+
+    private void validateProgressCatalogue(ClusterAnalysisProgress.Worker progress, AnalysisTaskMessage task, Archive archive,
+                                           Map<String, RootCatalogueSnapshot> roots) {
+        if (progress == null || progress.scores().isEmpty() && progress.nodeAssessments().isEmpty()
+                && progress.relations() == null) return;
         if (task.taskType() == AnalysisTaskType.SUBTAXONOMY_ANALYSIS) {
             var root = roots.get(task.routingRoot().code());
-            require(root != null && root.nodes().stream().map(RootCatalogueSnapshot.Node::code).collect(java.util.stream.Collectors.toSet())
-                    .containsAll(progress.scores().keySet()), "Worker coverage differs from frozen catalogue");
+            require(root != null && frozenCodes(task.routingRoot().code(), roots).containsAll(progress.scores().keySet()),
+                    "Worker coverage differs from frozen catalogue");
             return;
         }
         var p = progress.relations(); if (p == null) return;
@@ -427,6 +455,7 @@ public final class ClusterAnalysisBackupRestorer {
         var command = read(archive.run().commandJson(), AnalyzeRequirementCommand.class);
         var retained = command.retainedAnalysis();
         var scores = new LinkedHashMap<String, Double>(); var reasons = new LinkedHashMap<String, String>();
+        var assessments = new LinkedHashMap<String, List<RequirementNodeAssessment>>();
         var contexts = new LinkedHashMap<String, AnalysisScoreSemantics.NodeContext>(); var tree = new ArrayList<TaxonomyNodeDto>();
         var warnings = new ArrayList<String>(retained == null ? List.of() : retained.getWarnings());
         var discrepancies = new ArrayList<TaxonomyDiscrepancy>(); var gaps = new ArrayList<ProductCoverageGap>();
@@ -438,6 +467,8 @@ public final class ClusterAnalysisBackupRestorer {
             if (result == null) { warnings.add(work.root() + ": " + Objects.toString(work.failureReason(), INTERRUPTED) + "; no negative finding"); continue; }
             for (var score : result.getRawScores().entrySet()) require(scores.putIfAbsent(score.getKey(), score.getValue()) == null, "Conflicting archived root evidence");
             reasons.putAll(result.getReasons()); contexts.putAll(result.getScoreSemanticsContext());
+            result.getNodeAssessments().forEach((code, values) ->
+                    require(assessments.putIfAbsent(code, values) == null, "Conflicting archived requirement evidence"));
             if (result.getTree() != null) tree.addAll(result.getTree());
             warnings.addAll(result.getWarnings()); discrepancies.addAll(result.getDiscrepancies()); gaps.addAll(result.getProductCoverageGaps()); provider = result.getProvider();
             if (!"SUCCESS".equals(result.getStatus())) warnings.add(work.root() + ": " + Objects.toString(result.getErrorMessage(), "partial assessment"));
@@ -447,6 +478,7 @@ public final class ClusterAnalysisBackupRestorer {
         var result = retained == null ? new AnalysisResult(scores, tree) : read(json.writeValueAsString(retained), AnalysisResult.class);
         if (retained == null) {
             result.setReasons(reasons); result.setScoreSemanticsContext(contexts);
+            result.setNodeAssessments(assessments);
             // Inputs retain their archived identity; target authority is remapped only after aggregation.
             result.setAnalysisCoverage(coverage.combine(archive.run().context().authority(), root -> read(
                     archive.inputs().stream().filter(input -> input.root().equals(root)).findFirst().orElseThrow().inputJson(),

@@ -173,6 +173,8 @@ public final class DecisionReportLabels {
     public String analysisDuration() { return german() ? "Analysedauer" : "Analysis duration"; }
     public String architectureAnalysisTitle() { return german ? "Architekturbericht" : "Architecture Analysis Report"; }
     public String liveReportNotice() { return german ? "Ad-hoc-Bericht aus der bereitgestellten aktuellen Analyse; es wird kein unveränderlicher Snapshot ausgewiesen." : "Ad-hoc report from the supplied live analysis; no frozen snapshot identity is asserted."; }
+    public String retainedReportNotice() { return german ? "Bericht aus gespeicherten Analysedaten." : "Report from retained analysis evidence."; }
+    public String reportSourceUnspecified() { return german ? "Bericht aus der bereitgestellten Anforderung und den Analysedaten." : "Report from the supplied requirement and analysis evidence."; }
     public String architectureSummary() { return german ? "Architekturübersicht" : "Architecture Summary"; }
     public String metric() { return german ? "Kennzahl" : "Metric"; }
     public String value() { return german ? "Wert" : "Value"; }

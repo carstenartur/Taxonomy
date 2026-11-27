@@ -89,6 +89,67 @@ class TaxonomyExtensionHttpTest {
         }
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {true, false})
+    void unresolvedRootSurvivesAnotherRootExtensionThenExplicitRetryReplacesItsEvidence(boolean structuredRetry) throws Exception {
+        try (var fixture = new Fixture()) {
+            String question = "Which process is requested?";
+            String unresolved = """
+                    {"BP":{"status":"UNRESOLVED","score":null,"reason":"Process is unspecified.","question":"%s",
+                    "assessments":[{"requirementQuote":"","subjectKinds":["PROCESS"],"requirementKinds":["FUNCTIONAL"],
+                    "contributionType":"DIRECT_SUBJECT","evidenceStatus":"UNRESOLVED","evidenceBasis":"UNSPECIFIED",
+                    "necessity":"UNDETERMINED","scope":"UNSPECIFIED","condition":"","rationale":"Process is unspecified.","question":"%s"}]}}
+                    """.formatted(question, question);
+            fixture.answers.put("BP", unresolved);
+            var source = fixture.analyze(fixture.start(Set.of("BP")));
+            assertThat(source.getRawScores()).doesNotContainKey("BP");
+            assertThat(source.getRecovery().state()).isEqualTo("COMPLETED_WITH_GAPS");
+
+            var otherRoot = fixture.analyze(fixture.extend(source, Set.of("CP")));
+            assertThat(otherRoot.getRawScores()).containsOnlyKeys("CP");
+            assertThat(otherRoot.getReasons()).containsEntry("BP", "Process is unspecified.");
+            assertThat(otherRoot.getNodeAssessments()).isEqualTo(source.getNodeAssessments());
+            assertThat(fixture.calls).containsExactlyInAnyOrderEntriesOf(Map.of("BP", 1, "CP", 1));
+            assertThat(otherRoot.getAnalysisCoverage().nodes().get("BP").reason()).contains(question);
+
+            String supported = """
+                    {"BP":{"score":71,"reason":"A replacement assessment.","assessments":[
+                    {"requirementQuote":"Read unchanged evidence","subjectKinds":["PROCESS"],"requirementKinds":["FUNCTIONAL"],
+                     "contributionType":"SUPPORTS","evidenceStatus":"SUPPORTED","evidenceBasis":"INFERRED",
+                     "necessity":"REQUIRED","scope":"DELIVERY","condition":"","rationale":"A retained process supports reading.","question":""}]}}
+                    """;
+            fixture.answers.put("BP", structuredRetry ? supported : fixture.answer("BP", 71));
+            var retried = fixture.analyze(fixture.extend(otherRoot, Set.of("BP")));
+            assertThat(retried.getStatus()).isEqualTo("SUCCESS");
+            assertThat(retried.getRawScores()).containsEntry("BP", 71d).containsEntry("CP", 42.5);
+            assertThat(retried.getReasons()).doesNotContainValue("Process is unspecified.");
+            assertThat(retried.getWarnings()).noneMatch(warning -> warning.contains(question));
+            assertThat(retried.getRecovery().openQuestions()).isEmpty();
+            if (structuredRetry) {
+                assertThat(retried.getNodeAssessments().get("BP")).singleElement()
+                        .satisfies(claim -> assertThat(claim.evidenceStatus()).isEqualTo(RequirementNodeAssessment.EvidenceStatus.SUPPORTED));
+            } else {
+                assertThat(retried.getNodeAssessments()).doesNotContainKey("BP");
+            }
+            assertThat(fixture.calls).containsExactlyInAnyOrderEntriesOf(Map.of("BP", 2, "CP", 1));
+            var saved = fixture.store.read(otherRoot.getRecovery().id(), fixture.scope);
+            assertThat(saved.result().getNodeAssessments()).isEqualTo(source.getNodeAssessments());
+            assertThat(saved.recovery().version()).isEqualTo(otherRoot.getRecovery().version());
+
+            var decision = fixture.start(Set.of("BP"));
+            decision.put("continuationId", source.getRecovery().id());
+            decision.put("continuationAction", "RETRY");
+            decision.put("continuationVersion", source.getRecovery().version());
+            decision.put("continuationQuestion", source.getRecovery().openQuestions().getFirst().key());
+            var retriedInPlace = fixture.analyze(decision);
+            assertThat(retriedInPlace.getNodeAssessments()).isEqualTo(retried.getNodeAssessments());
+            assertThat(retriedInPlace.getRecovery().openQuestions()).isEmpty();
+            assertThat(fixture.store.read(otherRoot.getRecovery().id(), fixture.scope).result().getNodeAssessments())
+                    .isEqualTo(source.getNodeAssessments());
+            assertThat(fixture.calls).containsExactlyInAnyOrderEntriesOf(Map.of("BP", 3, "CP", 1));
+        }
+    }
+
     @Test void completedZeroBranchAndRepeatedTargetNeedNoNewProviderCall() throws Exception {
         try (var fixture = new Fixture(true)) {
             fixture.answers.put("BP", fixture.answer("BP", 0));

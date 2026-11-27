@@ -7,13 +7,20 @@ import com.taxonomy.analysis.recovery.AnalysisContinuationStore;
 import com.taxonomy.architecture.service.*;
 import com.taxonomy.dto.*;
 import com.taxonomy.export.DiagramProjectionService;
+import com.taxonomy.export.DiagramViewMetadata;
 import com.taxonomy.export.MermaidExportService;
 import com.taxonomy.relations.service.RelationProposalService;
+import com.taxonomy.reporting.render.document.ArchitectureReportDocxRenderer;
+import com.taxonomy.reporting.render.document.ArchitectureReportTextRenderer;
+import com.taxonomy.reporting.render.document.DocxReportRendererExtension;
+import com.taxonomy.reporting.render.document.MarkdownReportRendererExtension;
 import com.taxonomy.reporting.render.document.ReportRendererRegistry;
 import com.taxonomy.versioning.service.RepositoryStateService;
 import com.taxonomy.workspace.service.WorkspaceActorAccess;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
+import org.apache.poi.xwpf.extractor.XWPFWordExtractor;
+import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.springframework.http.HttpStatus;
@@ -23,6 +30,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.server.ResponseStatusException;
 import tools.jackson.databind.ObjectMapper;
 
+import java.io.ByteArrayInputStream;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -46,6 +54,198 @@ class SavedAnalysisReportControllerTest {
     private final ArchitectureRecommendationService recommendations = mock(ArchitectureRecommendationService.class);
     private final RelationProposalService proposals = mock(RelationProposalService.class);
     private final ArchitectureReportMetadataPort metadata = mock(ArchitectureReportMetadataPort.class);
+
+
+    @Test
+    void reportRejectsAContinuationRevisionThatAdvancedWithIdenticalScores() throws Exception {
+        var request = new AnalysisRequest("Frozen requirement");
+        when(continuations.read("versioned", "alice", workspace)).thenReturn(
+                revision(7, "Which retention interval?", request),
+                revision(8, "Which recovery target?", request));
+        var payload = Map.of("analysisReference", Map.of("continuationId", "versioned",
+                "workspaceId", "ws-a", "recoveryVersion", 7));
+        try (var context = context()) {
+            var mvc = mvc(context);
+            var body = mvc.perform(post("/api/report/json").contentType(MediaType.APPLICATION_JSON)
+                    .content(mapper.writeValueAsBytes(payload))).andExpect(status().isOk())
+                    .andReturn().getResponse().getContentAsString();
+            assertThat(mapper.readTree(body).path("nodeAssessments").path("BP").get(0).path("question").asString())
+                    .isEqualTo("Which retention interval?");
+            mvc.perform(post("/api/report/json").contentType(MediaType.APPLICATION_JSON)
+                    .content(mapper.writeValueAsBytes(payload))).andExpect(status().isConflict());
+        }
+        verifyNoInteractions(architecture, gaps, patterns, recommendations, proposals, metadata, cluster);
+    }
+
+    @Test
+    void reportAcceptsScorelessAssessmentsFromLiveAndOwnedSources() throws Exception {
+        var assessment = unresolved("Which retention interval?");
+        var live = Map.of("businessText", "Frozen requirement", "scores", Map.of(),
+                "nodeAssessments", Map.of("BP", List.of(assessment)));
+        var result = new AnalysisResult(Map.of(), List.of());
+        result.setNodeAssessments(Map.of("BP", List.of(assessment)));
+        var request = new AnalysisRequest("Frozen requirement");
+        var recovery = new AnalysisRecoveryView("scoreless", 5, "PARTIAL", 0, 1, "BP", List.of());
+        when(continuations.read("scoreless", "alice", workspace)).thenReturn(
+                new AnalysisContinuationStore.Snapshot(recovery, result, request));
+        var owned = Map.of("analysisReference", Map.of("continuationId", "scoreless",
+                "workspaceId", "ws-a", "recoveryVersion", 5));
+        // The ad-hoc JSON path also attaches current repository provenance.
+        var source = new ViewContext("commit", "branch-a", null, false, false, false);
+        try (var context = context()) {
+            var repositories = context.getBean(RepositoryStateService.class);
+            when(repositories.resolveWorkspaceBranch("alice")).thenReturn("branch-a");
+            when(repositories.getViewContext("alice", "branch-a", workspace)).thenReturn(source);
+            var mvc = mvc(context);
+            for (var payload : List.of(live, owned)) {
+                var body = mvc.perform(post("/api/report/json").contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsBytes(payload))).andExpect(status().isOk())
+                        .andReturn().getResponse().getContentAsString();
+                var report = mapper.readTree(body);
+                assertThat(report.path("scores").isEmpty()).isTrue();
+                assertThat(report.path("nodeAssessments").path("BP").get(0).path("question").asString())
+                        .isEqualTo("Which retention interval?");
+            }
+            mvc.perform(post("/api/report/json").contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"businessText\":\"Frozen requirement\",\"scores\":{}}"))
+                    .andExpect(status().isBadRequest());
+        }
+        verifyNoInteractions(architecture, gaps, patterns, recommendations, proposals, metadata, cluster);
+    }
+
+    @Test
+    void liveEvidenceRequiresTheOriginalRequirementEvenWithAnOpenQuestion() throws Exception {
+        var request = mapper.createObjectNode();
+        request.set("nodeAssessments", mapper.valueToTree(Map.of("BP", List.of(unresolved("Which retention interval?")))));
+        try (var context = context()) {
+            var http = mvc(context);
+            http.perform(post("/api/report/json").contentType(MediaType.APPLICATION_JSON)
+                    .content(mapper.writeValueAsBytes(request))).andExpect(status().isBadRequest());
+            request.put("businessText", "   ");
+            http.perform(post("/api/report/json").contentType(MediaType.APPLICATION_JSON)
+                    .content(mapper.writeValueAsBytes(request))).andExpect(status().isBadRequest());
+        }
+        verifyNoInteractions(cluster, continuations, architecture, gaps, recommendations, proposals, metadata);
+    }
+
+    @Test
+    void liveEvidencePreservesTheExactNodeCodeUpTo256Characters() throws Exception {
+        String longestCode = "A".repeat(256);
+        var claims = List.of(unresolved("Which retention interval?"));
+        var request = mapper.createObjectNode();
+        request.put("businessText", "Frozen requirement");
+        request.putObject("scores");
+        try (var context = context()) {
+            var http = mvc(context);
+            for (String invalidCode : List.of(longestCode + "A", " BP", "BP\u2003")) {
+                request.set("nodeAssessments", mapper.valueToTree(Map.of(invalidCode, claims)));
+                http.perform(post("/api/report/json").contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsBytes(request))).andExpect(status().isBadRequest());
+            }
+            request.set("nodeAssessments", mapper.valueToTree(Map.of(longestCode, claims)));
+            var response = http.perform(post("/api/report/json").contentType(MediaType.APPLICATION_JSON)
+                    .content(mapper.writeValueAsBytes(request))).andExpect(status().isOk()).andReturn().getResponse();
+            var recorded = mapper.readTree(response.getContentAsByteArray()).path("nodeAssessments");
+            assertThat(recorded.has(longestCode)).isTrue();
+            assertThat(recorded.path(longestCode).get(0).path("requirementQuote").asString()).isEqualTo("Frozen requirement");
+        }
+    }
+
+    @Test
+    void markdownRequiresScoresOrRetainedCopilotContent() throws Exception {
+        var retainedAssessmentOnly = scorelessReference("scoreless-markdown");
+        var copilot = savedResult();
+        copilot.setScores(Map.of());
+        when(continuations.read("legacy-copilot", "alice", workspace)).thenReturn(
+                new AnalysisContinuationStore.Snapshot(null, copilot, new AnalysisRequest("Frozen requirement")));
+        var retainedCopilot = Map.of("analysisReference",
+                Map.of("continuationId", "legacy-copilot", "workspaceId", "ws-a"));
+        var scores = Map.of("BP", 0d);
+        when(architecture.build(scores, "Frozen requirement", 20)).thenReturn(new RequirementArchitectureView());
+        when(metadata.resolve()).thenReturn(new DiagramViewMetadata("default", "View", "", false, List.of()));
+        when(recommendations.rankMatches(scores, "Frozen requirement", 20)).thenReturn(new ArchitectureRecommendation());
+        try (var context = context()) {
+            when(context.getBean(ReportRendererRegistry.class).getRequired("markdown"))
+                    .thenReturn(new MarkdownReportRendererExtension(new ArchitectureReportTextRenderer()));
+            var http = mvc(context);
+            for (var payload : List.of(scorelessLive(), retainedAssessmentOnly)) {
+                http.perform(post("/api/report/markdown").contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsBytes(payload))).andExpect(status().isBadRequest());
+            }
+            http.perform(post("/api/report/markdown").contentType(MediaType.APPLICATION_JSON)
+                    .content(mapper.writeValueAsBytes(Map.of("businessText", "Frozen requirement", "scores", scores))))
+                    .andExpect(status().isOk());
+            var retained = http.perform(post("/api/report/markdown").contentType(MediaType.APPLICATION_JSON)
+                    .content(mapper.writeValueAsBytes(retainedCopilot))).andExpect(status().isOk())
+                    .andReturn().getResponse().getContentAsString();
+            assertThat(retained).contains("Frozen gap evidence");
+        }
+    }
+
+    @Test
+    void wordKeepsScorelessClaimsAndIdentifiesTheResolvedSource() throws Exception {
+        var retained = scorelessReference("scoreless-word");
+        var renderer = new ArchitectureReportDocxRenderer();
+        try (var context = context()) {
+            when(context.getBean(ReportRendererRegistry.class).getRequired("docx"))
+                    .thenReturn(new DocxReportRendererExtension(renderer));
+            var http = mvc(context);
+            var storedWord = http.perform(post("/api/report/docx").contentType(MediaType.APPLICATION_JSON)
+                    .content(mapper.writeValueAsBytes(retained))).andExpect(status().isOk())
+                    .andReturn().getResponse().getContentAsByteArray();
+            assertThat(wordText(storedWord)).contains("Which retention interval?", "Report from retained analysis evidence.")
+                    .doesNotContain("Ad-hoc report");
+
+            var liveWord = http.perform(post("/api/report/docx").contentType(MediaType.APPLICATION_JSON)
+                    .content(mapper.writeValueAsBytes(scorelessLive()))).andExpect(status().isOk())
+                    .andReturn().getResponse().getContentAsByteArray();
+            assertThat(wordText(liveWord)).contains("Which retention interval?", "Ad-hoc report from the supplied live analysis")
+                    .doesNotContain("retained analysis evidence");
+        }
+
+        var unspecified = new ArchitectureReport();
+        unspecified.setBusinessText("Frozen requirement");
+        assertThat(wordText(renderer.render(unspecified, "en")))
+                .contains("Report from the supplied requirement and analysis evidence.")
+                .doesNotContain("Ad-hoc report", "retained analysis evidence");
+    }
+
+    private static String wordText(byte[] word) throws Exception {
+        try (var document = new XWPFDocument(new ByteArrayInputStream(word));
+                var extractor = new XWPFWordExtractor(document)) {
+            return extractor.getText();
+        }
+    }
+
+    private static Map<String, Object> scorelessLive() {
+        return Map.of("businessText", "Frozen requirement", "scores", Map.of(), "language", "en",
+                "nodeAssessments", Map.of("BP", List.of(unresolved("Which retention interval?"))));
+    }
+
+    private Map<String, Object> scorelessReference(String id) {
+        var result = new AnalysisResult(Map.of(), List.of());
+        result.setNodeAssessments(Map.of("BP", List.of(unresolved("Which retention interval?"))));
+        var recovery = new AnalysisRecoveryView(id, 5, "PARTIAL", 0, 1, "BP", List.of());
+        when(continuations.read(id, "alice", workspace)).thenReturn(
+                new AnalysisContinuationStore.Snapshot(recovery, result, new AnalysisRequest("Frozen requirement")));
+        return Map.of("language", "en", "analysisReference",
+                Map.of("continuationId", id, "workspaceId", "ws-a", "recoveryVersion", 5));
+    }
+
+    private AnalysisContinuationStore.Snapshot revision(long version, String question, AnalysisRequest request) {
+        var result = savedResult();
+        result.setNodeAssessments(Map.of("BP", List.of(unresolved(question))));
+        var recovery = new AnalysisRecoveryView("versioned", version, "PARTIAL", 1, 1, "BP", List.of());
+        return new AnalysisContinuationStore.Snapshot(recovery, result, request);
+    }
+
+    private static RequirementNodeAssessment unresolved(String question) {
+        return new RequirementNodeAssessment("Frozen requirement", List.of(RequirementNodeAssessment.SubjectKind.PROCESS),
+                List.of(RequirementNodeAssessment.RequirementKind.FUNCTIONAL), RequirementNodeAssessment.ContributionType.DIRECT_SUBJECT,
+                RequirementNodeAssessment.EvidenceStatus.UNRESOLVED, RequirementNodeAssessment.EvidenceBasis.UNSPECIFIED,
+                RequirementNodeAssessment.Necessity.UNDETERMINED, RequirementNodeAssessment.Scope.UNSPECIFIED,
+                "", "Need more details.", question);
+    }
 
     @Test
     void durableReferenceExportsRetainedReportsAndIgnoresForgedClientEvidence() throws Exception {

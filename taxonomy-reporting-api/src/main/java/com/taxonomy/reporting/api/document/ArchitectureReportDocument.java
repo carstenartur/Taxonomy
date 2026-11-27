@@ -1,6 +1,7 @@
 package com.taxonomy.reporting.api.document;
 
 import com.taxonomy.diagram.*;
+import com.taxonomy.dto.RequirementNodeAssessment;
 
 import java.io.*;
 import java.nio.charset.StandardCharsets;
@@ -27,7 +28,8 @@ public record ArchitectureReportDocument(
         DecisionTreeOverview decisionTree,
         SnapshotEvidence evidence,
         Map<String, String> nodeReasons,
-        Map<String, Map<String, String>> relationReasons) {
+        Map<String, Map<String, String>> relationReasons,
+        Map<String, List<RequirementNodeAssessment>> nodeAssessments) {
 
     /** Older callers retain their captured graph without inventing missing explanation evidence. */
     public ArchitectureReportDocument(String title, String languageTag, String requirement, String scope,
@@ -47,14 +49,29 @@ public record ArchitectureReportDocument(
                 elements, relations, legend, decisionTree, evidence, nodeReasons, Map.of());
     }
 
+    public ArchitectureReportDocument(String title, String languageTag, String requirement, String scope,
+            String recommendation, List<String> unresolvedGaps, DiagramModel diagram, DiagramScene scene,
+            List<ElementRow> elements, List<RelationRow> relations, List<LegendEntry> legend,
+            DecisionTreeOverview decisionTree, SnapshotEvidence evidence, Map<String, String> nodeReasons,
+            Map<String, Map<String, String>> relationReasons) {
+        this(title, languageTag, requirement, scope, recommendation, unresolvedGaps, diagram, scene,
+                elements, relations, legend, decisionTree, evidence, nodeReasons, relationReasons, Map.of());
+    }
+
+    public ArchitectureReportDocument withNodeAssessments(Map<String, List<RequirementNodeAssessment>> assessments) {
+        return new ArchitectureReportDocument(title, languageTag, requirement, scope, recommendation,
+                unresolvedGaps, diagram, scene, elements, relations, legend, decisionTree, evidence,
+                nodeReasons, relationReasons, assessments);
+    }
+
     public ArchitectureReportDocument withNodeReasons(Map<String, String> reasons) {
         return new ArchitectureReportDocument(title, languageTag, requirement, scope, recommendation,
-                unresolvedGaps, diagram, scene, elements, relations, legend, decisionTree, evidence, reasons, relationReasons);
+                unresolvedGaps, diagram, scene, elements, relations, legend, decisionTree, evidence, reasons, relationReasons, nodeAssessments);
     }
 
     public ArchitectureReportDocument withRelationReasons(Map<String, Map<String, String>> reasons) {
         return new ArchitectureReportDocument(title, languageTag, requirement, scope, recommendation,
-                unresolvedGaps, diagram, scene, elements, relations, legend, decisionTree, evidence, nodeReasons, reasons);
+                unresolvedGaps, diagram, scene, elements, relations, legend, decisionTree, evidence, nodeReasons, reasons, nodeAssessments);
     }
     public record ElementRow(
             String id,
@@ -123,6 +140,7 @@ public record ArchitectureReportDocument(
             }
         }
         relationReasons = Map.copyOf(selectedReasons);
+        nodeAssessments = RequirementNodeAssessment.immutableMap(nodeAssessments);
         if (evidence == null || !graphSha256(diagram).equals(evidence.graphSha256()))
             throw new IllegalArgumentException(
                     "Frozen graph digest disagrees with source evidence");

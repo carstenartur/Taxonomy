@@ -200,7 +200,7 @@ class RootScoringFlowTest {
     @Test
     void streamingCompletionRetainsParsedReasonsWithoutDependingOnEarlierEvents() {
         var gateway = new Gateway("{\"BP\":{\"score\":50,\"reason\":\"Root evidence\"}}",
-                "{\"BP-1\":{\"score\":50,\"reason\":\"Child evidence\"}}");
+                sourceBoundChildResponse());
         var llm = service(LlmProvider.OPENAI, true, gateway, null);
         var budget = new AiPromptBudgetPolicy(null) {
             @Override public com.taxonomy.analysis.dto.AiTargetDtos.AiTargetDescriptor requireWithinBudget(
@@ -223,6 +223,35 @@ class RootScoringFlowTest {
         assertEquals(Map.of("BP", 50d, "BP-1", 50d), payload.get("totalScores"));
         assertEquals(Map.of("BP", "Root evidence", "BP-1", "Child evidence"), payload.get("reasons"),
                 "The authoritative terminal event must restore explanations even if an incremental event was missed");
+        assertEquals(batches.getLast().get("nodeAssessments"), payload.get("nodeAssessments"));
+        var wire = new ObjectMapper().valueToTree(payload).path("nodeAssessments").path("BP-1").path(0);
+        assertEquals("requirement", wire.path("requirementQuote").asString());
+        assertEquals("SUPPORTS", wire.path("contributionType").asString());
+    }
+
+    @Test
+    void theSameProviderCallRetainsStructuredEvidenceInSyncAndInteractiveResults() {
+        String rootReply = "{\"BP\":{\"score\":50,\"reason\":\"Root evidence\"}}";
+        var gateway = new Gateway(rootReply, sourceBoundChildResponse(), sourceBoundChildResponse());
+        var llm = service(LlmProvider.OPENAI, true, gateway, null);
+        var result = llm.analyzeWithBudget("requirement");
+        var interactive = new com.taxonomy.analysis.usecase.AnalyzeNodeChildrenUseCase(new Catalogue(true), llm)
+                .analyze(new com.taxonomy.analysis.usecase.AnalyzeNodeChildrenCommand("BP", "requirement", 50));
+        var claim = result.getNodeAssessments().get("BP-1").getFirst();
+        assertEquals(com.taxonomy.dto.RequirementNodeAssessment.EvidenceStatus.SUPPORTED, claim.evidenceStatus());
+        assertEquals("requirement", claim.requirementQuote());
+        assertEquals(result.getNodeAssessments(), interactive.nodeAssessments());
+        assertEquals(3, gateway.prompts.size());
+    }
+
+    private static String sourceBoundChildResponse() {
+        return """
+                {"BP-1":{"score":50,"reason":"Child evidence","assessments":[
+                {"requirementQuote":"requirement","subjectKinds":["SERVICE"],"requirementKinds":["FUNCTIONAL"],
+                 "contributionType":"SUPPORTS","evidenceStatus":"SUPPORTED","evidenceBasis":"INFERRED",
+                 "necessity":"REQUIRED","scope":"EXISTING_ENVIRONMENT","condition":"",
+                 "rationale":"Existing infrastructure enables the requested service.","question":""}]}}
+                """;
     }
 
     @Test

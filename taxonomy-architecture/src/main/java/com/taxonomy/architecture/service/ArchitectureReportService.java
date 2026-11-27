@@ -76,6 +76,7 @@ public class ArchitectureReportService {
         report.setBusinessText(businessText);
         report.setScores(scores != null ? scores : Map.of());
         report.setGeneratedAt(Instant.now());
+        if (report.getScores().isEmpty()) return report;
 
         int threshold = minScore > 0 ? minScore : DEFAULT_MIN_SCORE;
         Map<String, Double> safeScores = scores != null ? scores : Map.of();
@@ -127,18 +128,23 @@ public class ArchitectureReportService {
 
     /** Render owned retained evidence without re-reading catalogues, proposals or providers. */
     public ArchitectureReport generateRetainedReport(AnalysisResult result, String businessText) {
-        Objects.requireNonNull(result.getCopilot(), "Retained Copilot report is required");
+        var copilot = result.getCopilot();
+        if (copilot == null && result.getNodeAssessments().isEmpty())
+            throw new IllegalArgumentException("Retained Copilot report or requirement assessments are required");
         ArchitectureReport report = new ArchitectureReport();
         report.setBusinessText(businessText);
+        report.setNodeAssessments(result.getNodeAssessments());
         report.setScores(result.getEffectiveScores() != null ? result.getEffectiveScores() : result.getScores());
         report.setViewContext(result.getViewContext());
         report.setModelBinding(result.getModelBinding());
         if (result.getModelBinding() != null) report.setAnalysisScope(result.getAnalysisScope());
         report.setArchitectureView(result.getArchitectureView());
-        report.setCopilot(result.getCopilot());
-        report.setGapAnalysis(result.getCopilot().gaps());
-        report.setPatternDetection(result.getCopilot().patterns());
-        report.setRecommendation(result.getCopilot().recommendation());
+        report.setCopilot(copilot);
+        if (copilot != null) {
+            report.setGapAnalysis(copilot.gaps());
+            report.setPatternDetection(copilot.patterns());
+            report.setRecommendation(copilot.recommendation());
+        }
         if (result.getArchitectureView() != null) {
             String title = businessText == null ? "Report" : businessText.length() > 60
                     ? businessText.substring(0, 57) + "..." : businessText;

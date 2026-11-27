@@ -261,8 +261,7 @@ public final class AnalysisCheckpointSession implements AutoCloseable {
     }
 
     private static boolean rootClarification(String kind, List<String> offered, LlmCallDetail detail) {
-        return "ROOT_RELEVANCE".equals(kind) && RootAssessmentEvidence.isClarification(detail)
-                && detail.getRootAssessments().keySet().equals(new HashSet<>(offered))
+        return "ROOT_RELEVANCE".equals(kind) && RootAssessmentEvidence.isClarificationFor(detail, offered)
                 && detail.getRawResponse() != null && !detail.getRawResponse().isBlank();
     }
 
@@ -271,6 +270,7 @@ public final class AnalysisCheckpointSession implements AutoCloseable {
         var result = detail == null ? new LlmCallDetail() : copy(detail);
         result.setScores(Map.of()); result.setReasons(Map.of()); result.setDiscrepancy(null);
         result.setRootAssessments(Map.of());
+        result.setNodeAssessments(Map.of());
         if (result.getError() == null || result.getError().isBlank()) result.setError("UNASSESSED: no accepted assessment");
         return result;
     }
@@ -286,6 +286,7 @@ public final class AnalysisCheckpointSession implements AutoCloseable {
         copy.setScores(value.getScores() == null ? new LinkedHashMap<>() : new LinkedHashMap<>(value.getScores()));
         copy.setReasons(value.getReasons() == null ? new LinkedHashMap<>() : new LinkedHashMap<>(value.getReasons()));
         copy.setRootAssessments(value.getRootAssessments());
+        copy.setNodeAssessments(value.getNodeAssessments());
         copy.setAssessedProductScores(value.getAssessedProductScores());
         copy.setProvider(value.getProvider()); copy.setPrompt(value.getPrompt()); copy.setRawResponse(value.getRawResponse());
         copy.setError(value.getError()); copy.setDurationMs(value.getDurationMs()); copy.setDiscrepancy(value.getDiscrepancy());

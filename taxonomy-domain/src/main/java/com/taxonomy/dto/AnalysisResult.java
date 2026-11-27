@@ -119,6 +119,7 @@ public class AnalysisResult {
     private List<String> scoreSemanticsWarnings = new ArrayList<>();
 
     /** Original node-code → reason text returned by the scoring provider. */
+    private Map<String, List<RequirementNodeAssessment>> nodeAssessments = Map.of();
     private Map<String, String> reasons = new LinkedHashMap<>();
 
     /** Effective provider used for this analysis (informational/provenance). */
@@ -318,6 +319,13 @@ public class AnalysisResult {
         return productSuitabilityScores.size() == productCount
                 && Objects.equals(scoreSemanticsFingerprintSha256,
                         AnalysisScoreSemanticsFingerprint.sha256(scoreDetails));
+    }
+
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_EMPTY)
+    public Map<String, List<RequirementNodeAssessment>> getNodeAssessments() { return nodeAssessments; }
+
+    public void setNodeAssessments(Map<String, List<RequirementNodeAssessment>> values) {
+        nodeAssessments = RequirementNodeAssessment.immutableMap(values);
     }
 
     public Map<String, String> getReasons() { return reasons; }

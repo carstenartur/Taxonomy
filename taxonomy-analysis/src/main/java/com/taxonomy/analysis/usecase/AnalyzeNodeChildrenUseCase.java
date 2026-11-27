@@ -41,7 +41,7 @@ public class AnalyzeNodeChildrenUseCase {
                 detail.getRawResponse(),
                 detail.getProvider(),
                 detail.getDurationMs(),
-                detail.getError()).withAnalysisReasonLength(length).withAnalysisLanguage(language);
+                detail.getError(), null, null, length, language, detail.getNodeAssessments());
         }
     }
 }

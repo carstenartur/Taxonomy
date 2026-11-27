@@ -42,8 +42,10 @@ function tab(server, name, { recovery = false, renderReady = true } = {}) {
   let serial = 0;
   function element(id) {
     const attributes = new Map();
+    const classes = new Set();
     return { id, value: '', checked: false, options: [{ value: '' }, { value: 'LOCAL' }],
-      style: {}, dataset: {}, classList: { add() {}, remove() {}, contains() { return false; }, toggle() {} },
+      style: {}, dataset: {}, classList: { add: name => classes.add(name), remove: name => classes.delete(name),
+        contains: name => classes.has(name), toggle(name, force) { if (force ?? !classes.has(name)) classes.add(name); else classes.delete(name); } },
       setAttribute: (key, value) => attributes.set(key, value), getAttribute: key => attributes.get(key),
       removeAttribute: key => attributes.delete(key), replaceChildren() {}, append() {}, addEventListener() {} };
   }
@@ -72,7 +74,7 @@ function tab(server, name, { recovery = false, renderReady = true } = {}) {
   const C = window.__TaxonomyAnalysisSessionContext, S = window.TaxonomyState;
   Object.assign(C.runtime, { workspaceId: 'workspace-1', workspaceResolved: true });
   C.showActionAlert = (kind, title, body, actions, marker) => alerts.push({ kind, marker });
-  C.showStaleActions = () => {};
+  C.showStaleActions = () => alerts.push({kind: 'warning', marker: 'stale'});
   load('taxonomy-analysis-session-draft.js');
   window.TaxonomyAnalysisSession = { state: () => ({ ready: !C.runtime.restoring && !C.runtime.conflict }), saveNow: C.saveDraft };
   if (recovery) load('taxonomy-analysis-recovery.js');
@@ -94,6 +96,41 @@ async function running(server) {
   assert.equal(await first.C.saveDraft(), true);
   return first;
 }
+
+test('recorded contribution evidence survives a saved draft and a second-tab restore without a model call', async () => {
+  const backend = server(), first = await running(backend);
+  first.S.currentNodeAssessments = {BP:[{requirementQuote:'Hospital communications',contributionType:'SUPPORTS',
+    evidenceStatus:'SUPPORTED',scope:'EXISTING_ENVIRONMENT',necessity:'CONTEXT'}]};
+  first.S.currentScores = {BP:25};
+  await first.C.saveDraft();
+  const second = tab(backend, 'second');
+  await second.C.loadDraft();
+  assert.deepEqual(clone(second.S.currentNodeAssessments), clone(first.S.currentNodeAssessments));
+  assert.deepEqual(second.C.currentPayload(true).nodeAssessments.BP[0].evidenceStatus, 'SUPPORTED');
+  assert.ok(backend.writes.every(write => write.tab === 'first'));
+});
+
+test('assessment-only source edits and second-tab draft restoration retain the stale warning', async () => {
+  const backend = server(), first = tab(backend, 'first');
+  first.S.currentScores = {};
+  first.S.lastAnalyzedText = 'Hospital communications';
+  first.S.lastAnalysisStatus = 'PARTIAL';
+  first.S.currentNodeAssessments = {BP: [{requirementQuote: 'Hospital communications',
+    contributionType: 'SUPPORTS', evidenceStatus: 'UNRESOLVED', scope: 'UNSPECIFIED',
+    necessity: 'UNDETERMINED', question: 'Which process owns recovery?'}]};
+  first.edit('Revised hospital communications');
+  assert.equal(first.C.isStale(), true, 'an assessment remains bound to its original source even without a numeric score');
+  await first.C.saveDraft();
+  const second = tab(backend, 'second');
+  await second.C.loadDraft();
+  assert.equal(second.elements.get('businessText').classList.contains('stale-results'), true);
+  assert.equal(second.C.isStale(), true);
+  assert.ok(second.alerts.some(alert => alert.marker === 'stale'));
+  assert.deepEqual(clone(second.S.currentNodeAssessments), clone(first.S.currentNodeAssessments));
+  assert.ok(backend.writes.every(write => write.tab === 'first'));
+  second.S.currentNodeAssessments = {};
+  assert.equal(second.C.isStale(), false, 'an empty evidence map alone does not mark input stale');
+});
 
 for (const recovery of [false, true]) test(`opening another tab during a running analysis does not write or conflict (recovery=${recovery})`, async () => {
   const backend = server(), first = await running(backend), second = tab(backend, 'second', { recovery });

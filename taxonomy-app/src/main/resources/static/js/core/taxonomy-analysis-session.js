@@ -13,6 +13,7 @@
         '/js/core/taxonomy-analysis-session-transport.js',
         '/js/core/taxonomy-analysis-progress.js',
         '/js/core/taxonomy-result-statistics.js',
+        '/js/core/taxonomy-requirement-evidence.js',
         '/js/core/taxonomy-copilot-terminal-state.js',
         '/js/core/taxonomy-recovery-viewport.js',
         '/js/core/taxonomy-analysis-recovery.js',

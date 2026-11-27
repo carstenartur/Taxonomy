@@ -446,6 +446,7 @@
         S.scoreSemanticsVersion = 0;
         S.currentScoreSemanticsWarnings = [];
         S.currentReasons = {};
+        S.currentNodeAssessments = {};
         S.currentDiscrepancies = [];
         S.currentProductCoverageGaps = [];
         S.currentArchView = null;
@@ -550,6 +551,7 @@
             S.lastAnalysisDurationMillis = Number.isSafeInteger(payload.analysisDurationMillis)
                 && payload.analysisDurationMillis >= 0 ? payload.analysisDurationMillis : null;
             S.currentReasons = payload.reasons || {};
+            S.currentNodeAssessments = payload.nodeAssessments || {};
             S.currentDiscrepancies = payload.discrepancies || [];
             S.currentProductCoverageGaps = payload.productCoverageGaps || [];
             S.currentArchView = payload.architectureView || null;

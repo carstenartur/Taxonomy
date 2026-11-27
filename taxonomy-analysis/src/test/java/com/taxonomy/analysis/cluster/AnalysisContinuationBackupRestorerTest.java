@@ -113,6 +113,101 @@ class AnalysisContinuationBackupRestorerTest {
         }
     }
 
+    @Test void requirementEvidenceMustMatchOriginalAndOfferedNodesAcrossArchivedCopies() {
+        try (var db = new ClusterAnalysisStoreTest.Database()) {
+            var importer = new AnalysisContinuationBackupRestorer(db.em, db.transactions, JSON);
+            var id = UUID.randomUUID().toString();
+            var supported = RequirementAssessmentClusterTest.supported("requirement", "Existing capability supports the task.");
+            var open = RequirementAssessmentClusterTest.open();
+            var cp = new TaxonomyNodeDto(); cp.setCode("CP");
+            var ip = new TaxonomyNodeDto(); ip.setCode("IP");
+            var result = new AnalysisResult(Map.of("CP", 75), List.of(cp, ip));
+            result.setNodeAssessments(Map.of("CP", List.of(supported), "IP", List.of(open)));
+            var archive = source("COMPLETED_WITH_GAPS", ResumePolicy.REVIEW_REQUIRED);
+            var original = questions().getFirst();
+            var clarification = questions().getLast();
+            var cpReply = JSON.readValue(original.detailJson(), LlmCallDetail.class);
+            cpReply.setNodeAssessments(Map.of("CP", List.of(supported)));
+            var ipReply = new LlmCallDetail();
+            ipReply.setScores(Map.of());
+            ipReply.setRootAssessments(Map.of("IP", new RootAssessment(RootAssessment.Status.UNRESOLVED,
+                    null, open.rationale(), open.question())));
+            ipReply.setReasons(Map.of("IP", open.rationale(), "UA", "An explanation for an unoffered node."));
+            ipReply.setError("ROOT_UNRESOLVED: " + open.question());
+            ipReply.setNodeAssessments(Map.of("IP", List.of(open)));
+            var ipArchive = questionEvidence(clarification, "b".repeat(64), "CLARIFICATION", ipReply);
+            var archivedResult = continuationResult(archive, result);
+
+            for (var forged : List.of(
+                    Map.of("CP", List.of(RequirementAssessmentClusterTest.supported("invented passage", supported.rationale()))),
+                    Map.of("IP", List.of(supported)),
+                    Map.of("CP", List.of(RequirementAssessmentClusterTest.supported("requirement", "Contradictory copy."))))) {
+                cpReply.setNodeAssessments(forged);
+                assertThatThrownBy(() -> importer.restore(archivedResult,
+                        List.of(questionEvidence(original, SUCCESS, "SUCCESS", cpReply), ipArchive), id, TARGET))
+                        .isInstanceOf(IllegalArgumentException.class);
+            }
+            cpReply.setNodeAssessments(Map.of("CP", List.of(supported)));
+            var cpArchive = questionEvidence(original, SUCCESS, "SUCCESS", cpReply);
+            result.setNodeAssessments(Map.of("foreign", List.of(supported)));
+            assertThatThrownBy(() -> importer.restore(continuationResult(archive, result), List.of(cpArchive, ipArchive), id, TARGET))
+                    .isInstanceOf(IllegalArgumentException.class);
+            assertThat(tx(db).execute(status -> db.em.createQuery("select count(r) from AnalysisContinuationRun r", Long.class)
+                    .getSingleResult()).longValue()).isZero();
+
+            importer.restore(archivedResult, List.of(cpArchive, ipArchive), id, TARGET);
+            var saved = tx(db).execute(status -> new AnalysisContinuationStore(db.em, JSON).read(id, TARGET));
+            assertThat(saved.result().getNodeAssessments()).containsExactlyInAnyOrderEntriesOf(
+                    Map.of("CP", List.of(supported), "IP", List.of(open)));
+            assertThat(saved.result().getRawScores()).doesNotContainKey("IP");
+            assertThat(saved.result().getReasons()).containsEntry("IP", open.rationale()).doesNotContainKey("UA");
+            assertThat(saved.recovery().openQuestions()).singleElement().satisfies(question ->
+                    assertThat(question.error()).contains(open.question()));
+            var savedDetail = tx(db).execute(status -> new AnalysisContinuationStore(db.em, JSON)
+                    .detail(id, ipArchive.questionKey(), TARGET));
+            assertThat(savedDetail.getRootAssessments()).containsKey("IP");
+            assertThat(savedDetail.getReasons()).isEqualTo(ipReply.getReasons());
+        }
+    }
+
+    @Test void archivedUntypedClarificationRemainsInspectableWithoutBecomingCanonicalEvidence() {
+        try (var db = new ClusterAnalysisStoreTest.Database()) {
+            var id = UUID.randomUUID().toString();
+            var root = new TaxonomyNodeDto(); root.setCode("IP");
+            var result = new AnalysisResult(Map.of(), List.of(root));
+            var archive = continuationResult(source("COMPLETED_WITH_GAPS", ResumePolicy.REVIEW_REQUIRED), result);
+            var sourced = RequirementAssessmentClusterTest.supported("requirement", "An untyped historical claim.");
+            var historical = new LlmCallDetail();
+            historical.setScores(Map.of());
+            historical.setReasons(Map.of("IP", sourced.rationale()));
+            historical.setNodeAssessments(Map.of("IP", List.of(sourced)));
+            var clarification = questionEvidence(questions().getLast(), "b".repeat(64), "CLARIFICATION", historical);
+
+            new AnalysisContinuationBackupRestorer(db.em, db.transactions, JSON).restore(archive, List.of(clarification), id, TARGET);
+
+            var stored = tx(db).execute(status -> new AnalysisContinuationStore(db.em, JSON).read(id, TARGET));
+            assertThat(stored.result().getRawScores()).isEmpty();
+            assertThat(stored.result().getReasons()).isEmpty();
+            assertThat(stored.result().getNodeAssessments()).isEmpty();
+            assertThat(stored.recovery().openQuestions()).singleElement().satisfies(q -> assertThat(q.key()).isEqualTo(clarification.questionKey()));
+            var raw = tx(db).execute(status -> new AnalysisContinuationStore(db.em, JSON).detail(id, clarification.questionKey(), TARGET));
+            assertThat(raw.getReasons()).isEqualTo(historical.getReasons());
+            assertThat(raw.getNodeAssessments()).isEqualTo(historical.getNodeAssessments());
+        }
+    }
+
+    private static ContinuationRecord continuationResult(ContinuationRecord archive, AnalysisResult result) {
+        var row = (tools.jackson.databind.node.ObjectNode) JSON.valueToTree(archive);
+        row.put("resultJson", JSON.writeValueAsString(result));
+        return JSON.treeToValue(row, ContinuationRecord.class);
+    }
+
+    private static QuestionRecord questionEvidence(QuestionRecord archive, String key, String state, LlmCallDetail detail) {
+        return new QuestionRecord(new SourceRecordId("analysis.question", SOURCE.value() + ":" + key), SOURCE, key,
+                archive.inputHash(), archive.provider(), archive.nodeCodesJson(), JSON.writeValueAsString(detail),
+                archive.prompt(), state, archive.attempts(), archive.startedAtEpochMillis());
+    }
+
     @Test void aPreviouslyPausedUncertainQuestionRetainsTheExplicitUnknownOutcome() {
         try(var db=new ClusterAnalysisStoreTest.Database()) {
             String id=UUID.randomUUID().toString();var old=questions().getLast();

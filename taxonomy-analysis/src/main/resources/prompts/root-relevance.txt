@@ -12,7 +12,7 @@ Taxonomy root: {{TAXONOMY_NAME}}
 {{NODE_LIST}}
 
 Respond ONLY with a valid JSON object using EXACTLY these keys: {{EXPECTED_KEYS}}
-Each value must be an object with EXACTLY "status", "score", "reason", and "question".
+Each value must be an object with EXACTLY "status", "score", "reason", "question", and "assessments" (see the passage evidence policy).
 The status is "RELEVANT", "IRRELEVANT", or "UNRESOLVED". Give a nonempty reason connecting the original requirement to the catalogue.
 For a resolved assessment, score is numeric (decimals allowed) and question is "". For UNRESOLVED, score is null and question asks for the missing fact.
 Do not include other keys or prose.
