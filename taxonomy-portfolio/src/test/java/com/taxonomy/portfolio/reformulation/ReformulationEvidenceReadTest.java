@@ -14,23 +14,33 @@ import com.taxonomy.portfolio.model.PortfolioTypes.*;
 import com.taxonomy.portfolio.repository.ArchitectureProjectRepository;
 import com.taxonomy.portfolio.repository.ProjectRequirementRepository;
 import com.taxonomy.portfolio.repository.ProjectRequirementVersionRepository;
+import com.taxonomy.portfolio.service.PortfolioException;
 import com.taxonomy.portfolio.service.PortfolioJsonCodec;
 import com.taxonomy.portfolio.service.PortfolioScope;
 import com.taxonomy.reformulation.ReformulationBaseline;
 import com.taxonomy.reformulation.ValidationReport;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import jakarta.persistence.EntityManager;
+import org.hibernate.FlushMode;
+import org.hibernate.SessionFactory;
 import org.hibernate.cfg.Configuration;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.jpa.repository.support.JpaRepositoryFactory;
 import tools.jackson.databind.json.JsonMapper;
 
+import java.io.IOException;
+import java.io.Reader;
+import java.io.StringWriter;
+import java.io.UncheckedIOException;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class ReformulationEvidenceReadTest {
     private static final Instant NOW = Instant.parse("2026-01-01T00:00:00Z");
@@ -43,19 +53,7 @@ class ReformulationEvidenceReadTest {
 
     @Test
     void portableEvidenceReadKeepsLargeProposalAndSnapshotPayloadsOutOfHibernateEntities() {
-        var configuration = new Configuration()
-                .setProperty("hibernate.connection.driver_class", "org.hsqldb.jdbc.JDBCDriver")
-                .setProperty("hibernate.connection.url", "jdbc:hsqldb:mem:reformulation-evidence-" + UUID.randomUUID() + ";shutdown=true")
-                .setProperty("hibernate.hbm2ddl.auto", "create-drop")
-                .setProperty("hibernate.generate_statistics", "true")
-                .setProperty("hibernate.search.enabled", "false");
-        for (var type : List.of(ArchitectureProject.class, ProjectRequirement.class, ProjectRequirementVersion.class,
-                RequirementAnalysisJob.class, RequirementAnalysisSnapshot.class, SnapshotReference.class,
-                ReformulationProposal.class, ReformulationAdoptionPreview.class, ReformulationAdoption.class,
-                ReformulationPortableEvidence.class)) {
-            configuration.addAnnotatedClass(type);
-        }
-        try (var factory = configuration.buildSessionFactory(); var entities = factory.createEntityManager()) {
+        try (var factory = evidenceDatabase(); var entities = factory.createEntityManager()) {
             seedAdoption(entities);
             entities.clear();
             var repositories = new JpaRepositoryFactory(entities);
@@ -101,7 +99,115 @@ class ReformulationEvidenceReadTest {
         }
     }
 
-    private void seedAdoption(EntityManager entities) {
+    @Test
+    void ancestryDoesNotDecodeAnAbsentOrForeignProposalOrMismatchedPreview() {
+        try (var factory = evidenceDatabase(); var entities = factory.createEntityManager()) {
+            var source = seedAdoption(entities);
+            entities.clear();
+            var ancestry = new ReformulationAncestryRepository(entities);
+            Function<Reader, ReformulationBaseline> decoder = input -> {
+                throw new AssertionError("Baseline decoded before its proposal and source version were authorized");
+            };
+            var foreignContext = new WorkspaceContext("owner", "other-workspace", "draft", "repository");
+            String foreignScope = PortfolioScope.key("owner", foreignContext);
+            entities.getTransaction().begin();
+            assertThat(ancestry.read("proposal", SCOPE, null, source.sourceVersionId(), decoder)).isEmpty();
+            assertThat(ancestry.read("unknown-proposal", SCOPE, source.requirementId(), source.sourceVersionId(), decoder)).isEmpty();
+            assertThat(ancestry.read("proposal", foreignScope, source.requirementId(), source.sourceVersionId(), decoder)).isEmpty();
+            assertThat(ancestry.read("proposal", SCOPE, source.requirementId() + 1, source.sourceVersionId(), decoder)).isEmpty();
+            assertThatThrownBy(() -> ancestry.read("proposal", SCOPE, source.requirementId(), source.targetVersionId(), decoder))
+                    .isInstanceOfSatisfying(PortfolioException.class, failure -> {
+                        assertThat(failure.getKind()).isEqualTo(PortfolioException.Kind.CONFLICT);
+                        assertThat(failure).hasMessage("Adopted source baseline does not match preview");
+                    });
+            entities.getTransaction().commit();
+        }
+    }
+
+    @Test
+    void textBaselineReaderIsClosedAfterDecodingAndOnDecoderFailure() {
+        // A VARCHAR column exercises the JDBC character-stream path without using a LOB locator.
+        String baseline = "{\"original\":\"Übernahme am zweiten Standort\"}";
+        try (var factory = databaseConfiguration().buildSessionFactory(); var session = factory.openSession()) {
+            session.getTransaction().begin();
+            session.doWork(connection -> {
+                try (var statement = connection.createStatement()) {
+                    statement.execute("""
+                            create table reformulation_proposal (
+                                id varchar(36) primary key, scope_key varchar(512) not null,
+                                project_id bigint not null, requirement_id bigint not null,
+                                source_version_id bigint not null, snapshot_id varchar(36) not null,
+                                baseline_payload varchar(1024) not null
+                            )
+                            """);
+                }
+                try (var insert = connection.prepareStatement("""
+                        insert into reformulation_proposal
+                            (id, scope_key, project_id, requirement_id, source_version_id, snapshot_id, baseline_payload)
+                            values ('proposal', ?, 7, 14, 21, 'retained-snapshot', ?)
+                        """)) {
+                    insert.setString(1, SCOPE);
+                    insert.setString(2, baseline);
+                    insert.executeUpdate();
+                }
+            });
+            session.getTransaction().commit();
+
+            session.setHibernateFlushMode(FlushMode.MANUAL);
+            session.getTransaction().begin();
+            var ancestry = new ReformulationAncestryRepository(session);
+            var opened = new AtomicReference<Reader>();
+            assertThat(ancestry.read("proposal", SCOPE, 14L, 21L, reader -> {
+                opened.set(reader);
+                return readText(reader);
+            })).contains(new ReformulationAncestryRepository.ProposalBaseline<>(7L, 14L, 21L, SNAPSHOT, baseline));
+            assertThatThrownBy(() -> opened.get().read()).isInstanceOf(IOException.class);
+
+            var rejection = new IllegalArgumentException("Baseline rejected by decoder");
+            opened.set(null);
+            assertThatThrownBy(() -> ancestry.read("proposal", SCOPE, 14L, 21L, reader -> {
+                opened.set(reader);
+                throw rejection;
+            })).isSameAs(rejection);
+            assertThat(opened.get()).isNotNull();
+            assertThatThrownBy(() -> opened.get().read()).isInstanceOf(IOException.class);
+            session.getTransaction().commit();
+        }
+    }
+
+    private static String readText(Reader reader) {
+        var text = new StringWriter();
+        try {
+            reader.transferTo(text);
+            return text.toString();
+        } catch (IOException failure) {
+            throw new UncheckedIOException(failure);
+        }
+    }
+
+    private static Configuration databaseConfiguration() {
+        return new Configuration()
+                .setProperty("hibernate.connection.driver_class", "org.hsqldb.jdbc.JDBCDriver")
+                .setProperty("hibernate.connection.url", "jdbc:hsqldb:mem:reformulation-evidence-" + UUID.randomUUID() + ";shutdown=true")
+                .setProperty("hibernate.search.enabled", "false");
+    }
+
+    private static SessionFactory evidenceDatabase() {
+        var configuration = databaseConfiguration()
+                .setProperty("hibernate.hbm2ddl.auto", "create-drop")
+                .setProperty("hibernate.generate_statistics", "true");
+        for (var type : List.of(ArchitectureProject.class, ProjectRequirement.class, ProjectRequirementVersion.class,
+                RequirementAnalysisJob.class, RequirementAnalysisSnapshot.class, SnapshotReference.class,
+                ReformulationProposal.class, ReformulationAdoptionPreview.class, ReformulationAdoption.class,
+                ReformulationPortableEvidence.class)) {
+            configuration.addAnnotatedClass(type);
+        }
+        return configuration.buildSessionFactory();
+    }
+
+    private record SourceCoordinates(Long requirementId, Long sourceVersionId, Long targetVersionId) { }
+
+    private SourceCoordinates seedAdoption(EntityManager entities) {
         entities.getTransaction().begin();
         var project = new ArchitectureProject(SCOPE, CONTEXT.workspaceId(), "owner", "P", "Project", "",
                 ProjectStatus.PLANNING, NOW);
@@ -146,6 +252,7 @@ class ReformulationEvidenceReadTest {
         entities.persist(new ReformulationAdoption("receipt", "proposal", "preview", SCOPE, "command", requirement.getId(),
                 target.getId(), receipt, NOW));
         entities.getTransaction().commit();
+        return new SourceCoordinates(requirement.getId(), source.getId(), target.getId());
     }
 
     private static ProjectRequirementVersion version(ProjectRequirement requirement, int number, String text) {

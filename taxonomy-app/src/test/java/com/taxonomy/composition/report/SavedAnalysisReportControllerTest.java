@@ -114,6 +114,44 @@ class SavedAnalysisReportControllerTest {
     }
 
     @Test
+    void liveEvidenceRequiresTheOriginalRequirementEvenWithAnOpenQuestion() throws Exception {
+        var request = mapper.createObjectNode();
+        request.set("nodeAssessments", mapper.valueToTree(Map.of("BP", List.of(unresolved("Which retention interval?")))));
+        try (var context = context()) {
+            var http = mvc(context);
+            http.perform(post("/api/report/json").contentType(MediaType.APPLICATION_JSON)
+                    .content(mapper.writeValueAsBytes(request))).andExpect(status().isBadRequest());
+            request.put("businessText", "   ");
+            http.perform(post("/api/report/json").contentType(MediaType.APPLICATION_JSON)
+                    .content(mapper.writeValueAsBytes(request))).andExpect(status().isBadRequest());
+        }
+        verifyNoInteractions(cluster, continuations, architecture, gaps, recommendations, proposals, metadata);
+    }
+
+    @Test
+    void liveEvidencePreservesTheExactNodeCodeUpTo256Characters() throws Exception {
+        String longestCode = "A".repeat(256);
+        var claims = List.of(unresolved("Which retention interval?"));
+        var request = mapper.createObjectNode();
+        request.put("businessText", "Frozen requirement");
+        request.putObject("scores");
+        try (var context = context()) {
+            var http = mvc(context);
+            for (String invalidCode : List.of(longestCode + "A", " BP", "BP\u2003")) {
+                request.set("nodeAssessments", mapper.valueToTree(Map.of(invalidCode, claims)));
+                http.perform(post("/api/report/json").contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsBytes(request))).andExpect(status().isBadRequest());
+            }
+            request.set("nodeAssessments", mapper.valueToTree(Map.of(longestCode, claims)));
+            var response = http.perform(post("/api/report/json").contentType(MediaType.APPLICATION_JSON)
+                    .content(mapper.writeValueAsBytes(request))).andExpect(status().isOk()).andReturn().getResponse();
+            var recorded = mapper.readTree(response.getContentAsByteArray()).path("nodeAssessments");
+            assertThat(recorded.has(longestCode)).isTrue();
+            assertThat(recorded.path(longestCode).get(0).path("requirementQuote").asString()).isEqualTo("Frozen requirement");
+        }
+    }
+
+    @Test
     void markdownRequiresScoresOrRetainedCopilotContent() throws Exception {
         var retainedAssessmentOnly = scorelessReference("scoreless-markdown");
         var copilot = savedResult();
