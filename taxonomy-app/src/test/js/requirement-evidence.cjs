@@ -30,17 +30,18 @@ test('all source evidence and open questions are visible and hostile values rema
     const question = 'Which <owner> is responsible?';
     const data = {scores:{'BP-1':99}, nodeAssessments:{'BP-1':[claim({evidenceStatus:'UNRESOLVED', question,
         necessity:'OPTIONAL', scope:'EXISTING_ENVIRONMENT', condition:'Only when <approved>',
-        requirementQuote:'<script>alert(1)</script>', rationale:'Interpretation & explanation'})]}};
+        requirementQuote:'<ScRiPt>backup note</ScRiPt>', rationale:'Interpretation & explanation'})]}};
     const html = api.html(data, {locale:'de'});
     assert.match(html, /data-requirement-evidence/);
     assert.match(html, /data-evidence-status="UNRESOLVED"/);
     assert.match(html, /Which &lt;owner&gt; is responsible\?/);
-    assert.match(html, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+    assert.ok(html.includes('&lt;ScRiPt&gt;backup note&lt;/ScRiPt&gt;'));
     assert.match(html, /Only when &lt;approved&gt;/);
     assert.match(html, /Bestehende Umgebung/);
     assert.match(html, /Optional/);
     assert.match(html, /KI-Vorschläge/);
-    assert.doesNotMatch(html, /<script>|99%/);
+    assert.doesNotMatch(html, /<script\b/i);
+    assert.doesNotMatch(html, /99%/);
     assert.equal(api.questions(data).length, 1);
 });
 test('legacy absence is distinct from an assessed neutral result and does not fabricate aspects', () => {
