@@ -1,5 +1,9 @@
 package com.taxonomy.build;
 
+import org.yaml.snakeyaml.LoaderOptions;
+import org.yaml.snakeyaml.Yaml;
+import org.yaml.snakeyaml.constructor.SafeConstructor;
+import org.yaml.snakeyaml.error.YAMLException;
 import tools.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
@@ -7,8 +11,10 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -18,7 +24,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
-/** Rejects mutable external GitHub Action references and production image tags. */
+/** Rejects mutable supply-chain references and unapproved deployment image registries. */
 final class SupplyChainPinPolicy {
 
     private static final Pattern ACTION = Pattern.compile(
@@ -31,6 +37,8 @@ final class SupplyChainPinPolicy {
             "^\\s*image:\\s*([^\\s#]+)");
     private static final Pattern DIGEST_REFERENCE = Pattern.compile(
             "^[^@]+@sha256:[0-9a-fA-F]{64}$");
+    private static final Set<String> APPROVED_DEPLOYMENT_REGISTRIES =
+            Set.of("docker.io", "ghcr.io");
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -39,6 +47,7 @@ final class SupplyChainPinPolicy {
         List<String> violations = new ArrayList<>();
         int actionCount = inspectActions(root, violations);
         int imageCount = inspectImages(root, violations);
+        inspectDeploymentRegistries(root, violations);
         return new Inspection(
                 violations.isEmpty(),
                 actionCount,
@@ -159,6 +168,90 @@ final class SupplyChainPinPolicy {
             }
         }
         return checked;
+    }
+
+    private void inspectDeploymentRegistries(Path root, List<String> violations) {
+        Path deploy = root.resolve("deploy");
+        if (!Files.isDirectory(deploy)) {
+            return;
+        }
+        List<Path> files;
+        try (Stream<Path> stream = Files.walk(deploy)) {
+            files = stream.filter(Files::isRegularFile)
+                    .filter(path -> isStaticDeploymentYaml(deploy, path))
+                    .sorted(Comparator.comparing(path -> relative(root, path)))
+                    .toList();
+        } catch (IOException error) {
+            throw new IllegalArgumentException("Cannot list deployment YAML below " + deploy, error);
+        }
+        LoaderOptions options = new LoaderOptions();
+        options.setAllowDuplicateKeys(false);
+        Yaml yaml = new Yaml(new SafeConstructor(options));
+        for (Path file : files) {
+            Set<Object> visited = Collections.newSetFromMap(new IdentityHashMap<>());
+            try {
+                for (Object document : yaml.loadAll(String.join("\n", readLines(file)))) {
+                    inspectDeploymentValue(root, file, document, visited, violations);
+                }
+            } catch (YAMLException error) {
+                throw new IllegalArgumentException(
+                        "Cannot parse deployment YAML " + relative(root, file), error);
+            }
+        }
+    }
+
+    private static boolean isStaticDeploymentYaml(Path deploy, Path path) {
+        String name = path.getFileName().toString().toLowerCase(Locale.ROOT);
+        if (!name.endsWith(".yaml") && !name.endsWith(".yml")) {
+            return false;
+        }
+        // Helm templates are checked after rendering; every values overlay is static input.
+        Path relative = deploy.relativize(path);
+        if (!name.startsWith("values") && relative.startsWith("helm")) {
+            for (Path segment : relative) {
+                if (segment.toString().equals("templates")) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    private void inspectDeploymentValue(Path root, Path file, Object value,
+            Set<Object> visited, List<String> violations) {
+        if (value instanceof Map<?, ?> mapping && visited.add(value)) {
+            Object image = mapping.get("image");
+            if (image instanceof String reference) {
+                inspectDeploymentRegistry(root, file, reference, violations);
+            } else if (image instanceof Map<?, ?> imageMapping
+                    && imageMapping.get("repository") instanceof String reference) {
+                inspectDeploymentRegistry(root, file, reference, violations);
+            }
+            for (Object child : mapping.values()) {
+                inspectDeploymentValue(root, file, child, visited, violations);
+            }
+        } else if (value instanceof List<?> list && visited.add(value)) {
+            for (Object child : list) {
+                inspectDeploymentValue(root, file, child, visited, violations);
+            }
+        }
+    }
+
+    private void inspectDeploymentRegistry(Path root, Path file, String image,
+            List<String> violations) {
+        String reference = image.strip();
+        int slash = reference.indexOf('/');
+        if (slash < 0 || reference.startsWith("${")) {
+            return;
+        }
+        String registry = reference.substring(0, slash);
+        // Without an explicit host, Docker resolves a namespace/image through Docker Hub.
+        boolean explicit = registry.contains(".") || registry.contains(":")
+                || registry.equals("localhost");
+        if (explicit && !APPROVED_DEPLOYMENT_REGISTRIES.contains(registry)) {
+            violations.add(relative(root, file) + ": unapproved deployment image registry "
+                    + registry + " in " + reference);
+        }
     }
 
     private static List<String> readLines(Path path) {

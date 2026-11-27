@@ -12,7 +12,9 @@ on:
       - '!plugins/*/README_DE.md'
       - 'Dockerfile'
       - 'docker-compose*.yml'
-      - 'deploy/helm/**'
+      - 'deploy/**'
+      - '.github/trivy.yaml'
+      - '.github/trivy-data/**'
       - '.github/workflows/**'
       - '.github/scripts/**'
   push:
@@ -88,23 +90,36 @@ jobs:
 
       - name: Scan repository and packaged application
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        env:
+          # Scan the checked-out source with a valid immutable image reference.
+          # Only the Secret name is needed to render; no credential is supplied.
+          TRIVY_HELM_SET_STRING: image.tag=sha-${{ github.sha }},existingSecret=taxonomy-security-scan
         with:
+          version: v0.76.2
+          trivy-config: .github/trivy.yaml
           scan-type: fs
           scan-ref: .
           scanners: vuln,secret,misconfig
-          severity: HIGH,CRITICAL
+          severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
           ignore-unfixed: false
-          format: sarif
-          output: trivy-results.sarif
+          format: json
+          output: target/trivy-results.json
           exit-code: '0'
 
-      - name: Enforce HIGH and CRITICAL security threshold
-        if: hashFiles('trivy-results.sarif') != ''
+      - name: Convert scan evidence to SARIF
+        run: trivy convert --format sarif --output trivy-results.sarif target/trivy-results.json
+
+      - name: Verify complete scan coverage before publishing findings
+        id: scan_coverage
         run: |
-          bash .github/scripts/taxonomy-tooling.sh check-trivy-sarif --file trivy-results.sarif
+          bash .github/scripts/taxonomy-tooling.sh check-trivy-coverage \
+            --file trivy-results.sarif --scan-report target/trivy-results.json
+
+      - name: Enforce HIGH and CRITICAL security threshold
+        run: bash .github/scripts/taxonomy-tooling.sh check-trivy-sarif --file trivy-results.sarif
 
       - name: Upload SARIF to GitHub code scanning
-        if: always() && hashFiles('trivy-results.sarif') != ''
+        if: always() && steps.scan_coverage.outcome == 'success' && hashFiles('trivy-results.sarif') != ''
         uses: github/codeql-action/upload-sarif@1bd86f2fdb4b86187fa4059f16f31a3202acc9ea # v4.39.4
         with:
           sarif_file: trivy-results.sarif
@@ -117,6 +132,7 @@ jobs:
           name: trivy-security-scan
           path: |
             trivy-results.sarif
+            target/trivy-results.json
             target/supply-chain-pins.json
           if-no-files-found: warn
           retention-days: 90

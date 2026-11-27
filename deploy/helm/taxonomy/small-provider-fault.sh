@@ -1,8 +1,38 @@
 # Helpers for the small-profile acceptance fixture, called only in its owned namespace.
+render_small_provider() {
+  case "${NAMESPACE:-}" in
+    taxonomy-smoke|taxonomy-artemis-smoke) ;;
+    *) printf '%s\n' 'small-provider requires an owned smoke namespace' >&2; return 1 ;;
+  esac
+  if ! [[ "${SOURCE_SHA:-}" =~ ^[0-9a-f]{40}$ ]] \
+      || ! [[ "${IMAGE_REPOSITORY:-}" =~ ^[a-z0-9][a-z0-9._:/-]*$ ]] \
+      || [[ "${IMAGE_REFERENCE:-}" != "${IMAGE_REPOSITORY:-}:sha-${SOURCE_SHA:-}" ]]; then
+    printf '%s\n' 'small-provider requires the exact locally built SOURCE_SHA image' >&2
+    return 1
+  fi
+  # Buffer the result until both namespaces and the single image have been
+  # replaced. Template drift must fail before any Secret or workload is created.
+  awk -v namespace="${NAMESPACE}" -v image="${IMAGE_REFERENCE}" '
+    $0 == "  namespace: taxonomy-smoke" { $0 = "  namespace: " namespace; namespaces++ }
+    $0 == "          image: fixture-image-placeholder:render-required" {
+      $0 = "          image: " image; images++
+    }
+    { lines[NR] = $0 }
+    END {
+      if (namespaces != 2 || images != 1) {
+        print "small-provider template must contain two namespace slots and one image slot" > "/dev/stderr"
+        exit 1
+      }
+      for (line = 1; line <= NR; line++) print lines[line]
+    }
+  ' "${CHART_DIR}/small-provider.yaml"
+}
+
 install_small_provider() (
   set -euo pipefail
   umask 077
-  local private password
+  local private password rendered
+  rendered=$(render_small_provider) || return 1
   private=$(mktemp -d)
   trap 'rm -rf -- "${private}"' EXIT
   password=$(od -An -N24 -tx1 /dev/urandom | tr -d ' \n')
@@ -21,7 +51,7 @@ install_small_provider() (
     --from-file="${private}/provider.pem" --from-file="${private}/trust.jks" >/dev/null
   kubectl create configmap small-provider-class --namespace "${NAMESPACE}" \
     --from-file="${private}/SmallProfileProvider.class" >/dev/null
-  sed "s|image: fixture-image-placeholder|image: ${IMAGE_REFERENCE}|" "${CHART_DIR}/small-provider.yaml" |
+  printf '%s\n' "${rendered}" |
     kubectl apply --namespace "${NAMESPACE}" -f -
   kubectl rollout status --namespace "${NAMESPACE}" deployment/small-provider --timeout=2m
 )

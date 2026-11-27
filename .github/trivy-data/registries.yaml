@@ -1,0 +1,7 @@
+# The chart is published to GHCR; reviewed, digest-pinned upstream fixtures use
+# Docker Hub. This is registry policy data for KSV0125, not a check suppression.
+# Trivy replaces its default registry list with these project-approved domains.
+ksv0125:
+  trusted_registries:
+    - docker.io
+    - ghcr.io

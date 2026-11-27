@@ -33,6 +33,7 @@ spec:
     - type: Container
       defaultRequest: {cpu: 100m, memory: 128Mi}
       default: {cpu: 500m, memory: 512Mi}
+      min: {cpu: 25m, memory: 64Mi}
       max: {cpu: "1", memory: 1Gi}
 ---
 apiVersion: v1
@@ -60,13 +61,14 @@ spec:
       labels: {app.kubernetes.io/name: taxonomy-smoke-postgres}
     spec:
       automountServiceAccountToken: false
-      # The pinned Alpine image defines postgres as UID/GID 70. PGDATA lives
-      # below the fsGroup-owned mount so the non-root user owns its directory.
+      # Every run owns fresh PVCs. The pinned Linux/amd64 Alpine image includes
+      # nss_wrapper for initdb with an arbitrary non-root UID. PGDATA lives below
+      # the fsGroup-owned mount so this user creates and owns its directory.
       securityContext:
         runAsNonRoot: true
-        runAsUser: 70
-        runAsGroup: 70
-        fsGroup: 70
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
         seccompProfile: {type: RuntimeDefault}
       containers:
         - name: postgres
@@ -137,15 +139,18 @@ spec:
       labels: {app.kubernetes.io/name: taxonomy-smoke-broker}
     spec:
       automountServiceAccountToken: false
+      # A fresh disposable claim replaces the image's default 1001-owned path.
+      # The entrypoint writes only below this fsGroup-writable instance mount;
+      # broker replacement in the live smoke reuses the same identity and PVC.
       securityContext:
         runAsNonRoot: true
-        runAsUser: 1001
-        runAsGroup: 1001
-        fsGroup: 1001
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
         seccompProfile: {type: RuntimeDefault}
       containers:
         - name: broker
-          image: apache/artemis:2.53.0-alpine@sha256:ce784035e4c5c5c91c505d7bd8edb8842559b909f3d5c2fddff968a2accc612e
+          image: docker.io/apache/artemis:2.53.0-alpine@sha256:ce784035e4c5c5c91c505d7bd8edb8842559b909f3d5c2fddff968a2accc612e
           securityContext:
             runAsNonRoot: true
             allowPrivilegeEscalation: false

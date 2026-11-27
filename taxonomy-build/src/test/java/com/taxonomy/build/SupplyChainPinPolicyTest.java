@@ -2,6 +2,8 @@ package com.taxonomy.build;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
@@ -189,6 +191,124 @@ class SupplyChainPinPolicyTest {
         assertThat(inspection.passed()).isTrue();
         assertThat(inspection.checkedExternalActions()).isZero();
         assertThat(inspection.checkedProductionImages()).isZero();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"evilghcr.io", "unapproved.ghcr.io", "evildocker.io",
+            "unapproved.docker.io", "registry.example", "localhost", "localhost:5000", "ghcr.io:443"})
+    void rejectsUnapprovedRegistryHostsInDeploymentImages(String registry, @TempDir Path root)
+            throws Exception {
+        write(root, "deploy/kubernetes/workload.yaml", """
+                metadata: {name: namespace}
+                ---
+                spec:
+                  template:
+                    spec:
+                      containers:
+                        - {name: app, image: "%s/example/app:1"}
+                """.formatted(registry));
+
+        SupplyChainPinPolicy.Inspection inspection = policy.inspect(root);
+
+        assertThat(inspection.passed()).isFalse();
+        assertThat(inspection.violations()).singleElement()
+                .asString().contains("deploy/kubernetes/workload.yaml", registry);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"evilghcr.io", "unapproved.ghcr.io", "evildocker.io",
+            "unapproved.docker.io", "registry.example", "localhost", "localhost:5000", "docker.io:443"})
+    void rejectsUnapprovedRegistryHostsInHelmValueOverlays(String registry, @TempDir Path root)
+            throws Exception {
+        write(root, "deploy/helm/example/values.yaml", "image: {repository: ghcr.io/example/app}\n");
+        write(root, "deploy/helm/example/values-preview.yml", """
+                analysis:
+                  workerSets:
+                    - image:
+                        repository: >-
+                          %s/example/worker
+                """.formatted(registry));
+
+        SupplyChainPinPolicy.Inspection inspection = policy.inspect(root);
+
+        assertThat(inspection.passed()).isFalse();
+        assertThat(inspection.violations()).singleElement()
+                .asString().contains("deploy/helm/example/values-preview.yml", registry);
+    }
+
+    @Test
+    void acceptsExactApprovedRegistriesAndImplicitDockerHubOrLocalImages(@TempDir Path root)
+            throws Exception {
+        write(root, "deploy/kubernetes/workload.yaml", """
+                spec:
+                  initContainers:
+                    - image: docker.io/library/alpine:3.23
+                  containers:
+                    - image: ghcr.io/example/app@sha256:%s
+                    - image: postgres:16-alpine
+                    - image: apache/artemis:2.53.0
+                    - image: fixture-image-placeholder:render-required
+                    - image: taxonomy-constrained-smoke:local
+                """.formatted(IMAGE_DIGEST));
+        write(root, "deploy/helm/example/values.yaml", """
+                image: {repository: ghcr.io/example/app}
+                analysis:
+                  workerSets:
+                    - image: {repository: docker.io/example/worker}
+                    - image: {repository: example/implicit-dockerhub}
+                """);
+
+        SupplyChainPinPolicy.Inspection inspection = policy.inspect(root);
+
+        assertThat(inspection.passed()).isTrue();
+        assertThat(inspection.violations()).isEmpty();
+    }
+
+    @Test
+    void skipsUnrenderedHelmTemplatesButInspectsStaticYamlInOtherTemplateDirectories(
+            @TempDir Path root) throws Exception {
+        write(root, "deploy/helm/example/templates/workload.yaml", """
+                {{- if .Values.enabled }}
+                image: {{ .Values.image.repository }}
+                {{- end }}
+                """);
+        write(root, "deploy/kubernetes/templates/workload.yaml", """
+                spec: {containers: [{image: evilghcr.io/example/app:1}]}
+                """);
+
+        SupplyChainPinPolicy.Inspection inspection = policy.inspect(root);
+
+        assertThat(inspection.passed()).isFalse();
+        assertThat(inspection.violations()).singleElement()
+                .asString().contains("deploy/kubernetes/templates/workload.yaml", "evilghcr.io");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"spec: [", "image: first\nimage: second\n",
+            "image: !!javax.script.ScriptEngineManager {}"})
+    void failsClosedOnMalformedOrAmbiguousDeploymentYaml(String content, @TempDir Path root)
+            throws Exception {
+        write(root, "deploy/helm/example/values-broken.yaml", content);
+
+        assertThatIllegalArgumentException()
+                .isThrownBy(() -> policy.inspect(root))
+                .withMessageContaining("values-broken.yaml");
+    }
+
+    @Test
+    void inspectsImageReferencesInRecursiveYamlAliasesWithoutLooping(@TempDir Path root)
+            throws Exception {
+        write(root, "deploy/kubernetes/aliased.yaml", """
+                configuration: &configuration
+                  same: *configuration
+                  image: evilghcr.io/example/app:1
+                """);
+
+        SupplyChainPinPolicy.Inspection inspection = policy.inspect(root);
+
+        assertThat(inspection.passed()).isFalse();
+        assertThat(inspection.violations()).singleElement()
+                .asString().contains("deploy/kubernetes/aliased.yaml", "evilghcr.io");
     }
 
     private static Path write(Path root, String relative, String content)

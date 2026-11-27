@@ -1,7 +1,10 @@
+# install_small_provider renders both namespaces and the exact source image.
+# The tagged placeholder and Never policy keep an unrendered fixture local-only.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: small-provider
+  namespace: taxonomy-smoke
 spec:
   replicas: 1
   strategy: {type: Recreate}
@@ -11,10 +14,16 @@ spec:
     spec:
       automountServiceAccountToken: false
       terminationGracePeriodSeconds: 1
-      securityContext: {runAsNonRoot: true, seccompProfile: {type: RuntimeDefault}}
+      # The application image used by this fixture declares USER 10001:10001.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile: {type: RuntimeDefault}
       containers:
         - name: provider
-          image: fixture-image-placeholder
+          image: fixture-image-placeholder:render-required
           imagePullPolicy: Never
           command: [java, -XX:+UseSerialGC, -XX:ActiveProcessorCount=1, -Xmx32m, -cp, /fixture, SmallProfileProvider, /keys, "8443"]
           ports: [{containerPort: 8443, name: https}]
@@ -39,7 +48,9 @@ spec:
 ---
 apiVersion: v1
 kind: Service
-metadata: {name: small-provider}
+metadata:
+  name: small-provider
+  namespace: taxonomy-smoke
 spec:
   selector: {app: small-provider}
   ports: [{name: https, port: 8443, targetPort: https}]
