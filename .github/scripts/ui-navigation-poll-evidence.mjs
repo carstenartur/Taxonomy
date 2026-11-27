@@ -258,15 +258,41 @@ export function createNavigationPollEvidence({ browserName, baseUrl }) {
         blockedURI: event.blockedURI ?? null
       }));
     }
+    function observeRender(element, id, counter) {
+      new MutationObserver(records => {
+        // The status poll replaces the bar's contents. Parser insertions alone are not a render.
+        if (id === 'systemStatusBar' && !records.some(record => record.type === 'childList'
+          && record.target === element && record.removedNodes.length > 0)) return;
+        state[counter]++;
+        send('poll-render', { id, writes: state[counter], text: element.textContent });
+      }).observe(element, { childList: true, subtree: true, characterData: true });
+    }
+    function observeStartupBar() {
+      const element = document.getElementById('systemStatusBar');
+      if (!element) return false;
+      observeRender(element, 'systemStatusBar', 'startupWrites');
+      return true;
+    }
+    if (!observeStartupBar() && document.readyState === 'loading') {
+      // The first startup response can render before DOMContentLoaded.
+      const parserObserver = new MutationObserver(() => {
+        if (observeStartupBar()) stopWaiting();
+      });
+      function stopWaiting() {
+        parserObserver.disconnect();
+        document.removeEventListener('DOMContentLoaded', finishParsing);
+      }
+      function finishParsing() {
+        observeStartupBar();
+        stopWaiting();
+      }
+      parserObserver.observe(document, { childList: true, subtree: true });
+      document.addEventListener('DOMContentLoaded', finishParsing, { once: true });
+    }
     function observe() {
-      for (const [id, counter] of [['systemStatusBar', 'startupWrites'], ['syncStatePanel', 'syncWrites'],
-        ['gitStatusBar', 'gitWrites'], ['contextBar', 'contextWrites']]) {
+      for (const [id, counter] of [['syncStatePanel', 'syncWrites'], ['gitStatusBar', 'gitWrites'], ['contextBar', 'contextWrites']]) {
         const element = document.getElementById(id);
-        if (!element) continue;
-        new MutationObserver(() => {
-          state[counter]++;
-          send('poll-render', { id, writes: state[counter], text: element.textContent });
-        }).observe(element, { childList: true, subtree: true, characterData: true });
+        if (element) observeRender(element, id, counter);
       }
     }
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', observe, { once: true });

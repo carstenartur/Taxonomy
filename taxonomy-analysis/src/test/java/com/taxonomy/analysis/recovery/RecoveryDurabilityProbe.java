@@ -60,6 +60,13 @@ public final class RecoveryDurabilityProbe {
                             if (jpql.startsWith("select q.questionKey, q.nodeCodes, q.state,")) yield questions.stream()
                                     .sorted(Comparator.comparingLong((AnalysisQuestionCheckpoint q) -> q.startedAt).thenComparing(q -> q.questionKey))
                                     .map(q -> new Object[]{q.questionKey, q.nodeCodes, q.state, q.error, q.attempts}).toList();
+                            if (jpql.equals("select q.nodeCodes, q.prompt, q.detailJson, q.state, q.questionKey from AnalysisQuestionCheckpoint q "
+                                    + "where q.run.id=:id and (q.state='SUCCESS') and q.detailJson is not null "
+                                    + "and q.questionKey not like 'R%' order by q.startedAt, q.questionKey")) yield questions.stream()
+                                    .filter(q -> Objects.equals(q.run.id, parameters.get("id")) && "SUCCESS".equals(q.state)
+                                            && q.detailJson != null && !AnalysisCheckpointSession.isRelationQuestion(q.questionKey))
+                                    .sorted(Comparator.comparingLong((AnalysisQuestionCheckpoint q) -> q.startedAt).thenComparing(q -> q.questionKey))
+                                    .map(q -> new Object[]{q.nodeCodes, q.prompt, q.detailJson, q.state, q.questionKey}).toList();
                             if (jpql.startsWith("select q.questionKey from")) yield questions.stream()
                                     .filter(q -> Objects.equals(q.state, parameters.get("state"))).map(q -> q.questionKey).limit(1).toList();
                             if (jpql.startsWith("select q from")) yield questions;

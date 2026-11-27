@@ -15,6 +15,53 @@ test('the passive request observer captures the application workspace-routing he
   assert.equal(observer.snapshot().reads[0].workspaceId, 'workspace-1');
 });
 
+test('the passive observer records startup status written before DOMContentLoaded', async () => {
+  const activeObservers = new Map(), frame = {}, browserWindow = { addEventListener() {} };
+  let statusBar;
+  const document = {
+    readyState: 'loading',
+    getElementById: id => id === 'systemStatusBar' ? statusBar : null,
+    addEventListener() {},
+    removeEventListener() {}
+  };
+  class MutationObserver {
+    constructor(callback) { this.callback = callback; }
+    observe(target) { activeObservers.set(this, target); }
+    disconnect() { activeObservers.delete(this); }
+  }
+  const mutate = (target, addedNodes, removedNodes = []) => {
+    for (const [observer, watched] of [...activeObservers]) {
+      if (watched === target) observer.callback([{ type: 'childList', target, addedNodes, removedNodes }]);
+    }
+  };
+  const page = { on() {}, mainFrame: () => frame, evaluate: async fn =>
+    vm.runInNewContext(`(${fn.toString()})()`, {
+      document, MutationObserver, window: browserWindow,
+      performance: { timeOrigin: oldEpoch }, location: { href: oldUrl }
+    }) };
+  const context = { exposeBinding: async (name, handler) => {
+    browserWindow[name] = async value => handler({ page, frame }, value);
+  }, addInitScript: async () => {} };
+  const observer = createNavigationPollEvidence({ browserName: 'webkit', baseUrl });
+  await observer.attach(page, context);
+
+  const placeholder = { textContent: 'Loading status…' };
+  statusBar = { textContent: placeholder.textContent };
+  mutate(document, [statusBar]);
+  mutate(statusBar, [placeholder]);
+  assert.equal(browserWindow.__taxonomyPollEvidence.startupWrites, 0, 'Parser markup is not a status write');
+
+  const ready = { textContent: '🟢 Ready | Heap: 6% (250/3996 MB) | Threads: 29' };
+  statusBar.textContent = ready.textContent;
+  mutate(statusBar, [ready], [placeholder]);
+  const renders = observer.snapshot().events.filter(event => event.type === 'poll-render');
+  assert.equal(renders.length, 1, 'The app can replace the startup text while the parser is still running');
+  assert.equal(renders[0].id, 'systemStatusBar');
+  assert.equal(renders[0].writes, 1);
+  assert.equal(renders[0].text, ready.textContent);
+  assert.equal([...activeObservers.values()].includes(document), false, 'The parser observer disconnects after attachment');
+});
+
 test('the passive observer retains original project job and snapshot response evidence', async () => {
   const handlers = {};
   const page = { on: (name, fn) => { handlers[name] = fn; }, url: () => reloadUrl,
