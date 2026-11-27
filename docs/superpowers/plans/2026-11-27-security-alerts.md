@@ -43,10 +43,11 @@
 - [x] Inspect each affected resource and trace its actual installation/rendering path.
 - [x] Reproduce actual policy/renderer gaps with existing tools or a focused behavior regression.
 - [x] Apply minimal compatible fixes, preserving pinning, namespace semantics, non-root execution and volume permissions.
-- [ ] Run the affected existing contracts through Maven and syntax/render validation; identify any runtime boundary that cannot be exercised locally.
-  - Original Helm contract sources pass 20/20 under isolated JUnit with pinned Helm.
-    Local reactor attempts were killed; full Maven execution and live PVC reuse
-    remain required CI gates.
+- [x] Run the affected existing contracts through Maven and syntax/render validation; identify any runtime boundary that cannot be exercised locally.
+  - Original Helm contract sources pass 20/20 under isolated JUnit with pinned Helm
+    and through Maven in successful document-template E2E run `46065704897` on
+    `b68e104`. Local reactor attempts were killed; full Maven integration and live
+    PVC reuse remain required CI gates.
 
 ## Task 3: Scanner coverage and accurate findings
 
@@ -66,5 +67,22 @@
 - [ ] Recheck Dependabot, Code Scanning and Secret Scanning on updated main; distinguish fixed, false-positive and mitigated results in the user report.
 
 ## Evidence checkpoint
+
+### Integration prerequisite: native package cache
+
+The required WebKit UI shard exposed a pre-existing incomplete cache reuse after
+PR publication. A producer and consumer with the same hosted image label had
+different already-satisfied dependencies; the consumer required two uncached
+`libjson-glib` packages. This blocks the required Maven verification aggregate.
+
+- [x] Compare the successful 185-package producer and failed consumer logs and
+  identify the missing baseline binding; preserve evidence outside the source tree.
+- [x] Bind UI and document cache keys to canonical installed-package and APT
+  architecture/variant state, rejecting query failures and later state changes.
+- [x] Reproduce equal-image/different-baseline collisions and verify all 41 focused
+  package/workflow cases; complete an independent review of the correction.
+- [ ] Verify the correction through existing Maven-owned UI contracts and rerun
+  the affected CI gates. The broader local Maven attempt stalled before results
+  and is not counted as a pass.
 
 Baseline Security Scan run `45966770020`, job `140397205236`, used Trivy 0.70.0. Its log reported a Helm render error because the SNAPSHOT chart requires `image.tag` or `image.digest`, but the run passed. This is an observed coverage defect, independent of the lower-severity configuration findings.

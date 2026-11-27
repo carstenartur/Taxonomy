@@ -180,6 +180,57 @@ The exact workflow `check-trivy-coverage` and `check-trivy-sarif` commands both
 accept this original JSON/SARIF pair: all source finding IDs, severities and
 occurrence counts are preserved, and no HIGH/CRITICAL finding is present.
 
+The [PR Security Scan on `b68e104`](https://github.com/carstenartur/Taxonomy/actions/runs/46065704854)
+subsequently completed the full filesystem scan with vulnerability, secret and
+misconfiguration scanning enabled. Its original JSON binds the PR test merge
+`be7707165ff34ce0f19c28dabb9128604f9b1aa4` to that head and base `487c264`.
+The report contains 25 Maven POM inventories and seven configuration targets,
+99 passing Helm checks, no reported vulnerabilities or secrets, and exactly the
+32 documented LOW results. Coverage, severity, SARIF upload and processing all
+passed. The downloaded original artifact's SHA-256 matches GitHub's digest.
+Trivy excludes development/test dependencies by default, so this result does
+not replace the resolved Maven and Dependabot evidence for OpenTelemetry.
+
+The [document-template E2E run on `b68e104`](https://github.com/carstenartur/Taxonomy/actions/runs/46065704897)
+also completed successfully after the GNU awk correction. The full Maven and
+Kubernetes integration gates remain separate required evidence. This successful
+Maven run executes all 20 Helm contracts and all 31 supply-chain policy cases
+within 322 build-module tests, with zero failures, errors or skips. Its actual
+`DocumentTemplateReportDownloadIT` also passes.
+
+### Native package cache prerequisite
+
+The integration run exposed an existing shared package-cache defect introduced
+by base PR #1612. Both the screenshot workflow and the WebKit UI shard failed
+before their tests at `apt-get install --no-download`, after successful archive
+checksum verification. The scripts were unchanged by the security corrections.
+
+The [successful UI cache producer](https://github.com/carstenartur/Taxonomy/actions/runs/46064384240/job/140727627680)
+on Azure and the [failing consumer](https://github.com/carstenartur/Taxonomy/actions/runs/46065704971/job/140731355190)
+on AWS report the same Ubuntu image version `20261122.9.1`. The producer downloaded
+and installed 185 new packages. The consumer restored those same 185 archives but
+APT additionally required `libjson-glib-1.0-0` and `libjson-glib-1.0-common`, which
+were absent from that cache. A download-only cache is a delta against the
+producer's installed packages; the runner image label alone did not establish
+that the consumer had the same already-satisfied dependencies.
+
+The cache correction binds both UI and document package caches to a canonical
+fingerprint of the installed package state and APT architecture/variant settings.
+The compatibility check recomputes that state before accepting the exact cache
+key. A changed baseline requires a distinct cache; failed state queries stop
+preparation. Archive checksums, offline installation, time limits and all test
+gates remain enforced. Regression checks exercise the actual workflow shell
+blocks with equal image labels and different dependency baselines.
+All 41 focused package/workflow cases pass after reproducing the old failures,
+including case-insensitive APT options, ordered architecture preferences,
+query failures and baseline drift. An independent review found no remaining
+substantive issue. The broader local Maven UI-contract attempt produced no
+JavaScript contract results after Surefire startup and was stopped with exit 130.
+It is not counted as a pass; the full CI contract
+and hosted package-installation gates must validate the published correction.
+
+### Runtime and local verification boundaries
+
 The provider regression exercises the real shell renderer and installation
 sequence with external cluster/certificate commands replaced by boundary fixtures.
 It checks both owned namespaces, ten invalid input combinations and two changed
@@ -192,7 +243,8 @@ service recovery.
 The local filesystem scan attempt encountered a Maven repository HTTP 429 while
 analyzing dependency metadata and did not produce a complete report. It is not
 counted as a successful full vulnerability/secret scan. The successful local Trivy
-run was a configuration scan; the full filesystem scan must pass in CI. Two local
+run was a configuration scan; the successful full filesystem CI scan is recorded
+above. Two local
 package attempts ended with SIGKILL: first during compilation, then with an explicit
 384 MiB Maven heap after all production modules compiled, during Spring Boot
 repackaging. No kernel cause is inferred and neither attempt is counted as a pass.

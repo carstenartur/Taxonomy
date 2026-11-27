@@ -4,6 +4,33 @@
 apt_options=(-o Acquire::Retries=4 -o Acquire::http::Timeout=30
     -o Acquire::https::Timeout=30 -o DPkg::Lock::Timeout=120)
 
+package_cache_fingerprint() (
+    # Download-only archives are a delta against the producer's installed
+    # packages. Hosted runners can differ even under the same image version.
+    set -o pipefail
+    export LC_ALL=C
+    local package_state apt_config architecture_state
+    if ! package_state=$(dpkg-query --show \
+        --showformat='${Package}\t${Version}\t${Architecture}\t${Architecture-Variant}\t${Status}\n'); then
+        echo "Cannot query installed packages for the system package cache baseline." >&2
+        exit 1
+    fi
+    if ! apt_config=$(apt-config dump); then
+        echo "Cannot query APT architectures for the system package cache baseline." >&2
+        exit 1
+    fi
+    architecture_state=$(printf '%s\n' "$apt_config" | \
+        sed -n -E '/^APT::(Architecture|Architectures|Architecture-Variants)(::[^[:space:]]*)?[[:space:]]/Ip') || exit 1
+    if [[ -z "$package_state" || -z "$architecture_state" ]]; then
+        echo "System package cache baseline is empty; refusing cache reuse." >&2
+        exit 1
+    fi
+    package_state=$(printf '%s\n' "$package_state" | sort) || exit 1
+    # Preserve the preference order of repeated architecture/variant entries.
+    architecture_state=$(printf '%s\n' "$architecture_state" | sort -s -k1,1) || exit 1
+    printf 'dpkg\n%s\napt\n%s\n' "$package_state" "$architecture_state" | sha256sum | cut -d ' ' -f 1
+)
+
 prefer_hosted_apt_mirror() {
     # A slow Azure mirror can keep making progress without hitting apt's data
     # timeout. Preserve signed metadata and fallback entries, but prefer the

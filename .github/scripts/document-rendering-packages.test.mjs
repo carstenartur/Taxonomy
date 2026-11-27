@@ -11,6 +11,16 @@ const installer = path.join(root, '.github/scripts/install-document-rendering.sh
 const actionFile = path.join(root, '.github/actions/document-rendering/action.yml');
 const mirrors = 'http://azure.archive.ubuntu.com/ubuntu/\tpriority:1\n'
   + 'https://archive.ubuntu.com/ubuntu/\tpriority:2\n';
+const installedPackages = [
+  'base-files\t14.0\tamd64\tamd64v3\tinstall ok installed',
+  'libjson-glib-1.0-0\t1.10.8\tamd64\tamd64v3\tinstall ok installed',
+  'libjson-glib-1.0-common\t1.10.8\tall\t\tinstall ok installed'
+].join('\n');
+const aptArchitectures = [
+  'APT::Architecture "amd64";',
+  'APT::Architectures:: "amd64";',
+  'APT::Architecture-Variants:: "amd64v3";'
+].join('\n');
 
 async function fixture(t) {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'taxonomy-document-packages-'));
@@ -23,6 +33,8 @@ async function fixture(t) {
   await writeFile(mirrorFile, mirrors);
   for (const [name, script] of Object.entries({
     sudo: 'exec "$@"',
+    'dpkg-query': 'printf \'%s\\n\' "$DPKG_STATE"; exit "${DPKG_QUERY_EXIT:-0}"',
+    'apt-config': 'printf \'%s\\n\' "$APT_ARCHITECTURES"; exit "${APT_CONFIG_EXIT:-0}"',
     'apt-get': `
 echo "apt-get $*" >> "$COMMAND_LOG"
 cat "$TAXONOMY_APT_MIRROR_LIST" >> "$COMMAND_LOG"
@@ -43,6 +55,8 @@ fi`,
   }
   return {
     directory, cache, mirrorFile,
+    baselineEnv: { PATH: `${bin}:${process.env.PATH}`, DPKG_STATE: installedPackages,
+      APT_ARCHITECTURES: aptArchitectures },
     async run(mode, variant = 'writer', extraEnv = {}) {
       await writeFile(log, '');
       const result = spawnSync('bash', [installer, mode, variant], {
@@ -55,6 +69,22 @@ fi`,
       return { ...result, commands: await readFile(log, 'utf8') };
     }
   };
+}
+
+async function identifyDocumentCache(f, extraEnv = {}) {
+  const action = await readFile(actionFile, 'utf8');
+  const identify = action.split('- name: Identify document package cache\n')[1].split('\n    - ')[0];
+  const output = path.join(f.directory, 'output');
+  await writeFile(output, '');
+  const env = { ...process.env, ...f.baselineEnv, PACKAGE_KEY_PREFIX: 'fixture', VARIANT: 'writer',
+    ImageOS: 'ubuntu24', ImageVersion: '20261023.1', RUNNER_ARCH: 'X64', GITHUB_OUTPUT: output,
+    ...extraEnv };
+  const result = spawnSync('bash', ['-ec', identify.split('run: |')[1]], {
+    cwd: root, env, encoding: 'utf8', timeout: 10000
+  });
+  const outputs = Object.fromEntries((await readFile(output, 'utf8')).trim().split('\n')
+    .filter(Boolean).map(line => line.split('=')));
+  return { ...result, env, outputs };
 }
 
 test('document cache preparation uses the protected mirror and retains the complete package closure', async t => {
@@ -147,7 +177,8 @@ test('all document consumers use the shared preparation before expensive verific
   }
 });
 
-test('document action rejects cache drift and bounds download and offline installation independently', async () => {
+test('document action rejects cache drift and bounds download and offline installation independently', async t => {
+  const f = await fixture(t);
   const action = await readFile(actionFile, 'utf8');
   assert.doesNotMatch(action, /restore-keys:|continue-on-error:/);
   assert.match(action, /hashFiles\([^\n]*apt-packages\.sh[^\n]*install-document-rendering\.sh/);
@@ -162,6 +193,10 @@ test('document action rejects cache drift and bounds download and offline instal
   assert.ok(positions.every((position, index) => position >= 0 &&
     (index === 0 || position > positions[index - 1])));
   const check = action.split('- name: Check package cache runner compatibility\n')[1].split('\n    - ')[0];
+  const identified = await identifyDocumentCache(f);
+  assert.equal(identified.status, 0, identified.stderr);
+  const baseline = identified.outputs.baseline;
+  assert.match(baseline ?? '', /^[a-f0-9]{64}$/);
   for (const [key, hit, matched, expected] of [
     ['fixture-ubuntu24-20261023.1-X64', '', '', 0],
     ['fixture-ubuntu24-20261023.1-X64', 'true', 'fixture-ubuntu24-20261023.1-X64', 0],
@@ -170,39 +205,108 @@ test('document action rejects cache drift and bounds download and offline instal
     ['fixture-ubuntu24-other-X64', 'true', 'fixture-ubuntu24-other-X64', 1]
   ]) {
     const result = spawnSync('bash', ['-ec', check.split('run: |')[1]], {
-      encoding: 'utf8', env: { ...process.env, ImageOS: 'ubuntu24', ImageVersion: '20261023.1',
-        RUNNER_ARCH: 'X64', PACKAGE_KEY: key, PACKAGE_CACHE_HIT: hit, PACKAGE_CACHE_MATCHED_KEY: matched }
+      cwd: root, encoding: 'utf8', env: { ...process.env, ...f.baselineEnv,
+        ImageOS: 'ubuntu24', ImageVersion: '20261023.1', RUNNER_ARCH: 'X64',
+        PACKAGE_BASELINE: baseline, PACKAGE_KEY: `${key}-${baseline}`, PACKAGE_CACHE_HIT: hit,
+        PACKAGE_CACHE_MATCHED_KEY: matched ? `${matched}-${baseline}` : '' }
     });
     assert.equal(result.status, expected, result.stderr);
   }
 });
 
 test('document package keys separate variants and runner revisions, rejecting unknown inputs', async t => {
-  const action = await readFile(actionFile, 'utf8');
-  const identify = action.split('- name: Identify document package cache\n')[1].split('\n    - ')[0];
-  const directory = await mkdtemp(path.join(os.tmpdir(), 'taxonomy-document-key-'));
-  t.after(() => rm(directory, { recursive: true, force: true }));
-  const output = path.join(directory, 'output');
+  const f = await fixture(t);
   const keys = new Set();
   for (const variant of ['writer', 'writer-draw', 'unknown']) {
     for (const version of ['20261012.1', '20261023.1', '']) {
-      await writeFile(output, '');
-      const result = spawnSync('bash', ['-ec', identify.split('run: |')[1]], {
-        encoding: 'utf8', env: { ...process.env, PACKAGE_KEY_PREFIX: 'fixture', VARIANT: variant,
-          ImageOS: 'ubuntu24', ImageVersion: version, RUNNER_ARCH: 'X64', GITHUB_OUTPUT: output }
-      });
-      const key = (await readFile(output, 'utf8')).trim();
+      const result = await identifyDocumentCache(f, { VARIANT: variant, ImageVersion: version });
+      const { key, baseline } = result.outputs;
       if (variant === 'unknown' || !version) {
         assert.notEqual(result.status, 0);
-        assert.equal(key, '');
+        assert.deepEqual(result.outputs, {});
       } else {
         assert.equal(result.status, 0, result.stderr);
-        assert.equal(key, `key=fixture-${variant}-ubuntu24-${version}-X64`);
+        assert.match(baseline ?? '', /^[a-f0-9]{64}$/);
+        assert.equal(key, `fixture-${variant}-ubuntu24-${version}-X64-${baseline}`);
         keys.add(key);
       }
     }
   }
   assert.equal(keys.size, 4);
+});
+
+test('document keys bind the installed package baseline and APT architecture on the same runner image', async t => {
+  const f = await fixture(t);
+  const original = await identifyDocumentCache(f);
+  assert.equal(original.status, 0, original.stderr);
+  const reordered = await identifyDocumentCache(f, {
+    DPKG_STATE: installedPackages.split('\n').reverse().join('\n'),
+    APT_ARCHITECTURES: aptArchitectures.split('\n').reverse().join('\n')
+  });
+  assert.equal(reordered.status, 0, reordered.stderr);
+  assert.deepEqual(reordered.outputs, original.outputs);
+  for (const changed of [
+    { DPKG_STATE: installedPackages.split('\n').filter(row => !row.startsWith('libjson-')).join('\n') },
+    { DPKG_STATE: installedPackages.replace('1.10.8', '1.10.9') },
+    { DPKG_STATE: installedPackages.replace('install ok installed', 'deinstall ok config-files') },
+    { DPKG_STATE: installedPackages.replace('\tamd64v3\t', '\t\t') },
+    { APT_ARCHITECTURES: aptArchitectures.replaceAll('amd64v3', 'amd64v2') },
+    { APT_ARCHITECTURES: aptArchitectures.replaceAll('amd64', 'arm64') }
+  ]) {
+    const result = await identifyDocumentCache(f, changed);
+    assert.equal(result.status, 0, result.stderr);
+    assert.notEqual(result.outputs.key, original.outputs.key, JSON.stringify(changed));
+    assert.notEqual(result.outputs.baseline, original.outputs.baseline);
+  }
+  const preferredV3 = await identifyDocumentCache(f, {
+    APT_ARCHITECTURES: `${aptArchitectures}\nAPT::Architecture-Variants:: "amd64v2";`
+  });
+  const preferredV2 = await identifyDocumentCache(f, {
+    APT_ARCHITECTURES: aptArchitectures.replace('APT::Architecture-Variants:: "amd64v3";',
+      'APT::Architecture-Variants:: "amd64v2";\nAPT::Architecture-Variants:: "amd64v3";')
+  });
+  assert.equal(preferredV3.status, 0, preferredV3.stderr);
+  assert.equal(preferredV2.status, 0, preferredV2.stderr);
+  assert.notEqual(preferredV2.outputs.baseline, preferredV3.outputs.baseline,
+    'Reordering an APT preference list changes package selection');
+  const lowercaseV3 = await identifyDocumentCache(f, {
+    APT_ARCHITECTURES: aptArchitectures.replace('Architecture-Variants', 'architecture-variants')
+  });
+  const lowercaseV2 = await identifyDocumentCache(f, {
+    APT_ARCHITECTURES: aptArchitectures.replace('Architecture-Variants', 'architecture-variants')
+      .replace('amd64v3', 'amd64v2')
+  });
+  assert.equal(lowercaseV3.status, 0, lowercaseV3.stderr);
+  assert.equal(lowercaseV2.status, 0, lowercaseV2.stderr);
+  assert.notEqual(lowercaseV2.outputs.baseline, lowercaseV3.outputs.baseline,
+    'APT option names are case-insensitive, including architecture variants');
+});
+
+test('document cache identification and compatibility fail closed on package state drift or query failures', async t => {
+  const f = await fixture(t);
+  const identified = await identifyDocumentCache(f);
+  assert.equal(identified.status, 0, identified.stderr);
+  const action = await readFile(actionFile, 'utf8');
+  const check = action.split('- name: Check package cache runner compatibility\n')[1].split('\n    - ')[0];
+  for (const changed of [
+    { DPKG_STATE: installedPackages.split('\n')[0] },
+    { DPKG_QUERY_EXIT: '42' }, { APT_CONFIG_EXIT: '43' },
+    { DPKG_STATE: '' }, { APT_ARCHITECTURES: '' }, { PACKAGE_BASELINE: '' }
+  ]) {
+    const result = spawnSync('bash', ['-ec', check.split('run: |')[1]], {
+      cwd: root, encoding: 'utf8', env: { ...identified.env,
+        PACKAGE_KEY: identified.outputs.key, PACKAGE_BASELINE: identified.outputs.baseline,
+        PACKAGE_CACHE_HIT: 'true', PACKAGE_CACHE_MATCHED_KEY: identified.outputs.key, ...changed }
+    });
+    assert.notEqual(result.status, 0, JSON.stringify(changed));
+  }
+  assert.match(check, /PACKAGE_BASELINE: \$\{\{ steps\.cache-key\.outputs\.baseline \}\}/);
+  for (const failure of [{ DPKG_QUERY_EXIT: '42' }, { APT_CONFIG_EXIT: '43' },
+    { DPKG_STATE: '' }, { APT_ARCHITECTURES: '' }]) {
+    const result = await identifyDocumentCache(f, failure);
+    assert.notEqual(result.status, 0, JSON.stringify(failure));
+    assert.deepEqual(result.outputs, {});
+  }
 });
 
 test('the hosted document cache stays outside source inventories, including apt private partial directories', async () => {

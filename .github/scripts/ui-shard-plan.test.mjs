@@ -19,6 +19,16 @@ const matrix = JSON.parse(await readFile(
   path.join(repoRoot, '.github', 'ui-acceptance-matrix.json'), 'utf8'));
 const plan = JSON.parse(await readFile(
   path.join(repoRoot, '.github', 'ui-shards.json'), 'utf8'));
+const installedPackages = [
+  'base-files\t14.0\tamd64\tamd64v3\tinstall ok installed',
+  'libjson-glib-1.0-0\t1.10.8\tamd64\tamd64v3\tinstall ok installed',
+  'libjson-glib-1.0-common\t1.10.8\tall\t\tinstall ok installed'
+].join('\n');
+const aptArchitectures = [
+  'APT::Architecture "amd64";',
+  'APT::Architectures:: "amd64";',
+  'APT::Architecture-Variants:: "amd64v3";'
+].join('\n');
 
 const expected = [
   'ui/desktop-chromium',
@@ -215,8 +225,8 @@ test('CI prepares packages once, restores an exact image cache and bounds offlin
   assert.ok(positions.every((position, index) => position >= 0 &&
     (index === 0 || position > positions[index - 1])), 'Prepare, verify and consume on the same runner');
 
-  const directory = await mkdtemp(path.join(os.tmpdir(), 'taxonomy-runner-cache-'));
-  t.after(() => rm(directory, { recursive: true, force: true }));
+  const fixture = await installerFixture(t);
+  const directory = fixture.directory;
   const output = path.join(directory, 'output');
   const compatibility = check.split('run: |')[1];
   for (const [image, imageVersion, architecture] of [
@@ -226,33 +236,39 @@ test('CI prepares packages once, restores an exact image cache and bounds offlin
     ['ubuntu26', '20261023.334.3', 'ARM64']
   ]) {
     await writeFile(output, '');
-    const env = { ...process.env, ImageOS: image, ImageVersion: imageVersion, RUNNER_ARCH: architecture,
+    const env = { ...process.env, ...fixture.baselineEnv,
+      ImageOS: image, ImageVersion: imageVersion, RUNNER_ARCH: architecture,
       BROWSER_KEY_PREFIX: 'Linux-taxonomy-playwright-hash-webkit-true',
       PACKAGE_KEY_PREFIX: 'Linux-taxonomy-ui-playwright-packages-v1-hash', GITHUB_OUTPUT: output };
-    const keyResult = spawnSync('bash', ['-ec', identify.split('run: |')[1]], { env, encoding: 'utf8' });
+    const keyResult = spawnSync('bash', ['-ec', identify.split('run: |')[1]], {
+      cwd: repoRoot, env, encoding: 'utf8'
+    });
     assert.equal(keyResult.status, 0, keyResult.stderr);
     const keys = Object.fromEntries((await readFile(output, 'utf8')).trim().split('\n').map(line => line.split('=')));
     const key = keys.key;
     assert.equal(keys['browser-key'], `${env.BROWSER_KEY_PREFIX}-${image}-${architecture}`);
-    assert.equal(key, `${env.PACKAGE_KEY_PREFIX}-${image}-${imageVersion}`);
+    assert.match(keys.baseline ?? '', /^[a-f0-9]{64}$/);
+    assert.equal(key, `${env.PACKAGE_KEY_PREFIX}-${image}-${imageVersion}-${architecture}-${keys.baseline}`);
     // A cold miss prepares locally; an exact hit skips downloads. A partial hit is never consumed.
     for (const [hit, matchedKey, status] of [
       ['', '', 0], ['false', '', 0], ['true', key, 0],
       ['false', `${key}-partial`, 1], ['true', `${key}-partial`, 1], ['true', '', 1]
     ]) {
       const result = spawnSync('bash', ['-ec', compatibility], {
-        encoding: 'utf8', env: { ...env, PACKAGE_KEY: key, PACKAGE_CACHE_HIT: hit, PACKAGE_CACHE_MATCHED_KEY: matchedKey }
+        cwd: repoRoot, encoding: 'utf8', env: { ...env, PACKAGE_BASELINE: keys.baseline,
+          PACKAGE_KEY: key, PACKAGE_CACHE_HIT: hit, PACKAGE_CACHE_MATCHED_KEY: matchedKey }
       });
       assert.equal(result.status, status, result.stderr);
     }
     const otherImage = imageVersion === '20261012.334.1' ? '20261023.334.3' : '20261012.334.1';
     const mismatch = spawnSync('bash', ['-ec', compatibility], {
-      encoding: 'utf8', env: { ...env, PACKAGE_KEY: `${env.PACKAGE_KEY_PREFIX}-${image}-${otherImage}`,
+      cwd: repoRoot, encoding: 'utf8', env: { ...env, PACKAGE_BASELINE: keys.baseline,
+        PACKAGE_KEY: `${env.PACKAGE_KEY_PREFIX}-${image}-${otherImage}-${architecture}-${keys.baseline}`,
         PACKAGE_CACHE_HIT: 'true', PACKAGE_CACHE_MATCHED_KEY: key }
     });
     assert.equal(mismatch.status, 1, mismatch.stderr);
     const unknownImage = spawnSync('bash', ['-ec', identify.split('run: |')[1]], {
-      encoding: 'utf8', env: { ...env, ImageVersion: '' }
+      cwd: repoRoot, encoding: 'utf8', env: { ...env, ImageVersion: '' }
     });
     assert.notEqual(unknownImage.status, 0);
   }
@@ -286,6 +302,10 @@ if [[ "$*" == "install-deps --dry-run webkit" ]]; then
 fi
 `);
   await executable(path.join(bin, 'sudo'), 'exec "$@"\n');
+  await executable(path.join(bin, 'dpkg-query'),
+    'printf \'%s\\n\' "$DPKG_STATE"; exit "${DPKG_QUERY_EXIT:-0}"\n');
+  await executable(path.join(bin, 'apt-config'),
+    'printf \'%s\\n\' "$APT_ARCHITECTURES"; exit "${APT_CONFIG_EXIT:-0}"\n');
   await executable(path.join(bin, 'apt-get'), `
 echo "apt-get $*" >> "$COMMAND_LOG"
 [[ "\${APT_FAILURE:-false}" != true ]] || exit 42
@@ -294,7 +314,9 @@ if [[ "$*" == *--download-only* ]]; then
 fi
 `);
   return {
-    cache,
+    cache, directory,
+    baselineEnv: { PATH: `${bin}:${process.env.PATH}`, DPKG_STATE: installedPackages,
+      APT_ARCHITECTURES: aptArchitectures },
     async run(options, extraEnv = {}) {
       await writeFile(log, '');
       const result = spawnSync('bash',
@@ -311,6 +333,62 @@ fi
     }
   };
 }
+
+test('UI cache keys reject a different libjson baseline on the same image and fail closed on drift', async t => {
+  const fixture = await installerFixture(t);
+  const workflow = await readFile(path.join(repoRoot, '.github', 'workflows', 'ci-cd.yml'), 'utf8');
+  const consumers = workflow.split('\n  ui-shards:')[1].split('\n  interoperability-products:')[0];
+  const step = name => consumers.split(`- name: ${name}\n`)[1].split('\n      - ')[0];
+  const identify = step('Identify the exact runner image').split('run: |')[1];
+  const compatibilityStep = step('Check package cache runner compatibility');
+  const compatibility = compatibilityStep.split('run: |')[1];
+  const output = path.join(fixture.directory, 'output');
+  const env = { ...process.env, ...fixture.baselineEnv, ImageOS: 'ubuntu26',
+    ImageVersion: '20261122.9.1', RUNNER_ARCH: 'X64', GITHUB_OUTPUT: output,
+    BROWSER_KEY_PREFIX: 'browser', PACKAGE_KEY_PREFIX: 'packages' };
+  const identifyKey = async changes => {
+    await writeFile(output, '');
+    const result = spawnSync('bash', ['-ec', identify], {
+      cwd: repoRoot, encoding: 'utf8', env: { ...env, ...changes }
+    });
+    const outputs = Object.fromEntries((await readFile(output, 'utf8')).trim().split('\n')
+      .filter(Boolean).map(line => line.split('=')));
+    return { ...result, outputs };
+  };
+  const original = await identifyKey({});
+  assert.equal(original.status, 0, original.stderr);
+  const reordered = await identifyKey({ DPKG_STATE: installedPackages.split('\n').reverse().join('\n') });
+  assert.equal(reordered.status, 0, reordered.stderr);
+  assert.deepEqual(reordered.outputs, original.outputs);
+  for (const changed of [
+    { DPKG_STATE: installedPackages.split('\n')[0] },
+    { APT_ARCHITECTURES: aptArchitectures.replace('amd64v3', 'amd64v2') }
+  ]) {
+    const result = await identifyKey(changed);
+    assert.equal(result.status, 0, result.stderr);
+    assert.notEqual(result.outputs.key, original.outputs.key);
+    assert.equal(result.outputs['browser-key'], original.outputs['browser-key']);
+    const drift = spawnSync('bash', ['-ec', compatibility], {
+      cwd: repoRoot, encoding: 'utf8', env: { ...env, ...changed,
+        PACKAGE_BASELINE: original.outputs.baseline, PACKAGE_KEY: original.outputs.key,
+        PACKAGE_CACHE_HIT: 'true', PACKAGE_CACHE_MATCHED_KEY: original.outputs.key }
+    });
+    assert.notEqual(drift.status, 0, JSON.stringify(changed));
+  }
+  assert.match(compatibilityStep, /PACKAGE_BASELINE: \$\{\{ steps\.cache-key\.outputs\.baseline \}\}/);
+  for (const failure of [{ DPKG_QUERY_EXIT: '42' }, { APT_CONFIG_EXIT: '43' },
+    { DPKG_STATE: '' }, { APT_ARCHITECTURES: '' }]) {
+    const identified = await identifyKey(failure);
+    assert.notEqual(identified.status, 0, JSON.stringify(failure));
+    assert.deepEqual(identified.outputs, {});
+    const check = spawnSync('bash', ['-ec', compatibility], {
+      cwd: repoRoot, encoding: 'utf8', env: { ...env, ...failure,
+        PACKAGE_BASELINE: original.outputs.baseline, PACKAGE_KEY: original.outputs.key,
+        PACKAGE_CACHE_HIT: 'true', PACKAGE_CACHE_MATCHED_KEY: original.outputs.key }
+    });
+    assert.notEqual(check.status, 0, JSON.stringify(failure));
+  }
+});
 
 test('package preparation downloads the dependency closure but installs no packages or browsers', async t => {
   const fixture = await installerFixture(t);
