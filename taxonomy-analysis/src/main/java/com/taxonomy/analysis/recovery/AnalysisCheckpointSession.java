@@ -261,8 +261,7 @@ public final class AnalysisCheckpointSession implements AutoCloseable {
     }
 
     private static boolean rootClarification(String kind, List<String> offered, LlmCallDetail detail) {
-        return "ROOT_RELEVANCE".equals(kind) && RootAssessmentEvidence.isClarification(detail)
-                && detail.getRootAssessments().keySet().equals(new HashSet<>(offered))
+        return "ROOT_RELEVANCE".equals(kind) && RootAssessmentEvidence.isClarificationFor(detail, offered)
                 && detail.getRawResponse() != null && !detail.getRawResponse().isBlank();
     }
 

@@ -132,7 +132,7 @@ class AnalysisContinuationBackupRestorerTest {
             ipReply.setScores(Map.of());
             ipReply.setRootAssessments(Map.of("IP", new RootAssessment(RootAssessment.Status.UNRESOLVED,
                     null, open.rationale(), open.question())));
-            ipReply.setReasons(Map.of("IP", open.rationale()));
+            ipReply.setReasons(Map.of("IP", open.rationale(), "UA", "An explanation for an unoffered node."));
             ipReply.setError("ROOT_UNRESOLVED: " + open.question());
             ipReply.setNodeAssessments(Map.of("IP", List.of(open)));
             var ipArchive = questionEvidence(clarification, "b".repeat(64), "CLARIFICATION", ipReply);
@@ -160,11 +160,39 @@ class AnalysisContinuationBackupRestorerTest {
             assertThat(saved.result().getNodeAssessments()).containsExactlyInAnyOrderEntriesOf(
                     Map.of("CP", List.of(supported), "IP", List.of(open)));
             assertThat(saved.result().getRawScores()).doesNotContainKey("IP");
+            assertThat(saved.result().getReasons()).containsEntry("IP", open.rationale()).doesNotContainKey("UA");
             assertThat(saved.recovery().openQuestions()).singleElement().satisfies(question ->
                     assertThat(question.error()).contains(open.question()));
             var savedDetail = tx(db).execute(status -> new AnalysisContinuationStore(db.em, JSON)
                     .detail(id, ipArchive.questionKey(), TARGET));
             assertThat(savedDetail.getRootAssessments()).containsKey("IP");
+            assertThat(savedDetail.getReasons()).isEqualTo(ipReply.getReasons());
+        }
+    }
+
+    @Test void archivedUntypedClarificationRemainsInspectableWithoutBecomingCanonicalEvidence() {
+        try (var db = new ClusterAnalysisStoreTest.Database()) {
+            var id = UUID.randomUUID().toString();
+            var root = new TaxonomyNodeDto(); root.setCode("IP");
+            var result = new AnalysisResult(Map.of(), List.of(root));
+            var archive = continuationResult(source("COMPLETED_WITH_GAPS", ResumePolicy.REVIEW_REQUIRED), result);
+            var sourced = RequirementAssessmentClusterTest.supported("requirement", "An untyped historical claim.");
+            var historical = new LlmCallDetail();
+            historical.setScores(Map.of());
+            historical.setReasons(Map.of("IP", sourced.rationale()));
+            historical.setNodeAssessments(Map.of("IP", List.of(sourced)));
+            var clarification = questionEvidence(questions().getLast(), "b".repeat(64), "CLARIFICATION", historical);
+
+            new AnalysisContinuationBackupRestorer(db.em, db.transactions, JSON).restore(archive, List.of(clarification), id, TARGET);
+
+            var stored = tx(db).execute(status -> new AnalysisContinuationStore(db.em, JSON).read(id, TARGET));
+            assertThat(stored.result().getRawScores()).isEmpty();
+            assertThat(stored.result().getReasons()).isEmpty();
+            assertThat(stored.result().getNodeAssessments()).isEmpty();
+            assertThat(stored.recovery().openQuestions()).singleElement().satisfies(q -> assertThat(q.key()).isEqualTo(clarification.questionKey()));
+            var raw = tx(db).execute(status -> new AnalysisContinuationStore(db.em, JSON).detail(id, clarification.questionKey(), TARGET));
+            assertThat(raw.getReasons()).isEqualTo(historical.getReasons());
+            assertThat(raw.getNodeAssessments()).isEqualTo(historical.getNodeAssessments());
         }
     }
 

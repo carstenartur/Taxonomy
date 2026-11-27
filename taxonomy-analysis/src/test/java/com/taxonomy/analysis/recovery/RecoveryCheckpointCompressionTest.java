@@ -4,6 +4,9 @@ import com.taxonomy.analysis.service.AnalysisStoppedException;
 import com.taxonomy.dto.AnalysisPercentages;
 import com.taxonomy.dto.AnalysisResult;
 import com.taxonomy.dto.LlmCallDetail;
+import com.taxonomy.dto.RequirementNodeAssessment;
+import com.taxonomy.dto.RequirementNodeAssessment.*;
+import com.taxonomy.dto.RootAssessment;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import jakarta.persistence.EntityManager;
 import org.aopalliance.intercept.MethodInterceptor;
@@ -12,6 +15,7 @@ import org.hibernate.cfg.Configuration;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.aop.framework.ProxyFactory;
 import org.springframework.orm.jpa.JpaTransactionManager;
 import org.springframework.orm.jpa.SharedEntityManagerCreator;
@@ -459,6 +463,65 @@ class RecoveryCheckpointCompressionTest {
             var after = db.stored(scoped);
             assertEquals(saved.prompt(), after.prompt()); assertEquals(saved.detail(), after.detail());
             assertEquals(saved.nodes(), after.nodes()); assertEquals(saved.payloadCharacters(), after.payloadCharacters());
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void clusterSettlementRetainsRootClarificationAndZeroCategoryEvidenceWithoutReadingOpaqueReplies(boolean cancel) {
+        try (var db = new Database()) {
+            db.transaction(em -> {
+                var run = em.find(AnalysisContinuationRun.class, db.id);
+                run.clusterOperationId = "operation";
+                if (cancel) {
+                    var previous = new AnalysisResult(Map.of("BP", 60d), List.of());
+                    previous.setReasons(Map.of("BP", "Earlier reason"));
+                    previous.setProvider("Earlier provider");
+                    run.resultJson = db.mapper.writeValueAsString(previous);
+                }
+                return null;
+            });
+            var unresolved = new RequirementNodeAssessment("", List.of(SubjectKind.PROCESS), List.of(RequirementKind.FUNCTIONAL),
+                    ContributionType.DIRECT_SUBJECT, EvidenceStatus.UNRESOLVED, EvidenceBasis.UNSPECIFIED,
+                    Necessity.UNDETERMINED, Scope.UNSPECIFIED, "", "The destination is unspecified.", "Which site receives backups?");
+            var root = detail("Frozen root prompt ".repeat(5_000));
+            root.setScores(Map.of());
+            root.setReasons(Map.of("CP", unresolved.rationale(), "UA", "An explanation for an unoffered node."));
+            root.setError("ROOT_UNRESOLVED: " + unresolved.question());
+            root.setRootAssessments(Map.of("CP", new RootAssessment(RootAssessment.Status.UNRESOLVED,
+                    null, unresolved.rationale(), unresolved.question())));
+            root.setNodeAssessments(Map.of("CP", List.of(unresolved)));
+            var category = detail("Frozen category prompt ".repeat(5_000));
+            category.setScores(Map.of("BP", 0d));
+            category.setNodeAssessments(Map.of("BP", List.of(unresolved)));
+            try (var session = new AnalysisCheckpointSession(db.sessionStore())) {
+                AnalysisCheckpointSession.evaluate("ROOT_RELEVANCE", "MOCK", List.of("CP"), root.getPrompt(), () -> root);
+                AnalysisCheckpointSession.evaluate("CATEGORY", "MOCK", List.of("BP"), category.getPrompt(), () -> category);
+            }
+            db.legacy(new AnalysisCheckpointSession.Question("opaque-clarification", "opaque-input", "MOCK", List.of("IP"),
+                    "Unrelated historical prompt"), "CLARIFICATION", "opaque unrelated reply");
+            var untyped = detail("Another unrelated prompt");
+            untyped.setReasons(Map.of("UA", "Unverified explanation"));
+            untyped.setNodeAssessments(Map.of("UA", List.of(unresolved)));
+            db.legacy(new AnalysisCheckpointSession.Question("untyped-clarification", "untyped-input", "MOCK", List.of("UA"),
+                    untyped.getPrompt()), "CLARIFICATION", db.mapper.writeValueAsString(untyped));
+            var result = new AnalysisResult(Map.of(), List.of());
+            result.setStatus("SUCCESS");
+            db.resetSql();
+
+            var completed = db.transaction(em -> cancel ? db.store(em).cancel(db.id, SCOPE).result()
+                    : db.store(em).complete(db.claim(), result, List.of()));
+
+            assertEquals(cancel ? "CANCELLED" : "PARTIAL", completed.getStatus());
+            assertEquals(Map.of("BP", 0d), completed.getRawScores());
+            assertEquals(Map.of("BP", List.of(unresolved), "CP", List.of(unresolved)), completed.getNodeAssessments());
+            assertEquals(Map.of("BP", category.getReasons().get("BP"), "CP", unresolved.rationale()), completed.getReasons());
+            if (cancel) assertEquals(category.getProvider(), completed.getProvider());
+            assertEquals(3, completed.getRecovery().openQuestions().size());
+            var payloadReads = db.sql.stream().filter(sql -> sql.startsWith("select")
+                    && sql.contains("from analysis_question_checkpoint ") && sql.contains("detail_json")).toList();
+            assertEquals(1, payloadReads.size(), payloadReads::toString);
+            assertEquals(0, db.factory.getStatistics().getEntityStatistics(AnalysisQuestionCheckpoint.class.getName()).getLoadCount());
         }
     }
 

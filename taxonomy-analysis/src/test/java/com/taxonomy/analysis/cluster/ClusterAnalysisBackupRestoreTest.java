@@ -476,7 +476,8 @@ class ClusterAnalysisBackupRestoreTest {
                     new ClusterAnalysisBackupRestorer(target.em, target.transactions, JSON)
                             .restore(corrupted, targetContext("foreign-coverage"), targetCommand()));
 
-            assertEquals("Frozen coverage source differs from admitted authority", failure.getMessage());
+            // Archive input authority is checked before any interrupted coverage is reconstructed.
+            assertEquals("Progress catalogue differs from admitted authority", failure.getMessage());
             assertRestoredClosureEmpty(target); assertNoOperationalState(target);
         }
     }

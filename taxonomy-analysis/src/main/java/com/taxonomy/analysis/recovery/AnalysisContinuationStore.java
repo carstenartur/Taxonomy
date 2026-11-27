@@ -1,5 +1,6 @@
 package com.taxonomy.analysis.recovery;
 
+import com.taxonomy.analysis.service.RootAssessmentEvidence;
 import com.taxonomy.architecture.service.AnalysisCopilotService;
 import com.taxonomy.dto.*;
 import com.taxonomy.exchange.backup.PortableJsonPayloads;
@@ -900,11 +901,12 @@ public class AnalysisContinuationStore {
     @Transactional
     public AnalysisResult completeWithFallback(Claim claim, AnalysisResult result,
             java.util.function.Supplier<List<TaxonomyNodeDto>> fallbackTree) {
-        return completeWithFallback(claim, result, fallbackTree, false);
+        return completeWithFallback(claim, result, fallbackTree, false, null);
     }
 
     private AnalysisResult completeWithFallback(Claim claim, AnalysisResult result,
-            java.util.function.Supplier<List<TaxonomyNodeDto>> fallbackTree, boolean relationBudgetRetained) {
+            java.util.function.Supplier<List<TaxonomyNodeDto>> fallbackTree, boolean relationBudgetRetained,
+            Map<String, Map<String, RootAssessment>> cancellationClarifications) {
         var run = em.find(AnalysisContinuationRun.class, claim.id(), LockModeType.PESSIMISTIC_WRITE);
         if (run == null || !Objects.equals(run.claimToken, claim.token())) throw conflict("Operation claim was superseded");
         var previous = readResult(run);
@@ -950,37 +952,15 @@ public class AnalysisContinuationStore {
         } else if (!open.isEmpty()) {
             run.state = "COMPLETED_WITH_GAPS"; result.setStatus("PARTIAL");
         } else run.state = "SUCCESS".equals(result.getStatus()) ? "COMPLETED" : "COMPLETED_WITH_GAPS";
-        if (run.clusterOperationId != null || taxonomyExtension) {
-            var raw = new LinkedHashMap<>(result.getRawScores());
-            var reasons = new LinkedHashMap<>(result.getReasons() == null ? Map.<String,String>of() : result.getReasons());
-            var assessments = new LinkedHashMap<>(result.getNodeAssessments());
-            var acceptedDetails = em.createQuery("select q.nodeCodes, q.prompt, q.detailJson, q.state from AnalysisQuestionCheckpoint q "
-                            + "where q.run.id=:id and q.state in ('SUCCESS','CLARIFICATION') and q.detailJson is not null "
-                            + "and q.questionKey not like 'R%' order by q.startedAt, q.questionKey", Object[].class)
-                    .setParameter("id", run.id).getResultList();
-            for (Object[] row : acceptedDetails) {
-                var detail = questionDetail((String) row[0], (String) row[1], (String) row[2]);
-                detail.getNodeAssessments().forEach(assessments::putIfAbsent);
-                if ("SUCCESS".equals(row[3])) detail.getScores().forEach(raw::putIfAbsent);
-                if (detail.getReasons() != null) detail.getReasons().forEach(reasons::putIfAbsent);
-            }
-            result.setRawScores(raw); result.setReasons(reasons);
-            result.setNodeAssessments(assessments);
-        }
+        var mode = run.clusterOperationId != null || taxonomyExtension
+                ? CheckpointEvidenceMode.RECONSTRUCTION : CheckpointEvidenceMode.COVERAGE;
+        var rootClarifications = cancellationClarifications != null ? cancellationClarifications
+                : retainCompletedQuestionEvidence(run, metadata, result, mode);
         if (!open.isEmpty() && !"CANCELLED".equals(result.getStatus()) && !"ERROR".equals(result.getStatus()))
             result.setStatus("PARTIAL");
         Map<String, String> missing = new LinkedHashMap<>();
         for (var question : open) if (!AnalysisCheckpointSession.isRelationQuestion(question.key())) {
-            Map<String, com.taxonomy.dto.RootAssessment> clarifications = Map.of();
-            if (!question.skipped() && question.error() != null
-                    && question.error().startsWith(com.taxonomy.analysis.service.RootAssessmentEvidence.DIAGNOSTIC_PREFIX)) {
-                var retainedQuestion = question(run, question.key());
-                if (retainedQuestion != null && "CLARIFICATION".equals(retainedQuestion.state)) {
-                    var detail = questionDetail(retainedQuestion.nodeCodes, retainedQuestion.prompt, retainedQuestion.detailJson);
-                    if (com.taxonomy.analysis.service.RootAssessmentEvidence.isClarification(detail))
-                        clarifications = detail.getRootAssessments();
-                }
-            }
+            var clarifications = rootClarifications.getOrDefault(question.key(), Map.of());
             for (String node : question.nodes()) {
                 var clarification = clarifications.get(node);
                 missing.put(node, clarification == null ? (question.skipped() ? "LEFT_OPEN:" : "FAILED:") + question.key()
@@ -1029,6 +1009,64 @@ public class AnalysisContinuationStore {
         writeResult(run, result); em.flush();
         result.setRecovery(view(run));
         return result;
+    }
+
+    private enum CheckpointEvidenceMode { COVERAGE, RECONSTRUCTION, CANCELLATION }
+
+    private Map<String, Map<String, RootAssessment>> retainCompletedQuestionEvidence(AnalysisContinuationRun run,
+            List<QuestionMetadata> metadata, AnalysisResult result, CheckpointEvidenceMode mode) {
+        // A root clarification has a typed diagnostic. Other unanswered and relation payloads remain opaque.
+        var rootKeys = new HashSet<String>();
+        for (var question : metadata) {
+            if ("CLARIFICATION".equals(question.state) && !AnalysisCheckpointSession.isRelationQuestion(question.key)
+                    && question.error != null && question.error.startsWith(RootAssessmentEvidence.DIAGNOSTIC_PREFIX)) {
+                rootKeys.add(question.key);
+            }
+        }
+        boolean includeCategory = mode != CheckpointEvidenceMode.COVERAGE;
+        if (!includeCategory && rootKeys.isEmpty()) return Map.of();
+        String states = includeCategory ? "q.state='SUCCESS'" : "";
+        if (!rootKeys.isEmpty()) states += (includeCategory ? " or " : "")
+                + "(q.state='CLARIFICATION' and q.error like :rootDiagnostic escape '!')";
+        var query = em.createQuery("select q.nodeCodes, q.prompt, q.detailJson, q.state, q.questionKey from AnalysisQuestionCheckpoint q "
+                        + "where q.run.id=:id and (" + states + ") and q.detailJson is not null "
+                        + "and q.questionKey not like 'R%' order by q.startedAt, q.questionKey", Object[].class)
+                .setParameter("id", run.id);
+        if (!rootKeys.isEmpty()) query.setParameter("rootDiagnostic", RootAssessmentEvidence.DIAGNOSTIC_PREFIX.replace("_", "!_") + "%");
+        var raw = new LinkedHashMap<>(includeCategory ? result.getRawScores() : Map.<String, Double>of());
+        var reasons = new LinkedHashMap<>(includeCategory && result.getReasons() != null
+                ? result.getReasons() : Map.<String, String>of());
+        var assessments = new LinkedHashMap<>(includeCategory ? result.getNodeAssessments()
+                : Map.<String, List<RequirementNodeAssessment>>of());
+        var clarifications = new HashMap<String, Map<String, RootAssessment>>();
+        for (Object[] row : query.getResultList()) {
+            boolean clarification = "CLARIFICATION".equals(row[3]);
+            String key = (String) row[4];
+            if (clarification && !rootKeys.contains(key)) continue;
+            String nodes = (String) row[0];
+            var detail = questionDetail(nodes, (String) row[1], (String) row[2]);
+            if (clarification) {
+                if (!RootAssessmentEvidence.isClarificationFor(detail, payloads.parseLayout(nodes).nodes())) continue;
+                clarifications.put(key, detail.getRootAssessments());
+            }
+            var acceptedReasons = clarification ? RootAssessmentEvidence.clarificationReasons(detail) : detail.getReasons();
+            if (mode == CheckpointEvidenceMode.CANCELLATION) {
+                if (!clarification) {
+                    raw.putAll(detail.getScores());
+                    if (detail.getProvider() != null) result.setProvider(detail.getProvider());
+                }
+                if (acceptedReasons != null) reasons.putAll(acceptedReasons);
+                assessments.putAll(detail.getNodeAssessments());
+            } else if (mode == CheckpointEvidenceMode.RECONSTRUCTION) {
+                if (!clarification) detail.getScores().forEach(raw::putIfAbsent);
+                if (acceptedReasons != null) acceptedReasons.forEach(reasons::putIfAbsent);
+                detail.getNodeAssessments().forEach(assessments::putIfAbsent);
+            }
+        }
+        if (includeCategory) {
+            result.setRawScores(raw); result.setReasons(reasons); result.setNodeAssessments(assessments);
+        }
+        return clarifications;
     }
 
     private static void completeCopilot(AnalysisRequest request, AnalysisResult result) {
@@ -1162,31 +1200,16 @@ public class AnalysisContinuationStore {
                 result.setAnalysisLanguage(frozenRequest.getAnalysisLanguage());
                 result.setModelBinding(frozenRequest.getModelBinding());
             }
-            var raw = new LinkedHashMap<>(result.getRawScores());
-            var reasons = new LinkedHashMap<>(result.getReasons() == null ? Map.<String,String>of() : result.getReasons());
-            var assessments = new LinkedHashMap<>(result.getNodeAssessments());
             // The run lock serializes this snapshot with finish(). An accepted cancellation
             // includes every earlier committed success and admits no later provider answer.
-            for (var question : questions(run)) {
-                if (("SUCCESS".equals(question.state) || "CLARIFICATION".equals(question.state)) && question.detailJson != null
-                        && !AnalysisCheckpointSession.isRelationQuestion(question.questionKey)) {
-                    var detail = questionDetail(question.nodeCodes, question.prompt, question.detailJson);
-                    assessments.putAll(detail.getNodeAssessments());
-                    if (detail.getReasons() != null) reasons.putAll(detail.getReasons());
-                    if ("SUCCESS".equals(question.state)) {
-                        raw.putAll(detail.getScores());
-                        if (detail.getProvider() != null) result.setProvider(detail.getProvider());
-                    }
-                }
-            }
-            result.setRawScores(raw); result.setReasons(reasons);
-            result.setNodeAssessments(assessments);
+            var rootClarifications = retainCompletedQuestionEvidence(run, questionMetadata(run), result,
+                    CheckpointEvidenceMode.CANCELLATION);
             result.setErrorMessage("CANCELLED: completed question evidence preserved; remaining assessments are unknown");
             run.state = "CANCELLED";
             // complete() remains inside this short transaction and marks unfinished attempts
             // uncertain, derives coverage from the frozen tree and persists the entire result.
             result = completeWithFallback(new Claim(run.id, run.claimToken, null), result,
-                    result::getTree, relationBudgetRetained);
+                    result::getTree, relationBudgetRetained, rootClarifications);
         }
         return new Snapshot(view(run), result, mapper.readValue(run.requestJson, AnalysisRequest.class), run.clusterOperationId);
     }

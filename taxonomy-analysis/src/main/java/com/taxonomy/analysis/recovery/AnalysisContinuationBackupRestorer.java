@@ -2,6 +2,7 @@ package com.taxonomy.analysis.recovery;
 
 import com.taxonomy.analysis.assessment.RequirementAssessmentContract;
 import com.taxonomy.analysis.backup.AnalysisBackupContributor.*;
+import com.taxonomy.analysis.service.RootAssessmentEvidence;
 import com.taxonomy.backup.SourceRecordId;
 import com.taxonomy.dto.*;
 import com.taxonomy.exchange.backup.PortableJsonPayloads;
@@ -69,10 +70,12 @@ public final class AnalysisContinuationBackupRestorer {
             if(question.detailJson()!=null) {
                 var detail=json.readValue(question.detailJson(),LlmCallDetail.class);
                 detailError=detail.getError();
-                boolean accepted = Set.of("SUCCESS", "CLARIFICATION").contains(question.sourceState())
-                        && !AnalysisCheckpointSession.isRelationQuestion(question.questionKey());
                 var offered = new HashSet<>(Arrays.asList(nodes));
                 if (!frozenCodes.isEmpty()) offered.retainAll(frozenCodes);
+                boolean success = "SUCCESS".equals(question.sourceState());
+                boolean accepted = !AnalysisCheckpointSession.isRelationQuestion(question.questionKey())
+                        && (success || "CLARIFICATION".equals(question.sourceState()) && offered.size() == nodes.length
+                            && RootAssessmentEvidence.isClarificationFor(detail, offered));
                 if (!detail.getNodeAssessments().isEmpty()) {
                     if (AnalysisCheckpointSession.isRelationQuestion(question.questionKey())) throw invalid();
                     RequirementAssessmentContract.validateRecorded(detail.getNodeAssessments(), request.getBusinessText(), offered);
@@ -81,10 +84,11 @@ public final class AnalysisContinuationBackupRestorer {
                     acceptedOffers.addAll(offered);
                     RequirementAssessmentContract.mergeRecorded(assessments, detail.getNodeAssessments());
                 }
-                if ("SUCCESS".equals(question.sourceState()) && detail.getScores() != null)
+                if (success && detail.getScores() != null)
                     detail.getScores().forEach(scores::putIfAbsent);
-                if ((accepted || "SUCCESS".equals(question.sourceState())) && detail.getReasons() != null)
+                if (success && detail.getReasons() != null)
                     detail.getReasons().forEach(reasons::putIfAbsent);
+                else if (accepted) RootAssessmentEvidence.clarificationReasons(detail).forEach(reasons::putIfAbsent);
             } else if("SUCCESS".equals(question.sourceState()))throw invalid();
             String storedPrompt=checkpointPayload.encodePrompt(question.prompt());
             String storedDetail=checkpointPayload.encodeDetail(question.detailJson(),question.prompt());
