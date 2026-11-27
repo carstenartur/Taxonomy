@@ -62,6 +62,7 @@ class StreamRequirementAnalysisUseCaseTest {
         if (onnx) {
             org.mockito.Mockito.when(llmService.getActiveProviderId())
                     .thenReturn(com.taxonomy.analysis.service.LlmProvider.LOCAL_ONNX.id());
+            org.mockito.Mockito.when(llmService.isAvailable()).thenReturn(true);
             prepared = org.mockito.Mockito.mock(RootCatalogueSnapshot.class);
             org.mockito.Mockito.when(snapshots.prepareLocalScoring(identity, java.util.Set.of("CP"), List.of(snapshot), "alice"))
                     .thenReturn(java.util.Optional.of(List.of(prepared)));

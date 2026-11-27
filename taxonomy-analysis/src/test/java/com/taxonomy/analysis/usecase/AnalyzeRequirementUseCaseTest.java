@@ -153,6 +153,7 @@ class AnalyzeRequirementUseCaseTest {
         when(root.rootCode()).thenReturn("BP");
         when(snapshots.captureRevision(identity, model.analysisCatalogueRevision(), java.util.Set.of())).thenReturn(List.of(root));
         when(llmService.getActiveProviderId()).thenReturn(com.taxonomy.analysis.service.LlmProvider.LOCAL_ONNX.id());
+        when(llmService.isAvailable()).thenReturn(true);
         var prepared = org.mockito.Mockito.mock(RootCatalogueSnapshot.class);
         when(snapshots.prepareLocalScoring(identity, roots, List.of(root), "alice"))
                 .thenReturn(projectionReady ? java.util.Optional.of(List.of(prepared)) : java.util.Optional.empty());

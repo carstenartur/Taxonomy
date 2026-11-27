@@ -26,7 +26,8 @@ public final class AdmittedCatalogue {
     /** Local scoring reads the same exact-commit relation-enriched vectors in a servlet or a cluster worker. */
     public static FrozenCatalogueContext.Scope openForScoring(CatalogueSnapshotService snapshots,
             AnalysisModelBinding binding, WorkspaceContext workspace, LlmService llm) {
-        if (binding == null || llm.isMockMode() || !LlmProvider.LOCAL_ONNX.id().equals(llm.getActiveProviderId())) {
+        if (binding == null || llm.isMockMode() || !LlmProvider.LOCAL_ONNX.id().equals(llm.getActiveProviderId())
+                || !llm.isAvailable()) {
             return open(snapshots, binding, workspace, false);
         }
         if (workspace == null || binding.commit() == null || binding.state() == AnalysisModelBinding.State.MODEL_UNCOMMITTED) {

@@ -172,13 +172,15 @@ class TaxonomyApplicationTests implements AnalysisCatalogueSourceFixture {
 
     @Test
     void analyzeEndpointAcceptsProviderField() throws Exception {
-        // LOCAL_ONNX should work without any API key
+        // The configured provider is accepted. This fixture disables its model, so no nodes can be scored.
         mockMvc.perform(post("/api/analyze")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"businessText\":\"Provide secure voice communications\",\"provider\":\"LOCAL_ONNX\"}"))
+                        .content("{\"businessText\":\"Manage library email\",\"provider\":\"LOCAL_ONNX\"}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").exists())
-                .andExpect(jsonPath("$.scores").exists());
+                .andExpect(jsonPath("$.status").value("PARTIAL"))
+                .andExpect(jsonPath("$.scores").isEmpty())
+                .andExpect(jsonPath("$.warnings", org.hamcrest.Matchers.hasItem(
+                        org.hamcrest.Matchers.containsString("LOCAL_ONNX embedding model is not available"))));
     }
 
     @Test

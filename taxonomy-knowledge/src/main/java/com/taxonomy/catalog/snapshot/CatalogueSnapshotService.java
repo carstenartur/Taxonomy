@@ -8,6 +8,7 @@ import com.taxonomy.catalog.service.CatalogueOverlayService;
 import com.taxonomy.catalog.service.TaxonomyService;
 import com.taxonomy.catalog.provenance.CatalogueSourceBytes;
 import com.taxonomy.catalog.provenance.CatalogueSourceJournal.Use;
+import com.taxonomy.relations.service.RelationProjectionReadService.RelationProjectionUnavailableException;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import java.io.IOException;
 import java.util.Comparator;
@@ -156,7 +157,7 @@ public class CatalogueSnapshotService {
         if (localEmbeddings == null) throw new IllegalStateException("Local ONNX catalogue preparation is unavailable");
         try {
             return Optional.of(localEmbeddings.decorateForActor(actor, source, archived, roots));
-        } catch (FrozenCatalogueEmbeddingService.ProjectionUnavailable pending) {
+        } catch (FrozenCatalogueEmbeddingService.ProjectionUnavailable | RelationProjectionUnavailableException pending) {
             return Optional.empty();
         }
     }
