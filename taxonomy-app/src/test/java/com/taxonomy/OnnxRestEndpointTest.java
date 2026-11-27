@@ -1,13 +1,14 @@
 package com.taxonomy;
 
 import com.taxonomy.catalog.service.LocalEmbeddingService;
-import com.taxonomy.dsl.export.TaxDslExportService;
+import com.taxonomy.catalog.provenance.CatalogueSourceJournal;
 import com.taxonomy.dto.CatalogueAnalysisPreview;
 import com.taxonomy.search.LocalOnnxIndexInitializer;
 import com.taxonomy.testsupport.LocalTestLogin;
-import com.taxonomy.workspace.service.SystemRepositoryService;
+import com.taxonomy.workspace.model.RepositoryVisibility;
+import com.taxonomy.workspace.service.ArchitectureRepositoryProvisioningService;
+import com.taxonomy.workspace.service.RepositoryWorkspaceService;
 import com.taxonomy.workspace.service.WorkspaceContextResolver;
-import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -25,6 +26,7 @@ import java.time.Duration;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
@@ -131,20 +133,15 @@ class OnnxRestEndpointTest {
 
     @Test
     void changingAnOfficeRequirementChangesTheOnnxPreviewAndScoredArchitecture() throws Exception {
-        // Another Spring context in the shared test JVM may already have consumed the startup bootstrap.
-        var primary = application.getBean(SystemRepositoryService.class).getPrimaryRepository();
-        var source = application.getBean(DslGitRepositoryFactory.class).getCentralRepository(primary.getRepositoryId());
-        if (source.getHeadCommit(primary.getDefaultBranch()) == null) {
-            var project = application.getBean(TaxDslExportService.class).newProject("onnx-office-test");
-            source.commitDsl(primary.getDefaultBranch(), project, "onnx-office-workspace", "Initialize office catalogue source");
-        }
-        LocalTestLogin.login(application, "onnx-office-workspace", "USER", "ARCHITECT", "ADMIN");
-        var workspace = JSON.readTree(mockMvc.perform(post("/api/workspace/create").with(csrf())
-                        .contentType(MediaType.APPLICATION_JSON).content("{\"displayName\":\"ONNX office requirements\"}"))
-                .andExpect(status().isOk()).andReturn().getResponse().getContentAsByteArray())
-                .required("workspaceId").asString();
-        mockMvc.perform(post("/api/workspace/provision").with(csrf()).header(WorkspaceContextResolver.WORKSPACE_HEADER, workspace))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("READY"));
+        String owner = "onnx-office-workspace";
+        LocalTestLogin.login(application, owner, "USER", "ARCHITECT", "ADMIN");
+        // Each Spring context has its own retained generation. Create a repository whose initial
+        // project pins this context's catalogue, even when an earlier context still has a Git head.
+        String catalogueRevision = application.getBean(CatalogueSourceJournal.class).current().id();
+        var source = application.getBean(ArchitectureRepositoryProvisioningService.class).createRepository(
+                "Office requirements", "onnx-office-" + UUID.randomUUID(), "", RepositoryVisibility.PRIVATE, owner, "main");
+        String workspace = application.getBean(RepositoryWorkspaceService.class)
+                .createWorkingCopy(owner, source.getRepositoryId(), source.getDefaultBranch(), "Office preview", "").getWorkspaceId();
         var projection = "/api/architecture/relations/projection";
         var readiness = mockMvc.perform(get(projection + "/readiness").header(WorkspaceContextResolver.WORKSPACE_HEADER, workspace))
                 .andExpect(status().isOk()).andExpect(header().exists("ETag")).andReturn().getResponse();
@@ -165,7 +162,8 @@ class OnnxRestEndpointTest {
                 .until(() -> preview(workspace, commit, mail), result -> "CATALOGUE_ONNX".equals(result.method()));
         var after = preview(workspace, commit, payroll);
         assertThat(after.method()).isEqualTo("CATALOGUE_ONNX");
-        assertThat(after.catalogueRevision()).isNotBlank().isEqualTo(before.catalogueRevision());
+        assertThat(before.catalogueRevision()).isEqualTo(catalogueRevision);
+        assertThat(after.catalogueRevision()).isEqualTo(catalogueRevision);
         assertThat(after.semanticRevision()).isEqualTo(before.semanticRevision());
         var mailMatches = directMatches(before, commit);
         var payrollMatches = directMatches(after, commit);
