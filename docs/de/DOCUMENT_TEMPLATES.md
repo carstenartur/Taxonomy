@@ -18,17 +18,18 @@ Aufnahme stammt aus dem automatisierten Browsertest und zeigt insbesondere den
 
 Der GitHub-Workflow `Document Template Report E2E` startet die paketierte Taxonomy-
 Anwendung über Testcontainers. Playwright meldet sich als Administrator an, wartet auf
-die idempotent erzeugte Standardvorlage, prüft den sichtbaren Word- und WebDAV-Link,
-öffnet die Detailansicht und lädt dort einen datenfreien DOCX-Testbericht herunter.
+die Standardvorlage und prüft deren Word- und WebDAV-Links. Anschließend bewertet
+der Test eine Beispielanforderung eines Krankenhauses mit dem deterministischen
+MOCK-Anbieter und lädt den DOCX-Bericht über den Exportdialog für Entscheidungsberichte herunter.
 Der Test verlangt HTTP 200, den DOCX-Medientyp, den erwarteten Dateinamen in
 `Content-Disposition`, eine plausible ZIP-/DOCX-Signatur und eine Mindestgröße.
-Anschließend rendert LibreOffice den tatsächlich heruntergeladenen Bericht als PDF;
-`pdftoppm` erzeugt daraus die folgende Aufnahme der ersten Seite.
+LibreOffice rendert den heruntergeladenen DOCX-Bericht als PDF. Der Test wählt
+eine Seite mit Bewertungsergebnissen aus und erfasst sie mit `pdftoppm`.
 
-[![Erste Seite des tatsächlich heruntergeladenen Taxonomy-Testberichts](../images/decision-rationale-template-test-report.png)](../images/decision-rationale-template-test-report.png)
+[![Taxonomieergebnisse und gespeicherte Begründungen des MOCK-Anbieters für die Beispielanforderung des Krankenhauses](../images/decision-rationale-template-test-report.png)](../images/decision-rationale-template-test-report.png)
 
 Das Testartefakt enthält zusätzlich die heruntergeladene DOCX-Datei, das gerenderte
-PDF, beide Screenshots, den Playwright-Log sowie einen JSON-Nachweis mit URL,
+PDF, die Browser- und Berichtsaufnahmen, den Playwright-Log sowie einen JSON-Nachweis mit URL,
 Medientyp, Dateiname, Dateigröße und SHA-256-Prüfsumme. Dieser Test belegt den
 Containerstart, die Erstanlage der Vorlage, die Browseroberfläche und den
 Berichtsdownload. Er ersetzt nicht die getrennte Abnahme mit einer real installierten

@@ -76,7 +76,7 @@ The browser, SVG download and PDF download use the same deterministic server-sid
 
 After a full analysis reaches an authoritative terminal state, Taxonomy reloads the requirement with the selected immutable snapshot. The same page keeps the Copilot operation status, provider, accurate terminal phase, completed verification passes and server-contact evidence visible above the result tabs. The selected snapshot is also shown explicitly and remains available through **Open result**. Snapshot-bound links open the loaded **Analyses** result directly rather than leaving it hidden behind the default text tab.
 
-The normal reading flow presents six provider-neutral indicators, the highest-priority architecture gaps, detected patterns and recommendation reasoning. Complete technical payloads remain available in the collapsed diagnostics section and the JSON report instead of being dumped into the result page.
+The result overview shows six indicators. In this example, obligation assessment is unevaluated. The overview and the **Detected patterns** section both show **0%** recorded pattern coverage. **App Chain** is **50%** complete, a separate measure for that individual chain. Under **Impact analysis evidence**, check the analysed requirement version and Git checkpoint before interpreting the findings, detected patterns and recommendation. Complete technical payloads remain available in the collapsed diagnostics section and the JSON report instead of being dumped into the result page.
 
 
 ![Selected immutable full-run snapshot with result indicators and the shared decision-report action](../images/72-complete-copilot-run-result.png)

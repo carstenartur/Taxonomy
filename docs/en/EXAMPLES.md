@@ -470,7 +470,7 @@ The gap analysis (automatic in the **Gaps** tab) may identify:
 
 ### Step 4 — Generate relation proposals
 
-Click **Propose Relations** in the Relation Proposals panel. The AI might suggest:
+Open the **⋯** actions menu on a taxonomy node and choose **Propose Relations**. Find the resulting proposals under **Relationship proposals → Saved proposals**. The AI might suggest:
 - `CP-1022 REALIZES CI-1023` — "Capability → service under this catalogue’s REALIZES convention"
 - `CR-1047 SUPPORTS CI-1023` — "Infrastructure services support field monitoring"
 

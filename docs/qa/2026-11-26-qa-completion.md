@@ -32,7 +32,7 @@ Fresh DE/EN fixtures were rendered and inspected: all 24 representative DOCX pag
 
 The [help/capture repair record](2026-11-26-help-and-capture-repair.md) documents the exact evidence. Runtime links resolve relative to the packaged document after Markdown rendering, preserving fenced examples. Query-only links retain their current document. Registered help pages, explicit language requests, supplementary repository paths, fragments and bundled assets have defined destinations under the application context.
 
-German stable anchors and actual bilingual audit/SBOM sections repair missing targets. Intake, version-selection and report guides reflect the corrected behavior. All 77 active screenshot hashes match their files. The two replacement toolbar PNGs retain their actual earlier CI test-merge source and fixture scope; the other 75 captures are not relabeled as new.
+German stable anchors and actual bilingual audit/SBOM sections repair missing targets. Intake, version-selection and report guides reflect the corrected behavior. All 77 active screenshot hashes match their files. The two toolbar PNGs retain their earlier CI test-merge source. Five proposal, Copilot and report examples now use the integrated documentation capture. The remaining 70 retain their November 7 provenance.
 
 The broader Java help/documentation selection passes 30 tests, including 8 help-reader callbacks. Independent review found the query-only URI edge case; its regression failed before correction and the final affected selection passes 17 tests. These are overlapping runs. The real bilingual contextual-help navigation test remains part of the integrated Maven browser shard.
 

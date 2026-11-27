@@ -57,6 +57,8 @@ The retained guide refresh is documented in the [7 November visual review](../do
 and its [original retained manifest](../docs/images/documentation-screenshots-2026-11-07.json).
 The later [26 November toolbar repair](../docs/qa/2026-11-26-help-and-capture-repair.md)
 retains its [unaltered CI manifest](../docs/images/documentation-screenshots-2026-11-26.json).
+The proposal queue, Copilot result and German report examples come from the
+[integrated documentation run](../docs/images/documentation-screenshots-run-45884345091.json).
 The [active inventory](../docs/images/documentation-screenshots.json) combines these
 sources using explicit per-capture provenance; it is not a single generated run.
 

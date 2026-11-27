@@ -908,10 +908,11 @@ Angenommene Vorschläge gehören zur Relationsprojektion des ausgewählten Works
 
 Das System kann automatisch neue Beziehungen zwischen Taxonomieknoten mithilfe von KI vorschlagen. Diese Vorschläge werden in einer Überprüfungswarteschlange gespeichert, in der Sie sie akzeptieren oder ablehnen können.
 
-### Vorschläge auslösen (🔗-Schaltfläche an einem Knoten)
+<a id="vorschläge-auslösen--schaltfläche-an-einem-knoten"></a>
+### Vorschläge auslösen
 
 1. Finden Sie einen Taxonomieknoten im linken Panel, von dem Sie glauben, dass er mit anderen Knoten verknüpft sein sollte.
-2. Klicken Sie auf die **🔗** (Beziehungen vorschlagen)-Schaltfläche in der Zeile dieses Knotens.
+2. Öffnen Sie in der Knotenzeile das Aktionsmenü **⋯** und wählen Sie **Beziehungen vorschlagen**.
 3. Das **Propose Relations Modal** öffnet sich.
 
 ![Modal „Relationen vorschlagen"](../images/13-propose-relations-modal.png)
@@ -923,16 +924,17 @@ Im Modal „Relationen vorschlagen":
 1. Bestätigen oder notieren Sie den oben angezeigten **Node Code**.
 2. Verwenden Sie das Dropdown-Menü **Relation Type**, um den Typ der Relation auszuwählen, den die KI vorschlagen soll (z. B. REALIZES, SUPPORTS, DEPENDS_ON).
 3. Klicken Sie auf **Generate Proposals**.
-4. Das System sucht nach Kandidaten-Knoten und erstellt PENDING-Vorschläge. Schließen Sie das Modal, wenn der Vorgang abgeschlossen ist.
+4. Das System sucht nach Kandidaten-Knoten und erstellt PENDING-Vorschläge. Nach dem Erzeugen der Vorschläge schließt sich der Dialog.
 
-### Überprüfung von Vorschlägen (Filter: Pending / All / Accepted / Rejected)
+<a id="überprüfung-von-vorschlägen-filter-pending--all--accepted--rejected"></a>
+### Gespeicherte Vorschläge prüfen
 
-Öffnen Sie das **Relation Proposals Panel** im rechten Bereich. Verwenden Sie die Filterschaltflächen, um Vorschläge nach Status anzuzeigen:
+Öffnen Sie unter **Beziehungsvorschläge** den Bereich **Gespeicherte Vorschläge**. Mit den Filtern zeigen Sie die Einträge nach Status an:
 
-- **Pending** — Vorschläge, die auf Ihre Entscheidung warten.
-- **All** — alle Vorschläge unabhängig vom Status.
-- **Accepted** — Vorschläge, die Sie bereits genehmigt haben.
-- **Rejected** — Vorschläge, die Sie abgelehnt haben.
+- **Ausstehend** — Vorschläge, die auf Ihre Entscheidung warten.
+- **Alle** — alle Vorschläge unabhängig vom Status.
+- **Akzeptiert** — genehmigte Vorschläge aus dem lokalen Arbeitsbereich oder dem gemeinsamen Repository.
+- **Abgelehnt** — Vorschläge, die Sie abgelehnt haben.
 
 Die Vorschlagstabelle zeigt:
 - Quell-Knoten und Ziel-Knoten (mit Namen und Codes)
@@ -942,7 +944,7 @@ Die Vorschlagstabelle zeigt:
 
 ![Panel „Relationsvorschläge"](../images/12-relation-proposals-panel.png)
 
-Die Vorschlags-Überprüfungswarteschlange zeigt alle Vorschläge mit Filterung nach Status. Verwenden Sie die Filterschaltflächen **Pending**, **All**, **Accepted** und **Rejected**, um sich auf bestimmte Vorschlagsstatus zu konzentrieren:
+Mit **Alle** zeigen Sie gespeicherte Vorschläge in jedem Status an. Im abgebildeten Beispiel ist die Liste leer.
 
 ![Vorschlags-Überprüfungswarteschlange — alle Vorschläge](../images/28-proposal-review-queue.png)
 
@@ -955,7 +957,7 @@ Für jede Zeile in der Vorschlagstabelle:
 - Klicken Sie auf **Accept**, um die Relation im ausgewählten Workspace zu genehmigen. Die Entscheidung wird in diesem Workspace-Kontext gespeichert und der Vorschlagsstatus ändert sich auf ACCEPTED.
 - Klicken Sie auf **Reject**, um die Relation abzulehnen. Der Vorschlagsstatus ändert sich auf REJECTED.
 
-Nach der Annahme zeigt der Vorschlag in der Prüfungsansicht ein grünes **Accepted**-Badge an. Katalog-Graphabfragen haben einen getrennten Umfang und enthalten diese Workspace-Entscheidung nicht automatisch:
+Die grüne Statusanzeige **Akzeptiert** dokumentiert die Entscheidung für den abgebildeten lokalen Arbeitsbereich. Bei einem akzeptierten Vorschlag aus dem gemeinsamen Repository können Sie mit **Übernahme prüfen** den ausgewählten Zielbranch prüfen. Katalog-Graphabfragen haben einen eigenen Geltungsbereich und enthalten diese Workspace-Entscheidung nicht automatisch.
 
 ![Akzeptierter Vorschlag](../images/36-proposal-accepted.png)
 

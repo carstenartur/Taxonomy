@@ -18,17 +18,18 @@ created during application startup.
 
 The `Document Template Report E2E` GitHub workflow starts the packaged Taxonomy
 application through Testcontainers. Playwright signs in as an administrator, waits for
-the idempotently seeded default template, verifies the visible Word and WebDAV links,
-opens the template detail page, and downloads a data-free DOCX test report. The test
+the default template to be seeded and verifies its Word and WebDAV links. It then
+evaluates a sample hospital requirement with the deterministic MOCK provider and
+downloads the resulting DOCX through the decision report export dialog. The test
 requires HTTP 200, the DOCX media type, the expected filename in
 `Content-Disposition`, a plausible ZIP/DOCX signature, and a minimum file size.
-LibreOffice then renders the report that was actually downloaded to PDF, and
-`pdftoppm` captures its first page as shown below.
+LibreOffice renders the downloaded DOCX to PDF. The test selects a page showing
+scored decisions and captures it with `pdftoppm`.
 
-[![First page of the Taxonomy test report that Playwright actually downloaded](../images/decision-rationale-template-test-report.png)](../images/decision-rationale-template-test-report.png)
+[![Taxonomy results and recorded rationale for the sample hospital requirement, scored by the MOCK provider](../images/decision-rationale-template-test-report.png)](../images/decision-rationale-template-test-report.png)
 
-The workflow artifact also contains the downloaded DOCX, the rendered PDF, both
-screenshots, the Playwright log, and JSON evidence recording the URL, media type,
+The workflow artifact also contains the downloaded DOCX, the rendered PDF, the
+browser and report screenshots, the Playwright log, and JSON evidence recording the URL, media type,
 filename, file size, and SHA-256 digest. This test proves container startup, default
 seeding, the browser surface, and the report-download path. It does not replace the
 separate acceptance test with an installed Microsoft Word version through public HTTPS

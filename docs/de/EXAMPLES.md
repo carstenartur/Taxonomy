@@ -475,7 +475,7 @@ Die Lückenanalyse (automatisch im Reiter **Lücken**) kann folgende Ergebnisse 
 
 ### Schritt 4 — Beziehungsvorschläge generieren
 
-Klicken Sie im Panel „Relation Proposals" auf **Propose Relations**. Die KI könnte vorschlagen:
+Öffnen Sie das Aktionsmenü **⋯** eines Taxonomieknotens und wählen Sie **Beziehungen vorschlagen**. Die Ergebnisse finden Sie unter **Beziehungsvorschläge → Gespeicherte Vorschläge**. Die KI könnte vorschlagen:
 - `CP-1022 REALIZES CI-1023` — „Fähigkeit → Dienst gemäß der REALIZES-Konvention dieses Katalogs“
 - `CR-1047 SUPPORTS CI-1023` — „Infrastrukturdienste unterstützen die Feldüberwachung"
 

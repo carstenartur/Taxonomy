@@ -880,10 +880,11 @@ Accepted proposals belong to the selected workspace's relation projection. The G
 
 The system can automatically propose new relations between taxonomy nodes using AI. These proposals are stored in a review queue where you can accept or reject them.
 
-### Triggering Proposals (🔗 button on a Node)
+<a id="triggering-proposals--button-on-a-node"></a>
+### Triggering Proposals
 
 1. Find a taxonomy node in the left panel that you believe should be related to other nodes.
-2. Click the **🔗** (Propose Relations) button on that node's row.
+2. Open the **⋯** actions menu on that node’s row and choose **Propose Relations**.
 3. The **Propose Relations Modal** opens.
 
 ![Propose Relations modal](../images/13-propose-relations-modal.png)
@@ -895,15 +896,16 @@ In the Propose Relations Modal:
 1. Confirm or note the **Node Code** displayed at the top.
 2. Use the **Relation Type** dropdown to select the type of relation you want the AI to propose (e.g., REALIZES, SUPPORTS, DEPENDS_ON).
 3. Click **Generate Proposals**.
-4. The system will search for candidate nodes and create PENDING proposals. Close the modal when the operation completes.
+4. The system will search for candidate nodes and create PENDING proposals. The modal closes after the proposals are generated.
 
-### Reviewing Proposals (Pending / All / Accepted / Rejected Filters)
+<a id="reviewing-proposals-pending--all--accepted--rejected-filters"></a>
+### Reviewing Saved Proposals
 
-Open the **Relation Proposals Panel** in the right panel. Use the filter buttons to view proposals by status:
+Under **Relationship proposals**, choose **Saved proposals** to review the stored queue. The filter buttons show proposals by status:
 
 - **Pending** — proposals awaiting your decision.
 - **All** — all proposals regardless of status.
-- **Accepted** — proposals you have already approved.
+- **Accepted** — approved proposals. This filter includes local and shared-repository decisions.
 - **Rejected** — proposals you have declined.
 
 The proposals table shows:
@@ -914,7 +916,7 @@ The proposals table shows:
 
 ![Relation Proposals panel](../images/12-relation-proposals-panel.png)
 
-The Proposal Review Queue shows all proposals with filtering by status. Use the **Pending**, **All**, **Accepted**, and **Rejected** filter buttons to focus on specific proposal states:
+Choose **All** to see saved proposals in every status. The example queue is empty.
 
 ![Proposal Review Queue — all proposals](../images/28-proposal-review-queue.png)
 
@@ -927,7 +929,7 @@ For each row in the proposals table:
 - Click **Accept** to approve the relation in the selected workspace. The decision is saved in that workspace scope and the proposal status changes to ACCEPTED.
 - Click **Reject** to decline the relation. The proposal status changes to REJECTED.
 
-Once accepted, the proposal displays a green **Accepted** badge in the review view. Catalogue Graph queries have a separate scope and do not automatically include this workspace decision:
+A green **Accepted** badge records the decision for the local workspace shown below. For an accepted proposal from the shared repository, **Check adoption** lets you inspect the selected target branch. Catalogue Graph queries use a separate scope and do not automatically include this workspace decision.
 
 ![Accepted proposal](../images/36-proposal-accepted.png)
 
