@@ -61,17 +61,21 @@ final class ScenarioAcceptanceNamingContract {
         String pom = Files.readString(root.resolve("pom.xml"));
         String manifest = Files.readString(root.resolve(".mvn/verification-suites.json"));
         String workflow = Files.readString(root.resolve(".github/workflows/scenario-acceptance.yml"));
+        String appPom = Files.readString(root.resolve("taxonomy-app/pom.xml"))
+                .replaceAll("</argument>\\s*<argument>", " ");
         require(pom.contains("<id>scenario-acceptance</id>") && pom.contains("<test>" + selector + "</test>"), "Maven scenario selection changed");
         require(manifest.contains("\"scenario-acceptance\"") && manifest.contains(selector), "Manifest scenario selection changed");
-        require(workflow.contains("test -Pscenario-acceptance"), "Workflow must execute the scenario profile");
+        require(workflow.contains("-pl taxonomy-app -am verify -Pscenario-acceptance"), "Workflow must verify scenario evidence");
         require(workflow.contains("jobs:\n  scenario:"), "Retain the existing required job identity");
-        require(workflow.contains("check-scenario-documents --artifacts taxonomy-app/target/scenario-acceptance"), "Missing architecture document check");
-        require(workflow.contains("check-scenario-documents --reformulation-only --artifacts taxonomy-app/target/reformulation-scenario-acceptance"), "Missing reformulation document check");
-        require(workflow.contains("ReformulationScenarioAcceptanceTest.xml 1")
-                && workflow.contains("ReformulationScenarioBrowserTest.xml 1")
-                && workflow.contains("ReformulationAuthoredScenarioTest.xml 2")
-                && workflow.contains("ScenarioLlmPlaybackTest.xml 17")
-                && workflow.contains("ReformulationBrowserTest.xml 1"), "Named positive JUnit evidence must remain required");
+        require(appPom.contains("check-junit-reports --since-epoch-millis=${session.request.startTime.time}"),
+                "Scenario reports must belong to the current Maven session");
+        require(appPom.contains("check-scenario-documents --artifacts target/scenario-acceptance"), "Missing architecture document check");
+        require(appPom.contains("check-scenario-documents --reformulation-only --artifacts target/reformulation-scenario-acceptance"), "Missing reformulation document check");
+        require(appPom.contains("ReformulationScenarioAcceptanceTest.xml 1")
+                && appPom.contains("ReformulationScenarioBrowserTest.xml 1")
+                && appPom.contains("ReformulationAuthoredScenarioTest.xml 2")
+                && appPom.contains("ScenarioLlmPlaybackTest.xml 17")
+                && appPom.contains("ReformulationBrowserTest.xml 1"), "Named positive JUnit evidence must remain required");
         try (var sources = Files.walk(root.resolve("taxonomy-app/src/test/java"))) {
             var names = sources.filter(Files::isRegularFile).map(path -> path.getFileName().toString()).toList();
             for (String test : SELECTED_TESTS) require(names.stream().filter((test + ".java")::equals).count() == 1,

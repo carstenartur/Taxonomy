@@ -231,6 +231,7 @@ Produktiv normalerweise vollständig deaktiviert lassen.
 | `TAXONOMY_EMBEDDING_ENABLED` | `embedding.enabled` | `false` | Aktiviert lokale Vektoren und semantische Suche. |
 | `TAXONOMY_EMBEDDING_MODEL_PROFILE` | `embedding.model.profile` | `MULTILINGUAL_MINILM_L12` | Wählt Modellidentität, Pooling, Tokenlimit und Standard-Abfragepräfix. `BGE_SMALL_EN` erhält den bisherigen englischen Modellvertrag. |
 | `TAXONOMY_EMBEDDING_MODEL_DIR` | `embedding.model.dir` | leer | Eingehängtes vorab geladenes Modell. |
+| `TAXONOMY_PREVIEW_VECTOR_DIRECTORY` | `embedding.preview.cache-directory` | leer | Optionales Verzeichnis für vorbereitete Katalogvektoren der Vorschau. Ein beschreibbares persistentes Volume ermöglicht die Wiederverwendung nach Pod-Neustarts. Die beiden Cache-Dateien enthalten ausschließlich abgeleitete Katalogdaten. Verwenden Sie ein Verzeichnis außerhalb des Modellverzeichnisses. |
 | `TAXONOMY_EMBEDDING_MODEL_NAME` | `embedding.model.name` | leer | Leer verwendet die gepinnte URL des Profils. Eine explizite entfernte Referenz oder ein lokaler Pfad wird ohne Modellverzeichnis verwendet. |
 | `TAXONOMY_EMBEDDING_QUERY_PREFIX` | `embedding.query.prefix` | nicht gesetzt; Profilstandard | Nicht gesetzt verwendet das Profilpräfix (keines bei multilingualem MiniLM; englisches Suchpräfix bei BGE). Ein explizit leerer Wert deaktiviert das Präfix. |
 | `TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD` | `embedding.allow-download` | `false` | Erlaubt Laufzeitdownload; Egress muss ebenfalls passen. |

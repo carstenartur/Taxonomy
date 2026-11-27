@@ -23,12 +23,22 @@ window.TaxonomyVersions = (function () {
 
     var currentBranch = 'draft';
     var timelineRequest = 0;
+    var ownsTimeline = null;
     var branchesRequest = 0;
     var dismissChangedDialog = null;
 
     document.addEventListener('taxonomy:repository-context-changed', function () {
         if (dismissChangedDialog) dismissChangedDialog();
     });
+
+    function refreshSelectedTimeline() {
+        if (ownsTimeline && !ownsTimeline() && document.querySelector('#tab-versions:not(.d-none)')) {
+            loadTimeline();
+        }
+    }
+    // The first deep-linked history request can be superseded as the active workspace becomes known.
+    ['taxonomy:repository-context-changed', 'taxonomy:entity-context-changed', 'taxonomy:analysis-source-ready']
+        .forEach(function (event) { document.addEventListener(event, refreshSelectedTimeline); });
 
     // ── Initialization ──────────────────────────────────────────────
 
@@ -105,6 +115,7 @@ window.TaxonomyVersions = (function () {
                 if (branches.length > 0 && !branches.includes(currentBranch)) {
                     currentBranch = branches[0];
                     selectEl.value = currentBranch;
+                    if (document.querySelector('#tab-versions:not(.d-none)')) loadTimeline();
                 }
             })
             .catch(function () {});
@@ -119,13 +130,14 @@ window.TaxonomyVersions = (function () {
 
         var container = el('versionsTimeline');
         if (!container) return;
+        ownsTimeline = window.TaxonomyApiClient.captureContext();
 
         if (retryCount === 0) {
             var branchSelect = el('versionsBranchSelect');
             if (branchSelect) loadBranches(branchSelect);
 
             container.setAttribute('data-state', 'loading');
-            container.innerHTML = '<div class="text-muted small">' + escapeHtml(t('versions.history.loading')) + '</div>';
+            container.innerHTML = '<div class="text-muted small">' + escapeHtml(container.dataset?.loadingLabel || t('versions.history.loading')) + '</div>';
         }
 
         window.TaxonomyVersioningApi.history(branch)
@@ -183,8 +195,8 @@ window.TaxonomyVersions = (function () {
 
         var html = '<div class="timeline-entry mb-3 ps-4 position-relative">' +
             '<span class="' + dotClass + ' position-absolute" style="left:0;top:6px;width:10px;height:10px;border-radius:50%;display:inline-block;"></span>' +
-            '<div class="d-flex justify-content-between align-items-start">' +
-            '<div>';
+            '<div class="d-flex flex-wrap justify-content-between align-items-start gap-2">' +
+            '<div class="text-break">';
 
         html += '<strong class="small">' + escapeHtml(message) + '</strong>';
 
@@ -201,7 +213,7 @@ window.TaxonomyVersions = (function () {
             '</div>' +
             renderSignature(commit.signature) +
             '</div>' +
-            '<div class="d-flex gap-1">' +
+            '<div class="d-flex flex-wrap gap-1">' +
             '<button class="btn btn-outline-secondary btn-sm py-0 px-2" style="font-size:0.75rem;" ' +
             'data-action="view" data-commit="' + escapeAttr(commit.commitId) + '" title="' + escapeAttr(t('versions.entry.view.title')) + '">' +
             '\uD83D\uDC41 ' + escapeHtml(t('versions.entry.view')) + '</button>' +

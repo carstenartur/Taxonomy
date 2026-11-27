@@ -11,6 +11,9 @@
     <artifactId>taxonomy-analysis</artifactId>
     <name>Taxonomy Analysis</name>
     <description>Requirement analysis, LLM gateways, prompts and analysis sessions</description>
+    <properties>
+        <taxonomy.test.agent>${taxonomy.test.mockitoAgent}</taxonomy.test.agent>
+    </properties>
     <dependencies>
         <dependency>
             <groupId>com.taxonomy</groupId>

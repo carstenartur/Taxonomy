@@ -417,7 +417,8 @@ public class LlmService {
     public AnalysisResult analyzeWithBudget(String businessText, AnalysisScope requestedScope) {
         try (var reasons = withAnalysisReasonLength(null);
              var language = AnalysisLanguageContext.open(AnalysisLanguageContext.resolveCurrentRequest(null))) {
-            return analyzeWithFrozenReasonLength(businessText, requestedScope);
+            return LocalEmbeddingService.analysisQuery(businessText)
+                    .call(() -> analyzeWithFrozenReasonLength(businessText, requestedScope));
         }
     }
 
@@ -455,9 +456,14 @@ public class LlmService {
             });
         }
 
-        // Build the annotated tree from whatever scores were collected
-        List<TaxonomyNodeDto> rawTree = run.stop == null || !scope.legacyFull()
-                ? plannedTree == null ? taxonomyService.getFullTree() : plannedTree : List.of();
+        List<TaxonomyNodeDto> rawTree;
+        if (run.stop != null && scope.legacyFull()) {
+            // Under pressure, reuse only admitted branches with evidence; never load another catalogue.
+            rawTree = plannedTree == null ? List.of() : plannedTree.stream()
+                    .filter(root -> run.allScores.containsKey(root.getCode())).toList();
+        } else {
+            rawTree = plannedTree == null ? taxonomyService.getFullTree() : plannedTree;
+        }
         List<TaxonomyNodeDto> annotatedTree = new ArrayList<>();
         for (TaxonomyNodeDto rootDto : rawTree) {
             annotatedTree.add(taxonomyService.applyScores(rootDto, run.allScores));
@@ -493,7 +499,7 @@ public class LlmService {
             result.setStatus("SUCCESS");
         }
 
-        if (!scope.legacyFull() || !run.failedAssessments.isEmpty()) {
+        if (!scope.legacyFull() || !run.failedAssessments.isEmpty() || (run.stop != null && plannedTree != null)) {
             List<TaxonomyNodeDto> coverageTree = plannedTree == null ? rawTree : plannedTree;
             result.setAnalysisCoverage(AnalysisCoverage.derive(scope.selectedTree(coverageTree), run.allScores,
                     result.getScores(), run.failedAssessments, run.stop == null ? null : "INTERRUPTED:" + run.stop.reason().name()));
@@ -702,7 +708,8 @@ public class LlmService {
     public void analyzeStreaming(String businessText, AnalysisScope requestedScope, AnalysisEventCallback callback) {
         try (var reasons = withAnalysisReasonLength(null);
              var language = AnalysisLanguageContext.open(AnalysisLanguageContext.resolveCurrentRequest(null))) {
-            analyzeStreamingWithFrozenReasonLength(businessText, requestedScope, callback);
+            LocalEmbeddingService.analysisQuery(businessText)
+                    .run(() -> analyzeStreamingWithFrozenReasonLength(businessText, requestedScope, callback));
         }
     }
 
@@ -1542,7 +1549,7 @@ public class LlmService {
         LlmGateway gateway = gatewayRegistry.getGatewayById(provider);
         String apiResponseBody;
         try {
-            apiResponseBody = gateway.sendHttpRequest(prompt, apiKey);
+            apiResponseBody = sendAssessment(gateway, provider, prompt, apiKey, nodes, kind);
         } catch (LlmTimeoutException e) {
             detail.setDurationMs(System.currentTimeMillis() - start);
             String errorMsg = e.getMessage();
@@ -1594,6 +1601,18 @@ public class LlmService {
             recordFailure(errorMsg);
         }
         return detail;
+    }
+
+    private String sendAssessment(LlmGateway gateway, ProviderId provider, String prompt, String apiKey,
+                                  List<TaxonomyNode> nodes, ScoreAssessmentKind kind) {
+        if (!provider.equals(LlmProvider.CUSTOM_OPENAI.id()) || !providerConfig.isCustomLlmStructuredOutputEnabled()) {
+            return gateway.sendHttpRequest(prompt, apiKey);
+        }
+        int outputTokens = providerConfig.getCustomLlmMaxOutputTokens();
+        var options = kind == ScoreAssessmentKind.ROOT_RELEVANCE
+                ? AssessmentCompletion.forRoot(nodes.getFirst().getCode(), outputTokens)
+                : AssessmentCompletion.forChildren(nodes.stream().map(TaxonomyNode::getCode).toList(), outputTokens);
+        return gateway.sendHttpRequest(prompt, apiKey, options);
     }
 
     // ── Score normalization (public API) ─────────────────────────────────────

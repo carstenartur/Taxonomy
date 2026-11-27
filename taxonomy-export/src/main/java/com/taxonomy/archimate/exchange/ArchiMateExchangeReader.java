@@ -2,6 +2,7 @@ package com.taxonomy.archimate.exchange;
 
 import com.taxonomy.archimate.*;
 import com.taxonomy.diagram.*;
+import com.taxonomy.dto.TaxonomyResponsibilityLookup.Assignment;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
@@ -107,7 +108,7 @@ public final class ArchiMateExchangeReader {
             return new DiagramNode(element.id(), element.label(), value(p, "taxonomy.type"),
                     number(p, "taxonomy.relevance"), flag(p, "taxonomy.anchor"), integer(p, "taxonomy.layer"),
                     integer(p, "taxonomy.depth"), flag(p, "taxonomy.selectedForImpact"),
-                    optional(p, "taxonomy.parentId"), false, null, null, optional(p, "taxonomy.catalogueUuid"));
+                    optional(p, "taxonomy.parentId"), false, responsibility(p), null, optional(p, "taxonomy.catalogueUuid"));
         }).toList();
         List<DiagramEdge> edges = model.relationships().stream().map(relation -> {
             var p = relation.properties();
@@ -119,6 +120,16 @@ public final class ArchiMateExchangeReader {
                 ? new DiagramLayout(value(model.properties(), "taxonomy.layoutDirection"), flag(model.properties(), "taxonomy.groupByLayer"))
                 : null;
         return new DiagramModel(model.title(), nodes, edges, layout);
+    }
+
+    private static Assignment responsibility(Map<String, ArchiMateProperty> properties) {
+        if (!properties.containsKey("taxonomy.responsibilityUnitId")
+                && !properties.containsKey("taxonomy.responsibilityName")
+                && !properties.containsKey("taxonomy.responsibilitySourceId")) {
+            return null;
+        }
+        return new Assignment(value(properties, "taxonomy.responsibilityUnitId"),
+                value(properties, "taxonomy.responsibilityName"), value(properties, "taxonomy.responsibilitySourceId"));
     }
 
     public static boolean hasTaxonomyProfile(Document document) {

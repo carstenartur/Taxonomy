@@ -80,6 +80,12 @@ window.AnalysisApi = (function () {
                 timeoutMillis: options?.timeoutMillis === undefined ? 0 : options.timeoutMillis
             }));
         },
+        preparePreview: function (model, signal) {
+            return client.sendJson('/api/analysis/preview/prepare', model, 'POST', {signal:signal, selectedRepository:true, retries:0});
+        },
+        preview: function (payload, signal) {
+            return client.sendJson('/api/analysis/preview', payload, 'POST', {signal:signal, selectedRepository:true, retries:0});
+        },
         analyzeNode: analyzeNode,
         justifyLeaf: function (payload, options) { return rawJson('/api/justify-leaf', payload, Object.assign({}, options, {observationSurface:'leaf', observeAdmission: window.AnalysisAdapterApi?.admission, observeResponse: observeChild, operationError: describeChild})); },
         importScores: function (jsonText, options) {

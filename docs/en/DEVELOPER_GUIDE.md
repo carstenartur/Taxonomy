@@ -213,11 +213,7 @@ quality gates and the browser/accessibility matrix.
 ./mvnw -B verify -Pci -DrunOnnxTests=true
 ```
 
-The exact suite scope, prerequisites, browser-profile reproduction and remaining
-workflow responsibilities are documented in
-[`docs/dev/MAVEN_VERIFICATION.md`](../dev/MAVEN_VERIFICATION.md). Test selection
-belongs in a POM profile; workflow YAML may select an environment/profile but
-must not name Java tests or invoke Playwright/axe scripts directly.
+See the [Maven verification guide](../dev/MAVEN_VERIFICATION.md) for suite scope, prerequisites and browser-profile selection. The [workflow-to-local-command table](../de/DEVELOPER_GUIDE.md#github-workflows-lokal-zuordnen) maps the workflow files, including the native cluster and installer checks. The [machine-readable catalogue](../../.mvn/verification-suites.json) records each workflow's responsibility in English. Test selection belongs in a POM profile. Workflow YAML may select an environment or profile. The repository enforces this policy for Java test selection and direct Playwright or axe invocations.
 
 ## Adding a New REST Endpoint
 

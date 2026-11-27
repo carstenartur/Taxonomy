@@ -1,9 +1,9 @@
 package com.taxonomy.portfolio.reformulation;
 
 import com.taxonomy.support.ProcessTestDiagnostics;
+import com.taxonomy.support.SpringTestProcessAgents;
 import org.springframework.test.context.TestContextManager;
 
-import java.lang.management.ManagementFactory;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -26,9 +26,7 @@ public final class AdoptedLineageReanalysisProcess {
         // Preserve the enclosing test JVM's heap ceiling, rather than enlarging the budget.
         long maximumHeap = Runtime.getRuntime().maxMemory();
         command.add("-Xmx" + maximumHeap);
-        ManagementFactory.getRuntimeMXBean().getInputArguments().stream()
-                .filter(argument -> argument.startsWith("-javaagent:") && argument.contains("jacoco"))
-                .forEach(command::add);
+        command.addAll(SpringTestProcessAgents.arguments());
         command.add("-cp");
         command.add(System.getProperty("surefire.test.class.path", System.getProperty("java.class.path")));
         command.add(AdoptedLineageReanalysisProcess.class.getName());

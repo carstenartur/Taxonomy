@@ -87,6 +87,8 @@ Besitzt Anforderungs-/LLM-Analyse, Prompts, Anbieterregeln, Antwort-Parsing, Sit
 und Analyseabstraktionen. Zustandsbehaftete Fremdzugriffe verwenden explizite Ports.
 Eigene Unit-Tests und Fachressourcen gehören zur Bibliothek, nicht zu `taxonomy-app`.
 
+Der HTTP-Adapter stellt die interaktive Vorschau bereit, wenn Analyse und Architektur installiert sind. Er ruft `PreviewRequirementUseCase` auf. Dieser ermittelt den lesbaren Arbeitsbereich und bindet über `AnalysisAdmissionModelPort` die Architekturversion. Die Knowledge-Fassade `RetainedCataloguePreview` öffnet die zugehörige Katalogfassung für jede Anfrage erneut und verwaltet die Begriffs- und Vektorindizes.
+
 ### `taxonomy-portfolio`
 
 Besitzt Projekte, versionierte Anforderungen, dauerhafte Analysearbeit/-ergebnisse/-reviews,

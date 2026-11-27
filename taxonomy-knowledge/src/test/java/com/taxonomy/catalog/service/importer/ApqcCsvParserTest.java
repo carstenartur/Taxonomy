@@ -88,11 +88,11 @@ class ApqcCsvParserTest {
     void parentIdInProperties() throws Exception {
         try (InputStream is = getClass().getResourceAsStream("/testdata/apqc-sample.csv")) {
             ExternalParser.ParsedExternalModel result = parser.parse(is);
-            // Second element (1.1) should have parent "apqc-1"
+            // Second element (1.1) should resolve the category row 1.0
             ExternalElement second = result.elements().stream()
                     .filter(e -> e.id().equals("apqc-1-1")).findFirst().orElse(null);
             assertThat(second).isNotNull();
-            assertThat(second.properties()).containsEntry("parentId", "apqc-1");
+            assertThat(second.properties()).containsEntry("parentId", "apqc-1-0");
         }
     }
 
@@ -124,6 +124,17 @@ class ApqcCsvParserTest {
     }
 
     @Test
+    void quotedMultilineDescriptionsAndQuotedDisplayNamesRemainOneElement() throws Exception {
+        String csv = "PCF ID,Name,Level,Description\r\n"
+                + "1.0,\"\"\"Municipal records\"\"\",1,\"Review, publish\r\n  keep evidence\"\r\n";
+        var result = parser.parse(new ByteArrayInputStream(csv.getBytes(StandardCharsets.UTF_8)));
+        assertThat(result.elements()).singleElement().satisfies(element -> {
+            assertThat(element.name()).isEqualTo("\"Municipal records\"");
+            assertThat(element.description()).isEqualTo("Review, publish\r\n  keep evidence");
+        });
+    }
+
+    @Test
     void emptyInputReturnsEmptyModel() throws Exception {
         ExternalParser.ParsedExternalModel result = parser.parse(
                 new ByteArrayInputStream(new byte[0]));
@@ -145,6 +156,16 @@ class ApqcCsvParserTest {
         // strip() removes the outer \u2028 characters; inner content is preserved as-is
         assertThat(result.elements().get(0).description())
                 .isEqualTo("Main topic  \u2022 Sub-item");
+    }
+
+    @Test
+    void resolvesUnsortedChildrenToTheActualCategoryWithoutInventingMissingParents() throws Exception {
+        String csv = "PCF ID,Name,Description\n1.1.1,Validate,\n1.1,Review,\n1.0,Permits,\n2.5.3,Orphan,\n";
+        var result = parser.parse(new ByteArrayInputStream(csv.getBytes(StandardCharsets.UTF_8)));
+        assertThat(result.relations()).extracting(r -> r.sourceId() + ":" + r.targetId())
+                .containsExactlyInAnyOrder("apqc-1-1:apqc-1-1-1", "apqc-1-0:apqc-1-1");
+        assertThat(result.elements().get(2).type()).isEqualTo("Category");
+        assertThat(result.elements().get(2).properties()).doesNotContainKey("parentId");
     }
 
     @Test

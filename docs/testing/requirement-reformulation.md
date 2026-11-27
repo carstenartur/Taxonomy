@@ -2,17 +2,16 @@
 
 ## Deterministic application gate
 
-Run the Maven-owned selection with Java 25 and Docker:
+Run the scenario and document checks with Java 25, Docker, LibreOffice Writer and Draw, and Poppler.
 
 ```sh
-./mvnw -B -ntp -pl taxonomy-app -am test -Pscenario-acceptance
+./mvnw -B -ntp -pl taxonomy-app -am verify -Pscenario-acceptance
 ```
 
 The profile and `.mvn/verification-suites.json` explicitly select the existing
 scenario and browser contracts plus `ReformulationScenarioAcceptanceTest`,
 `ReformulationScenarioBrowserTest` and `ReformulationAuthoredScenarioTest`.
-The CI job requires positive named JUnit results; a successful reactor with zero
-selected tests is insufficient. The ordinary full CI, coverage, database, security,
+Maven checks named JUnit results for the current session, including the executed test counts. The ordinary full CI, coverage, database, security,
 UI and transport gates remain required independently.
 
 Only the outbound provider exchange is replaced. Semantic playback validates the
@@ -44,8 +43,8 @@ calls, fatal mismatches, jobs, snapshots, revisions, receipts, exports, child-pr
 logs, screenshots and restart identity. CI excludes the temporary database itself.
 The document gate independently renders the actual DOCX exports with LibreOffice,
 compares their content with paired historical JSON, rejects empty body pages and
-checks measured page limits. It preserves PDFs, page images and hashes. Invoke after
-compiling `taxonomy-tooling`:
+checks measured page limits. It preserves PDFs, page images and hashes. To repeat
+this check with existing exports, compile `taxonomy-tooling` and run the following command.
 
 ```sh
 java -cp taxonomy-tooling/target/classes com.taxonomy.tooling.TaxonomyTooling \

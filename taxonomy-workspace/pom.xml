@@ -11,6 +11,9 @@
     <artifactId>taxonomy-workspace</artifactId>
     <name>Taxonomy Workspace</name>
     <description>Workspace authority, versioning, semantic editor history and JGit storage</description>
+    <properties>
+        <taxonomy.test.agent>${taxonomy.test.mockitoAgent}</taxonomy.test.agent>
+    </properties>
     <dependencies>
         <dependency>
             <groupId>com.taxonomy</groupId>

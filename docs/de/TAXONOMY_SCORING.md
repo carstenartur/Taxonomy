@@ -57,6 +57,8 @@ Die Normalisierung verteilt Gewichte. Sie beweist weder Erfüllung, Notwendigkei
 
 **Unabhängige Wurzeln:** `analyzeWithBudget` und `analyzeStreaming` bewerten jede Wurzel einzeln zwischen 0 und 100, ohne Summen-Prompt oder Kinderbudget-Normalisierung. Eine Wurzelantwort `20` bleibt `20`; `0` und `100` bleiben unterscheidbar. Der lokale ONNX-Pfad behält seinen Ähnlichkeitswert für die Wurzel ohne Budgetverteilung; Mock-Wurzeln behalten ihre begrenzten Demonstrationswerte. Ein positiver Wurzelwert wird erst zum Budget für ihre *Kinder*. Eine echte Kategorie mit nur einem Kind bleibt beim Kinderbudget-Vertrag.
 
+Bei einer vollständigen lokalen ONNX-Analyse berechnet Taxonomy den Vektor des Anforderungstextes einmal je Durchlauf bzw. je verteiltem Teilauftrag. Beim nächsten Text werden die Ähnlichkeiten neu berechnet. Für die Bewertung einer ausgewählten Architektur benötigt der Server die archivierte Katalogfassung und die Beziehungsprojektion ihres Git-Checkpoints. Die interaktive Vorschau kann bereits vor einem Checkpoint mit dem ausgewählten Katalog arbeiten.
+
 Der generative Wurzelvertrag `root-relevance-v2` unterscheidet zusätzlich
 `RELEVANT` (positiver Wert), `IRRELEVANT` (begründete Null) und `UNRESOLVED`
 (kein Zahlenwert, mit Grund und Rückfrage). Auch benötigte vorhandene Dienste

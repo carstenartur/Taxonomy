@@ -9,6 +9,7 @@ import path from 'node:path';
 import { chromium } from 'playwright';
 import { execFileSync } from 'node:child_process';
 import os from 'node:os';
+import { readButtonContrast } from './ui-outline-button-contrast.mjs';
 import { installBrowserApiFixture } from './canonical-browser-fixture.mjs';
 const resources = process.env.TAXONOMY_TEST_RESOURCE_ROOT || path.resolve('taxonomy-app/src/main/resources');
 let browser;
@@ -252,6 +253,37 @@ test('match colours stay distinct, match the samples and retain text contrast af
             }
             assert.ok(!positive.some(s => s.fill === theme[4].fill));
         }
+    } finally { await finish(page); }
+});
+
+test('action launcher remains readable on a fully matched node', async () => {
+    const page = await fixture();
+    try {
+        const bootstrap = process.env.BOOTSTRAP_CSS ? await readFile(process.env.BOOTSTRAP_CSS, 'utf8')
+            : execFileSync('unzip', ['-p', path.join(process.env.MAVEN_REPO_LOCAL || path.join(os.homedir(), '.m2/repository'),
+                'org/webjars/npm/bootstrap/5.3.8/bootstrap-5.3.8.jar'),
+                'META-INF/resources/webjars/bootstrap/5.3.8/dist/css/bootstrap.min.css'], {encoding:'utf8'});
+        await page.addStyleTag({content:bootstrap});
+        for (const css of ['taxonomy.css', 'taxonomy-ergonomics.css', 'git-status.css']) {
+            await page.addStyleTag({path:path.join(resources, 'static/css', css)});
+        }
+        await renderNode(page);
+        await page.evaluate(() => TaxonomyScoring.applyScoreToNode('BP-1000', 100));
+        await page.locator('.tax-scored').evaluate(row => Promise.all(row.getAnimations().map(a => a.finished)));
+        const launcher = page.locator('.tax-scored > .tax-node-actions-toggle');
+        for (const theme of ['light', 'dark']) {
+            await page.evaluate(theme => {
+                document.documentElement.dataset.bsTheme = theme;
+                document.body.classList.toggle('dark-mode', theme === 'dark');
+            }, theme);
+            const reading = await readButtonContrast(launcher);
+            assert.ok(reading.contrast >= 4.5, theme + ': ' + JSON.stringify(reading));
+        }
+        await launcher.hover();
+        assert.ok((await readButtonContrast(launcher)).contrast >= 4.5);
+        await page.mouse.move(0, 0);
+        await page.emulateMedia({forcedColors:'active'});
+        assert.ok((await readButtonContrast(launcher)).contrast >= 4.5);
     } finally { await finish(page); }
 });
 

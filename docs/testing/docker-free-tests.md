@@ -54,10 +54,11 @@ ChromeDriver-Diagnose.
 
 Das Profil aktiviert auch Failsafe (`*IT`) und die Browseransicht des
 Architekturszenarios. Eine gezielte Abnahme mit den sechs bereits vorhandenen
-Szenariotestklassen ist schneller als der vollständige Lauf:
+Szenariotestklassen rendert die erzeugten Word- und Visio-Dateien mit LibreOffice Writer/Draw
+und Poppler.
 
 ```bash
-./mvnw -B -pl taxonomy-app -am test -Ptest-local,scenario-acceptance
+./mvnw -B -pl taxonomy-app -am verify -Ptest-local,scenario-acceptance
 ```
 
 Für die Browser-Infrastruktur und die fünf Live-Fortschrittsprüfungen:

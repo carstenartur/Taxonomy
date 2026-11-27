@@ -96,6 +96,11 @@ class RootScoringFlowTest {
 
     private static final class Gateway implements LlmGateway {
         final List<String> prompts = new ArrayList<>();
+        final List<LlmCompletionOptions> structuredRequests = new ArrayList<>();
+        @Override public String sendHttpRequest(String prompt, String key, LlmCompletionOptions options) {
+            structuredRequests.add(options);
+            return sendHttpRequest(prompt, key);
+        }
         final List<String> replies;
         Runnable beforeResponse = () -> { };
         Gateway(String... replies) { this.replies = List.of(replies); }
@@ -107,6 +112,48 @@ class RootScoringFlowTest {
         }
         @Override public String extractResponseText(String body) { return body; }
         @Override public String providerName() { return "fake remote"; }
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void customRootAssessmentBindsStatusScoreAndQuestionWhenStructuredOutputIsEnabled(boolean enabled) {
+        var gateway = new Gateway("""
+                {"BP":{"status":"RELEVANT","score":25,"reason":"A library service needs a process.","question":""}}
+                """, """
+                {"BP-1":{"score":25,"reason":"The child supports the process."}}
+                """);
+        var llm = service(LlmProvider.CUSTOM_OPENAI, true, gateway, null);
+        var config = (LlmProviderConfig) ReflectionTestUtils.getField(llm, "providerConfig");
+        ReflectionTestUtils.setField(config, "customLlmStructuredOutputEnabled", enabled);
+        assertEquals(Map.of("BP", 25d, "BP-1", 25d), llm.analyzeWithBudget("Library service").getRawScores());
+        assertEquals(2, gateway.prompts.size());
+        assertEquals(enabled ? 2 : 0, gateway.structuredRequests.size());
+        assertEquals(enabled, config.completionConfigurationRevision(LlmProvider.CUSTOM_OPENAI.id())
+                .contains(AssessmentCompletion.ROOT_SCHEMA));
+        if (enabled) {
+            var childOptions = gateway.structuredRequests.get(1);
+            assertEquals(AssessmentCompletion.CHILD_SCHEMA, childOptions.schemaName());
+            var child = new ObjectMapper().valueToTree(childOptions.schema());
+            assertEquals("BP-1", child.at("/required/0").asString());
+            assertEquals("#/$defs/assessment", child.at("/properties/BP-1/$ref").asString());
+            assertFalse(child.path("additionalProperties").asBoolean());
+            assertEquals("number", child.at("/$defs/assessment/properties/score/type").asString());
+            var options = gateway.structuredRequests.getFirst();
+            var schema = new ObjectMapper().valueToTree(options.schema());
+            assertEquals(1, schema.path("required").size());
+            assertEquals("BP", schema.at("/required/0").asString());
+            var alternatives = schema.at("/properties/BP/anyOf");
+            assertEquals(3, alternatives.size());
+            assertEquals("RELEVANT", alternatives.at("/0/properties/status/enum/0").asString());
+            assertEquals(0, alternatives.at("/0/properties/score/exclusiveMinimum").intValue());
+            assertEquals("", alternatives.at("/0/properties/question/enum/0").asString());
+            assertEquals("IRRELEVANT", alternatives.at("/1/properties/status/enum/0").asString());
+            assertEquals(0, alternatives.at("/1/properties/score/enum/0").intValue());
+            assertEquals("", alternatives.at("/1/properties/question/enum/0").asString());
+            assertEquals("UNRESOLVED", alternatives.at("/2/properties/status/enum/0").asString());
+            assertEquals("null", alternatives.at("/2/properties/score/type").asString());
+            assertEquals(1, alternatives.at("/2/properties/question/minLength").intValue());
+        }
     }
 
     @ParameterizedTest
@@ -426,6 +473,23 @@ class RootScoringFlowTest {
     }
 
     @Test
+    void fullAndStreamingTraversalsInferOneQueryEachAndKeepChildrenAndScores() {
+        var embeddings = new FrozenEmbeddings(false);
+        var nodes = List.of(node("BP", null, "BP"), node("BP-1", "BP", "BP"));
+        try (var ignored = frozen(nodes, embeddings)) {
+            var service = service(LlmProvider.LOCAL_ONNX, true, new Gateway(), embeddings);
+            var scored = service.analyzeWithBudget("first");
+            var streamed = new Capture();
+            service.analyzeStreaming("edited", streamed);
+            assertEquals("SUCCESS", scored.getStatus());
+            assertEquals("SUCCESS", streamed.status);
+            assertEquals(scored.getRawScores(), streamed.scores);
+            assertEquals(nodes.size(), streamed.scores.size());
+            assertEquals(List.of("query: first", "frozen root text", "BP-1", "query: edited"), embeddings.texts);
+        }
+    }
+
+    @Test
     void failedFrozenInferenceRemainsAnExplicitPartialAssessmentWithNoInventedZero() {
         var embeddings = new FrozenEmbeddings(true);
         try (var ignored = frozen(embeddings)) {
@@ -453,7 +517,8 @@ class RootScoringFlowTest {
                 new CatalogueOverlayService.OverlayMetadata(false, "fixture", "fixture", "v1", null, 1), provenance);
         if (embeddings != null) snapshot = snapshot.withEmbeddings(new RootEmbeddingSnapshot(RootEmbeddingSnapshot.SCHEMA_VERSION, source, "BP",
                         source.sourceCommit(), RootEmbeddingSnapshot.TEXT_VERSION, embeddings.embeddingIdentity(),
-                        Map.of("BP", "frozen root text")));
+                        nodes.stream().collect(java.util.stream.Collectors.toMap(TaxonomyNode::getCode,
+                                n -> n.getParentCode() == null ? "frozen root text" : n.getCode()))));
         return new CatalogueSnapshotService(null, null, new CatalogueRuntimePolicy("worker", "BP"), null)
                 .bind(source, java.util.Set.of("BP"), List.of(snapshot));
     }

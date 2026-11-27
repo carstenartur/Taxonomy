@@ -3,6 +3,8 @@ package com.taxonomy.analysis.usecase;
 import com.taxonomy.catalog.snapshot.CatalogueSnapshotService;
 import com.taxonomy.catalog.snapshot.CatalogueSourceIdentity;
 import com.taxonomy.catalog.snapshot.FrozenCatalogueContext;
+import com.taxonomy.analysis.service.LlmProvider;
+import com.taxonomy.analysis.service.LlmService;
 import com.taxonomy.catalog.snapshot.RootCatalogueSnapshot;
 import com.taxonomy.dto.AnalysisModelBinding;
 import com.taxonomy.workspace.service.WorkspaceContext;
@@ -18,10 +20,26 @@ public final class AdmittedCatalogue {
 
     public static FrozenCatalogueContext.Scope open(CatalogueSnapshotService snapshots, AnalysisModelBinding binding,
                                                     WorkspaceContext workspace) {
+        return open(snapshots, binding, workspace, false);
+    }
+
+    /** Local scoring reads the same exact-commit relation-enriched vectors in a servlet or a cluster worker. */
+    public static FrozenCatalogueContext.Scope openForScoring(CatalogueSnapshotService snapshots,
+            AnalysisModelBinding binding, WorkspaceContext workspace, LlmService llm) {
+        if (binding == null || llm.isMockMode() || !LlmProvider.LOCAL_ONNX.id().equals(llm.getActiveProviderId())
+                || !llm.isAvailable()) {
+            return open(snapshots, binding, workspace, false);
+        }
+        if (workspace == null || binding.commit() == null || binding.state() == AnalysisModelBinding.State.MODEL_UNCOMMITTED) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Checkpoint this architecture before local ONNX analysis");
+        }
+        return open(snapshots, binding, workspace, true);
+    }
+
+    private static FrozenCatalogueContext.Scope open(CatalogueSnapshotService snapshots, AnalysisModelBinding binding,
+            WorkspaceContext workspace, boolean localScoring) {
         if (binding == null) return null;
-        requireWorkspace(binding, workspace);
-        var identity = new CatalogueSourceIdentity(binding.repositoryId(), workspace.workspaceId(),
-                binding.branch(), binding.commit(), binding.commit() == null ? binding.modelSha256() : null);
+        var identity = source(binding, workspace);
         String revision = revision(binding);
         var archived = Objects.requireNonNull(snapshots, "Archived catalogue service")
                 .captureRevision(identity, revision, Set.of());
@@ -30,7 +48,18 @@ public final class AdmittedCatalogue {
         if (!roots.containsAll(binding.rootCodes())) {
             throw new IllegalStateException("The archived catalogue does not contain the admitted roots");
         }
+        if (localScoring) {
+            archived = snapshots.prepareLocalScoring(identity, roots, archived, workspace.username())
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT,
+                            "Prepare the relation projection for this architecture checkpoint before local ONNX analysis"));
+        }
         return snapshots.bind(identity, roots, archived);
+    }
+
+    static CatalogueSourceIdentity source(AnalysisModelBinding binding, WorkspaceContext workspace) {
+        requireWorkspace(binding, workspace);
+        return new CatalogueSourceIdentity(binding.repositoryId(), workspace.workspaceId(),
+                binding.branch(), binding.commit(), binding.commit() == null ? binding.modelSha256() : null);
     }
 
     public static String revision(AnalysisModelBinding binding) {

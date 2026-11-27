@@ -18,12 +18,16 @@ final class OnnxProfileContract {
 
     private OnnxProfileContract() { }
 
-    static void verifyPom(String xml) throws Exception {
+    private static Document parsePom(String xml) throws Exception {
         DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
         factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
         factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "");
         factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "");
-        Document pom = factory.newDocumentBuilder().parse(new InputSource(new StringReader(xml)));
+        return factory.newDocumentBuilder().parse(new InputSource(new StringReader(xml)));
+    }
+
+    static void verifyPom(String xml) throws Exception {
+        Document pom = parsePom(xml);
         var xpath = XPathFactory.newInstance().newXPath();
         for (String plugin : List.of("maven-surefire-plugin", "maven-failsafe-plugin")) {
             String configuration = PROFILE + "[artifactId='" + plugin + "']/configuration/";
@@ -42,22 +46,36 @@ final class OnnxProfileContract {
     static void verifyWorkflow(String workflow) {
         require(workflow.contains("ref: ${{ github.event.pull_request.head.sha || github.sha }}"),
                 "Reference measurements must identify the actual PR head (or manual-dispatch SHA)");
-        require(workflow.contains("./mvnw -B verify -Ponnx"), "Keep the Maven-owned suite command");
-        require(workflow.contains("check-junit-reports"), "Require executed JUnit evidence, not only Maven exit zero");
-        for (String report : List.of(
-                "surefire-reports/TEST-com.taxonomy.OnnxEmbeddingServiceTest.xml 4",
-                "surefire-reports/TEST-com.taxonomy.OnnxRestEndpointTest.xml 5",
-                "surefire-reports/TEST-com.taxonomy.acceptance.OnnxReferenceCasesTest.xml 11",
-                "surefire-reports/TEST-com.taxonomy.acceptance.OnnxMultilingualReferenceEvaluationTest.xml 3",
-                "surefire-reports/TEST-com.taxonomy.acceptance.OnnxReferenceEvaluationTest.xml 14",
-                "surefire-reports/TEST-com.taxonomy.ui.OnnxDisclosureInteractionContractTest.xml 1",
-                "surefire-reports/TEST-com.taxonomy.composition.analysis.artemis.WorkerRuntimeFootprintTest.xml 1",
-                "failsafe-reports/TEST-com.taxonomy.LocalOnnxPipelineIT.xml 9",
-                "failsafe-reports/TEST-com.taxonomy.OnnxSeleniumIT.xml 9")) {
-            require(workflow.contains(report), "Missing positive test evidence: " + report);
-        }
+        require(workflow.contains("./mvnw -B verify -Ponnx,ci-onnx-reference"), "Run the Maven-owned reference suite");
         require(workflow.contains("**/target/surefire-reports/**"), "Preserve failures before Failsafe starts");
         require(workflow.contains("**/target/failsafe-reports/**"), "Preserve integration and reference evidence");
+    }
+
+    static void verifyEvidencePom(String xml, Path root) throws Exception {
+        Document pom = parsePom(xml);
+        var xpath = XPathFactory.newInstance().newXPath();
+        String check = "/project/profiles/profile[id='ci-onnx-reference']/build/plugins/"
+                + "plugin[artifactId='exec-maven-plugin']/executions/"
+                + "execution[id='verify-executed-onnx-reports' and phase='verify' and goals/goal='exec']";
+        var arguments = xpath.evaluateExpression(check + "/configuration/arguments/argument", pom,
+                javax.xml.xpath.XPathNodes.class);
+        var values = new java.util.ArrayList<String>();
+        arguments.forEach(node -> values.add(node.getTextContent()));
+        require(values.size() >= 25 && (values.size() - 5) % 2 == 0,
+                "Verify the ten mandatory suites with positive execution counts");
+        require(values.subList(0, 5).equals(List.of("-cp", "${maven.multiModuleProjectDirectory}/taxonomy-tooling/target/classes",
+                "com.taxonomy.tooling.TaxonomyTooling", "check-junit-reports",
+                "--since-epoch-millis=${session.request.startTime.time}")), "Require fresh reports from this Maven invocation");
+        var seen = new java.util.HashSet<String>();
+        for (int i = 5; i < values.size(); i += 2) {
+            String report = values.get(i);
+            var parts = report.split("/target/(?:surefire|failsafe)-reports/TEST-");
+            require(parts.length == 2 && parts[1].endsWith(".xml") && seen.add(report)
+                    && values.get(i + 1).matches("[1-9][0-9]*"), "Invalid required report: " + report);
+            String testSource = parts[1].substring(0, parts[1].length() - 4).replace('.', '/') + ".java";
+            require(Files.isRegularFile(root.resolve(parts[0]).resolve("src/test/java").resolve(testSource)),
+                    "Missing test class for required report: " + report);
+        }
     }
 
     private static void require(boolean condition, String message) {
@@ -68,6 +86,7 @@ final class OnnxProfileContract {
         if (args.length != 1) throw new IllegalArgumentException("Expected checkout root");
         Path root = Path.of(args[0]);
         verifyPom(Files.readString(root.resolve("taxonomy-app/pom.xml")));
+        verifyEvidencePom(Files.readString(root.resolve("taxonomy-build/pom.xml")), root);
         verifyWorkflow(Files.readString(root.resolve(".github/workflows/local-onnx-reference.yml")));
         System.out.println("ONNX profile and executed-evidence wiring verified (not an inference test)");
     }

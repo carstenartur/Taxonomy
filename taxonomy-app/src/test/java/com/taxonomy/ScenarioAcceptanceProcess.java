@@ -3,10 +3,10 @@ package com.taxonomy;
 import com.taxonomy.acceptance.ScenarioRelationQuality;
 import com.taxonomy.acceptance.ScenarioCallJournal;
 import com.taxonomy.support.ProcessTestDiagnostics;
+import com.taxonomy.support.SpringTestProcessAgents;
 import com.taxonomy.testsupport.BrowserSession;
 import org.springframework.test.context.TestContextManager;
 
-import java.lang.management.ManagementFactory;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -44,9 +44,7 @@ public final class ScenarioAcceptanceProcess {
         command.add("-Xmx" + maximumHeap);
         command.add("-Dscenario.runId=" + runId);
         command.add("-D" + STORAGE_PROPERTY + "=" + storage.toAbsolutePath());
-        ManagementFactory.getRuntimeMXBean().getInputArguments().stream()
-                .filter(argument -> argument.startsWith("-javaagent:") && argument.contains("jacoco"))
-                .forEach(command::add);
+        command.addAll(SpringTestProcessAgents.arguments());
         // The scenario owns its application configuration. Forward only explicit non-secret
         // UI test flags on argv; environment and working directory remain inherited.
         System.getProperties().stringPropertyNames().stream().sorted()

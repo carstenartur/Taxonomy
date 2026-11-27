@@ -34,11 +34,11 @@ public final class ArchitectureReportTextRenderer {
      * Renders an {@link ArchitectureReport} as Markdown text.
      */
     public String renderMarkdown(ArchitectureReport report) {
-        return renderMarkdown(report, "en");
+        return renderMarkdown(report, report.getLanguageTag());
     }
 
     public String renderMarkdown(ArchitectureReport report, String language) {
-        return renderMarkdown(report, language, Map.of());
+        return renderMarkdown(report, language, report.getNodeReasons());
     }
 
     public String renderMarkdown(ArchitectureReport report, String language, Map<String, String> nodeReasons) {
@@ -274,7 +274,7 @@ public final class ArchitectureReportTextRenderer {
      * Renders an {@link ArchitectureReport} as a self-contained HTML document.
      */
     public String renderHtml(ArchitectureReport report) {
-        return renderHtml(report, "en");
+        return renderHtml(report, report.getLanguageTag());
     }
 
     public String renderHtml(ArchitectureReport report, String language) {
@@ -319,7 +319,7 @@ public final class ArchitectureReportTextRenderer {
             var graph = PersistedDiagramProjection.project(new DiagramProjectionService(), view, labels.architectureTitle(), labels.german());
             var scene = new LayeredDiagramLayoutService().layout(graph);
             // The projected scene already carries the relationship evidence recorded in the view.
-            String svg = new SvgDiagramRenderer(themes).render(scene, nodeReasons, Map.of(), Locale.forLanguageTag(language));
+            String svg = new SvgDiagramRenderer(themes).render(scene, nodeReasons, Map.of(), labels.german() ? Locale.GERMAN : Locale.ENGLISH);
             html.append("<figure class=\"architecture-figure\">").append(svg, svg.indexOf("<svg"), svg.length()).append("</figure>");
             html.append(markdownToHtml(footer(labels)));
         }

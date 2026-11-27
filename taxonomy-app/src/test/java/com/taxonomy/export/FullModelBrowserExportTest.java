@@ -17,7 +17,7 @@ class FullModelBrowserExportTest {
     @Test
     void csvRetainsAcceptedZeroScoresWithoutLegacyCoverage() throws Exception {
         var csv = probe("csv").path("downloads").get(0).asText();
-        assertThat(csv).contains(",zero,Explicit zero,0,").contains(",fraction,Fraction,0.125,")
+        assertThat(csv).contains(",zero,Explicit zero,0,").contains(",fraction,Fraction,0.125,").contains(",multiline,\"permit\rreview\",17,")
                 .doesNotContain(",invalid,");
     }
 

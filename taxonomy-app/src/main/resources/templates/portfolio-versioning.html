@@ -25,15 +25,15 @@
     <div id="versioningInfo" class="alert alert-info d-none" role="status"></div>
     <section class="card shadow-sm mb-3"><div class="card-body"><h1 class="h2 mb-1" id="versioningHeading">Portfolio versioning & collaboration</h1><p id="versioningProject" class="text-body-secondary mb-0"></p></div></section>
 
-    <section class="row g-3 mb-3" aria-label="Repository status">
-        <div class="col-6 col-xl-3"><div class="card h-100 shadow-sm"><div class="card-body"><div class="small text-body-secondary">Active branch</div><div id="activeBranch" class="h5 mt-1 mb-0"></div></div></div></div>
+    <section class="row g-3 mb-3" th:attr="aria-label=#{portfolio.git.status}" aria-label="Repository status">
+        <div class="col-6 col-xl-3"><div class="card h-100 shadow-sm"><div class="card-body"><div class="small text-body-secondary" th:text="#{portfolio.git.activeBranch}">Active branch</div><div id="activeBranch" class="h5 mt-1 mb-0"></div></div></div></div>
         <div class="col-6 col-xl-3"><div class="card h-100 shadow-sm"><div class="card-body"><div class="small text-body-secondary">HEAD</div><code id="headCommit"></code></div></div></div>
-        <div class="col-6 col-xl-3"><div class="card h-100 shadow-sm"><div class="card-body"><div class="small text-body-secondary">Workspace</div><div id="workspaceId" class="small text-break"></div></div></div></div>
-        <div class="col-6 col-xl-3"><div class="card h-100 shadow-sm"><div class="card-body"><div class="small text-body-secondary">Portfolio changes</div><div id="changeState" class="h5 mt-1 mb-0"></div></div></div></div>
+        <div class="col-6 col-xl-3"><div class="card h-100 shadow-sm"><div class="card-body"><div class="small text-body-secondary" th:text="#{app.context.workspace}">Workspace</div><div id="workspaceId" class="small text-break"></div></div></div></div>
+        <div class="col-6 col-xl-3"><div class="card h-100 shadow-sm"><div class="card-body"><div class="small text-body-secondary" th:text="#{portfolio.git.changes}">Portfolio changes</div><div id="changeState" class="h5 mt-1 mb-0"></div></div></div></div>
     </section>
 
     <section class="card shadow-sm mb-3" aria-labelledby="previewHeading">
-        <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2"><div><h2 id="previewHeading" class="h5 mb-1">Current portfolio change preview</h2><p class="small text-body-secondary mb-0">Review the generated TaxDSL and exact counts before committing.</p></div><button id="refreshPreview" class="btn btn-sm btn-outline-secondary" type="button">Refresh</button></div>
+        <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2"><div><h2 id="previewHeading" class="h5 mb-1">Current portfolio change preview</h2><p class="small text-body-secondary mb-0" th:text="#{portfolio.git.review}">Review the generated TaxDSL and exact counts before committing.</p></div><button id="refreshPreview" class="btn btn-sm btn-outline-secondary" type="button">Refresh</button></div>
         <div class="card-body"><div id="portfolioCounts" class="row row-cols-2 row-cols-md-4 g-2 mb-3"></div><details><summary class="fw-semibold">Technical TaxDSL preview</summary><pre id="dslPreview" class="border rounded p-3 bg-body-tertiary mt-2"></pre></details></div>
     </section>
 
@@ -45,11 +45,11 @@
             <section class="card shadow-sm h-100" aria-labelledby="materializeHeading"><div class="card-header"><h2 id="materializeHeading" class="h5 mb-0">Restore a branch into the portfolio</h2></div><div class="card-body"><div class="mb-3"><label for="materializeBranch" class="form-label">Branch</label><select id="materializeBranch" class="form-select"></select></div><button id="previewMaterialize" class="btn btn-outline-primary" type="button">Preview materialization</button><div id="materializePreview" class="mt-3"></div><button id="applyMaterialize" class="btn btn-danger mt-3 d-none" type="button">Apply reviewed materialization</button></div></section>
         </div>
         <div class="col-12">
-            <section class="card shadow-sm" aria-labelledby="mergeHeading"><div class="card-header"><h2 id="mergeHeading" class="h5 mb-0">Merge portfolio branches</h2></div><form id="mergeForm" class="card-body"><div class="row g-3"><div class="col-md-4"><label for="mergeSource" class="form-label">Source branch</label><select id="mergeSource" class="form-select" required></select></div><div class="col-md-4"><label for="mergeTarget" class="form-label">Target branch</label><select id="mergeTarget" class="form-select" required></select></div><div class="col-md-4"><label for="mergeMessage" class="form-label">Merge message</label><input id="mergeMessage" class="form-control" maxlength="1000" required/></div></div><div class="alert alert-info mt-3">Ordinary Git merge is attempted first. Semantic TaxDSL merge is used only when necessary. Unresolved semantic conflicts stop without mutation.</div><button class="btn btn-primary" type="submit">Merge reviewed branches</button><div id="mergeResult" class="mt-3"></div></form></section>
+            <section class="card shadow-sm" aria-labelledby="mergeHeading"><div class="card-header"><h2 id="mergeHeading" class="h5 mb-0">Merge portfolio branches</h2></div><form id="mergeForm" class="card-body"><div class="row g-3"><div class="col-md-4"><label for="mergeSource" class="form-label">Source branch</label><select id="mergeSource" class="form-select" required></select></div><div class="col-md-4"><label for="mergeTarget" class="form-label">Target branch</label><select id="mergeTarget" class="form-select" required></select></div><div class="col-md-4"><label for="mergeMessage" class="form-label">Merge message</label><input id="mergeMessage" class="form-control" maxlength="1000" required/></div></div><div class="alert alert-info mt-3" th:text="#{portfolio.git.merge.help}">Ordinary Git merge is attempted first. Semantic TaxDSL merge is used only when necessary. Unresolved semantic conflicts stop without mutation.</div><button class="btn btn-primary" type="submit">Merge reviewed branches</button><div id="mergeResult" class="mt-3"></div></form></section>
         </div>
     </section>
 </main>
-<div id="versioningBusy" class="portfolio-busy d-none" role="status" aria-live="polite"><div class="spinner-border" aria-hidden="true"></div><span>Working…</span></div>
+<div id="versioningBusy" class="portfolio-busy d-none" role="status" aria-live="polite"><div class="spinner-border" aria-hidden="true"></div><span th:text="#{portfolio.git.busy}">Working…</span></div>
 <script th:src="@{/webjars/bootstrap/5.3.8/dist/js/bootstrap.bundle.min.js}"></script><script th:src="@{/js/taxonomy-i18n.js}"></script>
 <script th:src="@{/js/shared/architecture-workflow.js}" src="/js/shared/architecture-workflow.js"></script>
 <script th:src="@{/js/shared/taxonomy-utils.js}"></script>

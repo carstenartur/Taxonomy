@@ -34,6 +34,14 @@ public class FrozenCatalogueEmbeddingService {
         this.embeddings = Objects.requireNonNull(embeddings);
     }
 
+    List<RootCatalogueSnapshot> decorateForActor(String actor, CatalogueSourceIdentity source,
+                                               List<RootCatalogueSnapshot> capturedRoots, Set<String> requiredRoots) {
+        var repository = source.workspaceId() == null
+                ? RepositoryContext.centralRead(source.repositoryId(), source.branch(), actor)
+                : RepositoryContext.workspace(source.repositoryId(), source.workspaceId(), source.branch(), actor);
+        return decorate(repository, source, capturedRoots, requiredRoots);
+    }
+
     /**
      * Endpoint names may cross roots, so admission supplies one atomic all-root scalar capture.
      * Only required roots are returned for persistence; workers never load endpoint roots or relation projections.
@@ -99,11 +107,17 @@ public class FrozenCatalogueEmbeddingService {
         return result;
     }
 
+    public static final class ProjectionUnavailable extends IllegalStateException {
+        ProjectionUnavailable() {
+            super("Frozen embeddings require a complete relation projection at the exact source commit");
+        }
+    }
+
     private static IdentitySnapshot requireExact(IdentitySnapshot snapshot, CatalogueSourceIdentity source) {
         if (snapshot == null || snapshot.readModel() != ReadModel.PROJECTION
                 || snapshot.readinessState() != ReadinessState.READY || source.sourceCommit() == null
                 || !source.sourceCommit().equals(snapshot.commitId())) {
-            throw new IllegalStateException("Frozen embeddings require a complete relation projection at the exact source commit");
+            throw new ProjectionUnavailable();
         }
         return snapshot;
     }

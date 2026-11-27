@@ -3,7 +3,9 @@ package com.taxonomy.catalog.service.importer;
 import com.taxonomy.dsl.mapping.ExternalElement;
 import com.taxonomy.dsl.mapping.ExternalRelation;
 
-import java.io.BufferedReader;
+import org.apache.commons.csv.CSVFormat;
+
+import java.io.UncheckedIOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
@@ -44,26 +46,18 @@ public class ApqcCsvParser implements ExternalParser {
         List<ExternalRelation> relations = new ArrayList<>();
         Map<String, String> idByPcfId = new LinkedHashMap<>();
 
-        try (BufferedReader reader = new BufferedReader(
-                new InputStreamReader(input, StandardCharsets.UTF_8))) {
-
-            String headerLine = reader.readLine();
-            if (headerLine == null) {
-                return new ParsedExternalModel(elements, relations);
-            }
-
-            // Parse header to find column indices
-            String[] headers = splitCsvLine(headerLine);
+        try (var reader = new InputStreamReader(input, StandardCharsets.UTF_8);
+             var records = CSVFormat.DEFAULT.parse(reader)) {
+            var iterator = records.iterator();
+            if (!iterator.hasNext()) return new ParsedExternalModel(elements, relations);
+            String[] headers = iterator.next().values();
             int pcfIdCol = findColumn(headers, "PCF ID", "Id", "ID", "pcf_id");
             int nameCol = findColumn(headers, "Name", "name", "Process Name", "Title");
             int levelCol = findColumn(headers, "Level", "level", "Hierarchy Level");
             int descCol = findColumn(headers, "Description", "description", "Desc");
 
-            String line;
-            while ((line = reader.readLine()) != null) {
-                if (line.isBlank()) continue;
-
-                String[] fields = splitCsvLine(line);
+            while (iterator.hasNext()) {
+                String[] fields = iterator.next().values();
                 String pcfId = safeGet(fields, pcfIdCol);
                 String name = safeGet(fields, nameCol);
                 String levelStr = safeGet(fields, levelCol);
@@ -79,22 +73,25 @@ public class ApqcCsvParser implements ExternalParser {
                 String elementId = "apqc-" + pcfId.replace(".", "-");
                 Map<String, String> props = new LinkedHashMap<>();
                 props.put("pcfId", pcfId);
-                String parentPcfId = deriveParentPcfId(pcfId);
-                if (parentPcfId != null) {
-                    props.put("parentId", "apqc-" + parentPcfId.replace(".", "-"));
-                }
-
                 elements.add(new ExternalElement(elementId, type, name, description, props));
                 idByPcfId.put(pcfId, elementId);
-
-                // Create parent-child relation
-                if (parentPcfId != null && idByPcfId.containsKey(parentPcfId)) {
-                    relations.add(new ExternalRelation(
-                            idByPcfId.get(parentPcfId), elementId, "ParentChild", Map.of()));
-                }
             }
+        } catch (UncheckedIOException malformed) {
+            throw malformed.getCause();
         }
 
+        // Resolve after the final row: a parent can occur later, and categories can use the PCF "1.0" notation.
+        for (var element : elements) {
+            String pcfId = element.properties().get("pcfId");
+            if (categoryId(pcfId)) continue;
+            String parent = deriveParentPcfId(pcfId);
+            if (parent == null) continue;
+            if (!parent.contains(".") && !idByPcfId.containsKey(parent) && idByPcfId.containsKey(parent + ".0"))
+                parent += ".0";
+            String resolved = idByPcfId.get(parent);
+            element.properties().put("parentId", resolved == null ? "apqc-" + parent.replace(".", "-") : resolved);
+            if (resolved != null) relations.add(new ExternalRelation(resolved, element.id(), "ParentChild", Map.of()));
+        }
         return new ParsedExternalModel(elements, relations);
     }
 
@@ -116,10 +113,6 @@ public class ApqcCsvParser implements ExternalParser {
     private String safeGet(String[] fields, int index, boolean trim) {
         if (index < 0 || index >= fields.length) return null;
         String value = trim ? fields[index].trim() : fields[index].strip();
-        // Remove surrounding quotes
-        if (value.length() >= 2 && value.startsWith("\"") && value.endsWith("\"")) {
-            value = value.substring(1, value.length() - 1);
-        }
         return value.isEmpty() ? null : value;
     }
 
@@ -131,9 +124,14 @@ public class ApqcCsvParser implements ExternalParser {
                 // Fall through to dot counting
             }
         }
-        // Derive level from PCF ID dot count: "1.0" = 1 dot = level 1, "1.1.1" = 2 dots = level 3
+        // Top-level PCF categories conventionally use e.g. "1.0". Their child "1.1" is level two.
+        if (categoryId(pcfId)) return 1;
         long dots = pcfId.chars().filter(c -> c == '.').count();
         return (int) dots + 1;
+    }
+
+    private static boolean categoryId(String pcfId) {
+        return pcfId.endsWith(".0") && pcfId.indexOf('.') == pcfId.length() - 2;
     }
 
     private String deriveParentPcfId(String pcfId) {
@@ -142,32 +140,4 @@ public class ApqcCsvParser implements ExternalParser {
         return pcfId.substring(0, lastDot);
     }
 
-    /**
-     * Simple CSV line splitter that handles quoted fields.
-     */
-    static String[] splitCsvLine(String line) {
-        List<String> fields = new ArrayList<>();
-        StringBuilder current = new StringBuilder();
-        boolean inQuotes = false;
-
-        for (int i = 0; i < line.length(); i++) {
-            char c = line.charAt(i);
-            if (c == '"') {
-                if (inQuotes && i + 1 < line.length() && line.charAt(i + 1) == '"') {
-                    current.append('"');
-                    i++;
-                } else {
-                    inQuotes = !inQuotes;
-                }
-            } else if (c == ',' && !inQuotes) {
-                fields.add(current.toString());
-                current.setLength(0);
-            } else {
-                current.append(c);
-            }
-        }
-        fields.add(current.toString());
-
-        return fields.toArray(new String[0]);
-    }
 }

@@ -67,6 +67,22 @@ class DecisionReportReviewRegressionTest {
         }
     }
 
+    @Test void printedPageNumbersUseThePageMarginCounterScope() {
+        var report = DecisionRationaleTemplateRendererTest.report();
+        var html = new DecisionRationaleHtmlRenderer(new DecisionChapterDiagramRenderer()).render(report);
+        assertThat(html).contains("@bottom-right{content:", "counter(page)", "counter(pages)")
+                .doesNotContain(".page-counter:after");
+        assertThat(DecisionRationaleHtmlRenderer.cssString("</style>\n")).isEqualTo("\\3C /style>\\A ");
+    }
+
+    @Test void appendixLeafRankingFitsTheReportThroughItsOwnFocusableScrollRegion() {
+        var report = DecisionRationaleTemplateRendererTest.report();
+        var html = new DecisionRationaleHtmlRenderer(new DecisionChapterDiagramRenderer()).render(report);
+        assertThat(html).contains("<h3 id=\"decision_leaf_ranking\">")
+                .contains("</h3><div class=\"decision-table-scroll\" role=\"region\" "
+                        + "aria-labelledby=\"decision_leaf_ranking\" tabindex=\"0\"><table>");
+    }
+
     @Test void htmlTreeNavigatesToOnlyTheReasonsThatWereActuallyRecorded() {
         var renderer = new DecisionRationaleHtmlRenderer(new DecisionChapterDiagramRenderer());
         for (var layout : List.of(TreeLayout.TABLE, TreeLayout.AUTO)) {

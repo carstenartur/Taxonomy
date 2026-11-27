@@ -727,6 +727,7 @@
         var W = container.clientWidth || 500;
         var size = Math.min(W, MAX_SUNBURST_SIZE);
         var radius = size / 2;
+        var centerRadius = Math.max(radius * 0.15, 20);
 
         // Synthetic root to unify the 8 root taxonomies
         var rootData = { code: '__root__', name: 'Taxonomy', children: contentRoots(data) };
@@ -797,14 +798,20 @@
             .style('font-size', '9px')
             .style('fill', d => window.TaxonomyMatchScale.foreground(nodeColor(d.data.code, colorMap, scores)))
             .style('font-weight', '600')
-            .attr('fill-opacity', function (d) { return +labelVisible(d.current); })
-            .attr('transform', function (d) { return labelTransform(d.current); })
-            .text(function (d) { return d.data.code; });
+            .text(function (d) { return d.data.code; })
+            .each(function (d) {
+                var bounds = this.getBBox();
+                d.labelWidth = bounds.width;
+                d.labelHeight = bounds.height;
+                d.labelDirection = labelDirection(d, d.current);
+            })
+            .attr('fill-opacity', function (d) { return d.labelDirection ? 1 : 0; })
+            .attr('transform', function (d) { return labelTransform(d.current, d.labelDirection); });
 
         // Centre circle – click to zoom back out
         var centerGroup = svg.append('g').style('cursor', 'pointer');
         centerGroup.append('circle')
-            .attr('r', Math.max(radius * 0.15, 20))
+            .attr('r', centerRadius)
             .attr('fill', 'rgba(240,244,250,0.9)')
             .attr('stroke', '#d0d8e8')
             .attr('stroke-width', 1);
@@ -852,6 +859,7 @@
 
             hierarchy.each(function (d) {
                 d.target = projectedArc(d, p);
+                d.labelDirection = labelDirection(d, d.target);
             });
 
             var transition = svg.transition().duration(750);
@@ -870,10 +878,10 @@
                 .attrTween('d', function (d) { return function () { return arc(d.current); }; });
 
             labels.filter(function (d) {
-                return +this.getAttribute('fill-opacity') || labelVisible(d.target);
+                return +this.getAttribute('fill-opacity') || d.labelDirection;
             }).transition(transition)
-                .attr('fill-opacity', function (d) { return +labelVisible(d.target); })
-                .attrTween('transform', function (d) { return function () { return labelTransform(d.current); }; });
+                .attr('fill-opacity', function (d) { return d.labelDirection ? 1 : 0; })
+                .attrTween('transform', function (d) { return function () { return labelTransform(d.current, d.labelDirection); }; });
 
             // Show/hide back button
             centerText.text(p === hierarchy ? '' : t('views.back'));
@@ -885,14 +893,28 @@
             return d.y1 > d.y0 && d.x1 > d.x0;
         }
 
-        function labelVisible(d) {
-            return arcVisible(d) && (d.y1 - d.y0) * (d.x1 - d.x0) > 0.04;
+        function labelDirection(node, sector) {
+            if (!arcVisible(sector) || !node.labelWidth) return null;
+            var middle = (sector.y0 + sector.y1) / 2;
+            var halfAngle = (sector.x1 - sector.x0) / 2;
+            // Keep the padded label rectangle inside both circular edges and both sector rays.
+            function fits(radial, tangential) {
+                var inner = middle - radial / 2 - 2;
+                var outer = middle + radial / 2 + 2;
+                var side = tangential / 2 + 2;
+                return inner >= Math.max(sector.y0, centerRadius)
+                    && Math.hypot(outer, side) <= sector.y1 - 1
+                    && Math.atan2(side, inner) <= halfAngle;
+            }
+            if (fits(node.labelWidth, node.labelHeight)) return 'radial';
+            return fits(node.labelHeight, node.labelWidth) ? 'tangential' : null;
         }
 
-        function labelTransform(d) {
+        function labelTransform(d, direction) {
             var x = (d.x0 + d.x1) / 2 * 180 / Math.PI;
             var y = (d.y0 + d.y1) / 2;
-            return 'rotate(' + (x - 90) + ') translate(' + y + ',0) rotate(' + (x < 180 ? 0 : 180) + ')';
+            var rotation = direction === 'tangential' ? (x > 90 && x < 270 ? -90 : 90) : (x < 180 ? 0 : 180);
+            return 'rotate(' + (x - 90) + ') translate(' + y + ',0) rotate(' + rotation + ')';
         }
 
         // Changing the square SVG also changes its observed parent's height.
@@ -2839,8 +2861,26 @@
     function buildMermaidTreeExport(data, scores) {
         var lines = ['graph LR'];
 
+        var usedIds = new Set();
+        var nodeIds = new Map();
+
+        function uniqueId(base) {
+            var id = base;
+            var suffix = 1;
+            while (usedIds.has(id)) id = base + '_' + (++suffix);
+            usedIds.add(id);
+            return id;
+        }
+
         function mermaidId(code) {
-            return code.replace(/[^a-zA-Z0-9_]/g, '_');
+            if (!nodeIds.has(code)) {
+                // Keep familiar catalogue IDs readable. A prefix keeps arbitrary imported codes
+                // away from Mermaid keywords, numeric tokens and the group namespace.
+                var base = code.replace(/[^A-Za-z0-9_]/g, '_');
+                if (!/^[A-Z][A-Z0-9_-]*$/.test(code)) base = 'node_' + base;
+                nodeIds.set(code, uniqueId(base));
+            }
+            return nodeIds.get(code);
         }
 
         function mermaidLabel(node) {
@@ -2870,7 +2910,7 @@
 
         data.forEach(function (root) {
             if (isTaxonomyContainer(root)) {
-                lines.push('    subgraph cluster_' + mermaidId(root.code) + '["'
+                lines.push('    subgraph ' + uniqueId('cluster_' + root.code.replace(/[^A-Za-z0-9_]/g, '_')) + '["'
                     + containerLabel(root, scores).replace(/"/g, '&quot;') + '"]');
                 (root.children || []).forEach(writeRoot);
                 lines.push('    end');

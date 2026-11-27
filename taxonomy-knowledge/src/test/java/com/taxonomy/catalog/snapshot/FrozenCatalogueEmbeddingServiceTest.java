@@ -33,6 +33,30 @@ class FrozenCatalogueEmbeddingServiceTest {
     private final FrozenCatalogueEmbeddingService service = new FrozenCatalogueEmbeddingService(relations, embeddings);
 
     @Test
+    void interactiveScoringRequiresTheActorsExactRelationProjection() throws Exception {
+        var snapshots = new CatalogueSnapshotService(null, null, null, null);
+        org.springframework.test.util.ReflectionTestUtils.setField(snapshots, "localEmbeddings", service);
+        var archive = roots();
+        assertThat(snapshots.prepareLocalScoring(SOURCE, Set.of("CP"), archive, "actor")).isEmpty();
+        when(relations.readIdentitySnapshot(CONTEXT)).thenReturn(ready(Set.of()));
+        when(embeddings.embeddingIdentity()).thenReturn(MODEL);
+        var prepared = snapshots.prepareLocalScoring(SOURCE, Set.of("CP"), archive, "actor").orElseThrow();
+        assertThat(prepared).singleElement().satisfies(root -> assertThat(root.embeddings().model()).isEqualTo(MODEL));
+        assertThat(snapshots.prepareLocalScoring(SOURCE, Set.of("CP"), archive, "other-actor")).isEmpty();
+    }
+
+    @Test
+    void unbuiltPrivateProjectionCannotBeAcceptedForLocalScoring() {
+        var snapshots = new CatalogueSnapshotService(null, null, null, null);
+        org.springframework.test.util.ReflectionTestUtils.setField(snapshots, "localEmbeddings", service);
+        var unavailable = new RelationProjectionReadService.RelationProjectionUnavailableException(
+                CONTEXT, ReadinessState.NOT_BUILT, SOURCE.sourceCommit(), null, 0);
+        when(relations.readIdentitySnapshot(CONTEXT)).thenThrow(unavailable);
+        assertThat(snapshots.prepareLocalScoring(SOURCE, Set.of("CP"), roots(), "actor")).isEmpty();
+        verifyNoInteractions(embeddings);
+    }
+
+    @Test
     void freezesCanonicalScopedRelationsAndExactModelWhileReturningOnlyRequestedRoot() throws Exception {
         var identities = new LinkedHashSet<RelationIdentity>();
         identities.add(new RelationIdentity("IP", RelationType.SUPPORTS, "CP"));

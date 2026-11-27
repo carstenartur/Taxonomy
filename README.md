@@ -357,11 +357,17 @@ of portable exports and the steps to rehearse an installation restore, see the
 
 ## Build and verification
 
-Fast default verification:
+From the checkout, use JDK 25 and the Maven Wrapper. The first run needs access
+to the artifact repositories. For a developer workstation without Docker, Maven
+runs the Spring/HSQLDB and Selenium tests and provisions Node, Chrome for Testing
+and ChromeDriver. The host needs the browser's system libraries.
 
 ```bash
-./mvnw verify
+./mvnw verify -Ptest-local
 ```
+
+Use `./mvnw verify` for the default build on a host with Docker. The browser
+tests in that build use Selenium containers unless a local driver is configured.
 
 Canonical Maven CI profile, including integration, browser, quality, coverage, and local ONNX suites:
 
@@ -384,8 +390,8 @@ Focused profiles include:
 ./mvnw verify -Pui-tests
 ```
 
-Without Docker, use the same Spring Boot/HSQLDB scenarios and GUI checks with
-matching local Chrome and ChromeDriver binaries:
+To reuse an installed Chrome and matching ChromeDriver with `test-local`, set
+their paths explicitly:
 
 ```bash
 CHROME_BIN=/absolute/path/chrome CHROMEDRIVER=/absolute/path/chromedriver ./mvnw verify -Ptest-local
@@ -396,6 +402,13 @@ focused runs, screenshots and the coverage retained in the existing CI profiles.
 
 The JUnit-owned documentation screenshot suite runs with
 `./mvnw -B verify -Pscreenshots`.
+
+For a real model comparison, [start or select a vLLM endpoint](docs/dev/custom-llm.md#compare-two-requirements-against-a-live-vllm-server),
+then run `./mvnw -B -pl taxonomy-app -am test -Pvllm-architecture`. The test
+saves both requirements, the provider responses and the resulting architecture differences.
+To check the deterministic browser scenarios and render their Word and Visio exports,
+run `./mvnw -B -pl taxonomy-app -am verify -Ptest-local,scenario-acceptance`
+with LibreOffice Writer, Draw and Poppler installed.
 
 The whole-repository module-extraction gate is owned by `taxonomy-build`, which
 is ordered after the application, aggregate coverage, and tooling modules. It

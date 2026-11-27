@@ -97,6 +97,39 @@ class ArchitectureReportLanguageTest {
                 "<td><strong>BOLD-CONTEXT-END</strong></td>", "td strong{color:inherit}");
     }
 
+    @Test void defaultExportsUseRecordedLanguageAndReasonsAndRespectExplicitOverrides() throws Exception {
+        var report = new ArchitectureReport();
+        report.setBusinessText("Example requirement");
+        report.setLanguageTag("de");
+        report.setNodeReasons(Map.of("BP", "Original reason for retaining this process."));
+        var text = new ArchitectureReportTextRenderer();
+        var word = new ArchitectureReportDocxRenderer();
+        var direct = List.of(text.renderMarkdown(report), text.renderHtml(report), wordText(word.render(report)));
+        var recorded = ReportRenderContext.of(report);
+        var overrides = new ReportRenderContext(report, Map.of("language", "en", "nodeReasons", Map.of()));
+        var extensions = List.of(new MarkdownReportRendererExtension(text), new HtmlReportRendererExtension(text),
+                new DocxReportRendererExtension(word));
+        for (String visible : direct)
+            assertThat(visible).contains("Architekturbericht", "Original reason for retaining this process.");
+        for (var extension : extensions) {
+            byte[] saved = extension.render(recorded).bytes();
+            byte[] overridden = extension.render(overrides).bytes();
+            boolean docx = extension instanceof DocxReportRendererExtension;
+            assertThat(docx ? wordText(saved) : new String(saved, StandardCharsets.UTF_8))
+                    .contains("Architekturbericht", "Original reason for retaining this process.");
+            assertThat(docx ? wordText(overridden) : new String(overridden, StandardCharsets.UTF_8))
+                    .doesNotContain("Architekturbericht", "Original reason for retaining this process.")
+                    .contains("Architecture");
+        }
+    }
+
+    private static String wordText(byte[] bytes) throws Exception {
+        try (var document = new XWPFDocument(new ByteArrayInputStream(bytes));
+             var extractor = new XWPFWordExtractor(document)) {
+            return extractor.getText();
+        }
+    }
+
     @Test void liveWordAndTextUseGermanLabelsWithoutTranslatingRecordedReasons() throws Exception {
         var report = new ArchitectureReport();
         report.setBusinessText("A recorded requirement in its original language.");

@@ -80,3 +80,17 @@ test('CSV keeps area evidence with explicit metadata and ranks only known catalo
     assert.equal(original.parentCode, 'BP');
     assert.equal(scores.BP, 95);
 });
+
+test('Mermaid tree retains distinct node identities, group identities and reserved catalogue codes', () => {
+    const codes = ['BP-1', 'BP_1', 'BP_1_2', 'cluster_BP', 'end', 'subgraph', '123', 'Ä', 'Ö'];
+    const group = {code: 'BP', taxonomyContainer: true, name: 'Business Processes', children: [
+        {code: 'ROOT', name: 'Root', children: codes.map(code => ({code, name: 'Original', children: []}))}
+    ]};
+    const output = window.TaxonomyViews.buildMermaidTreeExport([group], {});
+    const edges = [...output.matchAll(/^\s*(\w+)\["ROOT Root"\] --> (\w+)\["([^"]+) Original"\]/gm)];
+    assert.equal(edges.length, codes.length);
+    assert.deepEqual(edges.map(edge => edge[3]), codes);
+    assert.equal(new Set(edges.map(edge => edge[2])).size, codes.length);
+    assert.ok(edges.every(edge => edge[1] === 'ROOT' && /^[A-Za-z_]\w*$/.test(edge[2])
+        && !['ROOT', 'cluster_BP', 'end', 'subgraph'].includes(edge[2])));
+});

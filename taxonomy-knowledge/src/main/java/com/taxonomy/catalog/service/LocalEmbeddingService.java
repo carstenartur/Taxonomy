@@ -457,6 +457,36 @@ public class LocalEmbeddingService {
         }
     }
 
+    private static final ScopedValue<AnalysisQuery> ANALYSIS_QUERY = ScopedValue.newInstance();
+
+    /** Each traversal may reuse its requirement vector; nested or later analyses get their own scope. */
+    public static ScopedValue.Carrier analysisQuery(String businessText) {
+        return ScopedValue.where(ANALYSIS_QUERY, new AnalysisQuery(businessText));
+    }
+
+    private static final class AnalysisQuery {
+        private final String text;
+        private String modelKey;
+        private float[] vector;
+
+        private AnalysisQuery(String text) {
+            this.text = text;
+        }
+
+        synchronized float[] vector(String key, LocalEmbeddingService model) throws Exception {
+            if (vector == null || !key.equals(modelKey)) {
+                vector = model.embedQuery(text);
+                modelKey = key;
+            }
+            return vector;
+        }
+    }
+
+    float[] embedScoringQuery(String text, String modelKey) throws Exception {
+        var current = ANALYSIS_QUERY.isBound() ? ANALYSIS_QUERY.get() : null;
+        return current != null && text.equals(current.text) ? current.vector(modelKey, this) : embedQuery(text);
+    }
+
     public float[] embedQuery(String text) throws Exception {
         return embed(effectiveQueryPrefix() + text);
     }
@@ -588,8 +618,8 @@ public class LocalEmbeddingService {
 
     private void queryNodeScores(String businessText, List<TaxonomyNode> nodes,
                                  Map<String, Double> scores) throws Exception {
-        float[] queryVector = embedQuery(businessText);
         String indexKey = embeddingIndexKey();
+        float[] queryVector = embedScoringQuery(businessText, indexKey);
         List<String> nodeCodes = nodes.stream()
                 .map(TaxonomyNode::getCode)
                 .collect(Collectors.toList());

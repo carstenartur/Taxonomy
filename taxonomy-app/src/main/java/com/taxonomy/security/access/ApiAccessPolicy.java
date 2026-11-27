@@ -201,7 +201,7 @@ public final class ApiAccessPolicy {
                 "/api/documents/extract-ai", "/api/documents/map-regulation");
         // These GET handlers start new LLM work; HTTP method alone does not make them read-only.
         add(rules, "GET", ANALYSIS_RUN, "/api/analyze-stream", "/api/analyze-node");
-        add(rules, "POST", ANALYSIS_RUN, "/api/analyze", "/api/justify-leaf", "/api/recommend", "/api/gap/**", "/api/patterns/**", "/api/explain/**",
+        add(rules, "POST", ANALYSIS_RUN, "/api/analyze", "/api/analysis/preview", "/api/analysis/preview/prepare", "/api/justify-leaf", "/api/recommend", "/api/gap/**", "/api/patterns/**", "/api/explain/**",
                 "/api/analysis-runs/*/cancel", "/api/analysis-continuations/*/cancel", "/api/architecture/lifecycle/intake-review",
                 "/api/import/preview/**", "/api/projects/*/analyses", "/api/projects/*/requirements/*/analyses",
                 "/api/projects/*/analysis-jobs/*/retry-failed", "/api/projects/*/analysis-jobs/*/items/*/continue",

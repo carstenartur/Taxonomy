@@ -1,6 +1,7 @@
 package com.taxonomy.reporting.render.decision;
 
 import com.taxonomy.dto.AnalysisLanguage;
+import com.taxonomy.dto.ArchitectureReport;
 import com.taxonomy.dto.DocumentLanguage;
 import com.taxonomy.extension.api.report.ReportRenderContext;
 import org.springframework.context.i18n.LocaleContextHolder;
@@ -25,13 +26,17 @@ public final class DecisionReportLanguage {
     public static String rendererLanguage(ReportRenderContext context) {
         Object language = context.options().get("language");
         Locale override = language instanceof String tag ? optionalOverride(tag) : null;
+        if (override == null && context.payload() instanceof ArchitectureReport report)
+            override = optionalOverride(report.getLanguageTag());
         return override == null ? "en" : override.toLanguageTag();
     }
 
     /** Original captured explanations; language selection affects labels only. */
     public static Map<String, String> rendererReasons(ReportRenderContext context) {
         var reasons = new LinkedHashMap<String, String>();
-        if (context.options().get("nodeReasons") instanceof Map<?, ?> values) {
+        Object source = context.options().get("nodeReasons");
+        if (source == null && context.payload() instanceof ArchitectureReport report) source = report.getNodeReasons();
+        if (source instanceof Map<?, ?> values) {
             values.forEach((key, value) -> {
                 if (key instanceof String code && value instanceof String reason && !reason.isBlank())
                     reasons.put(code, reason);

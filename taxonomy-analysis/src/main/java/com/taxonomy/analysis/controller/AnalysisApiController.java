@@ -1,5 +1,6 @@
 package com.taxonomy.analysis.controller;
 
+import com.taxonomy.analysis.service.AiPromptBudgetPolicy;
 import com.taxonomy.analysis.service.AnalysisRuntimeSettings;
 import com.taxonomy.analysis.cluster.ClusterAnalysisExecution;
 import com.taxonomy.analysis.cluster.ClusterAnalysisObservationDetachedException;
@@ -842,11 +843,7 @@ public class AnalysisApiController {
     }
 
     private int businessTextLimit() {
-        int configured = analysisRuntimeSettings != null
-                ? analysisRuntimeSettings.getInt("limits.max-business-text", 5_000)
-                : 5_000;
-        // Invalid persisted/operator values must fail bounded rather than disabling the guard.
-        return Math.max(100, Math.min(100_000, configured));
+        return AiPromptBudgetPolicy.businessTextLimit(analysisRuntimeSettings);
     }
 
     private void enforceBusinessTextLimit(String businessText) {

@@ -4,8 +4,10 @@ import com.taxonomy.catalog.model.TaxonomyNode;
 import com.taxonomy.catalog.service.CatalogueOverlayService;
 import com.taxonomy.catalog.service.TaxonomyService;
 import com.taxonomy.dto.AiAvailabilityLevel;
+import com.taxonomy.dto.AnalysisCoverage;
 import com.taxonomy.dto.AnalysisResult;
 import com.taxonomy.dto.LlmCallDetail;
+import com.taxonomy.dto.TaxonomyNodeDto;
 import com.taxonomy.catalog.service.LocalEmbeddingService;
 import com.taxonomy.analysis.service.PromptTemplateService;
 import org.junit.jupiter.api.BeforeEach;
@@ -131,6 +133,12 @@ class LlmServiceBranchCoverageTest {
         var scope = new com.taxonomy.workspace.service.WorkspaceContext("alice", "work-a", "draft", "repo-a");
         when(taxonomyService.getRootNodes()).thenReturn(new ArrayList<>(List.of(
                 node("BP", null, "BP"), node("CP", null, "CP"))));
+        var business = new TaxonomyNodeDto();
+        business.setCode("BP");
+        var capability = new TaxonomyNodeDto();
+        capability.setCode("CP");
+        when(taxonomyService.getFullTree()).thenReturn(List.of(business, capability));
+        when(taxonomyService.applyScores(any(), anyMap())).thenCallRealMethod();
         when(taxonomyService.getChildrenOf("BP")).thenReturn(List.of());
         when(gateway.extractResponseText("first-body"))
                 .thenReturn("{\"BP\":{\"score\":80,\"reason\":\"completed evidence\"}}");
@@ -145,7 +153,12 @@ class LlmServiceBranchCoverageTest {
             // The independent root retains its own relevance on a cooperative stop.
             assertThat(result.getScores()).containsEntry("BP", 80d).doesNotContainKey("CP");
             assertThat(result.getReasons()).containsEntry("BP", "completed evidence");
-            assertThat(result.getTree()).isEmpty();
+            assertThat(result.getTree()).containsExactly(business);
+            assertThat(business.getMatchPercentage()).isEqualTo(80d);
+            var coverage = result.getAnalysisCoverage().nodes();
+            assertThat(coverage.get("BP").state()).isEqualTo(AnalysisCoverage.State.RELEVANT);
+            assertThat(coverage.get("CP").state()).isEqualTo(AnalysisCoverage.State.UNKNOWN);
+            assertThat(coverage.get("CP").reason()).isEqualTo("INTERRUPTED:CANCELLED");
             // The initial decision plan is known before evaluation; cancellation must not allocate another tree.
             verify(taxonomyService, org.mockito.Mockito.times(1)).getFullTree();
             verify(gateway, org.mockito.Mockito.times(1)).sendHttpRequest(anyString(), anyString());

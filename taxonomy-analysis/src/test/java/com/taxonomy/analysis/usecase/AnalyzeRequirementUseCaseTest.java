@@ -8,6 +8,11 @@ import com.taxonomy.architecture.service.RequirementArchitectureViewService;
 import com.taxonomy.dto.AnalysisProvenance;
 import com.taxonomy.dto.AnalysisCopilotResult;
 import com.taxonomy.dto.AnalysisResult;
+import com.taxonomy.dto.AnalysisModelBinding;
+import com.taxonomy.catalog.snapshot.CatalogueSnapshotService;
+import com.taxonomy.catalog.snapshot.CatalogueSourceIdentity;
+import com.taxonomy.catalog.snapshot.FrozenCatalogueContext;
+import com.taxonomy.catalog.snapshot.RootCatalogueSnapshot;
 import com.taxonomy.dto.RelationHypothesisDto;
 import com.taxonomy.dto.RequirementArchitectureView;
 import com.taxonomy.dto.ViewContext;
@@ -127,6 +132,48 @@ class AnalyzeRequirementUseCaseTest {
         verify(llmService, never()).analyzeWithBudget(any());
         verify(llmService, never()).analyzeWithBudget(any(), any());
         verify(analysisRelationGenerator).generate(original.getScores());
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void localAnalysisBindsOnlyPreparedEvidenceAtTheAdmittedCommit(boolean projectionReady) {
+        var roots = java.util.Set.of("BP");
+        var scope = new AnalysisScope(roots, AnalysisMode.TAXONOMIES_ONLY);
+        var workspace = new WorkspaceContext("alice", "work", "draft", "library");
+        var model = new AnalysisModelBinding(AnalysisModelBinding.State.BRIEF_UNASSIGNED,
+                "library", "work", "draft", "a".repeat(40), 6L, "GIT_CHECKPOINT", "a".repeat(64),
+                "e06e72f0-aa75-49a8-aa31-9bd632bdf377", "library-v1", roots, scope, null,
+                Map.of(), List.of(), java.util.Set.of(), null);
+        var command = new AnalyzeRequirementCommand("Reading room", false, 20, "LOCAL_ONNX", "alice",
+                workspace, null, scope).withModelBinding(model);
+        var identity = new CatalogueSourceIdentity("library", "work", "draft", model.commit());
+        var snapshots = org.mockito.Mockito.mock(CatalogueSnapshotService.class);
+        org.springframework.test.util.ReflectionTestUtils.setField(useCase, "catalogueSnapshots", snapshots);
+        var root = org.mockito.Mockito.mock(RootCatalogueSnapshot.class);
+        when(root.rootCode()).thenReturn("BP");
+        when(snapshots.captureRevision(identity, model.analysisCatalogueRevision(), java.util.Set.of())).thenReturn(List.of(root));
+        when(llmService.getActiveProviderId()).thenReturn(com.taxonomy.analysis.service.LlmProvider.LOCAL_ONNX.id());
+        when(llmService.isAvailable()).thenReturn(true);
+        var prepared = org.mockito.Mockito.mock(RootCatalogueSnapshot.class);
+        when(snapshots.prepareLocalScoring(identity, roots, List.of(root), "alice"))
+                .thenReturn(projectionReady ? java.util.Optional.of(List.of(prepared)) : java.util.Optional.empty());
+        if (!projectionReady) {
+            assertThatThrownBy(() -> useCase.analyze(command))
+                    .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
+                    .hasMessageContaining("409 CONFLICT");
+            verify(snapshots, never()).bind(any(), any(), any());
+            verify(llmService, never()).analyzeWithBudget(any(), any());
+            return;
+        }
+        var archived = org.mockito.Mockito.mock(FrozenCatalogueContext.Scope.class);
+        when(snapshots.bind(identity, roots, List.of(prepared))).thenReturn(archived);
+        var assessed = assessedBusinessProcess();
+        when(llmService.analyzeWithBudget("Reading room", scope)).thenReturn(assessed);
+        assertThat(useCase.analyze(command).analysisResult()).isSameAs(assessed);
+        var order = org.mockito.Mockito.inOrder(snapshots, llmService, archived);
+        order.verify(snapshots).bind(identity, roots, List.of(prepared));
+        order.verify(llmService).analyzeWithBudget("Reading room", scope);
+        order.verify(archived).close();
     }
 
     @Test

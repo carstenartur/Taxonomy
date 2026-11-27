@@ -97,6 +97,9 @@ public class VisioDiagramService {
         double height = options == null ? SHAPE_HEIGHT : VisioPresentation.screenCardHeight(screenWithResponsibilities);
         if (wall) height = options.showsShortReasons() ? 1.7 : 1.32;
         int rowsPerColumn = options == null ? Math.max(10, (int) Math.ceil(Math.sqrt(sortedNodes.size()))) : Integer.MAX_VALUE;
+        // Full relationship captions need two inches between cards, plus collision padding.
+        double columnSpacing = !model.edges().isEmpty() && !VisioPresentation.usesCompactKeys(sortedNodes.size(), model.edges().size())
+                ? SHAPE_WIDTH + 2.3 : H_GAP;
         int layerIdx = 0;
         for (var entry : layerGroups.entrySet().stream()
                 .sorted(Comparator.comparingInt(Map.Entry::getKey)).toList()) {
@@ -120,7 +123,7 @@ public class VisioDiagramService {
                         : VisioPresentation.drawingNodeCaption(node.id(),
                             java.math.BigDecimal.valueOf(node.relevance()).movePointRight(2).stripTrailingZeros().toPlainString() + "%",
                             displayedLabel, owner, reason, options);
-                double x = options == null ? MARGIN_X + (layerIdx + i / rowsPerColumn) * H_GAP : 2.2 + layerIdx * 5.1;
+                double x = options == null ? MARGIN_X + (layerIdx + i / rowsPerColumn) * columnSpacing : 2.2 + layerIdx * 5.1;
                 double y = options == null ? MARGIN_Y + (i % rowsPerColumn) * V_GAP : 1.25 + i * (height + .35);
                 var shape = new VisioShape(shapeId, caption, x, y, width, height, node.type(), node.anchor());
                 shape.getProperties().putAll(elementProperties);

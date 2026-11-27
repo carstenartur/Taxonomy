@@ -109,13 +109,22 @@
         "Explicit network/cost opt-in"
       ]
     },
+    "vllm-architecture": {
+      "purpose": "Compare scored architectures for two requirements using fresh responses from a configured vLLM service",
+      "test": "RequirementArchitectureVllmLiveTest",
+      "groups": "real-llm",
+      "excludedGroups": "onnx",
+      "systemProperty": "taxonomy.architecture.evaluateLive=true",
+      "requires": ["Java 25", "CUSTOM_LLM_URL and CUSTOM_LLM_MODEL"]
+    },
     "scenario-acceptance": {
-      "purpose": "Sourced Copilot scenario with Spring remote LLM playback, export semantics and real browser screenshots",
+      "purpose": "Sourced Copilot scenario with Spring remote LLM playback, real browser screenshots and independently rendered Word and Visio exports",
       "test": "ScenarioArchitectureAcceptanceTest,ScenarioLlmPlaybackTest,ReformulationScenarioAcceptanceTest,ReformulationAuthoredScenarioTest,ReformulationScenarioBrowserTest,ReformulationBrowserTest",
       "systemProperty": "generateScreenshots",
       "requires": [
         "Java 25",
-        "Docker or test-local with matching Chrome and ChromeDriver"
+        "Docker or test-local with matching Chrome and ChromeDriver",
+        "LibreOffice Writer and Draw, and Poppler for verify"
       ]
     },
     "supply-chain-policy": {

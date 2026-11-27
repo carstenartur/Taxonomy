@@ -8,6 +8,7 @@ import com.taxonomy.catalog.service.CatalogueOverlayService;
 import com.taxonomy.catalog.service.TaxonomyService;
 import com.taxonomy.catalog.provenance.CatalogueSourceBytes;
 import com.taxonomy.catalog.provenance.CatalogueSourceJournal.Use;
+import com.taxonomy.relations.service.RelationProjectionReadService.RelationProjectionUnavailableException;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import java.io.IOException;
 import java.util.Comparator;
@@ -21,6 +22,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 
 /** Admission captures evidence once; workers bind only authoritative persisted root records. */
@@ -31,6 +33,9 @@ public class CatalogueSnapshotService {
     private final CatalogueRuntimePolicy policy;
     private final CatalogueSourceJournal sources;
     private final RetainedCatalogueDefinitions definitions;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private FrozenCatalogueEmbeddingService localEmbeddings;
 
     private RetainedHierarchy lastHierarchy;
 
@@ -143,6 +148,17 @@ public class CatalogueSnapshotService {
             lastHierarchy = new RetainedHierarchy(workbook.sha256(), overlaySha256, hierarchy.definition(),
                     retained.getOverlayMetadata(), Map.copyOf(nodes));
             return lastHierarchy;
+        }
+    }
+
+    /** Empty means that the exact-source relation projection has not been prepared. */
+    public Optional<List<RootCatalogueSnapshot>> prepareLocalScoring(CatalogueSourceIdentity source,
+            Set<String> roots, List<RootCatalogueSnapshot> archived, String actor) {
+        if (localEmbeddings == null) throw new IllegalStateException("Local ONNX catalogue preparation is unavailable");
+        try {
+            return Optional.of(localEmbeddings.decorateForActor(actor, source, archived, roots));
+        } catch (FrozenCatalogueEmbeddingService.ProjectionUnavailable | RelationProjectionUnavailableException pending) {
+            return Optional.empty();
         }
     }
 

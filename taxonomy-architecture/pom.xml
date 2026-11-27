@@ -11,6 +11,9 @@
     <artifactId>taxonomy-architecture</artifactId>
     <name>Taxonomy Architecture</name>
     <description>Architecture derivation, scoring, recommendations, diagrams and reports</description>
+    <properties>
+        <taxonomy.test.agent>${taxonomy.test.mockitoAgent}</taxonomy.test.agent>
+    </properties>
     <dependencies>
         <dependency>
             <groupId>com.taxonomy</groupId>

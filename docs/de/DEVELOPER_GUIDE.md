@@ -197,28 +197,38 @@ wie `com.taxonomy.versioning` belegt daher keine physische Zuständigkeit von
 
 ## Tests ausführen
 
-Der eingecheckte Maven Wrapper ist die einzige Build-Autorität. Der
-Standard-Lebenszyklus bleibt bewusst begrenzt; das Profil `ci` aktiviert
-Docker-Integration, Qualitäts-Gates sowie die Browser-/Accessibility-Matrix.
+Vom Repository-Stamm mit JDK 25 ausführen. `./mvnw verify` prüft den Standardumfang. `./mvnw verify -Ptest-local` führt die begrenzte Entwicklerprüfung ohne Docker aus. Für gezielte Prüfungen einzelner Module, Kernintegration und den Relevanzfilter des Sunburst-Diagramms:
 
 ```bash
-./mvnw verify
 ./mvnw test -pl taxonomy-dsl -am
 ./mvnw test -pl taxonomy-app -am -Dtest=TaxonomyApplicationTests -Dsurefire.failIfNoSpecifiedTests=false
 ./mvnw -B verify -Pcore-integration
-./mvnw -B verify -Pdatabase-postgres
-./mvnw -B verify -Pdatabase-mssql
-./mvnw -B verify -Pdatabase-oracle
-./mvnw -B verify -Pui-tests -DskipTests -DskipITs=true
-./mvnw -B verify -Pci -DrunOnnxTests=true
+./mvnw -B -pl taxonomy-tooling -am test -Dtest=JavascriptContractTest \
+  -Dsurefire.failIfNoSpecifiedTests=false \
+  -Dtaxonomy.javascript.sources=.github/scripts/sunburst-zero-relevance.test.mjs
 ```
 
-Genaue Umfänge, Voraussetzungen, die Reproduktion einzelner Browserprofile und
-die Verantwortungen der acht verbleibenden Workflows stehen in
-[`docs/dev/MAVEN_VERIFICATION.md`](../dev/MAVEN_VERIFICATION.md). Testauswahl
-gehört in ein POM-Profil; Workflow-YAML darf eine Umgebung beziehungsweise ein
-Profil wählen, aber keine Java-Testklassen nennen und keine Playwright-/axe-
-Skripte direkt aufrufen.
+Für den gerenderten Sunburst mit Tastaturbedienung und Beschriftungen startet `./mvnw -B verify -Pui-tests -Dtaxonomy.ui.suite=primary -Dtaxonomy.ui.profile.filter=primary-admin-chromium` den Admin-Ablauf. Maven richtet die projektgebundene Node-Version ein. Das UI-Profil installiert die Playwright-Browser und deren Systemabhängigkeiten. Auf einem frischen Rechner erfordert das Downloads und gegebenenfalls Installationsrechte. Weitere lokale Einstiege und Laufzeitvoraussetzungen stehen in der [Maven-Prüfreferenz](../dev/MAVEN_VERIFICATION.md) und im [Browser-QA-Leitfaden](../dev/BROWSER_QA.md).
+
+### GitHub-Workflows lokal zuordnen
+
+Die Namen beziehen sich auf die Dateien unter `.github/workflows/`. Die Zuordnung der 20 Dateien ist auch im [Prüfkatalog](../../.mvn/verification-suites.json) hinterlegt.
+
+| Workflowdatei | Lokaler Einstieg und Umfang |
+|---|---|
+| `ci-cd.yml` | `./mvnw -B verify -Pci -DrunOnnxTests=true` für den vollständigen Maven-Prüfumfang. Der Workflow verteilt die Ausführung und sammelt Berichte. |
+| `database-compatibility.yml` | `./mvnw -B verify -Pdatabase-postgres,ci-database-compatibility`. Für SQL Server oder Oracle das erste Profil durch `database-mssql` beziehungsweise `database-oracle` ersetzen. |
+| `jgit-storage-hibernate-contract.yml` | `JGIT_STORAGE_HIBERNATE_CONTRACT_MODE=baseline bash .github/jgit-storage-hibernate-contract.sh` verwendet dieselben Maven-Testgruppen wie CI und prüft deren JUnit-Berichte. Docker ist erforderlich. |
+| `scenario-acceptance.yml` | `./mvnw -B -pl taxonomy-app -am verify -Pscenario-acceptance` prüft Szenarien, aufgezeichnete LLM-Antworten, Browserbelege und unabhängig gerenderte Dokumente. Für das Rendering werden LibreOffice und Poppler benötigt. |
+| `reformulation-usage-contract.yml` | Zuerst `./mvnw -B -pl taxonomy-tooling,taxonomy-analysis -am test`, anschließend `./mvnw -B -pl taxonomy-tooling,taxonomy-app -am test -Preformulation-usage-tests` für die Persistenz. |
+| `local-onnx-reference.yml` | `./mvnw -B verify -Ponnx,ci-onnx-reference` prüft das lokale Modell und die deutsch- und englischsprachigen Referenzfälle. |
+| `catalogue-overlay-proposal.yml` | `./mvnw -B -pl taxonomy-tooling -am verify -Dtaxonomy.ui.skip=true -Dtaxonomy.quality.skip=true` baut und testet das Werkzeug. Anschließend erzeugt `java -cp taxonomy-tooling/target/classes com.taxonomy.tooling.CatalogueOverlayProposalGenerator --root .` den Vorschlag zur Prüfung. |
+| `document-template-report-e2e.yml`, `documentation-screenshots.yml` | Für den Bericht nach Einrichtung von Anwendung, Chromium und Dokumentwerkzeugen wie im [Berichtsworkflow](../../.github/workflows/document-template-report-e2e.yml) `./mvnw -B -pl taxonomy-build verify -Pdocument-template-report-e2e` ausführen. Die Dokumentationsbilder erzeugt `./mvnw -B verify -Pscreenshots`. |
+| `kubernetes-constrained-smoke.yml` | Die beiden Skripte `constrained-smoke.sh` und `artemis-constrained-smoke.sh` unter `deploy/helm/taxonomy/` prüfen die Installation und verteilte Ausführung in einem realen Cluster. Der Workflow richtet kind, Helm, kubectl und die Container-Images ein. Dieser Infrastrukturtest liegt außerhalb des Maven-Reaktors. [Cluster-Abnahme](../testing/analysis-cluster-acceptance.md) |
+| `native-packages.yml` | `./mvnw -B -DskipTests package` erzeugt die Anwendungs-JAR. `deploy/native/PackageTaxonomy.java` ruft danach auf dem jeweiligen Betriebssystem `jpackage` für Anwendungsabbild und Installer auf. |
+| `codeql.yml`, `security-scan.yml` | CodeQL beziehungsweise Trivy führen den Scan aus. Für die Maven-Lieferkettenprüfung aus dem Trivy-Workflow zuerst `./mvnw -B -pl taxonomy-build -am install -Dmaven.test.skip=true`, dann `./mvnw -B -pl taxonomy-build test -Psupply-chain-policy` verwenden. [Sicherheitsprüfungen](../dev/CI_SECURITY.md) |
+| `delivery.yml`, `deploy-release.yml`, `publish-helm-oci.yml` | Berichte, Images und Helm-Charts veröffentlichen, Releases ausführen und ausrollen. Die Ziele benötigen Registry-, Hosting- oder Repository-Zugriff. [Releaseprozess](../dev/RELEASE_PROCESS.md) |
+| `prepare-development-version.yml`, `protected-release-main-advance.yml`, `dependency-submission.yml`, `cleanup-workflow-runs.yml` | Entwicklungsversion vorbereiten, den geschützten Branch fortschreiben, den Abhängigkeitsgraphen an GitHub melden und die Actions-Historie bereinigen. Diese Aufgaben haben eigene Repository- oder Hosting-Effekte. |
 
 ## Einen neuen REST-Endpunkt hinzufügen
 

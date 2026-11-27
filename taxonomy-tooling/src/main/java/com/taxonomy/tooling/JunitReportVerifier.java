@@ -4,26 +4,42 @@ import org.w3c.dom.Element;
 
 import java.io.IOException;
 import java.io.PrintStream;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.regex.Pattern;
 
 /** Verifies actual named JUnit suites, not a successful build with zero matching tests. */
 final class JunitReportVerifier {
+    private static final String SINCE = "--since-epoch-millis=";
     private static final Pattern SUFFIXED_SUITE = Pattern.compile("([^()]+)\\(([^()]+)\\)");
 
     private JunitReportVerifier() {}
 
     static int run(String[] arguments, Path root, PrintStream output, PrintStream error) {
-        if (arguments.length == 0 || arguments.length % 2 != 0) {
-            error.println("Usage: check-junit-reports <report.xml> <minimum-tests> [<report.xml> <minimum-tests> ...]");
+        long notBefore = 0;
+        int firstReport = 0;
+        if (arguments.length > 0 && arguments[0].startsWith(SINCE)) {
+            try {
+                notBefore = Long.parseLong(arguments[0].substring(SINCE.length()));
+                if (notBefore <= 0) throw new IllegalArgumentException();
+            } catch (IllegalArgumentException invalidStart) {
+                error.println("Expected a positive Maven session start time in epoch milliseconds");
+                return 2;
+            }
+            firstReport = 1;
+        }
+        if (arguments.length <= firstReport || (arguments.length - firstReport) % 2 != 0) {
+            error.println("Usage: check-junit-reports [--since-epoch-millis=<millis>] <report.xml> <minimum-tests> ...");
             return 2;
         }
         boolean valid = true;
-        for (int index = 0; index < arguments.length; index += 2) {
+        for (int index = firstReport; index < arguments.length; index += 2) {
             try {
                 int minimum = Integer.parseInt(arguments[index + 1]);
                 if (minimum < 1) throw new IllegalArgumentException("Minimum tests must be positive");
                 Path report = root.resolve(arguments[index]).normalize();
+                if (notBefore > 0 && Files.getLastModifiedTime(report).toMillis() < notBefore)
+                    throw new IllegalArgumentException("Report predates the current Maven session");
                 Element suite = XmlSupport.parse(report).getDocumentElement();
                 if (!"testsuite".equals(suite.getLocalName())
                         || !matchesReportName(report.getFileName().toString(), suite.getAttribute("name")))

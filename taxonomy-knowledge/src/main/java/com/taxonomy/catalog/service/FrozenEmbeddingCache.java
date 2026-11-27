@@ -27,7 +27,7 @@ final class FrozenEmbeddingCache {
         }
         Map<String, Double> result = new LinkedHashMap<>();
         if (nodes.isEmpty()) return result;
-        float[] query = checked(embeddings.embedQuery(businessText));
+        float[] query = checked(embeddings.embedScoringQuery(businessText, activeModel.indexKey()));
         for (var node : nodes) {
             if (Thread.currentThread().isInterrupted()) throw new IllegalStateException("Frozen embedding inference interrupted");
             var evidence = catalogue.embeddingSnapshot(node.getTaxonomyRoot());

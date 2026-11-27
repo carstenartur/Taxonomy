@@ -1,7 +1,13 @@
 package com.taxonomy;
 
-import com.taxonomy.search.LocalOnnxIndexInitializer;
 import com.taxonomy.catalog.service.LocalEmbeddingService;
+import com.taxonomy.catalog.provenance.CatalogueSourceJournal;
+import com.taxonomy.dto.CatalogueAnalysisPreview;
+import com.taxonomy.search.LocalOnnxIndexInitializer;
+import com.taxonomy.testsupport.LocalTestLogin;
+import com.taxonomy.workspace.model.RepositoryVisibility;
+import com.taxonomy.workspace.service.ArchitectureRepositoryProvisioningService;
+import com.taxonomy.workspace.service.RepositoryWorkspaceService;
 import com.taxonomy.workspace.service.WorkspaceContextResolver;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -9,13 +15,24 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.context.ApplicationContext;
 import org.springframework.http.MediaType;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.time.Duration;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 /**
@@ -35,11 +52,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @WithMockUser(roles = "ADMIN")
 class OnnxRestEndpointTest {
 
+    private static final JsonMapper JSON = JsonMapper.builder().build();
     private static final Duration SEMANTIC_READY_TIMEOUT = Duration.ofMinutes(5);
     private static final Duration READINESS_POLL_INTERVAL = Duration.ofMillis(250);
 
     @Autowired
     private MockMvc mockMvc;
+
+    @Autowired
+    private ApplicationContext application;
 
     @Autowired
     private LocalEmbeddingService embeddingService;
@@ -108,6 +129,111 @@ class OnnxRestEndpointTest {
                         .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$").isArray());
+    }
+
+    @Test
+    void changingAnOfficeRequirementChangesTheOnnxPreviewAndScoredArchitecture() throws Exception {
+        String owner = "onnx-office-workspace";
+        LocalTestLogin.login(application, owner, "USER", "ARCHITECT", "ADMIN");
+        // Each Spring context has its own retained generation. Create a repository whose initial
+        // project pins this context's catalogue, even when an earlier context still has a Git head.
+        String catalogueRevision = application.getBean(CatalogueSourceJournal.class).current().id();
+        var source = application.getBean(ArchitectureRepositoryProvisioningService.class).createRepository(
+                "Office requirements", "onnx-office-" + UUID.randomUUID(), "", RepositoryVisibility.PRIVATE, owner, "main");
+        String workspace = application.getBean(RepositoryWorkspaceService.class)
+                .createWorkingCopy(owner, source.getRepositoryId(), source.getDefaultBranch(), "Office preview", "").getWorkspaceId();
+        var projection = "/api/architecture/relations/projection";
+        var readiness = mockMvc.perform(get(projection + "/readiness").header(WorkspaceContextResolver.WORKSPACE_HEADER, workspace))
+                .andExpect(status().isOk()).andExpect(header().exists("ETag")).andReturn().getResponse();
+        var commit = JSON.readTree(readiness.getContentAsByteArray()).required("currentHeadCommit").asString();
+        mockMvc.perform(post(projection + "/rebuild").with(csrf()).header("If-Match", readiness.getHeader("ETag"))
+                        .header(WorkspaceContextResolver.WORKSPACE_HEADER, workspace))
+                .andExpect(status().isOk());
+
+        var roots = Set.of("UA");
+        mockMvc.perform(post("/api/analysis/preview/prepare").with(csrf()).header(WorkspaceContextResolver.WORKSPACE_HEADER, workspace)
+                        .contentType(MediaType.APPLICATION_JSON).content(JSON.writeValueAsBytes(
+                                new CatalogueAnalysisPreview.Request(null, roots, commit, null))))
+                .andExpect(status().isNoContent());
+
+        String mail = "Send and receive electronic mail.";
+        String payroll = "Manage payroll and salary payments.";
+        var before = await().pollInSameThread().atMost(SEMANTIC_READY_TIMEOUT).pollInterval(Duration.ofSeconds(2))
+                .until(() -> preview(workspace, commit, mail), result -> "CATALOGUE_ONNX".equals(result.method()));
+        var after = preview(workspace, commit, payroll);
+        assertThat(after.method()).isEqualTo("CATALOGUE_ONNX");
+        assertThat(before.catalogueRevision()).isEqualTo(catalogueRevision);
+        assertThat(after.catalogueRevision()).isEqualTo(catalogueRevision);
+        assertThat(after.semanticRevision()).isEqualTo(before.semanticRevision());
+        var mailMatches = directMatches(before, commit);
+        var payrollMatches = directMatches(after, commit);
+        assertThat(mailMatches).contains("UA-1222"); // Email Applications
+        assertThat(payrollMatches).contains("UA-1604"); // Payroll Applications
+        assertThat(payrollMatches).isNotEqualTo(mailMatches);
+
+        var mailAnchors = scoredArchitecture(workspace, commit, mail);
+        var payrollAnchors = scoredArchitecture(workspace, commit, payroll);
+        assertThat(payrollAnchors).isNotEqualTo(mailAnchors);
+    }
+
+    private CatalogueAnalysisPreview preview(String workspace, String commit, String text) throws Exception {
+        var result = postJson(workspace, "/api/analysis/preview",
+                new CatalogueAnalysisPreview.Request(text, Set.of("UA"), commit, null));
+        return JSON.treeToValue(result, CatalogueAnalysisPreview.class);
+    }
+
+    private static Set<String> directMatches(CatalogueAnalysisPreview preview, String commit) {
+        assertThat(preview.commit()).isEqualTo(commit);
+        var codes = new HashSet<String>();
+        var direct = new HashSet<String>();
+        for (var node : preview.nodes()) {
+            assertThat(node.taxonomyRoot()).isEqualTo("UA");
+            assertThat(codes.add(node.code())).isTrue();
+            if (node.score() != null) {
+                assertThat(node.score()).isBetween(0.0, 100.0);
+                direct.add(node.code());
+            }
+        }
+        for (var node : preview.nodes()) {
+            if (node.parentCode() != null) assertThat(codes).contains(node.parentCode());
+        }
+        assertThat(direct).isNotEmpty();
+        return direct;
+    }
+
+    private Set<String> scoredArchitecture(String workspace, String commit, String text) throws Exception {
+        var result = postJson(workspace, "/api/analyze", Map.of("businessText", text, "provider", "LOCAL_ONNX",
+                "expectedCommit", commit, "includeArchitectureView", true, "maxArchitectureNodes", 20,
+                "analysisScope", Map.of("taxonomyRoots", Set.of("UA"), "mode", "TAXONOMIES_ONLY")));
+        assertThat(result.required("status").asString()).isEqualTo("SUCCESS");
+        assertThat(result.required("analysisProviderId").asString()).isEqualTo("LOCAL_ONNX");
+        assertThat(result.required("modelBinding").required("commit").asString()).isEqualTo(commit);
+        var scores = result.required("scores");
+        var view = result.required("architectureView");
+        assertThat(view.required("originalRequirementText").asString()).isEqualTo(text);
+        var anchors = new HashSet<String>();
+        for (var anchor : view.required("anchors")) {
+            String code = anchor.required("nodeCode").asString();
+            assertThat(code).startsWith("UA-");
+            assertThat(anchor.required("directScore").asDouble())
+                    .isBetween(0.0, 100.0).isEqualTo(scores.required(code).asDouble());
+            assertThat(anchors.add(code)).isTrue();
+        }
+        assertThat(anchors).hasSizeBetween(1, 20);
+        var elements = new HashSet<String>();
+        for (var element : view.required("includedElements")) elements.add(element.required("nodeCode").asString());
+        assertThat(elements).containsAll(anchors);
+        for (var edge : view.required("includedRelationships")) {
+            assertThat(elements).contains(edge.required("sourceCode").asString(), edge.required("targetCode").asString());
+        }
+        return anchors;
+    }
+
+    private JsonNode postJson(String workspace, String path, Object body) throws Exception {
+        var response = mockMvc.perform(post(path).with(csrf()).header(WorkspaceContextResolver.WORKSPACE_HEADER, workspace)
+                        .contentType(MediaType.APPLICATION_JSON).content(JSON.writeValueAsBytes(body)))
+                .andExpect(status().isOk()).andReturn().getResponse();
+        return JSON.readTree(response.getContentAsByteArray());
     }
 
     @Test

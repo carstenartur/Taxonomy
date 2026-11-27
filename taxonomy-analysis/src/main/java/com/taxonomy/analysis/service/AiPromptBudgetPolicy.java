@@ -17,6 +17,12 @@ public class AiPromptBudgetPolicy {
         this.targetCatalog = targetCatalog;
     }
 
+    /** Configured requirement length for analysis admission, before any provider-specific token budget. */
+    public static int businessTextLimit(AnalysisRuntimeSettings settings) {
+        int configured = settings == null ? 5_000 : settings.getInt("limits.max-business-text", 5_000);
+        return Math.max(100, Math.min(100_000, configured));
+    }
+
     public AiTargetDescriptor requireWithinBudget(String text, String provider) {
         return requireWithinBudget(text, targetCatalog.describeProvider(provider));
     }

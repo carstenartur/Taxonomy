@@ -105,7 +105,8 @@ public class LlmProviderConfig {
     public String completionConfigurationRevision(ProviderId provider) {
         if (!LlmProvider.CUSTOM_OPENAI.id().equals(provider)) return null;
         return "custom-completion-v1\0" + getCustomLlmContextWindowTokens()
-                + "\0" + getCustomLlmMaxOutputTokens() + "\0" + isCustomLlmStructuredOutputEnabled();
+                + "\0" + getCustomLlmMaxOutputTokens() + "\0" + isCustomLlmStructuredOutputEnabled()
+                + (isCustomLlmStructuredOutputEnabled() ? "\0" + AssessmentCompletion.ROOT_SCHEMA + "\0" + AssessmentCompletion.CHILD_SCHEMA : "");
     }
 
     private final LocalEmbeddingService localEmbeddingService;

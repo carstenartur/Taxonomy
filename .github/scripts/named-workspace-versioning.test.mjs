@@ -164,6 +164,30 @@ test('named state read carries explicit workspace pin ahead of live runtime',asy
  await h.context.window.TaxonomyWorkspaceApi.current({pinnedWorkspaceId:'explicit'});
  assert.equal(init.headers.get('X-Taxonomy-Workspace-Id'),'explicit');
 });
+test('a visible version timeline reloads when initial workspace hydration supersedes its response', async () => {
+ const pending = [];
+ const h = harness((url, init) => new Promise(resolve => pending.push({url, init, resolve})));
+ let visible = true;
+ h.context.document.querySelector = selector => selector === '#tab-versions:not(.d-none)' && visible ? h.node('tab-versions') : null;
+ h.load('versioning/taxonomy-versions.js');
+ h.context.window.TaxonomyVersions.loadTimeline();
+ await settle();
+ const histories = () => pending.filter(read => read.url.includes('/dsl/history'));
+ assert.equal(histories().length, 1);
+ h.change();
+ h.context.document.dispatchEvent(new Event('taxonomy:repository-context-changed'));
+ await settle();
+ assert.equal(histories().length, 2);
+ assert.equal(new Headers(histories()[1].init.headers).get('X-Taxonomy-Workspace-Id'), 'other');
+ h.context.document.dispatchEvent(new Event('taxonomy:analysis-source-ready'));
+ visible = false;
+ h.context.window.__TaxonomyAnalysisSessionContext.runtime.workspaceId = 'background';
+ h.context.document.dispatchEvent(new Event('taxonomy:entity-context-changed'));
+ await settle();
+ assert.equal(histories().length, 2, 'no duplicate or background reads');
+ for (const read of pending) read.resolve(Response.json(read.url.includes('/dsl/history') ? {commits:[]} : {branches:[]}));
+ await settle();
+});
 for(const status of [200,500,403]) test(`newer version timeline keeps its busy state when obsolete HTTP ${status} arrives`,async()=>{
  const pending=[];const h=harness((url)=>new Promise(resolve=>pending.push({url,resolve})));
  h.load('versioning/taxonomy-versions.js');const api=h.context.window.TaxonomyVersions;

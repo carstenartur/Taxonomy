@@ -89,6 +89,28 @@ class ArchitectureWordProvenanceLayoutTest {
         }
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({"de,Unbekannt", "en,Unknown"})
+    void absentSnapshotIdentifiersRemainReadableInTheHeaderAndProvenanceTable(String language, String unknown) throws Exception {
+        var base = singleRelation(null);
+        for (var version : List.of(new String[]{null, null, unknown}, new String[]{"3", null, "3"},
+                new String[]{null, "4", "v4"}, new String[]{"3", "4", "3 / v4"})) {
+            var evidence = new ArchitectureReportDocument.SnapshotEvidence(null, null,
+                    version[0] == null ? null : Long.valueOf(version[0]), version[1] == null ? null : Integer.valueOf(version[1]),
+                    null, null, null, null, null, null, null, null, base.evidence().graphSha256());
+            var report = ArchitectureReportDocuments.from(base.title(), language, base.requirement(), base.scope(),
+                    base.recommendation(), List.of(), base.diagram(), base.scene(), base.decisionTree(), evidence);
+            try (var document = word(report); var extractor = new XWPFWordExtractor(document)) {
+                var provenance = document.getTables().getLast();
+                assertThat(provenance.getRow(1).getCell(1).getText()).isEqualTo(unknown);
+                assertThat(provenance.getRow(2).getCell(1).getText()).isEqualTo(unknown);
+                assertThat(provenance.getRow(3).getCell(1).getText()).isEqualTo(version[2]);
+                assertThat(provenance.getRow(4).getCell(1).getText()).isEqualTo(unknown);
+                assertThat(extractor.getText()).doesNotContain("null");
+            }
+        }
+    }
+
     private static XWPFDocument word(ArchitectureReportDocument report) throws Exception {
         return new XWPFDocument(new ByteArrayInputStream(new ArchitectureReportDocxRenderer().render(report)));
     }
