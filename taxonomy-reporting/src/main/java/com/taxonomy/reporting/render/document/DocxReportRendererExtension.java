@@ -30,8 +30,10 @@ public class DocxReportRendererExtension implements ReportRendererExtension {
 
     @Override
     public ReportRenderResult render(ReportRenderContext context) {
+        var source = context.options().get("retainedAnalysis");
         return new ReportRenderResult(reportService.render(context.report(),
                 com.taxonomy.reporting.render.decision.DecisionReportLanguage.rendererLanguage(context),
-                com.taxonomy.reporting.render.decision.DecisionReportLanguage.rendererReasons(context)));
+                com.taxonomy.reporting.render.decision.DecisionReportLanguage.rendererReasons(context),
+                source instanceof Boolean retained ? retained : null));
     }
 }

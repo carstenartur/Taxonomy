@@ -17,6 +17,30 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class SnapshotClarificationsTest {
+    @Test void importsRecordedRequirementAssessmentQuestionsWithoutTurningSupportedClaimsIntoQuestions() {
+        var result = new AnalysisResult();
+        var unresolved = new com.taxonomy.dto.RequirementNodeAssessment("Existing backup jobs.",
+                List.of(com.taxonomy.dto.RequirementNodeAssessment.SubjectKind.PROCESS),
+                List.of(com.taxonomy.dto.RequirementNodeAssessment.RequirementKind.ORGANIZATIONAL),
+                com.taxonomy.dto.RequirementNodeAssessment.ContributionType.SUPPORTS,
+                com.taxonomy.dto.RequirementNodeAssessment.EvidenceStatus.UNRESOLVED,
+                com.taxonomy.dto.RequirementNodeAssessment.EvidenceBasis.INFERRED,
+                com.taxonomy.dto.RequirementNodeAssessment.Necessity.CONTEXT,
+                com.taxonomy.dto.RequirementNodeAssessment.Scope.EXISTING_ENVIRONMENT,
+                "After agreement", "The current owner is not specified.", "Who owns recovery?");
+        var supported = new com.taxonomy.dto.RequirementNodeAssessment("Existing backup jobs.",
+                unresolved.subjectKinds(),unresolved.requirementKinds(),unresolved.contributionType(),
+                com.taxonomy.dto.RequirementNodeAssessment.EvidenceStatus.SUPPORTED,unresolved.evidenceBasis(),
+                unresolved.necessity(),unresolved.scope(),"", "Backup jobs are recorded context.", "");
+        result.setNodeAssessments(Map.of("BP-1503", List.of(unresolved,supported)));
+        var json = new PortfolioJsonCodec(JsonMapper.builder().build());
+        var actual = SnapshotClarifications.from(result,"snapshot",json);
+        assertThat(actual.questions()).extracting(DecisionQuestion::wording).containsExactly("Who owns recovery?");
+        assertThat(actual.questions().getFirst().discoveries().getFirst().nodeIds()).containsExactly("BP-1503");
+        assertThat(actual.questions().getFirst().discoveries().getFirst().context()).contains("Existing backup jobs.", "After agreement");
+        assertThat(actual).isEqualTo(SnapshotClarifications.from(result,"snapshot",json));
+    }
+
     @Test void retainsLegacyRootAndRelationQuestionsWithTheirScopeAndExcludesInterruptedWork() {
         var result = new AnalysisResult();
         result.setAnalysisCoverage(new AnalysisCoverage(Map.of(

@@ -129,6 +129,74 @@ function snapshot(sequence = 1, status = 'RUNNING') {
         rawScores: { CP: 80 }, memory: { percent: 81, warning: true } };
 }
 
+for (const locale of ['en', 'de']) test(`${locale}: bounded requirement assessment previews have their own neutral notice`, async () => {
+    const claims = {BP: [{requirementQuote: 'Recovery', evidenceStatus: 'SUPPORTED', contributionType: 'SUPPORTS'},
+        {requirementQuote: 'Recovery', evidenceStatus: 'UNRESOLVED', question: 'Which process?'}]};
+    let value = {...snapshot(), calls: [], nodeAssessments: claims, nodeAssessmentsTruncated: true, reasonsTruncated: false};
+    const f = fixture(async () => response(value), 'workspace-a', true);
+    f.document.documentElement.lang = locale;
+    await f.step(0);
+    const notice = f.elements.get('analysisRequirementEvidenceNotice');
+    assert.ok(notice, 'the progress view exposes omitted requirement evidence independently of reason text');
+    assert.equal(notice.hidden, false);
+    assert.match(notice.textContent, locale === 'de' ? /Weitere erfasste Einordnungen sind im Endergebnis verfügbar/
+        : /More recorded assessments are available in the final result/);
+    assert.deepEqual(JSON.parse(JSON.stringify(f.snapshots[0].value.nodeAssessments)), claims,
+        'the progress boundary preserves all claims and their distinct statuses for the shown node');
+    value = {...value, sequence: 2, nodeAssessmentsTruncated: false, reasonsTruncated: true};
+    await f.step(1000);
+    assert.equal(notice.hidden, true);
+    assert.equal(notice.textContent, '');
+    assert.match(f.elements.get('llmCommLogContent').textContent,
+        locale === 'de' ? /Weitere gespeicherte Begründungen/ : /Additional saved explanations/);
+    f.monitor.stop();
+});
+
+test('a full final assessment map clears its preview notice even when final diagnostics are bounded', async () => {
+    const value = {...snapshot(), calls: [], nodeAssessments: {}, nodeAssessmentsTruncated: true};
+    const f = fixture(async () => response(value), 'workspace-a', true);
+    await f.step(0);
+    const notice = f.elements.get('analysisRequirementEvidenceNotice');
+    assert.ok(notice);
+    assert.equal(notice.hidden, false, 'even a preview with no fitting whole-node entry explains the omitted evidence');
+    f.monitor.finish('PARTIAL', true, 1200, {status: 'PARTIAL', scores: {}, nodeAssessments: {
+        BP: [{requirementQuote: 'Recovery', evidenceStatus: 'UNRESOLVED', question: 'Which process?'}]
+    }});
+    assert.equal(notice.hidden, true);
+    await flush();
+    assert.equal(notice.hidden, true, 'a late diagnostic read cannot make the complete result look truncated');
+    assert.equal(notice.textContent, '');
+    assert.equal(f.snapshots.length, 1, 'diagnostic snapshots cannot replace accepted final evidence');
+});
+
+for (const [label, finalResult] of [['without a result', undefined], ['with another bounded preview',
+    {nodeAssessments: {}, nodeAssessmentsTruncated: true}]]) {
+    test(`finishing transport ${label} does not claim that assessment evidence is complete`, async () => {
+        const f = fixture(async () => response({...snapshot(), calls: [], nodeAssessmentsTruncated: true}),
+            'workspace-a', true);
+        await f.step(0);
+        f.monitor.finish('PARTIAL', false, 1200, finalResult);
+        assert.equal(f.elements.get('analysisRequirementEvidenceNotice').hidden, false);
+        assert.match(f.elements.get('analysisRequirementEvidenceNotice').textContent,
+            /More recorded assessments are available in the final result/);
+    });
+}
+
+test('a replacement source starts without a prior preview notice and legacy snapshots do not invent one', async () => {
+    const f = fixture(async () => response({...snapshot(), calls: [], nodeAssessmentsTruncated: true}), 'workspace-a', true);
+    await f.step(0);
+    assert.equal(f.elements.get('analysisRequirementEvidenceNotice')?.hidden, false);
+    f.monitor.stop();
+    const replacement = f.window.TaxonomyAnalysisProgress.start(id, () => {});
+    assert.equal(f.elements.get('analysisRequirementEvidenceNotice').hidden, true);
+    replacement.stop();
+    const legacy = fixture(async () => response(snapshot()), 'workspace-a', true);
+    await legacy.step(0);
+    assert.equal(legacy.elements.get('analysisRequirementEvidenceNotice').hidden, true);
+    assert.equal(legacy.elements.get('analysisRequirementEvidenceNotice').textContent, '');
+    legacy.monitor.stop();
+});
+
 function clusterSnapshot(sequence = 1, status = 'RUNNING') {
     return { ...snapshot(sequence, status), transport: 'artemis', evaluatedNodes: 0, calls: [],
         memory: null, databaseStorage: 'EXTERNAL_OR_UNKNOWN', indexStorage: 'EXTERNAL_OR_UNKNOWN',

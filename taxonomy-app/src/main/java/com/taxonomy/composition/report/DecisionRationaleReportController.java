@@ -13,6 +13,7 @@ import com.taxonomy.catalog.service.TaxonomyService;
 import com.taxonomy.dto.AnalysisScoreDetail;
 import com.taxonomy.dto.AnalysisScoreSemantics;
 import com.taxonomy.dto.ProductCoverageGap;
+import com.taxonomy.dto.RequirementNodeAssessment;
 import com.taxonomy.dto.TaxonomyDiscrepancy;
 import com.taxonomy.dto.ViewContext;
 import com.taxonomy.extension.api.report.ReportFormatDescriptor;
@@ -129,7 +130,27 @@ public class DecisionRationaleReportController {
             AnalysisScope analysisScope, DecisionReportOptions exportOptions,
             com.taxonomy.dto.AnalysisReasonLength analysisReasonLength,
             com.taxonomy.dto.AnalysisLanguage analysisLanguage, com.taxonomy.dto.AnalysisModelBinding modelBinding,
-            Boolean liveResponsibilities) {
+            Boolean liveResponsibilities,
+            Map<String, List<RequirementNodeAssessment>> nodeAssessments) {
+        public DecisionReportRequest {
+            scores = scores == null ? Map.of() : scores;
+        }
+
+        public DecisionReportRequest(Map<String, Double> scores, Map<String, Double> rawScores,
+                Map<String, Double> effectiveScores, Map<String, AnalysisScoreDetail> scoreDetails,
+                Map<String, Double> productSuitabilityScores, Integer scoreSemanticsVersion,
+                Map<String, String> reasons, String businessText, String provider, String analysisStatus,
+                List<TaxonomyDiscrepancy> discrepancies, List<ProductCoverageGap> productCoverageGaps,
+                String language, Long analysisDurationMillis, com.taxonomy.dto.AnalysisCoverage analysisCoverage,
+                AnalysisScope analysisScope, DecisionReportOptions exportOptions,
+                com.taxonomy.dto.AnalysisReasonLength analysisReasonLength, com.taxonomy.dto.AnalysisLanguage analysisLanguage,
+                com.taxonomy.dto.AnalysisModelBinding modelBinding, Boolean liveResponsibilities) {
+            this(scores, rawScores, effectiveScores, scoreDetails, productSuitabilityScores, scoreSemanticsVersion,
+                    reasons, businessText, provider, analysisStatus, discrepancies, productCoverageGaps, language,
+                    analysisDurationMillis, analysisCoverage, analysisScope, exportOptions, analysisReasonLength,
+                    analysisLanguage, modelBinding, liveResponsibilities, null);
+        }
+
         public DecisionReportRequest(Map<String, Double> scores, Map<String, Double> rawScores,
                 Map<String, Double> effectiveScores, Map<String, AnalysisScoreDetail> scoreDetails,
                 Map<String, Double> productSuitabilityScores, Integer scoreSemanticsVersion,
@@ -368,7 +389,8 @@ public class DecisionRationaleReportController {
                 null,
                 scoreDetails, request.analysisDurationMillis()).withRecordedReasons(request.reasons())
                 .withScope(request.analysisScope(), request.analysisCoverage())
-                .withAnalysisReasonLength(request.analysisReasonLength());
+                .withAnalysisReasonLength(request.analysisReasonLength())
+                .withNodeAssessments(request.nodeAssessments());
         DecisionRationaleReport report;
         if (options != null && options.showResponsibilities()) {
             report = reportService.generate(input, context, viewContext, locale, options,
@@ -397,8 +419,7 @@ public class DecisionRationaleReportController {
         if (request == null
                 || (request.analysisDurationMillis() != null && request.analysisDurationMillis() < 0)
                 || !boundedText(request.businessText(), MAX_REQUIREMENT_LENGTH, false)
-                || request.scores() == null
-                || request.scores().isEmpty()
+                || request.scores().isEmpty() && !ReportAssessmentInput.hasClaims(request.nodeAssessments())
                 || request.scores().size() > MAX_SCORE_ENTRIES
                 || !validScoreMap(request.scores())
                 || !validOptionalScoreMap(request.rawScores())
@@ -418,7 +439,8 @@ public class DecisionRationaleReportController {
                         && request.productCoverageGaps().size() > MAX_PRODUCT_COVERAGE_GAPS)) {
             return false;
         }
-        return validReasons(request.reasons())
+        return ReportAssessmentInput.valid(request.nodeAssessments(), request.businessText())
+                && validReasons(request.reasons())
                 && validDiscrepancies(request.discrepancies())
                 && validProductCoverageGaps(request.productCoverageGaps());
     }

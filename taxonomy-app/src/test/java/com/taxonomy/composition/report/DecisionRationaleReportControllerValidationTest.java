@@ -25,6 +25,38 @@ import static org.mockito.Mockito.when;
 class DecisionRationaleReportControllerValidationTest {
 
     @Test
+    void rejectsAssessmentQuoteOutsideSubmittedRequirementBeforeResolvingContext() {
+        var reportService = mock(DecisionRationaleReportService.class);
+        var rendererRegistry = mock(ReportRendererRegistry.class);
+        var repositoryStateService = mock(RepositoryStateService.class);
+        var workspaceResolver = mock(WorkspaceResolver.class);
+        var controller = new DecisionRationaleReportController(
+                reportService, rendererRegistry, repositoryStateService, workspaceResolver);
+        var request = new tools.jackson.databind.ObjectMapper().readValue("""
+                {
+                  "scores": {"CP": 80},
+                  "businessText": "Archive copies must be retained.",
+                  "nodeAssessments": {"CP": [{
+                    "requirementQuote": "Delete archive copies.",
+                    "subjectKinds": ["PROCESS"],
+                    "requirementKinds": ["FUNCTIONAL"],
+                    "contributionType": "DIRECT_SUBJECT",
+                    "evidenceStatus": "SUPPORTED",
+                    "evidenceBasis": "EXPLICIT",
+                    "necessity": "REQUIRED",
+                    "scope": "DELIVERY",
+                    "condition": "",
+                    "rationale": "An invented passage.",
+                    "question": ""
+                  }]}
+                }
+                """, DecisionReportRequest.class);
+
+        assertThat(controller.exportJson(request).getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        verifyNoInteractions(reportService, rendererRegistry, repositoryStateService, workspaceResolver);
+    }
+
+    @Test
     void rejectsMalformedDiscrepanciesBeforeResolvingTrustedContext() {
         DecisionRationaleReportService reportService =
                 mock(DecisionRationaleReportService.class);

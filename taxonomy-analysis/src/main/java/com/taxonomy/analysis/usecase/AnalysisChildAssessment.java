@@ -81,7 +81,8 @@ public class AnalysisChildAssessment {
         var children = List.copyOf(read.get());
         var source = llm.interactiveSource(children, true);
         BooleanSupplier current = () -> providers.parentCurrent(parent, owner, workspace) && source.equals(llm.interactiveSource(read.get(), true));
-        var fingerprint = AnalysisAdapterStore.digest("node-v1", source, parent == null || parent.isBlank() ? null : parent, providerCommand(requestedProvider),
+        var fingerprint = AnalysisAdapterStore.digest("node-v2", com.taxonomy.analysis.service.PromptTemplateService.NODE_ASSESSMENT_POLICY,
+                source, parent == null || parent.isBlank() ? null : parent, providerCommand(requestedProvider),
                 command.parentCode(), command.businessText(), Double.toString(command.parentScore()),
                 pin.length().value(), pin.languageIdentity());
         boolean hasParent = parent != null && !parent.isBlank();
@@ -94,7 +95,7 @@ public class AnalysisChildAssessment {
                 throw new IllegalStateException("Node analysis returned no assessment");
             var safe = new AnalyzeNodeChildrenResult(result.scores(), result.reasons(), "", "", result.provider(),
                     result.durationMs(), result.error() == null || result.error().isBlank() ? null : "ANALYSIS_FAILED",
-                    hasParent ? parent : id, binding.provider(), binding.reasonLength(), binding.analysisLanguage());
+                    hasParent ? parent : id, binding.provider(), binding.reasonLength(), binding.analysisLanguage(), result.nodeAssessments());
             return new AnalysisNodeReceipts.BoundNode(safe, hasParent ? null : binding,
                     new AnalysisNodeReceipts.Source(command.parentCode(), source, hasParent ? parent : null));
         }, () -> {

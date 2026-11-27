@@ -3,6 +3,7 @@ package com.taxonomy.analysis.service;
 import com.taxonomy.dto.AnalysisProvenance;
 import com.taxonomy.dto.LlmCallDetail;
 import com.taxonomy.dto.AnalysisResult;
+import com.taxonomy.dto.RequirementNodeAssessment;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import org.springframework.core.env.Environment;
 import org.springframework.http.HttpStatus;
@@ -89,7 +90,28 @@ public class AnalysisProgressRegistry {
                            long queueWaitMillis, long executionMillis,
                            com.taxonomy.dto.AnalysisNodeProgress nodeProgress,
                            com.taxonomy.dto.RelationSearchProgress relationProgress,
-                           Map<String, String> reasons, boolean reasonsTruncated) {
+                           Map<String, String> reasons, boolean reasonsTruncated,
+                           Map<String, List<RequirementNodeAssessment>> nodeAssessments, boolean nodeAssessmentsTruncated) {
+        public Snapshot {
+            nodeAssessments = RequirementNodeAssessment.immutableMap(nodeAssessments);
+        }
+
+        public Snapshot(String operationId, String status, String phase, String node, String stopReason,
+                        long sequence, long startedAt, long lastActivityAt, long serverTime,
+                        int evaluatedNodes, boolean scoresTruncated, Map<String, Double> rawScores,
+                        List<CallView> calls, long omittedCalls, AnalysisMemoryGuard.Reading memory,
+                        String databaseStorage, String indexStorage, AnalysisProvenance provenance,
+                        Long finishedAt, long elapsedMillis, Long executionStartedAt,
+                        long queueWaitMillis, long executionMillis,
+                        com.taxonomy.dto.AnalysisNodeProgress nodeProgress,
+                        com.taxonomy.dto.RelationSearchProgress relationProgress,
+                        Map<String, String> reasons, boolean reasonsTruncated) {
+            this(operationId, status, phase, node, stopReason, sequence, startedAt, lastActivityAt, serverTime,
+                    evaluatedNodes, scoresTruncated, rawScores, calls, omittedCalls, memory, databaseStorage,
+                    indexStorage, provenance, finishedAt, elapsedMillis, executionStartedAt, queueWaitMillis,
+                    executionMillis, nodeProgress, relationProgress, reasons, reasonsTruncated, Map.of(), false);
+        }
+
         public Snapshot(String operationId, String status, String phase, String node, String stopReason,
                         long sequence, long startedAt, long lastActivityAt, long serverTime,
                         int evaluatedNodes, boolean scoresTruncated, Map<String, Double> rawScores,
@@ -388,6 +410,7 @@ public class AnalysisProgressRegistry {
         final ArrayDeque<Call> calls = new ArrayDeque<>();
         final Map<String, Double> scores = new LinkedHashMap<>();
         final AnalysisReasonPreview reasonPreview = new AnalysisReasonPreview();
+        final AnalysisNodeAssessmentPreview assessmentPreview = new AnalysisNodeAssessmentPreview();
         final AnalysisNodeTracker nodeTracker = new AnalysisNodeTracker();
         com.taxonomy.dto.RelationSearchProgress relationProgress;
         volatile String status = "QUEUED";
@@ -476,8 +499,10 @@ public class AnalysisProgressRegistry {
         private void retainAssessment(LlmCallDetail detail) {
             if (detail == null) return;
             nodeTracker.accept(detail);
-            if (detail.getError() != null && !detail.getError().isBlank()
-                    || detail.getScores() == null) return;
+            boolean accepted = detail.getError() == null || detail.getError().isBlank();
+            if (accepted || RootAssessmentEvidence.isClarification(detail))
+                assessmentPreview.retain(detail.getNodeAssessments());
+            if (!accepted || detail.getScores() == null) return;
             detail.getScores().forEach((code, score) -> {
                 if (code == null || score == null) return;
                 if (scores.containsKey(code) || scores.size() < MAX_SCORES) {
@@ -536,7 +561,8 @@ public class AnalysisProgressRegistry {
                     calls.stream().map(Call::view).toList(), omittedCalls, guard.reading(),
                     databaseStorage, indexStorage, provenance, active() ? null : finishedAt,
                     elapsed, executionStartedAt, queued, executionStartedAt == null ? 0L : Math.max(0L, elapsed - queued),
-                    nodeTracker.snapshot(), relationProgress, reasonPreview.reasons(), reasonPreview.truncated());
+                    nodeTracker.snapshot(), relationProgress, reasonPreview.reasons(), reasonPreview.truncated(),
+                    assessmentPreview.assessments(), assessmentPreview.truncated());
         }
     }
 

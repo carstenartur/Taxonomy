@@ -1,5 +1,6 @@
 package com.taxonomy.analysis.recovery;
 
+import com.taxonomy.analysis.assessment.RequirementAssessmentContract;
 import com.taxonomy.analysis.backup.AnalysisBackupContributor.*;
 import com.taxonomy.backup.SourceRecordId;
 import com.taxonomy.dto.*;
@@ -51,6 +52,9 @@ public final class AnalysisContinuationBackupRestorer {
         var keys=new HashSet<String>();var ids=new HashSet<SourceRecordId>();long payload=0;
         var preparedQuestions=new ArrayList<PreparedQuestion>();
         var scores=new LinkedHashMap<String,Double>(result.getRawScores());var reasons=new LinkedHashMap<String,String>(result.getReasons());
+        var assessments = new LinkedHashMap<>(result.getNodeAssessments());
+        var frozenCodes = catalogueCodes(result.getTree());
+        var acceptedOffers = new HashSet<String>();
         for(var question:questions) {
             requireKind(question.sourceId(),"analysis.question");
             if(!source.sourceId().equals(question.run()) || !ids.add(question.sourceId()) || !keys.add(question.questionKey())
@@ -65,10 +69,22 @@ public final class AnalysisContinuationBackupRestorer {
             if(question.detailJson()!=null) {
                 var detail=json.readValue(question.detailJson(),LlmCallDetail.class);
                 detailError=detail.getError();
-                if("SUCCESS".equals(question.sourceState())) {
-                    if(detail.getScores()!=null)detail.getScores().forEach(scores::putIfAbsent);
-                    if(detail.getReasons()!=null)detail.getReasons().forEach(reasons::putIfAbsent);
+                boolean accepted = Set.of("SUCCESS", "CLARIFICATION").contains(question.sourceState())
+                        && !AnalysisCheckpointSession.isRelationQuestion(question.questionKey());
+                var offered = new HashSet<>(Arrays.asList(nodes));
+                if (!frozenCodes.isEmpty()) offered.retainAll(frozenCodes);
+                if (!detail.getNodeAssessments().isEmpty()) {
+                    if (AnalysisCheckpointSession.isRelationQuestion(question.questionKey())) throw invalid();
+                    RequirementAssessmentContract.validateRecorded(detail.getNodeAssessments(), request.getBusinessText(), offered);
                 }
+                if (accepted) {
+                    acceptedOffers.addAll(offered);
+                    RequirementAssessmentContract.mergeRecorded(assessments, detail.getNodeAssessments());
+                }
+                if ("SUCCESS".equals(question.sourceState()) && detail.getScores() != null)
+                    detail.getScores().forEach(scores::putIfAbsent);
+                if ((accepted || "SUCCESS".equals(question.sourceState())) && detail.getReasons() != null)
+                    detail.getReasons().forEach(reasons::putIfAbsent);
             } else if("SUCCESS".equals(question.sourceState()))throw invalid();
             String storedPrompt=checkpointPayload.encodePrompt(question.prompt());
             String storedDetail=checkpointPayload.encodeDetail(question.detailJson(),question.prompt());
@@ -84,7 +100,10 @@ public final class AnalysisContinuationBackupRestorer {
             payload=addStored(payload,storedPrompt);payload=addStored(payload,storedDetail);
             preparedQuestions.add(new PreparedQuestion(question,storedNodes,storedPrompt,storedDetail,detailError));
         }
+        RequirementAssessmentContract.validateRecorded(result.getNodeAssessments(), request.getBusinessText(),
+                frozenCodes.isEmpty() ? acceptedOffers : frozenCodes);
         result.setRawScores(scores);result.setReasons(reasons);
+        result.setNodeAssessments(assessments);
         var warnings=new ArrayList<>(result.getWarnings());
         warnings.add("RESTORED_HISTORICAL_SOURCE_EVIDENCE: retained catalogue and source identifiers describe the archived analysis; review the target context before any new execution.");
         result.setWarnings(warnings);
@@ -113,6 +132,18 @@ public final class AnalysisContinuationBackupRestorer {
             em.flush();
         });
     }
+    private static Set<String> catalogueCodes(List<TaxonomyNodeDto> tree) {
+        var codes = new HashSet<String>();
+        if (tree == null) return codes;
+        var pending = new ArrayDeque<>(tree);
+        while (!pending.isEmpty()) {
+            var node = pending.removeFirst();
+            codes.add(node.getCode());
+            if (node.getChildren() != null) pending.addAll(node.getChildren());
+        }
+        return codes;
+    }
+
     private record PreparedQuestion(QuestionRecord source,String nodeCodes,String prompt,String detail,String detailError) { }
     private static String unpackResult(String value) {
         try { return PortableJsonPayloads.unpack(value,(int)MAX_RUN_CHARACTERS); }

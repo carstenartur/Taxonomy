@@ -78,7 +78,7 @@ public class AnalysisContinuationStore {
                 requireTaxonomyAuthority(original, request, retained, tree);
                 run.requestJson = mapper.writeValueAsString(request);
                 em.persist(run);
-                copyTaxonomyQuestions(source, run, request, scope, retained);
+                var reopened = copyTaxonomyQuestions(source, run, request, scope, retained);
                 if (TaxonomyExtensionEvidence.noWork(source.state, original, request, retained, tree)) {
                     // A complete equivalent result has no new node or relation work. Keep its
                     // evidence addressable under the new receipt, without creating worker tasks.
@@ -91,6 +91,7 @@ public class AnalysisContinuationStore {
                     return new Claim(id, null, result);
                 }
                 retained = TaxonomyExtensionEvidence.seed(mapper, retained, request);
+                TaxonomyExtensionEvidence.discardReopenedClarifications(retained, reopened);
             }
             if (request.getRelationSourceContinuationId() != null) {
                 var source = relationSource(request, scope, LockModeType.PESSIMISTIC_WRITE);
@@ -172,7 +173,22 @@ public class AnalysisContinuationStore {
                         throw conflict("The selected assessment is not open for this decision");
                     selected.add(question);
                 }
-                selected.forEach(question -> question.state = "RETRY".equals(action) ? "READY" : "SKIPPED");
+                var reopened = new LinkedHashSet<String>();
+                for (var question : selected) {
+                    if ("RETRY".equals(action) && "CLARIFICATION".equals(question.state)
+                            && !AnalysisCheckpointSession.isRelationQuestion(question.questionKey)) {
+                        reopened.addAll(payloads.parseLayout(question.nodeCodes).nodes());
+                        run.payloadCharacters -= storedCharacters(null, question.detailJson);
+                        question.detailJson = null;
+                        question.error = null;
+                    }
+                    question.state = "RETRY".equals(action) ? "READY" : "SKIPPED";
+                }
+                if (!reopened.isEmpty()) {
+                    var seed = readResult(run);
+                    TaxonomyExtensionEvidence.discardReopenedClarifications(seed, reopened);
+                    writeResult(run, seed);
+                }
             }
         }
         run.state = "RUNNING"; run.claimToken = UUID.randomUUID().toString();
@@ -252,16 +268,19 @@ public class AnalysisContinuationStore {
             throw conflict("Taxonomy extension differs from its retained source authority");
     }
 
-    private void copyTaxonomyQuestions(AnalysisContinuationRun source, AnalysisContinuationRun target, AnalysisRequest request,
+    private Set<String> copyTaxonomyQuestions(AnalysisContinuationRun source, AnalysisContinuationRun target, AnalysisRequest request,
             WorkspaceContext scope, AnalysisResult retained) {
         var accepted = new LinkedHashMap<String, Double>();
         var acceptedReasons = new LinkedHashMap<String, String>();
+        var acceptedAssessments = new LinkedHashMap<String, List<RequirementNodeAssessment>>();
+        var reopened = new LinkedHashSet<String>();
         var nodes = TaxonomyExtensionEvidence.membership(retained.getTree());
         var copied = new LinkedHashMap<String, AnalysisQuestionCheckpoint>();
         collectTaxonomyQuestions(source, scope, new HashSet<>(), copied);
         if (copied.size() > MAX_QUESTIONS) throw conflict("Retained taxonomy questions exceed the continuation bound");
         for (var old : copied.values()) {
             var detail = questionDetail(old.nodeCodes, old.prompt, old.detailJson);
+            boolean clarification = "CLARIFICATION".equals(old.state);
             if ("SUCCESS".equals(old.state)) {
                 if (detail == null) throw conflict("Accepted taxonomy question evidence is unavailable");
                 detail.getScores().forEach((code, score) -> {
@@ -270,19 +289,35 @@ public class AnalysisContinuationStore {
                     Double duplicate = accepted.putIfAbsent(code, score);
                     if (duplicate != null && !duplicate.equals(score)) throw conflict("Conflicting retained taxonomy answers");
                 });
+            }
+            if (detail != null && ("SUCCESS".equals(old.state) || clarification)) {
                 if (detail.getReasons() != null) detail.getReasons().forEach((code, reason) -> {
-                    if (!Objects.equals(retained.getReasons().get(code), reason))
+                    String recorded = retained.getReasons().get(code);
+                    // Older distributed projections could omit the scoreless root explanation.
+                    if (clarification && recorded == null) return;
+                    if (!Objects.equals(recorded, reason))
                         throw conflict("Accepted question differs from the retained taxonomy explanations");
                     String duplicate = acceptedReasons.putIfAbsent(code, reason);
                     if (duplicate != null && !duplicate.equals(reason)) throw conflict("Conflicting retained taxonomy explanations");
                 });
+                detail.getNodeAssessments().forEach((code, assessments) -> {
+                    if (!Objects.equals(retained.getNodeAssessments().get(code), assessments))
+                        throw conflict("Accepted question differs from retained requirement evidence");
+                    var duplicate = acceptedAssessments.putIfAbsent(code, assessments);
+                    if (duplicate != null && !duplicate.equals(assessments))
+                        throw conflict("Conflicting retained requirement evidence");
+                });
             }
+            var offered = payloads.parseLayout(old.nodeCodes).nodes();
             String state = !"SUCCESS".equals(old.state) && TaxonomyExtensionEvidence.requested(request.getTaxonomyRequestedScope(), nodes,
-                    payloads.parseLayout(old.nodeCodes).nodes()) ? "READY" : old.state;
+                    offered) ? "READY" : old.state;
+            if (clarification && "READY".equals(state)) reopened.addAll(offered);
             copyQuestion(target, old, state);
         }
-        if (!accepted.equals(retained.getRawScores()) || !acceptedReasons.equals(retained.getReasons()))
+        if (!accepted.equals(retained.getRawScores()) || !acceptedReasons.equals(retained.getReasons())
+                || !acceptedAssessments.equals(retained.getNodeAssessments()))
             throw conflict("The original accepted taxonomy question history is unavailable; start a new analysis");
+        return reopened;
     }
 
     private void copyQuestion(AnalysisContinuationRun target, AnalysisQuestionCheckpoint old, String state) {
@@ -291,6 +326,10 @@ public class AnalysisContinuationStore {
         q.inputHash = old.inputHash; q.provider = old.provider; q.nodeCodes = old.nodeCodes;
         q.prompt = old.prompt; q.detailJson = old.detailJson; q.state = state;
         q.attempts = old.attempts; q.startedAt = old.startedAt; q.error = old.error;
+        if ("CLARIFICATION".equals(old.state) && "READY".equals(state)) {
+            q.detailJson = null;
+            q.error = null;
+        }
         target.payloadCharacters += storedCharacters(q.prompt, q.detailJson);
         if (target.payloadCharacters > MAX_RUN_CHARACTERS) throw conflict("Retained question evidence exceeds the continuation bound");
         em.persist(q);
@@ -914,16 +953,19 @@ public class AnalysisContinuationStore {
         if (run.clusterOperationId != null || taxonomyExtension) {
             var raw = new LinkedHashMap<>(result.getRawScores());
             var reasons = new LinkedHashMap<>(result.getReasons() == null ? Map.<String,String>of() : result.getReasons());
-            var acceptedDetails = em.createQuery("select q.nodeCodes, q.prompt, q.detailJson from AnalysisQuestionCheckpoint q "
-                            + "where q.run.id=:id and q.state='SUCCESS' and q.detailJson is not null "
+            var assessments = new LinkedHashMap<>(result.getNodeAssessments());
+            var acceptedDetails = em.createQuery("select q.nodeCodes, q.prompt, q.detailJson, q.state from AnalysisQuestionCheckpoint q "
+                            + "where q.run.id=:id and q.state in ('SUCCESS','CLARIFICATION') and q.detailJson is not null "
                             + "and q.questionKey not like 'R%' order by q.startedAt, q.questionKey", Object[].class)
                     .setParameter("id", run.id).getResultList();
             for (Object[] row : acceptedDetails) {
                 var detail = questionDetail((String) row[0], (String) row[1], (String) row[2]);
-                detail.getScores().forEach(raw::putIfAbsent);
+                detail.getNodeAssessments().forEach(assessments::putIfAbsent);
+                if ("SUCCESS".equals(row[3])) detail.getScores().forEach(raw::putIfAbsent);
                 if (detail.getReasons() != null) detail.getReasons().forEach(reasons::putIfAbsent);
             }
             result.setRawScores(raw); result.setReasons(reasons);
+            result.setNodeAssessments(assessments);
         }
         if (!open.isEmpty() && !"CANCELLED".equals(result.getStatus()) && !"ERROR".equals(result.getStatus()))
             result.setStatus("PARTIAL");
@@ -1096,6 +1138,7 @@ public class AnalysisContinuationStore {
         return expected != null && offered != null && expected.getRawScores().equals(offered.getRawScores())
                 && expected.getScores().equals(offered.getScores())
                 && expected.getReasons().equals(offered.getReasons())
+                && expected.getNodeAssessments().equals(offered.getNodeAssessments())
                 && Objects.equals(expected.getScoreSemanticsFingerprintSha256(), offered.getScoreSemanticsFingerprintSha256())
                 && mapper.writeValueAsString(expected.getTree()).equals(mapper.writeValueAsString(offered.getTree()));
     }
@@ -1121,18 +1164,23 @@ public class AnalysisContinuationStore {
             }
             var raw = new LinkedHashMap<>(result.getRawScores());
             var reasons = new LinkedHashMap<>(result.getReasons() == null ? Map.<String,String>of() : result.getReasons());
+            var assessments = new LinkedHashMap<>(result.getNodeAssessments());
             // The run lock serializes this snapshot with finish(). An accepted cancellation
             // includes every earlier committed success and admits no later provider answer.
             for (var question : questions(run)) {
-                if ("SUCCESS".equals(question.state) && question.detailJson != null
+                if (("SUCCESS".equals(question.state) || "CLARIFICATION".equals(question.state)) && question.detailJson != null
                         && !AnalysisCheckpointSession.isRelationQuestion(question.questionKey)) {
                     var detail = questionDetail(question.nodeCodes, question.prompt, question.detailJson);
-                    raw.putAll(detail.getScores());
+                    assessments.putAll(detail.getNodeAssessments());
                     if (detail.getReasons() != null) reasons.putAll(detail.getReasons());
-                    if (detail.getProvider() != null) result.setProvider(detail.getProvider());
+                    if ("SUCCESS".equals(question.state)) {
+                        raw.putAll(detail.getScores());
+                        if (detail.getProvider() != null) result.setProvider(detail.getProvider());
+                    }
                 }
             }
             result.setRawScores(raw); result.setReasons(reasons);
+            result.setNodeAssessments(assessments);
             result.setErrorMessage("CANCELLED: completed question evidence preserved; remaining assessments are unknown");
             run.state = "CANCELLED";
             // complete() remains inside this short transaction and marks unfinished attempts

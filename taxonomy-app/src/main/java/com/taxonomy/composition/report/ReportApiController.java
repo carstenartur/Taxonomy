@@ -8,6 +8,7 @@ import com.taxonomy.dto.AnalysisLanguage;
 import com.taxonomy.architecture.service.ArchitectureReportService;
 import com.taxonomy.dto.ArchitectureReport;
 import com.taxonomy.dto.AnalysisResult;
+import com.taxonomy.dto.RequirementNodeAssessment;
 import com.taxonomy.extension.api.report.ReportFormatDescriptor;
 import com.taxonomy.extension.api.report.ReportRenderContext;
 import com.taxonomy.extension.api.report.ReportRenderResult;
@@ -30,6 +31,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
@@ -68,7 +70,11 @@ public class ReportApiController {
         this.cluster = cluster == null ? null : cluster.getIfAvailable();
     }
 
-    public record AnalysisReference(String operationId, String continuationId, String workspaceId) { }
+    public record AnalysisReference(String operationId, String continuationId, String workspaceId, Long recoveryVersion) {
+        public AnalysisReference(String operationId, String continuationId, String workspaceId) {
+            this(operationId, continuationId, workspaceId, null);
+        }
+    }
 
     public record ReportRequest(
             Map<String, Double> scores,
@@ -77,7 +83,13 @@ public class ReportApiController {
             Map<String, String> reasons,
             AnalysisLanguage analysisLanguage,
             String language,
-            AnalysisReference analysisReference) {
+            AnalysisReference analysisReference,
+            Map<String, List<RequirementNodeAssessment>> nodeAssessments) {
+        public ReportRequest(Map<String, Double> scores, String businessText, Integer minScore,
+                Map<String, String> reasons, AnalysisLanguage analysisLanguage, String language,
+                AnalysisReference analysisReference) {
+            this(scores, businessText, minScore, reasons, analysisLanguage, language, analysisReference, null);
+        }
         public ReportRequest(Map<String, Double> scores, String businessText, int minScore) {
             this(scores, businessText, minScore, Map.of(), null, null);
         }
@@ -90,7 +102,7 @@ public class ReportApiController {
     @Operation(summary = "Export Markdown report",
             description = "Generates a comprehensive architecture report as Markdown")
     @ApiResponse(responseCode = "200", description = "Markdown report returned")
-    @ApiResponse(responseCode = "400", description = "Scores are missing")
+    @ApiResponse(responseCode = "400", description = "Markdown requires scores or retained Copilot output")
     @PostMapping("/markdown")
     public ResponseEntity<byte[]> exportMarkdown(@RequestBody ReportRequest request) {
         return render(request, "markdown");
@@ -140,13 +152,23 @@ public class ReportApiController {
         if (!isValid(request)) {
             return ResponseEntity.badRequest().build();
         }
+        boolean markdown = "markdown".equals(formatId);
+        boolean retained = request.analysisReference() != null;
+        if (markdown && !retained && !hasScores(request.scores())) {
+            return ResponseEntity.badRequest().build();
+        }
         PreparedReport prepared = prepareReport(request);
+        if (markdown && retained && !hasScores(prepared.report().getScores()) && prepared.report().getCopilot() == null) {
+            return ResponseEntity.badRequest().build();
+        }
         ReportRendererExtension renderer = reportRendererRegistry.getRequired(formatId);
         ReportFormatDescriptor format = renderer.descriptor();
         String language = DecisionReportLanguage.resolve(
                 DecisionReportLanguage.optionalOverride(request.language()), prepared.language()).toLanguageTag();
         ReportRenderResult rendered = renderer.render(new ReportRenderContext(prepared.report(), Map.of(
-                "language", language, "nodeReasons", prepared.reasons() == null ? Map.of() : prepared.reasons())));
+                "language", language,
+                "nodeReasons", prepared.reasons() == null ? Map.of() : prepared.reasons(),
+                "retainedAnalysis", retained)));
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION,
                         "attachment; filename=\"architecture-report."
@@ -160,9 +182,10 @@ public class ReportApiController {
     private PreparedReport prepareReport(ReportRequest request) {
         AnalysisReference reference = request.analysisReference();
         if (reference == null) {
-            return new PreparedReport(reportService.generateReport(request.scores(), request.businessText(),
-                    request.minScore() == null ? 0 : request.minScore()),
-                    request.reasons(), request.analysisLanguage());
+            ArchitectureReport report = reportService.generateReport(request.scores(), request.businessText(),
+                    request.minScore() == null ? 0 : request.minScore());
+            report.setNodeAssessments(request.nodeAssessments());
+            return new PreparedReport(report, request.reasons(), request.analysisLanguage());
         }
         WorkspaceContext scope = workspaceResolver.resolveCurrentContext();
         String username = workspaceResolver.resolveCurrentUsername();
@@ -176,6 +199,11 @@ public class ReportApiController {
         if (hasText(reference.continuationId())) {
             if (continuations == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Saved analysis not found");
             var snapshot = continuations.read(reference.continuationId(), username, scope);
+            if (reference.recoveryVersion() != null
+                    && (snapshot.recovery() == null || !reference.continuationId().equals(snapshot.recovery().id())
+                        || reference.recoveryVersion() != snapshot.recovery().version())) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "The saved analysis revision has changed");
+            }
             result = snapshot.result();
             if (hasText(reference.operationId())) {
                 if (hasText(snapshot.clusterOperationId()) && !Objects.equals(reference.operationId(), snapshot.clusterOperationId())
@@ -200,7 +228,7 @@ public class ReportApiController {
         }
         // Historical absence is distinct from a completed report with empty findings.
         // Never turn a failed/not-yet-retained result into a fresh global computation.
-        if (result == null || result.getCopilot() == null) {
+        if (result == null || result.getCopilot() == null && result.getNodeAssessments().isEmpty()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The saved Copilot report is not available");
         }
         ArchitectureReport report = reportService.generateRetainedReport(result, businessText);
@@ -211,7 +239,16 @@ public class ReportApiController {
 
     private static boolean hasText(String value) { return value != null && !value.isBlank(); }
 
+    private static boolean hasScores(Map<String, Double> scores) {
+        return scores != null && !scores.isEmpty();
+    }
+
     private boolean isValid(ReportRequest request) {
-        return request != null && (request.analysisReference() != null || request.scores() != null && !request.scores().isEmpty());
+        if (request == null) return false;
+        var reference = request.analysisReference();
+        if (reference != null) return reference.recoveryVersion() == null
+                || hasText(reference.continuationId()) && reference.recoveryVersion() >= 0;
+        return (hasScores(request.scores()) || ReportAssessmentInput.hasClaims(request.nodeAssessments()))
+                && ReportAssessmentInput.valid(request.nodeAssessments(), request.businessText());
     }
 }

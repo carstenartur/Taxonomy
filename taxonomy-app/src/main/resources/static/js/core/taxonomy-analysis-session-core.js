@@ -44,7 +44,7 @@
             serverWorkspaceMissingTitle: 'The previous workspace is no longer available',
             serverWorkspaceMissingBody: 'Its analysis results were cleared. The application is loading the current server workspace; local requirement edits are retained.',
             staleTitle: 'The requirement text has changed',
-            staleBody: 'The scores, architecture view, relationship hypotheses, gap, pattern, recommendation, impact and export data still belong to the previously analysed text.',
+            staleBody: 'The requirement assessments, scores, architecture view, relationship hypotheses, gap, pattern, recommendation, impact and export data still belong to the previously analysed text.',
             discardEdit: 'Discard text change',
             discardAnalysis: 'Discard previous analysis',
             addRequirement: 'Save as additional requirement',
@@ -109,7 +109,7 @@
             serverWorkspaceMissingTitle: 'Der bisherige Arbeitsbereich ist nicht mehr verfügbar',
             serverWorkspaceMissingBody: 'Seine Analyseergebnisse wurden entfernt. Die Anwendung lädt den aktuellen Arbeitsbereich vom Server; lokale Texteingaben bleiben erhalten.',
             staleTitle: 'Der Anforderungstext wurde geändert',
-            staleBody: 'Bewertungen, Architekturansicht, Relationshypothesen, Gap-, Pattern-, Empfehlungs-, Impact- und Exportdaten gehören noch zum zuvor analysierten Text.',
+            staleBody: 'Anforderungseinordnungen, Bewertungen, Architekturansicht, Relationshypothesen, Gap-, Pattern-, Empfehlungs-, Impact- und Exportdaten gehören noch zum zuvor analysierten Text.',
             discardEdit: 'Textänderung verwerfen',
             discardAnalysis: 'Bisherige Analyse verwerfen',
             addRequirement: 'Als zusätzliche Anforderung speichern',
@@ -369,6 +369,9 @@
 
     function hasDerivedAnalysis() {
         return hasScores()
+            || Object.values(S.currentNodeAssessments || {}).some(function (claims) {
+                return Array.isArray(claims) && claims.length > 0;
+            })
             || Boolean(S.currentRelationSearchReport)
             || Boolean(S.currentArchView)
             || (Array.isArray(S.currentDiscrepancies) && S.currentDiscrepancies.length > 0)
@@ -390,7 +393,7 @@
         'analysisProviderId', 'lastAnalysisStatus', 'analysisDurationMillis', 'analysisCoverage',
         'analysisScope', 'modelBinding', 'analysisReasonLength', 'analysisLanguage', 'scores', 'rawScores',
         'effectiveScores', 'scoreDetails', 'productSuitabilityScores', 'scoreSemanticsVersion',
-        'scoreSemanticsWarnings', 'reasons', 'discrepancies', 'productCoverageGaps',
+        'scoreSemanticsWarnings', 'reasons', 'nodeAssessments', 'discrepancies', 'productCoverageGaps',
         'architectureView', 'relationSearchReport', 'provisionalRelations', 'evaluatedNodes', 'copilot'];
     function evidencePayload(payload) {
         return JSON.stringify(evidenceFields.map(function (key) { return [key, payload[key]]; }));
@@ -413,7 +416,7 @@
             scores: result.effectiveScores || result.scores || {}, rawScores: result.rawScores || result.scores || {},
             effectiveScores: result.effectiveScores || result.scores || {}, scoreDetails: result.scoreDetails || {},
             productSuitabilityScores: result.productSuitabilityScores || {}, scoreSemanticsVersion: result.scoreSemanticsVersion || 0,
-            scoreSemanticsWarnings: result.scoreSemanticsWarnings || [], reasons: result.reasons || {},
+            scoreSemanticsWarnings: result.scoreSemanticsWarnings || [], reasons: result.reasons || {}, nodeAssessments: result.nodeAssessments || {},
             discrepancies: result.discrepancies || [], productCoverageGaps: result.productCoverageGaps || [],
             architectureView: result.architectureView || null,
             relationSearchReport: result.relationSearchReport || result.architectureView?.relationSearchReport || null,
@@ -444,11 +447,11 @@
         // A legacy full draft may contain edits whose provenance predates references.
         // Read-only status refresh must not replace them with a different server view.
         var current = [S.currentRawScores || {}, S.currentEffectiveScores || S.currentScores || {},
-            S.currentScores || {}, S.currentReasons || {}, S.currentDiscrepancies || [],
+            S.currentScores || {}, S.currentReasons || {}, S.currentNodeAssessments || {}, S.currentDiscrepancies || [],
             S.currentProductCoverageGaps || [], S.currentArchView || null,
             S.currentRelationSearchReport || null, window._currentProvisionalRelations || [], S.currentCopilot || null, S.currentModelBinding || null];
         var canonical = [result.rawScores || result.scores || {}, result.effectiveScores || result.scores || {},
-            result.effectiveScores || result.scores || {}, result.reasons || {}, result.discrepancies || [],
+            result.effectiveScores || result.scores || {}, result.reasons || {}, result.nodeAssessments || {}, result.discrepancies || [],
             result.productCoverageGaps || [], result.architectureView || null,
             result.relationSearchReport || result.architectureView?.relationSearchReport || null,
             result.provisionalRelations || [], result.copilot || null, result.modelBinding || null];
@@ -506,7 +509,7 @@
             scores: result.effectiveScores || result.scores || {}, rawScores: result.rawScores || result.scores || {},
             effectiveScores: result.effectiveScores || result.scores || {}, scoreDetails: result.scoreDetails || {},
             productSuitabilityScores: result.productSuitabilityScores || {}, scoreSemanticsVersion: result.scoreSemanticsVersion || 0,
-            scoreSemanticsWarnings: result.scoreSemanticsWarnings || [], reasons: result.reasons || {},
+            scoreSemanticsWarnings: result.scoreSemanticsWarnings || [], reasons: result.reasons || {}, nodeAssessments: result.nodeAssessments || {},
             discrepancies: result.discrepancies || [], productCoverageGaps: result.productCoverageGaps || [],
             architectureView: result.architectureView || null,
             relationSearchReport: result.relationSearchReport || result.architectureView?.relationSearchReport || null,
@@ -542,6 +545,7 @@
             scoreSemanticsVersion: S.scoreSemanticsVersion || 0,
             scoreSemanticsWarnings: S.currentScoreSemanticsWarnings || [],
             reasons: S.currentReasons || {},
+            nodeAssessments: S.currentNodeAssessments || {},
             discrepancies: S.currentDiscrepancies || [],
             productCoverageGaps: S.currentProductCoverageGaps || [],
             architectureView: S.currentArchView,

@@ -4,6 +4,7 @@ import com.taxonomy.reporting.api.document.ArchitectureReportDocument;
 
 import com.taxonomy.dto.AnalysisScoreDetail;
 import com.taxonomy.dto.ProductCoverageGap;
+import com.taxonomy.dto.RequirementNodeAssessment;
 import com.taxonomy.dto.TaxonomyDiscrepancy;
 import com.taxonomy.dto.ViewContext;
 
@@ -35,11 +36,13 @@ public record DecisionRationaleReport(
         ViewContext viewContext,
         Map<String, AnalysisScoreDetail> scoreDetails,
         com.taxonomy.reporting.api.document.ArchitectureReportDocument architecture,
-        DecisionReportScope scope) {
+        DecisionReportScope scope,
+        Map<String, List<RequirementNodeAssessment>> nodeAssessments) {
 
     public DecisionRationaleReport {
         languageTag = normalized(languageTag, "en");
-        requirement = normalized(requirement, "");
+        requirement = requirement == null ? "" : requirement;
+        nodeAssessments = RequirementNodeAssessment.immutableMap(nodeAssessments);
         status = status == null ? ReportStatus.DRAFT_INCOMPLETE : status;
         chapters = immutable(chapters);
         leadingLeaves = immutable(leadingLeaves);
@@ -61,16 +64,31 @@ public record DecisionRationaleReport(
                 warnings, productCoverageGaps, discrepancies, viewContext, scoreDetails, architecture, null);
     }
 
+    public DecisionRationaleReport(String title, String languageTag, String requirement, ReportStatus status,
+            ReportMetadata metadata, ExecutiveSummary executiveSummary, List<DecisionChapter> chapters,
+            List<LeafCandidate> leadingLeaves, List<String> warnings, List<ProductCoverageGap> productCoverageGaps,
+            List<TaxonomyDiscrepancy> discrepancies, ViewContext viewContext, Map<String, AnalysisScoreDetail> scoreDetails,
+            ArchitectureReportDocument architecture, DecisionReportScope scope) {
+        this(title, languageTag, requirement, status, metadata, executiveSummary, chapters, leadingLeaves,
+                warnings, productCoverageGaps, discrepancies, viewContext, scoreDetails, architecture, scope, Map.of());
+    }
+
+    public DecisionRationaleReport withNodeAssessments(Map<String, List<RequirementNodeAssessment>> assessments) {
+        return new DecisionRationaleReport(title, languageTag, requirement, status, metadata, executiveSummary,
+                chapters, leadingLeaves, warnings, productCoverageGaps, discrepancies, viewContext,
+                scoreDetails, architecture, scope, assessments);
+    }
+
     public DecisionRationaleReport withTitle(String displayTitle) {
         return new DecisionRationaleReport(displayTitle, languageTag, requirement, status, metadata, executiveSummary,
                 chapters, leadingLeaves, warnings, productCoverageGaps, discrepancies, viewContext,
-                scoreDetails, architecture, scope);
+                scoreDetails, architecture, scope, nodeAssessments);
     }
 
     public DecisionRationaleReport withScope(DecisionReportScope selection) {
         return new DecisionRationaleReport(title, languageTag, requirement, status, metadata, executiveSummary,
                 chapters, leadingLeaves, warnings, productCoverageGaps, discrepancies, viewContext,
-                scoreDetails, architecture, selection);
+                scoreDetails, architecture, selection, nodeAssessments);
     }
 
     public DecisionRationaleReport(String title, String languageTag, String requirement, ReportStatus status,
@@ -82,7 +100,7 @@ public record DecisionRationaleReport(
     }
     public DecisionRationaleReport withArchitecture(com.taxonomy.reporting.api.document.ArchitectureReportDocument document) {
         return new DecisionRationaleReport(title,languageTag,requirement,status,metadata,executiveSummary,chapters,
-                leadingLeaves,warnings,productCoverageGaps,discrepancies,viewContext,scoreDetails,document,scope);
+                leadingLeaves,warnings,productCoverageGaps,discrepancies,viewContext,scoreDetails,document,scope,nodeAssessments);
     }
 
     /** Coverage changes the qualification of conclusions, never the original requirement or scores. */
@@ -109,7 +127,7 @@ public record DecisionRationaleReport(
                         + executiveSummary.conciseConclusion(), executiveSummary.methodologyNote());
         return new DecisionRationaleReport(title, languageTag, requirement, ReportStatus.DRAFT_INCOMPLETE,
                 metadata, summary, chapters, leadingLeaves, notes, productCoverageGaps,
-                discrepancies, viewContext, scoreDetails, architecture, scope.withCoverage(coverage));
+                discrepancies, viewContext, scoreDetails, architecture, scope.withCoverage(coverage), nodeAssessments);
     }
 
     /** Backward-compatible constructor used by the hierarchy builder before score adaptation. */

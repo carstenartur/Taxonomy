@@ -10,6 +10,7 @@ import com.taxonomy.dto.AnalysisReasonLength;
 import com.taxonomy.dto.AnalysisCoverage;
 import com.taxonomy.dto.AnalysisScoreSemantics;
 import com.taxonomy.dto.RootAssessment;
+import com.taxonomy.dto.RequirementNodeAssessment;
 import com.taxonomy.dto.ProductCoverageGap;
 import com.taxonomy.dto.TaxonomyDiscrepancy;
 import com.taxonomy.dto.TaxonomyNodeDto;
@@ -64,9 +65,14 @@ public class LlmService {
      * budget — a taxonomy inconsistency signal.
      */
     record ScoreParseResult(Map<String, Double> scores, Map<String, String> reasons,
-                            TaxonomyDiscrepancy discrepancy, Map<String, RootAssessment> rootAssessments) {
+                            TaxonomyDiscrepancy discrepancy, Map<String, RootAssessment> rootAssessments,
+                            Map<String, List<RequirementNodeAssessment>> nodeAssessments) {
+        ScoreParseResult {
+            nodeAssessments = RequirementNodeAssessment.immutableMap(nodeAssessments);
+        }
+
         ScoreParseResult(Map<String, Double> scores, Map<String, String> reasons, TaxonomyDiscrepancy discrepancy) {
-            this(scores, reasons, discrepancy, Map.of());
+            this(scores, reasons, discrepancy, Map.of(), Map.of());
         }
         ScoreParseResult(Map<String, Double> scores, Map<String, String> reasons) {
             this(scores, reasons, null);
@@ -478,6 +484,7 @@ public class LlmService {
         result.setAnalysisReasonLength(AnalysisReasonContext.current());
         result.setAnalysisLanguage(AnalysisLanguageContext.current());
         result.setReasons(run.allReasons);
+        result.setNodeAssessments(run.nodeAssessments);
         result.setProvider(getActiveProviderName());
         result.setDiscrepancies(run.allDiscrepancies);
         result.setProductCoverageGaps(run.productCoverageGaps);
@@ -511,6 +518,7 @@ public class LlmService {
     private static final class RootScoringRun {
         final Map<String, Double> allScores = new HashMap<>();
         final Map<String, AnalysisScoreSemantics.NodeContext> scoreContexts = new LinkedHashMap<>();
+        final Map<String, List<RequirementNodeAssessment>> nodeAssessments = new LinkedHashMap<>();
         final Map<String, String> allReasons = new LinkedHashMap<>();
         final Map<String, String> failedAssessments = new LinkedHashMap<>();
         final List<TaxonomyDiscrepancy> allDiscrepancies = new ArrayList<>();
@@ -553,6 +561,7 @@ public class LlmService {
                     businessText, List.of(root), 100, ScoreAssessmentKind.ROOT_RELEVANCE);
             Map<String, Double> rootScore = rootDetail.getScores();
             run.allScores.putAll(rootScore);
+            run.nodeAssessments.putAll(rootDetail.getNodeAssessments());
             if (rootDetail.getReasons() != null) {
                 run.allReasons.putAll(rootDetail.getReasons());
             }
@@ -569,7 +578,7 @@ public class LlmService {
                 List<TaxonomyNode> level1Children = taxonomyService.getChildrenOf(root.getCode());
                 if (!level1Children.isEmpty()) {
                     analyzeNodesPropagating(
-                            businessText, level1Children, run.allScores, run.allReasons,
+                            businessText, level1Children, run.allScores, run.allReasons, run.nodeAssessments,
                             run.allDiscrepancies, run.productCoverageGaps, run.warnings, score,
                             run.scoreContexts, run.failedAssessments, null);
                 }
@@ -583,6 +592,7 @@ public class LlmService {
         } catch (AnalysisStoppedException stopped) {
             run.allScores.putAll(stopped.partialScores());
             run.allReasons.putAll(stopped.partialReasons());
+            run.nodeAssessments.putAll(stopped.partialNodeAssessments());
             run.allDiscrepancies.addAll(stopped.partialDiscrepancies());
             retainRootClarification(stopped.completedCallEvidence(), run.failedAssessments);
             run.warnings.add(stopped.getMessage());
@@ -637,6 +647,7 @@ public class LlmService {
                                           List<TaxonomyNode> nodes,
                                           Map<String, Double> allScores,
                                           Map<String, String> allReasons,
+                                          Map<String, List<RequirementNodeAssessment>> nodeAssessments,
                                           List<TaxonomyDiscrepancy> allDiscrepancies,
                                           List<ProductCoverageGap> productCoverageGaps,
                                           List<String> warnings,
@@ -658,6 +669,7 @@ public class LlmService {
         LlmCallDetail detail = batch.detail();
         Map<String, Double> scores = detail.getScores();
         allScores.putAll(scores);
+        nodeAssessments.putAll(detail.getNodeAssessments());
         if (detail.getReasons() != null) {
             allReasons.putAll(detail.getReasons());
         }
@@ -684,7 +696,7 @@ public class LlmService {
                     if (callback != null) callback.onExpanding(entry.getKey(),
                             children.stream().map(TaxonomyNode::getCode).toList());
                     analyzeNodesPropagating(
-                            businessText, children, allScores, allReasons,
+                            businessText, children, allScores, allReasons, nodeAssessments,
                             allDiscrepancies, productCoverageGaps, warnings, entry.getValue(), scoreContexts, failedAssessments, callback);
                 }
             }
@@ -720,6 +732,7 @@ public class LlmService {
         if (AnalysisRunControl.active()) AnalysisRunControl.planNodes(plannedTree);
         Map<String, Double> allScores = new HashMap<>();
         Map<String, String> allReasons = new LinkedHashMap<>();
+        Map<String, List<RequirementNodeAssessment>> nodeAssessments = new LinkedHashMap<>();
         List<TaxonomyDiscrepancy> allDiscrepancies = new ArrayList<>();
         List<ProductCoverageGap> productCoverageGaps = new ArrayList<>();
         List<String> warnings = new ArrayList<>();
@@ -737,6 +750,7 @@ public class LlmService {
                         ScoreAssessmentKind.ROOT_RELEVANCE);
                 double rootScore = rootDetail.getScores().getOrDefault(root.getCode(), 0d);
                 allScores.putAll(rootDetail.getScores());
+                nodeAssessments.putAll(rootDetail.getNodeAssessments());
                 if (rootDetail.getReasons() != null) allReasons.putAll(rootDetail.getReasons());
                 if (rootDetail.getDiscrepancy() != null) {
                     allDiscrepancies.add(rootDetail.getDiscrepancy());
@@ -753,7 +767,7 @@ public class LlmService {
                     if (!level1Children.isEmpty()) {
                         callback.onExpanding(root.getCode(),
                                 level1Children.stream().map(TaxonomyNode::getCode).toList());
-                        analyzeNodesPropagating(businessText, level1Children, allScores, allReasons,
+                        analyzeNodesPropagating(businessText, level1Children, allScores, allReasons, nodeAssessments,
                                 allDiscrepancies, productCoverageGaps, warnings, rootScore, null, openAssessments, callback);
                     }
                 }
@@ -761,22 +775,24 @@ public class LlmService {
 
             callback.onComplete(warnings.isEmpty() ? "SUCCESS" : "PARTIAL", allScores, allReasons,
                     warnings, allDiscrepancies, productCoverageGaps,
-                    streamingCoverage(scope, plannedTree, allScores, openAssessments, null));
+                    streamingCoverage(scope, plannedTree, allScores, openAssessments, null), nodeAssessments);
         } catch (AnalysisStoppedException stopped) {
             allScores.putAll(stopped.partialScores());
             allReasons.putAll(stopped.partialReasons());
+            nodeAssessments.putAll(stopped.partialNodeAssessments());
             allDiscrepancies.addAll(stopped.partialDiscrepancies());
             retainRootClarification(stopped.completedCallEvidence(), openAssessments);
             warnings.add(stopped.getMessage());
             callback.onError("PARTIAL", stopped.getMessage(),
                     allScores, allReasons, warnings, allDiscrepancies, productCoverageGaps,
-                    streamingCoverage(scope, plannedTree, allScores, openAssessments, "INTERRUPTED:" + stopped.reason().name()));
+                    streamingCoverage(scope, plannedTree, allScores, openAssessments, "INTERRUPTED:" + stopped.reason().name()),
+                    nodeAssessments);
         } catch (Exception e) {
             AnalysisExecutionFailures.rethrow(e);
             log.error("Streaming analysis failed", e);
             callback.onError("PARTIAL", "Analysis failed: " + e.getMessage(),
                     allScores, allReasons, warnings, allDiscrepancies, productCoverageGaps,
-                    streamingCoverage(scope, plannedTree, allScores, openAssessments, "INTERRUPTED:FAILURE"));
+                    streamingCoverage(scope, plannedTree, allScores, openAssessments, "INTERRUPTED:FAILURE"), nodeAssessments);
         }
     }
 
@@ -1162,9 +1178,10 @@ public class LlmService {
 
         try {
             ScoreParseResult parsed = responseParser.parseIndependentScoreParseResult(
-                    rawText, products, 0);
+                    rawText, products, 0, businessText);
             recordProductScores(detail, parsed.scores(), products, minimumScore);
             detail.setReasons(parsed.reasons());
+            detail.setNodeAssessments(parsed.nodeAssessments());
             recordSuccess();
         } catch (AnalysisStoppedException stopped) {
             throw stopped;
@@ -1371,7 +1388,7 @@ public class LlmService {
                 return ScoreParseResult.empty(nodes);
             }
             try {
-                ScoreParseResult result = responseParser.parseScoreParseResult(rawText, nodes, parentScore);
+                ScoreParseResult result = responseParser.parseScoreParseResult(rawText, nodes, parentScore, ScoreAssessmentKind.CHILD_BUDGET, businessText);
                 recordSuccess();
                 return result;
             } catch (AnalysisStoppedException stopped) {
@@ -1444,7 +1461,7 @@ public class LlmService {
         String rawText = gateway.extractResponseText(apiResponseBody);
         if (rawText == null) return responseParser.zeroScores(nodes);
         try {
-            return responseParser.parseScoreParseResult(rawText, nodes, parentScore).scores();
+            return responseParser.parseScoreParseResult(rawText, nodes, parentScore, ScoreAssessmentKind.CHILD_BUDGET, businessText).scores();
         } catch (AnalysisStoppedException stopped) {
             throw stopped;
         } catch (Exception e) {
@@ -1575,9 +1592,10 @@ public class LlmService {
 
         if (rawText != null) {
             try {
-                ScoreParseResult parsed = responseParser.parseScoreParseResult(rawText, nodes, parentScore, kind);
+                ScoreParseResult parsed = responseParser.parseScoreParseResult(rawText, nodes, parentScore, kind, businessText);
                 detail.setScores(parsed.scores());
                 detail.setReasons(parsed.reasons());
+                detail.setNodeAssessments(parsed.nodeAssessments());
                 detail.setDiscrepancy(parsed.discrepancy());
                 detail.setRootAssessments(parsed.rootAssessments());
                 parsed.rootAssessments().values().stream().filter(RootAssessment::unresolved).findFirst()

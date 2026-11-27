@@ -260,7 +260,8 @@ final class MailAnalysisProcessor {
                 reasons, result.getProvider(), result.getStatus(), result.getDiscrepancies(), result.getProductCoverageGaps(),
                 scope.selectedTree(result.getTree()), null, details, result.getAnalysisDurationMillis())
                 .withRecordedReasons(result.getReasons()).withScope(scope, result.getAnalysisCoverage())
-                .withAnalysisReasonLength(result.getAnalysisReasonLength());
+                .withAnalysisReasonLength(result.getAnalysisReasonLength())
+                .withNodeAssessments(result.getNodeAssessments());
         var options = new DecisionReportOptions(DecisionReportOptions.Profile.COMPACT, scope.taxonomyRoots(),
                 null, null, null, false);
 

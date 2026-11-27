@@ -1,5 +1,7 @@
 package com.taxonomy.portfolio.reformulation;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.taxonomy.dsl.ast.BlockAst;
 import com.taxonomy.dsl.ast.DocumentAst;
 import com.taxonomy.dsl.ast.MetaAst;
@@ -13,7 +15,13 @@ import com.taxonomy.portfolio.model.ProjectRequirement;
 import com.taxonomy.portfolio.model.ProjectRequirementVersion;
 import com.taxonomy.portfolio.model.PortfolioTenantIdentity;
 import com.taxonomy.reformulation.ReformulationBaseline;
+import tools.jackson.core.JsonParser;
+import tools.jackson.core.JsonToken;
+import tools.jackson.databind.DeserializationContext;
 import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ValueDeserializer;
+import tools.jackson.databind.annotation.JsonDeserialize;
+import tools.jackson.databind.deser.jdk.StringDeserializer;
 import tools.jackson.databind.node.ObjectNode;
 import com.taxonomy.portfolio.repository.ArchitectureProjectRepository;
 import com.taxonomy.portfolio.repository.ProjectRequirementRepository;
@@ -110,11 +118,40 @@ public class ReformulationEvidenceCodec {
     /** Frozen exact archive and separate prompt-safe projection of its historical decisions. */
     public record LineageSnapshot(List<Evidence> entries, List<String> roots, String decisionContext) {}
 
+    /** Use the baseline's normal constructor checks while reading only the frozen context text used by ancestry. */
+    private record AncestryBaseline(ReformulationBaseline.Scope scope, long sourceVersionId,
+                                   String snapshotId, String adoptedLineage) {
+        @JsonCreator
+        static AncestryBaseline from(@JsonProperty("scope") ReformulationBaseline.Scope scope,
+                @JsonProperty("sourceVersionId") long sourceVersionId, @JsonProperty("originalText") String originalText,
+                @JsonProperty("originalTextHash") String originalTextHash, @JsonProperty("snapshotId") String snapshotId,
+                @JsonProperty("snapshotPayload") String snapshotPayload,
+                @JsonProperty("frozenContext") @JsonDeserialize(contentUsing = AncestryContextText.class) Map<String, String> frozenContext,
+                @JsonProperty("language") String language, @JsonProperty("algorithmVersion") String algorithmVersion) {
+            var checked = new ReformulationBaseline(scope, sourceVersionId, originalText, originalTextHash,
+                    snapshotId, snapshotPayload, frozenContext, language, algorithmVersion);
+            return new AncestryBaseline(scope, sourceVersionId, snapshotId, checked.frozenContext().get("adoptedLineage"));
+        }
+    }
+
+    private static final class AncestryContextText extends ValueDeserializer<String> {
+        @Override
+        public String deserialize(JsonParser parser, DeserializationContext context) {
+            // Advancing past a lazy JSON string skips its contents without building a second catalogue in memory.
+            // Preserve every key, null and non-string coercion for the ordinary map and baseline validation.
+            if (parser.hasToken(JsonToken.VALUE_STRING) && !"adoptedLineage".equals(parser.currentName())) return "";
+            return StringDeserializer.instance.deserialize(parser, context);
+        }
+    }
+
+    private record SourceEvidence(List<Evidence> roots, List<Evidence> ancestors) {}
+
     public LineageSnapshot freezeSource(String scopeKey, Long requirementId, Long versionId,
             String projectKey, String requirementKey, int versionNumber, String contentHash) {
         var receipts = adoptions.findByRequirementIdAndTargetVersionIdAndScopeKey(
                 requirementId, versionId, scopeKey);
-        List<Evidence> roots = new ArrayList<>(sourceEvidenceFor(receipts, scopeKey));
+        var local = sourceEvidenceFor(receipts, scopeKey);
+        List<Evidence> roots = new ArrayList<>(local.roots());
         for (ReformulationPortableEvidence stored : importedEvidence.findMatchingCurrent(
                 scopeKey, projectKey, requirementKey, versionNumber, contentHash)) {
             roots.add(fromStored(stored));
@@ -132,7 +169,7 @@ public class ReformulationEvidenceCodec {
             merge(unique, entry);
         }
         if (roots.isEmpty()) return new LineageSnapshot(List.of(), List.of(), "[]");
-        for (Evidence ancestor : sourceClosure(receipts, scopeKey)) merge(unique, ancestor);
+        for (Evidence ancestor : local.ancestors()) merge(unique, ancestor);
         var pending = new ArrayList<>(roots);
         for (int index = 0; index < pending.size(); index++) {
             for (String hash : ancestorHashes(pending.get(index))) {
@@ -201,9 +238,9 @@ public class ReformulationEvidenceCodec {
                         scopeKey)) {
             merge(byHash, fromStored(stored));
         }
-        for (Evidence evidence : sourceEvidence(scopeKey)) {
-            merge(byHash, evidence);
-        }
+        var local = sourceEvidenceFor(adoptions.findByScopeKeyOrderByCreatedAtAsc(scopeKey), scopeKey);
+        local.roots().forEach(evidence -> merge(byHash, evidence));
+        local.ancestors().forEach(evidence -> merge(byHash, evidence));
 
         byHash.values().stream()
                 .sorted(Comparator.comparing(Evidence::projectKey)
@@ -291,27 +328,17 @@ public class ReformulationEvidenceCodec {
         }
     }
 
-    private List<Evidence> sourceEvidence(String scopeKey) {
-        var rows = adoptions.findByScopeKeyOrderByCreatedAtAsc(scopeKey);
-        var result = new ArrayList<>(sourceEvidenceFor(rows, scopeKey));
-        result.addAll(sourceClosure(rows, scopeKey));
-        return result;
-    }
-
-    private List<Evidence> sourceClosure(List<ReformulationAdoption> rows, String scopeKey) {
-        var result = new ArrayList<Evidence>();
-        for (var row : rows) result.addAll(ancestry(row, scopeKey).entries());
-        return result;
-    }
-
-    private LineageSnapshot ancestry(ReformulationAdoption receipt, String scopeKey) {
+    private LineageSnapshot ancestry(ReformulationAdoption receipt, String scopeKey, Long previewSourceVersionId) {
         var proposal = proposals.findById(receipt.getProposalId())
                 .orElseThrow(() -> PortfolioException.conflict("Adopted proposal is missing"));
         if (!scopeKey.equals(receipt.getScopeKey()) || !scopeKey.equals(proposal.getScopeKey())
                 || !Objects.equals(receipt.getRequirementId(), proposal.getRequirementId())) {
             throw PortfolioException.conflict("Adopted proposal scope is inconsistent");
         }
-        ReformulationBaseline baseline = json.read(proposal.getBaselinePayload(), ReformulationBaseline.class);
+        if (!Objects.equals(previewSourceVersionId, proposal.getSourceVersionId())) {
+            throw PortfolioException.conflict("Adopted source baseline does not match preview");
+        }
+        AncestryBaseline baseline = json.read(proposal.getBaselinePayload(), AncestryBaseline.class);
         PortfolioTenantIdentity tenant = PortfolioTenantIdentity.parse(scopeKey);
         String workspaceId = tenant.workspaceScope().equals(PortfolioTenantIdentity.CENTRAL_SCOPE)
                 ? null : tenant.workspaceScope().substring(PortfolioTenantIdentity.WORKSPACE_SCOPE_PREFIX.length());
@@ -325,7 +352,7 @@ public class ReformulationEvidenceCodec {
                 || !Objects.equals(proposal.getSnapshotId(), baseline.snapshotId())) {
             throw PortfolioException.conflict("Adopted proposal baseline does not match physical scope and source");
         }
-        String frozen = baseline.frozenContext().get("adoptedLineage");
+        String frozen = baseline.adoptedLineage();
         if (frozen == null) return new LineageSnapshot(List.of(), List.of(), "[]");
         LineageSnapshot lineage = json.readStrictEvidence(frozen, LineageSnapshot.class);
         if (lineage == null || lineage.roots() == null || lineage.entries() == null
@@ -335,8 +362,8 @@ public class ReformulationEvidenceCodec {
         return lineage;
     }
 
-    private List<Evidence> sourceEvidenceFor(List<ReformulationAdoption> rows, String scopeKey) {
-        if (rows.isEmpty()) return List.of();
+    private SourceEvidence sourceEvidenceFor(List<ReformulationAdoption> rows, String scopeKey) {
+        if (rows.isEmpty()) return new SourceEvidence(List.of(), List.of());
 
         record SourceRow(
                 ReformulationAdoption adoption,
@@ -381,6 +408,7 @@ public class ReformulationEvidenceCodec {
         }
 
         List<Evidence> result = new ArrayList<>(sources.size());
+        List<Evidence> ancestors = new ArrayList<>();
         for (SourceRow row : sources) {
             ReformulationAdoption adoption = row.adoption();
             ReformulationAdoptionDtos.Result receipt = row.receipt();
@@ -426,11 +454,8 @@ public class ReformulationEvidenceCodec {
                     receipt.actor(),
                     receipt.rationale(),
                     preview.revision());
-            LineageSnapshot ancestry = ancestry(adoption, scopeKey);
-            if (!Objects.equals(preview.sourceVersionId(),
-                    proposals.findById(adoption.getProposalId()).orElseThrow().getSourceVersionId())) {
-                throw PortfolioException.conflict("Adopted source baseline does not match preview");
-            }
+            LineageSnapshot ancestry = ancestry(adoption, scopeKey, preview.sourceVersionId());
+            ancestors.addAll(ancestry.entries());
             for (String ancestor : ancestry.roots()) {
                 Evidence parent = ancestry.entries().stream().filter(e -> e.evidenceHash().equals(ancestor))
                         .findFirst().orElseThrow(() -> PortfolioException.conflict("Adopted source ancestry is missing"));
@@ -453,7 +478,7 @@ public class ReformulationEvidenceCodec {
                     hash,
                     value.targetContentHash()));
         }
-        return result;
+        return new SourceEvidence(result, ancestors);
     }
 
     private Evidence validate(BlockAst block, DocumentAst document) {

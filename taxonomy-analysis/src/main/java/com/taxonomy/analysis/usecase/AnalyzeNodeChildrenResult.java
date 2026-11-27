@@ -1,6 +1,8 @@
 package com.taxonomy.analysis.usecase;
 
+import java.util.List;
 import java.util.Map;
+import com.taxonomy.dto.RequirementNodeAssessment;
 import com.taxonomy.dto.AnalysisReasonLength;
 
 /** Stable response contract for one interactive child-node evaluation. */
@@ -15,14 +17,24 @@ public record AnalyzeNodeChildrenResult(
         String analysisOperationId,
         String analysisProviderId,
         AnalysisReasonLength analysisReasonLength,
-        com.taxonomy.dto.AnalysisLanguage analysisLanguage) {
+        com.taxonomy.dto.AnalysisLanguage analysisLanguage,
+        Map<String, List<RequirementNodeAssessment>> nodeAssessments) {
 
     public AnalyzeNodeChildrenResult {
         scores = scores == null ? Map.of() : Map.copyOf(scores);
         reasons = reasons == null ? Map.of() : Map.copyOf(reasons);
+        nodeAssessments = RequirementNodeAssessment.immutableMap(nodeAssessments);
         prompt = prompt == null ? "" : prompt;
         rawResponse = rawResponse == null ? "" : rawResponse;
         provider = provider == null ? "" : provider;
+    }
+
+    public AnalyzeNodeChildrenResult(Map<String, Double> scores, Map<String, String> reasons, String prompt,
+                                     String rawResponse, String provider, long durationMs, String error,
+                                     String analysisOperationId, String analysisProviderId, AnalysisReasonLength length,
+                                     com.taxonomy.dto.AnalysisLanguage language) {
+        this(scores, reasons, prompt, rawResponse, provider, durationMs, error,
+                analysisOperationId, analysisProviderId, length, language, Map.of());
     }
 
     public AnalyzeNodeChildrenResult(Map<String, Double> scores, Map<String, String> reasons, String prompt,
@@ -41,12 +53,12 @@ public record AnalyzeNodeChildrenResult(
 
     public AnalyzeNodeChildrenResult withAnalysisLanguage(com.taxonomy.dto.AnalysisLanguage language) {
         return new AnalyzeNodeChildrenResult(scores, reasons, prompt, rawResponse, provider, durationMs, error,
-                analysisOperationId, analysisProviderId, analysisReasonLength, language);
+                analysisOperationId, analysisProviderId, analysisReasonLength, language, nodeAssessments);
     }
 
     public AnalyzeNodeChildrenResult withAnalysisReasonLength(AnalysisReasonLength length) {
         return new AnalyzeNodeChildrenResult(scores, reasons, prompt, rawResponse, provider, durationMs, error,
-                analysisOperationId, analysisProviderId, length, analysisLanguage);
+                analysisOperationId, analysisProviderId, length, analysisLanguage, nodeAssessments);
     }
 
     public AnalyzeNodeChildrenResult(Map<String, Double> scores, Map<String, String> reasons, String prompt,
@@ -56,7 +68,7 @@ public record AnalyzeNodeChildrenResult(
 
     public AnalyzeNodeChildrenResult withFollowUpContext(String operationId, String providerId) {
         return new AnalyzeNodeChildrenResult(scores, reasons, prompt, rawResponse, provider, durationMs, error,
-                operationId, providerId, analysisReasonLength, analysisLanguage);
+                operationId, providerId, analysisReasonLength, analysisLanguage, nodeAssessments);
     }
 
     public static AnalyzeNodeChildrenResult empty() {

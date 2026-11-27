@@ -213,6 +213,7 @@
                                 data.rawScores || data.scores || {}, true, true);
                         } else S.currentScores = data.scores || {};
                         S.currentReasons = data.reasons || {};
+                        S.currentNodeAssessments = data.nodeAssessments || {};
                         // Portable reports remain display evidence, not an owned execution reference.
                         S.currentCopilot = data.copilot || null;
                         S.currentModelBinding = data.modelBinding || null;
@@ -322,7 +323,10 @@
                     const hasScores = S.currentScores !== null &&
                         typeof S.currentScores === 'object' &&
                         Object.keys(S.currentScores).length > 0;
-                    if (!hasScores) {
+                    const hasEvidence = window.__TaxonomyAnalysisSessionContext?.hasDerivedAnalysis?.()
+                        ?? (hasScores || Object.values(S.currentNodeAssessments || {})
+                            .some(claims => Array.isArray(claims) && claims.length > 0));
+                    if (!hasEvidence) {
                         businessTextEl.classList.remove('stale-results');
                         return;
                     }
@@ -1011,10 +1015,18 @@
         if (!exportGroup) { return; }
         const hasScores = S.currentScores && Object.values(S.currentScores)
             .some(v => typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 100);
-        exportGroup.style.display = hasScores ? '' : 'none';
+        const hasAssessments = Object.values(S.currentNodeAssessments || {})
+            .some(claims => Array.isArray(claims) && claims.length > 0);
+        const hasEvidence = Boolean(hasScores || hasAssessments);
+        exportGroup.style.display = hasEvidence ? '' : 'none';
         if (exportHint) {
-            exportHint.classList.toggle('d-none', hasScores);
+            exportHint.classList.toggle('d-none', hasEvidence);
         }
+        // These formats carry numeric/legacy content; evidence-only reports use HTML, Word or JSON.
+        ['exportCsv', 'exportReportMd'].forEach(function (id) {
+            const button = document.getElementById(id);
+            if (button) button.disabled = !hasScores || Boolean(window.__TaxonomyAnalysisSessionContext?.isStale?.());
+        });
         // Share scores with other modules (e.g. taxonomy-analysis.js)
         window._taxonomyCurrentScores = S.currentScores;
     }
@@ -1097,7 +1109,7 @@
         }
         if (btnId === 'exportDecisionReportDocx') {
             var decisionTextElement = document.getElementById('businessText');
-            var decisionText = decisionTextElement ? decisionTextElement.value.trim() : '';
+            var decisionText = S.lastAnalyzedText ?? (decisionTextElement ? decisionTextElement.value : '');
             var selectedProvider = document.getElementById('providerSelect');
             var decisionProvider = S.lastAnalysisProvider
                 || (selectedProvider ? selectedProvider.value : '')
@@ -1109,7 +1121,7 @@
                 scoreDetails: S.currentScoreDetails || {},
                 productSuitabilityScores: S.currentProductSuitabilityScores || {},
                 scoreSemanticsVersion: S.scoreSemanticsVersion || 0,
-                reasons: S.currentReasons || {},
+                reasons: S.currentReasons || {}, nodeAssessments: S.currentNodeAssessments || {},
                 businessText: decisionText,
                 provider: decisionProvider,
                 analysisStatus: S.lastAnalysisStatus || 'UNKNOWN',
@@ -1160,12 +1172,12 @@
             var format = formatMap[btnId];
             var ext = extMap[btnId];
             var bt = document.getElementById('businessText');
-            var businessText = bt ? bt.value : '';
+            var businessText = S.lastAnalyzedText ?? (bt ? bt.value : '');
             var session = window.__TaxonomyAnalysisSessionContext;
             var reference = session?.matchesAnalysisReference?.() ? session.runtime.analysisReference : null;
             var reportRequest = reference ? { analysisReference: reference } : {
                 scores: S.currentScores, businessText: businessText, minScore: 20,
-                reasons: S.currentReasons || {}, analysisLanguage: S.lastAnalysisLanguage || null
+                reasons: S.currentReasons || {}, nodeAssessments: S.currentNodeAssessments || {}, analysisLanguage: S.lastAnalysisLanguage || null
             };
             reportRequest.language = window.TaxonomyContentLanguage?.documentLanguage(S.lastAnalysisLanguage);
             window.ExportApi.report(format, reportRequest, reference ? {pinnedWorkspaceId:reference.workspaceId} : {})
@@ -2110,6 +2122,8 @@
 
                 // Update global reasons
                 Object.assign(S.currentReasons, reasons);
+                S.currentNodeAssessments = Object.assign({}, S.currentNodeAssessments || {}, result.nodeAssessments || {});
+                window.TaxonomyRequirementEvidence?.refresh();
 
                 // Append entry to LLM communication log
                 SC().appendLlmLogEntry(parentCode, rawScores, result);
@@ -2182,6 +2196,7 @@
                                         document.dispatchEvent(new CustomEvent('taxonomy:analysis-manual-edit'));
                                         SC().applyLocalRawScores({ [code]: val });
                                         S.currentReasons[code] = t('browse.manual.reason');
+                                        if (S.currentNodeAssessments) delete S.currentNodeAssessments[code];
                                         S.lastAnalysisReasonLength = null;
                                         S.lastAnalysisLanguage = null;
                                         SC().syncVisibleScoreNodes();
@@ -2300,6 +2315,7 @@
         S.analysisOperationId = null;
         S.analysisProviderId = null;
         S.currentReasons = {};
+        S.currentNodeAssessments = {};
         S.lastAnalysisReasonLength = null;
         S.lastAnalysisLanguage = null;
         S.activeAnalysisLanguage = null;
@@ -3099,6 +3115,7 @@
         S.currentView = 'list';
         SC().applyLocalRawScores({}, true);
         S.currentReasons = {};
+        S.currentNodeAssessments = {};
 
         renderView(S.taxonomyData, null);
         // Manual scoring is an explicit expert action over the complete taxonomy.
@@ -3169,6 +3186,7 @@
         S.activeAnalysisLanguage = null;
         window.TaxonomyAnalysisScope?.acceptResult?.(null);
         S.currentReasons = reasons;
+        S.currentNodeAssessments = {};
         window._taxonomyCurrentScores = S.currentScores;
 
         renderView(S.taxonomyData, S.currentScores);

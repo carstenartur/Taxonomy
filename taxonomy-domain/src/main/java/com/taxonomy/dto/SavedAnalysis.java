@@ -33,6 +33,26 @@ public class SavedAnalysis {
     public AnalysisCopilotResult getCopilot() { return copilot; }
     public void setCopilot(AnalysisCopilotResult value) { copilot = value; }
 
+    /** Recorded node interpretations carried by portable saved analyses. */
+    private Map<String, List<RequirementNodeAssessment>> nodeAssessments = Map.of();
+
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_EMPTY)
+    public Map<String, List<RequirementNodeAssessment>> getNodeAssessments() { return nodeAssessments; }
+
+    public void setNodeAssessments(Map<String, List<RequirementNodeAssessment>> values) {
+        if (values != null && values.size() > 25_000)
+            throw new IllegalArgumentException("Too many node assessments");
+        nodeAssessments = RequirementNodeAssessment.immutableMap(values);
+    }
+
+    public void validateNodeAssessments() {
+        nodeAssessments.forEach((code, assessments) -> {
+            if (code.length() > 256 || !code.equals(code.strip()))
+                throw new IllegalArgumentException("Invalid node assessment identity");
+            assessments.forEach(assessment -> assessment.requireOriginalSource(requirement));
+        });
+    }
+
     /** Recorded content language; absent historical values stay unknown. */
     private AnalysisLanguage analysisLanguage;
     public AnalysisLanguage getAnalysisLanguage() { return analysisLanguage; }

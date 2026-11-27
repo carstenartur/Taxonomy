@@ -2,6 +2,8 @@ package com.taxonomy.analysis.service;
 
 import com.taxonomy.dto.LlmCallDetail;
 import com.taxonomy.dto.RootAssessment;
+import com.taxonomy.dto.RequirementNodeAssessment;
+import java.util.List;
 import com.taxonomy.dto.TaxonomyDiscrepancy;
 
 import java.util.LinkedHashMap;
@@ -14,6 +16,7 @@ final class LlmDetailAccumulator {
     private final Map<String, Double> scores = new LinkedHashMap<>();
     private final Map<String, Double> assessedProductScores = new LinkedHashMap<>();
     private final Map<String, String> reasons = new LinkedHashMap<>();
+    private final Map<String, List<RequirementNodeAssessment>> nodeAssessments = new LinkedHashMap<>();
     private final Map<String, RootAssessment> rootAssessments = new LinkedHashMap<>();
     private final StringBuilder prompts = new StringBuilder();
     private final StringBuilder responses = new StringBuilder();
@@ -29,6 +32,7 @@ final class LlmDetailAccumulator {
         if (detail.getReasons() != null) reasons.putAll(detail.getReasons());
         assessedProductScores.putAll(detail.getAssessedProductScores());
         rootAssessments.putAll(detail.getRootAssessments());
+        nodeAssessments.putAll(detail.getNodeAssessments());
         if (provider == null) provider = detail.getProvider();
         if (discrepancy == null) discrepancy = detail.getDiscrepancy();
         duration += detail.getDurationMs();
@@ -54,6 +58,7 @@ final class LlmDetailAccumulator {
         result.setReasons(reasons);
         result.setAssessedProductScores(assessedProductScores);
         result.setRootAssessments(rootAssessments);
+        result.setNodeAssessments(nodeAssessments);
         result.setProvider(provider);
         result.setPrompt(prompts.toString());
         result.setRawResponse(responses.toString());

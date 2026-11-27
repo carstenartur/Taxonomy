@@ -28,6 +28,110 @@ class DecisionExportScopeTest {
             node("BP", "Processes", 0, node("CP-looking", "Actually a process", 1)));
     private final WorkspaceContext context = new WorkspaceContext("author", "workspace", "main", "repo");
 
+
+    @Test
+    void liveDecisionHttpAcceptsScorelessClaimsAndRejectsEmptyEvidence() throws Exception {
+        var taxonomy = mock(TaxonomyService.class);
+        var process = new com.taxonomy.catalog.model.TaxonomyNode();
+        process.setCode("BP");
+        process.setTaxonomyRoot("BP");
+        process.setNameEn("Processes");
+        when(taxonomy.getRootNodes()).thenReturn(List.of(process));
+        when(taxonomy.getChildrenMap()).thenReturn(Map.of());
+        when(taxonomy.getFingerprintTree()).thenReturn(tree);
+        when(taxonomy.toFingerprintTree(any())).thenReturn(tree);
+        var catalogue = mock(TaxonomyCatalogueMetadataService.class);
+        when(catalogue.getMetadata()).thenReturn(new TaxonomyCatalogueMetadataService.CatalogueMetadata(
+                "catalogue.xlsx", "v1", "hash", "source", null, null, null, null));
+        var build = mock(DecisionReportBuildMetadataService.class);
+        when(build.current()).thenReturn(new DecisionReportBuildMetadataService.BuildMetadata("1", "commit"));
+        var reports = new DecisionRationaleReportService(taxonomy, catalogue, build, "UTC");
+        var repositories = mock(com.taxonomy.versioning.service.RepositoryStateService.class);
+        when(repositories.readSelectedViewContext(context)).thenReturn(Optional.of(
+                new ViewContext("commit", "main", null, false, false, false)));
+        var workspaces = mock(com.taxonomy.workspace.service.WorkspaceResolver.class);
+        when(workspaces.resolveUnambiguousContextForRead()).thenReturn(context);
+        var mapper = new tools.jackson.databind.ObjectMapper();
+        var renderers = new com.taxonomy.reporting.render.document.ReportRendererRegistry(List.of(
+                new com.taxonomy.reporting.render.decision.DecisionRationaleJsonRenderer(mapper)));
+        var controller = new com.taxonomy.composition.report.DecisionRationaleReportController(reports, renderers,
+                repositories, workspaces, new DecisionRationaleScoreSemanticsAdapter(), taxonomy);
+        var mvc = org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(controller).build();
+        var base = Map.<String, Object>of("businessText", "Frozen requirement", "scores", Map.of());
+        var payload = new LinkedHashMap<>(base);
+        payload.put("nodeAssessments", Map.of("BP", List.of(unresolved("Which retention interval?"))));
+        var response = mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                .post("/api/decision-report/json").contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsBytes(payload)))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
+                .andReturn().getResponse();
+        var json = mapper.readTree(response.getContentAsByteArray());
+        assertThat(json.path("nodeAssessments").path("BP").get(0).path("question").asString())
+                .isEqualTo("Which retention interval?");
+        assertThat(json.path("metadata").path("evaluatedNodeCount").asInt()).isZero();
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                .post("/api/decision-report/json").contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsBytes(base)))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isBadRequest());
+    }
+
+    @Test
+    void selectedExportsKeepOnlyInScopeScorelessClaimsAndTheWholeSourceDigest() throws Exception {
+        var selectedClaim = unresolved("Selected question?");
+        var foreignClaim = unresolved("Other root question?");
+        var input = input(Map.of()).withNodeAssessments(Map.of(
+                "BP-looking", List.of(selectedClaim), "CP-looking", List.of(foreignClaim)));
+        var full = generate(input, null);
+        var selected = generate(input, compact("CP"));
+        assertThat(selected.nodeAssessments()).containsOnlyKeys("BP-looking");
+        assertThat(full.nodeAssessments()).containsOnlyKeys("BP-looking", "CP-looking");
+        assertThat(selected.metadata().analysisSnapshotFingerprintSha256())
+                .isEqualTo(full.metadata().analysisSnapshotFingerprintSha256());
+        assertThat(selected.scope().selectedNodeCodes()).contains("BP-looking", "CP", "CP-zero");
+
+        var diagrams = new com.taxonomy.reporting.render.decision.DecisionChapterDiagramRenderer();
+        var json = new tools.jackson.databind.ObjectMapper();
+        var bytes = new com.taxonomy.reporting.render.decision.DecisionRationaleJsonRenderer(json)
+                .render(com.taxonomy.extension.api.report.ReportRenderContext.ofPayload(selected)).bytes();
+        var claims = json.readTree(bytes).path("nodeAssessments");
+        assertThat(claims.path("BP-looking").get(0).path("question").asString()).isEqualTo("Selected question?");
+        assertThat(claims.has("CP-looking")).isFalse();
+        var html = new com.taxonomy.reporting.render.decision.DecisionRationaleHtmlRenderer(diagrams).render(selected);
+        assertThat(html).contains("Selected question?", "Nodes with recorded evidence: 1", "Not assessed: 2")
+                .doesNotContain("Other root question?");
+        var word = new com.taxonomy.reporting.render.decision.DecisionRationaleDocxRenderer(diagrams).render(selected);
+        try (var document = new org.apache.poi.xwpf.usermodel.XWPFDocument(new java.io.ByteArrayInputStream(word));
+                var extractor = new org.apache.poi.xwpf.extractor.XWPFWordExtractor(document)) {
+            assertThat(extractor.getText()).contains("Selected question?", "Nodes with recorded evidence: 1", "Not assessed: 2")
+                    .doesNotContain("Other root question?");
+        }
+    }
+
+    @Test
+    void analysisScopeRejectsForeignPositiveAssessmentWithoutAScore() {
+        var scope = new AnalysisScope(Set.of("CP"), AnalysisMode.TAXONOMIES_ONLY);
+        var base = input(Map.of()).withScope(scope, null);
+        var supported = new RequirementNodeAssessment("Frozen requirement",
+                List.of(RequirementNodeAssessment.SubjectKind.PROCESS), List.of(RequirementNodeAssessment.RequirementKind.FUNCTIONAL),
+                RequirementNodeAssessment.ContributionType.SUPPORTS, RequirementNodeAssessment.EvidenceStatus.SUPPORTED,
+                RequirementNodeAssessment.EvidenceBasis.EXPLICIT, RequirementNodeAssessment.Necessity.REQUIRED,
+                RequirementNodeAssessment.Scope.DELIVERY, "", "Captured supporting evidence.", "");
+        assertThat(generate(base.withNodeAssessments(Map.of("BP-looking", List.of(supported))), null).nodeAssessments())
+                .containsOnlyKeys("BP-looking");
+        assertThatIllegalArgumentException()
+                .isThrownBy(() -> generate(base.withNodeAssessments(Map.of("CP-looking", List.of(supported))), null));
+        assertThatIllegalArgumentException()
+                .isThrownBy(() -> generate(input(Map.of()).withNodeAssessments(Map.of("unknown", List.of(supported))), null));
+    }
+
+    private static RequirementNodeAssessment unresolved(String question) {
+        return new RequirementNodeAssessment("Frozen requirement", List.of(RequirementNodeAssessment.SubjectKind.PROCESS),
+                List.of(RequirementNodeAssessment.RequirementKind.FUNCTIONAL), RequirementNodeAssessment.ContributionType.DIRECT_SUBJECT,
+                RequirementNodeAssessment.EvidenceStatus.UNRESOLVED, RequirementNodeAssessment.EvidenceBasis.UNSPECIFIED,
+                RequirementNodeAssessment.Necessity.UNDETERMINED, RequirementNodeAssessment.Scope.UNSPECIFIED,
+                "", "More detail is needed.", question);
+    }
+
     @Test
     void completedSelectedAnalysisDoesNotRequireUnselectedRoots() {
         var report = generate(input(Map.of("CP", 80d, "BP-looking", 80d, "CP-zero", 0d))

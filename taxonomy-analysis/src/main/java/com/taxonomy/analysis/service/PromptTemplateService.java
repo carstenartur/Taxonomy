@@ -31,8 +31,9 @@ import java.util.regex.Pattern;
 @Service
 public class PromptTemplateService {
 
-    public static final String FUNCTIONAL_SCOPE_POLICY = "functional-necessity-v1";
-    public static final String ROOT_RELEVANCE_POLICY = "root-relevance-v2";
+    public static final String NODE_ASSESSMENT_POLICY = "requirement-node-assessment-v3";
+    public static final String FUNCTIONAL_SCOPE_POLICY = "functional-necessity-v2";
+    public static final String ROOT_RELEVANCE_POLICY = "root-relevance-v3";
 
     private static final Pattern PLACEHOLDER = Pattern.compile("\\{\\{[A-Z_]+\\}\\}");
 
@@ -197,6 +198,7 @@ public class PromptTemplateService {
     public Map<String, String> analysisFingerprintTemplates(boolean includeRelationOverrides) {
         var templates = new TreeMap<>(effectiveTemplates());
         INDEPENDENT_CODES.forEach(templates::remove);
+        templates.put(NODE_ASSESSMENT_POLICY, nodeAssessmentContract());
         for (String code : RELATION_CODES) {
             if (!includeRelationOverrides || Objects.equals(templates.get(code), defaults.get(code))) {
                 templates.remove(code);
@@ -229,7 +231,8 @@ public class PromptTemplateService {
                 "{{TAXONOMY_NAME}}", name,
                 "{{PARENT_SCORE}}", com.taxonomy.dto.AnalysisPercentages.canonical(parentScore),
                 "{{EXPECTED_KEYS}}", expectedKeys != null ? expectedKeys : "")) + numericContract()
-                + childAllocationContract(parentScore) + functionalScopeContract() + reasonContract() + AnalysisLanguageContext.promptContract();
+                + childAllocationContract(parentScore) + functionalScopeContract() + reasonContract()
+                + nodeAssessmentContract() + AnalysisLanguageContext.promptContract();
     }
 
     /** Evaluates one catalogue root independently, without a child allocation budget. */
@@ -240,7 +243,8 @@ public class PromptTemplateService {
                 "{{NODE_LIST}}", nodeList,
                 "{{TAXONOMY_NAME}}", TAXONOMY_NAMES.getOrDefault(taxonomyCode, taxonomyCode),
                 "{{EXPECTED_KEYS}}", taxonomyCode)) + numericContract() + "This root is assessed independently, not normalized across taxonomy roots.\n"
-                + functionalScopeContract() + rootRelevanceContract() + reasonContract() + AnalysisLanguageContext.promptContract();
+                + functionalScopeContract() + rootRelevanceContract() + reasonContract()
+                + nodeAssessmentContract() + AnalysisLanguageContext.promptContract();
     }
 
     /** Root relevance has an explicit undecided outcome, unlike an allocated child budget. */
@@ -254,7 +258,7 @@ public class PromptTemplateService {
                 + "If missing facts or unresolved implementation alternatives prevent that decision, use UNRESOLVED with score null and one concrete clarification question. "
                 + "Not unconditionally necessary does not mean irrelevant. Do not turn missing detail into a zero, an invented positive score or a confidence percentage. "
                 + "A supported broad contribution may be relevant while its particular technology remains unspecified; do not invent that technology. "
-                + "For every typed root reply use exactly status, score, reason and question; give a nonempty reason (at most 2000 characters). "
+                + "For every typed root reply use exactly status, score, reason, question and assessments; give a nonempty reason (at most 2000 characters). "
                 + "For RELEVANT and IRRELEVANT set question to an empty string; for UNRESOLVED give a nonempty question (at most 1000 characters). "
                 + "The null score exception for UNRESOLVED overrides the numeric-only wording above. "
                 + "Do not infer a deployed relationship from a root score.\n";
@@ -267,7 +271,61 @@ public class PromptTemplateService {
                 + "Explain which requested function needs each using the catalogue. If an allowed implementation works without a contribution, "
                 + "it is not unconditionally required. Catalogue availability, customary design or generic usefulness is insufficient. "
                 + "Scope necessity to function, not vendor. Preserve exclusions, conditions, alternatives and open choices; "
-                + "missing information is not rejection. Keep schema and numeric rules; scores do not prove edges.\n";
+                + "missing information is not rejection. Keep schema and numeric rules. "
+                + "A requirement-to-node contribution or a score does not prove a directed architecture edge. "
+                + "Verify each edge's direction, function and conditions against its own evidence. "
+                + "Existing context and generated relation hypotheses are not new requirements.\n";
+    }
+
+    static String nodeAssessmentContract() {
+        return """
+
+                Mandatory passage evidence policy (%s).
+                Keep each existing offered node ID and its score and reason. Add "assessments" to each node object,
+                alongside its existing fields. This overrides any older response example that omits that field.
+                Use [] if there is no meaningful passage to assess. Use up to 8 distinct claims and keep claims
+                for separate passages or different contributions separate. Give each claim exactly these keys:
+                - requirementQuote: a verbatim substring of the original Business Requirement (up to 8000 characters).
+                  Preserve spelling, punctuation, spacing and language. Never quote catalogue descriptions, generated
+                  summaries or translations as requirement evidence. Use "" only for unresolved or neutral claims that assert no fact.
+                  EXPLICIT evidence always requires a quote.
+                - subjectKinds: one or more distinct values from PRODUCT, SERVICE, PROCESS, INFORMATION, ROLE, CAPABILITY, UNSPECIFIED.
+                  Classify what the original passage is about. Its subject may differ from the offered catalogue node's kind.
+                - requirementKinds: one or more distinct values from FUNCTIONAL, QUALITY, CONSTRAINT, ORGANIZATIONAL, CONTEXT, GOAL, UNSPECIFIED.
+                - contributionType: choose the direction expressed in the original passage.
+                  DIRECT_SUBJECT: the passage describes the node's own function or activity.
+                  PROVIDES: the requested product or service supplies the node's function.
+                  SUPPORTS: the request enables a downstream activity without specifying its execution.
+                  REQUIRES: the requested outcome depends on the node's function.
+                  CONSTRAINS: the passage limits the node's behaviour or permitted implementation.
+                  UNDETERMINED: the passage does not establish how the request and the node relate.
+                - evidenceStatus: SUPPORTED, UNRESOLVED, CONFLICT, NOT_APPLICABLE or OUT_OF_SCOPE.
+                - evidenceBasis: EXPLICIT, INFERRED or UNSPECIFIED. This describes the relationship to this exact node,
+                  not merely whether the quotation is explicit. Use INFERRED when moving from a stated outcome to a
+                  possible implementation, a specialized workflow, an actor-facing application or an incident context.
+                - necessity: REQUIRED, OPTIONAL, ALTERNATIVE, CONTEXT or UNDETERMINED.
+                  REQUIRED can be conditional. An obligation triggered "bei Bedarf in Abstimmung" remains REQUIRED once
+                  the condition applies. Record the condition. Use OPTIONAL when delivery is at the implementer's discretion.
+                - scope: DELIVERY, EXISTING_ENVIRONMENT, UNSPECIFIED or EXCLUDED.
+                - condition: the applicability condition, or "" when none (up to 1000 characters).
+                - rationale: a concise nonempty explanation connecting the passage and the node (up to 2000 characters).
+                - question: one concrete question for UNRESOLVED, "" for every other status (up to 1000 characters).
+                SUPPORTED requires a quoted passage, a determined contribution and evidence basis. An inferred, indirect
+                contribution can be supported. A direct match can be unresolved. Supported OPTIONAL or ALTERNATIVE claims
+                require their condition. CONFLICT requires a quoted passage and an explanation of the conflict.
+                A shared or existing service may support delivery while remaining EXISTING_ENVIRONMENT. Avoid inferring
+                requested delivery from existing infrastructure, conditions, exclusions or implementation choices.
+                Bind necessity and delivery scope to the specific node contribution, not to the quoted obligation alone.
+                A required outcome does not make every plausible supporting application or process a required deliverable.
+                Identify the matched subfunction in the rationale. Do not import other functions, actors, triggers or
+                lifecycle obligations from the catalogue definition. For example, a traceable process does not by itself
+                establish a mandatory user-operated application; generic recovery does not establish an incident workflow.
+                If the source establishes only a possible implementation or downstream use, retain that limitation with
+                INFERRED evidence, UNDETERMINED/CONTEXT necessity and UNSPECIFIED/EXISTING_ENVIRONMENT scope as appropriate.
+                Use UNRESOLVED with a concrete question when that missing distinction affects the proposed requirement.
+                Interpret necessity and evidence independently of the ranking score. Several contributions can all be REQUIRED.
+                A low score is insufficient evidence of conflict. A node contribution does not verify an architecture edge.
+                """.formatted(NODE_ASSESSMENT_POLICY);
     }
 
     static String childAllocationContract(double parentScore) {
@@ -320,7 +378,8 @@ public class PromptTemplateService {
                 "{{NODE_LIST}}", nodeList,
                 "{{EXPECTED_KEYS}}", expectedKeys != null ? expectedKeys : "",
                 "{{MIN_SCORE}}", String.valueOf(minimumScore))) + numericContract() + "Product suitability is independent of parent relevance; do not divide the category budget between products.\n"
-                + functionalScopeContract() + reasonContract() + AnalysisLanguageContext.promptContract();
+                + functionalScopeContract() + reasonContract()
+                + nodeAssessmentContract() + AnalysisLanguageContext.promptContract();
     }
 
     private static String reasonContract() {

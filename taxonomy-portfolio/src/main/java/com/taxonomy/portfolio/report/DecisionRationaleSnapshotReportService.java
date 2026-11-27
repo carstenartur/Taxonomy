@@ -80,9 +80,10 @@ public class DecisionRationaleSnapshotReportService {
         RequirementAnalysisSnapshot snapshot = loadSnapshot(projectId, snapshotId, username, workspaceContext);
         String analysisPayload = snapshot.getAnalysisPayload();
         AnalysisResult analysis = jsonCodec.read(analysisPayload, AnalysisResult.class);
-        if (analysis == null || analysis.getScores() == null || analysis.getScores().isEmpty()) {
+        if (analysis == null || (analysis.getScores() == null || analysis.getScores().isEmpty())
+                && analysis.getNodeAssessments().isEmpty()) {
             throw PortfolioException.conflict(
-                    "The analysis snapshot does not contain reportable score evidence");
+                    "The analysis snapshot does not contain reportable score evidence or requirement assessments");
         }
         if (analysis.getTree() == null || analysis.getTree().isEmpty()) {
             throw PortfolioException.conflict(
@@ -116,7 +117,8 @@ public class DecisionRationaleSnapshotReportService {
                 provenance,
                 scoreDetails, analysis.getAnalysisDurationMillis()).withRecordedReasons(analysis.getReasons())
                 .withScope(jsonCodec.readField(analysisPayload, "analysisScope", com.taxonomy.dto.AnalysisScope.class), analysis.getAnalysisCoverage())
-                .withAnalysisReasonLength(analysis.getAnalysisReasonLength());
+                .withAnalysisReasonLength(analysis.getAnalysisReasonLength())
+                .withNodeAssessments(analysis.getNodeAssessments());
         DecisionRationaleReport report = options == null
                 ? reportService.generate(input, workspaceContext, historicalViewContext, effectiveLocale)
                 : reportService.generate(input, workspaceContext, historicalViewContext, effectiveLocale, options);

@@ -689,6 +689,10 @@
         var state = node('div', text('Warte auf den Server …', 'Waiting for the server …'));
         var work = node('div', undefined, 'mt-2');
         work.id = 'analysisWorkProgress';
+        var assessmentNotice = node('div', '', 'small text-body-secondary mt-1');
+        assessmentNotice.id = 'analysisRequirementEvidenceNotice';
+        assessmentNotice.hidden = true;
+        var hasFinalAssessments = false;
         // The concise state above announces changes; individual bars remain readable
         // without announcing the entire catalogue again on every progress event.
         work.setAttribute('aria-live', 'off');
@@ -890,7 +894,7 @@
             button.className = 'btn btn-sm mt-2 ' + (disabled ? 'btn-outline-secondary' : 'btn-danger');
             button.textContent = label;
         }
-        panel.append(title, state, work, queueDuration, duration, diagnostics, warning, button, retryResult);
+        panel.append(title, state, work, assessmentNotice, queueDuration, duration, diagnostics, warning, button, retryResult);
         var anchor = document.getElementById('statusArea') || document.getElementById('analyzeBtn');
         if (anchor) anchor.insertAdjacentElement('afterend', panel);
         var log = document.getElementById('llmCommLogContent');
@@ -940,8 +944,13 @@
                 omitted.textContent += text(' Abschlussprotokoll nicht verfügbar; angezeigt bleibt der zuletzt beobachtete Stand.',
                     ' Final diagnostic status unavailable; showing the last observed state.');
             },
-            finished: function (status, measuredDuration) {
+            finished: function (status, measuredDuration, finalAssessmentsComplete) {
                 retryResult.hidden = true;
+                if (finalAssessmentsComplete) {
+                    hasFinalAssessments = true;
+                    assessmentNotice.hidden = true;
+                    assessmentNotice.textContent = '';
+                }
                 if (status === 'REJECTED') {
                     title.textContent = text('Analyse nicht gestartet', 'Analysis did not start');
                     state.textContent = text('Start abgewiesen. Es gibt keinen gespeicherten Lauf.',
@@ -1003,6 +1012,10 @@
                     'Cancellation requested. An in-flight HTTP call may continue until its timeout.');
             },
             render: function (snapshot, monitor) {
+                assessmentNotice.hidden = hasFinalAssessments || snapshot.nodeAssessmentsTruncated !== true;
+                assessmentNotice.textContent = assessmentNotice.hidden ? '' : text(
+                    'Weitere erfasste Einordnungen sind im Endergebnis verfügbar.',
+                    'More recorded assessments are available in the final result.');
                 renderWork(snapshot);
                 var phase = phases[snapshot.phase];
                 if (snapshot.phase === 'RELATIONS' && snapshot.relationProgress && ['SOURCES', 'NAVIGATE', 'VERIFY'].indexOf(snapshot.relationProgress.step) >= 0)
@@ -1166,16 +1179,21 @@
             view.unavailable('CONNECTION_LOST', true);
         };
         var finished = false;
-        monitor.finish = function (status, refreshDiagnostics, measuredDuration) {
+        monitor.finish = function (status, refreshDiagnostics, measuredDuration, finalResult) {
             if (finished || active !== monitor) return;
             finished = true;
             monitor.stop();
-            view.finished(status, measuredDuration);
+            // A diagnostic snapshot may still be bounded after the full result arrives.
+            // Only an accepted, untruncated final map can close its preview notice.
+            var finalAssessmentsComplete = Boolean(finalResult && finalResult.nodeAssessments
+                && typeof finalResult.nodeAssessments === 'object' && !Array.isArray(finalResult.nodeAssessments)
+                && finalResult.nodeAssessmentsTruncated !== true);
+            view.finished(status, measuredDuration, finalAssessmentsComplete);
             if (refreshDiagnostics === false) return;
             monitor.finalSnapshot().then(function (snapshot) {
                 if (!snapshot || active !== monitor || !monitor.isInScope()) return;
                 view.render(snapshot, monitor);
-                view.finished(status, measuredDuration);
+                view.finished(status, measuredDuration, finalAssessmentsComplete);
             }).catch(function () {
                 if (active === monitor && monitor.isInScope()) view.finalDiagnosticsUnavailable();
             });

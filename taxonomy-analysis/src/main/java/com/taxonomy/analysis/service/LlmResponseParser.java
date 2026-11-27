@@ -3,6 +3,8 @@ package com.taxonomy.analysis.service;
 import tools.jackson.core.exc.StreamReadException;
 import tools.jackson.core.StreamReadFeature;
 import com.taxonomy.analysis.assessment.ChildAssessmentContract;
+import com.taxonomy.analysis.assessment.RequirementAssessmentContract;
+import com.taxonomy.dto.RequirementNodeAssessment;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.DeserializationFeature;
@@ -26,6 +28,9 @@ import java.util.function.BiFunction;
 public class LlmResponseParser {
 
     private static final Logger log = LoggerFactory.getLogger(LlmResponseParser.class);
+
+    private static final Set<String> SCORE_FIELDS = Set.of("score", "reason", "assessments");
+    private static final Set<String> ROOT_FIELDS = Set.of("status", "score", "reason", "question");
 
     private final ObjectMapper objectMapper;
 
@@ -154,6 +159,11 @@ public class LlmResponseParser {
                                                               List<TaxonomyNode> nodes,
                                                               double parentScore,
                                                               ScoreAssessmentKind kind) throws Exception {
+        return parseScoreParseResult(text, nodes, parentScore, kind, null);
+    }
+
+    public LlmService.ScoreParseResult parseScoreParseResult(String text, List<TaxonomyNode> nodes,
+            double parentScore, ScoreAssessmentKind kind, String originalRequirement) throws Exception {
         Objects.requireNonNull(kind);
         com.taxonomy.dto.AnalysisPercentages.require(parentScore);
         if (kind == ScoreAssessmentKind.ROOT_RELEVANCE && (nodes.size() != 1
@@ -167,16 +177,17 @@ public class LlmResponseParser {
             String code = nodes.getFirst().getCode();
             Object value = raw.get(code);
             if (value instanceof Map<?, ?> object && object.containsKey("status"))
-                return typedRootAssessment(code, object);
-            if (value instanceof Map<?, ?> object && !Set.of("score", "reason").containsAll(object.keySet()))
-                throw new IllegalArgumentException("Unsupported field in legacy root assessment for " + code);
+                return typedRootAssessment(code, object, originalRequirement);
         }
 
         Map<String, Double> scores = new LinkedHashMap<>();
         Map<String, String> reasons = new LinkedHashMap<>();
+        Map<String, List<RequirementNodeAssessment>> assessments = new LinkedHashMap<>();
         for (Map.Entry<String, Object> entry : raw.entrySet()) {
             String code = entry.getKey();
             Object value = entry.getValue();
+            if (value instanceof Map<?, ?> object)
+                readNodeAssessments(code, object, originalRequirement, assessments);
             Object scoreValue = value instanceof Map<?, ?> object ? object.get("score") : value;
             if (!(scoreValue instanceof Number number)) {
                 throw new IllegalArgumentException("Category response for " + code
@@ -202,7 +213,7 @@ public class LlmResponseParser {
         }
 
         if (kind == ScoreAssessmentKind.ROOT_RELEVANCE) {
-            return new LlmService.ScoreParseResult(scores, reasons, null);
+            return new LlmService.ScoreParseResult(scores, reasons, null, Map.of(), assessments);
         }
 
         BigDecimal decimalSum = scores.values().stream().map(BigDecimal::valueOf)
@@ -227,11 +238,13 @@ public class LlmResponseParser {
         }
 
         log.info("LLM Scores parsed (target {}, raw sum {}): {}", parentScore, rawSum, finalScores);
-        return new LlmService.ScoreParseResult(finalScores, reasons, discrepancy);
+        return new LlmService.ScoreParseResult(finalScores, reasons, discrepancy, Map.of(), assessments);
     }
 
-    private LlmService.ScoreParseResult typedRootAssessment(String code, Map<?, ?> object) {
-        if (!object.keySet().equals(Set.of("status", "score", "reason", "question"))
+    private LlmService.ScoreParseResult typedRootAssessment(String code, Map<?, ?> object, String originalRequirement) {
+        var fields = new HashSet<>(object.keySet());
+        fields.remove("assessments");
+        if (!fields.equals(ROOT_FIELDS)
                 || !(object.get("status") instanceof String status)
                 || !(object.get("reason") instanceof String reason)
                 || !(object.get("question") instanceof String question))
@@ -241,8 +254,9 @@ public class LlmResponseParser {
             throw new IllegalArgumentException("A root assessment score must be a JSON number or null when unresolved");
         Double score = value == null ? null : com.taxonomy.dto.AnalysisPercentages.require((Number) value);
         var assessment = new RootAssessment(RootAssessment.Status.valueOf(status), score, reason, question);
+        var nodeAssessments = RequirementAssessmentContract.decode(object, originalRequirement);
         return new LlmService.ScoreParseResult(assessment.unresolved() ? Map.of() : Map.of(code, score),
-                Map.of(code, assessment.reason()), null, Map.of(code, assessment));
+                Map.of(code, assessment.reason()), null, Map.of(code, assessment), Map.of(code, nodeAssessments));
     }
 
     /**
@@ -253,12 +267,18 @@ public class LlmResponseParser {
      */
     public LlmService.ScoreParseResult parseIndependentScoreParseResult(
             String text, List<TaxonomyNode> nodes, int minimumScore) throws Exception {
+        return parseIndependentScoreParseResult(text, nodes, minimumScore, null);
+    }
+
+    public LlmService.ScoreParseResult parseIndependentScoreParseResult(
+            String text, List<TaxonomyNode> nodes, int minimumScore, String originalRequirement) throws Exception {
         Map<String, Object> raw = parseChildAssessment(text,
                 nodes.stream().map(TaxonomyNode::getCode).toList(), (code, value) -> value);
 
         int threshold = Math.max(0, Math.min(100, minimumScore));
         Map<String, Double> scores = new LinkedHashMap<>();
         Map<String, String> reasons = new LinkedHashMap<>();
+        Map<String, List<RequirementNodeAssessment>> assessments = new LinkedHashMap<>();
         for (TaxonomyNode node : nodes) {
             Object value = raw.get(node.getCode());
             if (!(value instanceof Map<?, ?> object)) {
@@ -266,6 +286,7 @@ public class LlmResponseParser {
                         "Independent product response for " + node.getCode()
                                 + " must be an object containing score and reason");
             }
+            readNodeAssessments(node.getCode(), object, originalRequirement, assessments);
             Object scoreValue = object.get("score");
             if (!(scoreValue instanceof Number number)) {
                 throw new IllegalArgumentException(
@@ -293,7 +314,15 @@ public class LlmResponseParser {
             reasons.put(node.getCode(), reason);
         }
         log.info("Independent product scores parsed (threshold {}): {}", threshold, scores);
-        return new LlmService.ScoreParseResult(scores, reasons, null);
+        return new LlmService.ScoreParseResult(scores, reasons, null, Map.of(), assessments);
+    }
+
+    private static void readNodeAssessments(String code, Map<?, ?> node, String originalRequirement,
+            Map<String, List<RequirementNodeAssessment>> assessments) {
+        if (!SCORE_FIELDS.containsAll(node.keySet()))
+            throw new IllegalArgumentException("Unsupported field in node response for " + code);
+        var values = RequirementAssessmentContract.decode(node, originalRequirement);
+        if (!values.isEmpty()) assessments.put(code, values);
     }
 
     // ── Score normalization ───────────────────────────────────────────────────

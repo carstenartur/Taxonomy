@@ -23,6 +23,12 @@ record SnapshotClarifications(List<DecisionQuestion> questions, List<Section> se
     static SnapshotClarifications from(AnalysisResult analysis, String snapshot, PortfolioJsonCodec json) {
         var questions = new LinkedHashMap<String, DecisionQuestion>();
         if (analysis == null) return new SnapshotClarifications(List.of(), List.of());
+        analysis.getNodeAssessments().forEach((code, assessments) -> assessments.forEach(assessment -> {
+            if (assessment.evidenceStatus() != com.taxonomy.dto.RequirementNodeAssessment.EvidenceStatus.UNRESOLVED) return;
+            // Preserve claim-specific context and conditionality; the same wording can concern different passages.
+            add(questions, snapshot, "REQUIREMENT_CONTRIBUTION", List.of(code), assessment.question(),
+                    json.write(assessment), assessment.contributionType().name(), json);
+        }));
         if (analysis.getAnalysisCoverage() != null) {
             analysis.getAnalysisCoverage().nodes().forEach((code, assessment) -> {
                 var reason = assessment.reason();

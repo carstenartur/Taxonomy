@@ -214,7 +214,8 @@ public class SnapshotWordReportService {
             var captured = recordedRelationReasons.get(edge.id());
             if (captured != null) relationReasons.put(edge.id(), captured);
         }
-        document = document.withNodeReasons(nodeReasons).withRelationReasons(relationReasons);
+        document = document.withNodeReasons(nodeReasons).withRelationReasons(relationReasons)
+                .withNodeAssessments(decision.nodeAssessments());
         // Enforce the complete document ceiling before allocating any PNG or DOCX buffers.
         if (wordLayout) new ArchitectureFigurePlanner().plan(graph, scene);
         return document;

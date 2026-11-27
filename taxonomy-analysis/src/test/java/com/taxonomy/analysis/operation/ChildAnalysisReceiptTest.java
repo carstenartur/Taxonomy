@@ -6,6 +6,8 @@ import com.taxonomy.analysis.usecase.AnalyzeNodeChildrenResult;
 import com.taxonomy.analysis.usecase.JustifyLeafResult;
 import com.taxonomy.dto.AnalysisLanguage;
 import com.taxonomy.dto.AnalysisReasonLength;
+import com.taxonomy.dto.RequirementNodeAssessment;
+import com.taxonomy.dto.RequirementNodeAssessment.*;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
 import java.util.Map;
@@ -19,8 +21,11 @@ class ChildAnalysisReceiptTest {
     final String hash = "c".repeat(64);
 
     @Test void archiveChecksParentIdPinAndDiagnosticPrivacyBeforeRestoringNativeNode() {
+        var assessment = new RequirementNodeAssessment("input", List.of(SubjectKind.SERVICE), List.of(RequirementKind.FUNCTIONAL),
+                ContributionType.SUPPORTS, EvidenceStatus.SUPPORTED, EvidenceBasis.INFERRED,
+                Necessity.REQUIRED, Scope.DELIVERY, "", "The service supports the function.", "");
         var node = new AnalyzeNodeChildrenResult(Map.of("child", 91d), Map.of("child","because"), "", "", "Gemini", 7,
-                null, id, "GEMINI", AnalysisReasonLength.SHORT, AnalysisLanguage.GERMAN);
+                null, id, "GEMINI", AnalysisReasonLength.SHORT, AnalysisLanguage.GERMAN, Map.of("child", List.of(assessment)));
         var pin = new Binding("GEMINI", null, AnalysisReasonLength.SHORT, AnalysisLanguage.GERMAN, RequirementReference.adHoc("input"));
         var stored = json.valueToTree(new AnalysisNodeReceipts.BoundNode(node, pin, new AnalysisNodeReceipts.Source("CP", hash, null)));
         ChildAnalysisReceipt.validate("NODE_CHILDREN", id, stored);
@@ -30,6 +35,13 @@ class ChildAnalysisReceiptTest {
         var target = UUID.randomUUID().toString();
         var moved = ChildAnalysisReceipt.restoreResult("NODE_CHILDREN", id, target, stored);
         assertThat(moved.path("result").path("analysisOperationId").asString()).isEqualTo(target);
+        assertThat(moved.path("result").path("nodeAssessments").path("child").path(0).path("requirementQuote").asString())
+                .isEqualTo("input");
+        var tamperedAssessment = (tools.jackson.databind.node.ObjectNode) moved.path("result")
+                .path("nodeAssessments").path("child").path(0);
+        tamperedAssessment.put("prompt", "private wire data");
+        assertThatThrownBy(() -> ChildAnalysisReceipt.validate("NODE_CHILDREN", target, moved))
+                .isInstanceOf(IllegalArgumentException.class);
         assertThat(stored.path("result").path("analysisOperationId").asString()).isEqualTo(id);
         var tampered = (tools.jackson.databind.node.ObjectNode) stored.get("result");
         tampered.put("rawResponse","private wire response");

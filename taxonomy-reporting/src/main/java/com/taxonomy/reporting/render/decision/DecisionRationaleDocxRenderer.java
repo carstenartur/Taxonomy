@@ -188,6 +188,8 @@ public class DecisionRationaleDocxRenderer implements ReportRendererExtension {
             writer.paragraph(report.executiveSummary().methodologyNote());
             if (options.includes(DecisionReportOptions.Section.TITLE_PAGE)) renderTitleEvidence(document, report, labels);
         }
+        com.taxonomy.reporting.render.document.RequirementEvidenceSection.writeWord(writer, report.nodeAssessments(),
+                report.scope().selectedNodeCodes(), labels);
         if (options.includes(DecisionReportOptions.Section.TREE)) {
             if (options.showResponsibilities() && report.scope().decisionTree().responsibilitiesByCode().isEmpty())
                 writer.paragraph(labels.noResponsibilities());

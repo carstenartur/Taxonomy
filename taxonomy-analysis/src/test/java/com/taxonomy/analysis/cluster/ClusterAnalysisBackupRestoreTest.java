@@ -118,6 +118,49 @@ class ClusterAnalysisBackupRestoreTest {
         }
     }
 
+    @Test void requirementEvidenceMustMatchOriginalAndFrozenRootAcrossArchivedCopies() throws Exception {
+        try (var source = new Database(); var target = new Database()) {
+            var original = context("semantic-archive-source"); source.admitFrozen(original);
+            var cp = result("CP", 70);
+            var supported = RequirementAssessmentClusterTest.supported("requirement", "A capability supports the request.");
+            var open = RequirementAssessmentClusterTest.open();
+            cp.setNodeAssessments(Map.of("CP", List.of(supported)));
+            source.store.accept(source.complete(source.task(CP), cp));
+            var ip = new AnalysisResult(Map.of(), List.of());
+            ip.setStatus("PARTIAL");
+            ip.setNodeAssessments(Map.of("IP", List.of(open)));
+            source.store.accept(source.complete(source.task(IP), ip));
+            var archive = exportedArchive(source);
+            var destination = targetContext("semantic-archive-target");
+            var importer = new ClusterAnalysisBackupRestorer(target.em, target.transactions, JSON);
+            for (var altered : List.of(
+                    Map.of("CP", List.of(RequirementAssessmentClusterTest.supported("forged source", supported.rationale()))),
+                    Map.of("IP", List.of(supported)),
+                    Map.of("CP", List.of(RequirementAssessmentClusterTest.supported("requirement", "Conflicting copy."))))) {
+                cp.setNodeAssessments(altered);
+                var first = (tools.jackson.databind.node.ObjectNode) JSON.valueToTree(archive.work().getFirst());
+                first.put("resultJson", JSON.writeValueAsString(cp));
+                var work = new ArrayList<>(archive.work());
+                work.set(0, JSON.treeToValue(first, Work.class));
+                var mutated = new Archive(archive.run(), work, archive.inputs(), archive.events(), archive.calls(), archive.attempts());
+                assertThrows(IllegalArgumentException.class, () -> importer.restore(mutated, destination, targetCommand()));
+            }
+            var aggregate = JSON.readValue(archive.run().resultJson(), AnalysisResult.class);
+            aggregate.setNodeAssessments(Map.of("foreign", List.of(supported)));
+            var row = (tools.jackson.databind.node.ObjectNode) JSON.valueToTree(archive.run());
+            row.put("resultJson", JSON.writeValueAsString(aggregate));
+            var mutated = new Archive(JSON.treeToValue(row, Run.class), archive.work(), archive.inputs(),
+                    archive.events(), archive.calls(), archive.attempts());
+            assertThrows(IllegalArgumentException.class, () -> importer.restore(mutated, destination, targetCommand()));
+            assertRestoredClosureEmpty(target);
+
+            importer.restore(archive, destination, targetCommand());
+            var saved = target.store.snapshot(destination).result();
+            assertEquals(Map.of("CP", List.of(supported), "IP", List.of(open)), saved.getNodeAssessments());
+            assertFalse(saved.getRawScores().containsKey("IP"));
+        }
+    }
+
     @Test void backupRetainsWaitingPredecessorHistoryWithoutResumingItOnRestore() throws Exception {
         try (var source = new Database(); var target = new Database()) {
             var original = context("waiting-source"); source.admitFrozen(original);
@@ -238,7 +281,10 @@ class ClusterAnalysisBackupRestoreTest {
             var original = context("live-progress-source"); source.admitFrozen(original);
             var task = source.task(CP); var input = source.store.start(task);
             var worker = source.store.diagnostics(task, input.deliveryAttempt());
-            var detail = new com.taxonomy.dto.LlmCallDetail(); detail.setScores(Map.of("CP", 70)); worker.assessment(detail);
+            var detail = new com.taxonomy.dto.LlmCallDetail(); detail.setScores(Map.of("CP", 70));
+            detail.setNodeAssessments(Map.of("CP", List.of(
+                    RequirementAssessmentClusterTest.supported("requirement", "The catalogue capability supports this requirement."))));
+            worker.assessment(detail);
             var archive = exportedArchive(source); var restored = targetContext("live-progress-restored");
             new ClusterAnalysisBackupRestorer(target.em, target.transactions, JSON).restore(archive, restored, targetCommand());
             try (var observer = new DurableClusterAnalysisObservation(target.store, new ClusterAnalysisSignals(), AnalysisEventPublisher.NONE)) {
@@ -249,6 +295,7 @@ class ClusterAnalysisBackupRestoreTest {
             }
             assertTrue(target.sent.isEmpty());
             var targetTask = archive(target, restored.operationId()).work().getFirst();
+            assertEquals(detail.getNodeAssessments(), ClusterAnalysisProgress.read(targetTask.progressJson(), JSON).nodeAssessments());
             var message = (AnalysisTaskMessage) new com.taxonomy.analysis.dag.json.AnalysisMessageCodec()
                     .decode(targetTask.messageJson().getBytes(StandardCharsets.UTF_8));
             assertFalse(target.store.start(message).executable());

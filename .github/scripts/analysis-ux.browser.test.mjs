@@ -1210,6 +1210,74 @@ const importedArchitecture = {
     notes: ['IMPORTED ARCHITECTURE EVIDENCE'],
     includedElements: [], includedRelationships: [], anchors: []
 };
+
+const unresolvedRequirementEvidence = {'BP-1000': [{requirementQuote: 'Zeiterfassung',
+    subjectKinds: ['PRODUCT'], requirementKinds: ['FUNCTIONAL'], contributionType: 'SUPPORTS',
+    evidenceStatus: 'UNRESOLVED', evidenceBasis: 'INFERRED', necessity: 'UNDETERMINED',
+    scope: 'UNSPECIFIED', condition: '', rationale: 'Der verantwortliche Prozess ist offen.',
+    question: 'Welcher Prozess ist verantwortlich?'}]};
+
+test('scoreless assessment import exposes report and JSON controls while CSV remains score-dependent', async () => {
+    const page = await reportFixture();
+    try {
+        await page.evaluate(() => document.body.insertAdjacentHTML('beforeend',
+            '<div id="exportHint">Analyse erforderlich</div><div id="exportGroup" style="display:none">' +
+            '<button id="exportJson">JSON</button><button id="exportCsv">CSV</button>' +
+            '<button id="exportReportMd">Markdown</button><button id="exportReportHtml">HTML</button>' +
+            '<button id="exportDecisionReportDocx">Decision report</button></div>'));
+        await page.addScriptTag({path: path.join(resources, 'static/js/shared/taxonomy-export.js')});
+        await page.addScriptTag({path: path.join(resources, 'static/js/core/taxonomy-requirement-evidence.js')});
+        await bootScoreImport(page, {scores: {}, requirement: 'Zeiterfassung', nodeAssessments: unresolvedRequirementEvidence});
+        await page.locator('#importJsonFile').setInputFiles({name: 'assessment-only.json', mimeType: 'application/json',
+            buffer: Buffer.from(JSON.stringify({scores: {}, nodeAssessments: unresolvedRequirementEvidence}))});
+        await page.waitForFunction(() => TaxonomyState.lastAnalysisProvider === 'IMPORTED');
+        assert.equal(await page.locator('#exportGroup').isVisible(), true);
+        assert.equal(await page.locator('#exportJson').isDisabled(), false);
+        assert.equal(await page.locator('#exportReportHtml').isDisabled(), false);
+        assert.equal(await page.locator('#exportReportMd').isDisabled(), true);
+        assert.equal(await page.locator('#exportDecisionReportDocx').isDisabled(), false);
+        assert.equal(await page.locator('#exportCsv').isDisabled(), true);
+        assert.equal(await page.locator('[data-evidence-status="UNRESOLVED"]').count() > 0, true);
+        await page.evaluate(() => {
+            window.__taxonomyFixtureFetch = async (url, options) => {
+                window.portableEvidenceExport = {url, body: JSON.parse(options.body)};
+                return {ok: true, json: async () => window.portableEvidenceExport.body};
+            };
+        });
+        await page.locator('#exportJson').click();
+        await page.waitForFunction(() => window.portableEvidenceExport);
+        const exported = await page.evaluate(() => window.portableEvidenceExport);
+        assert.equal(new URL(exported.url, 'http://taxonomy.fixture').pathname, '/api/scores/export');
+        assert.deepEqual(exported.body.scores, {});
+        assert.deepEqual(exported.body.nodeAssessments, unresolvedRequirementEvidence);
+        await page.evaluate(() => {
+            TaxonomyState.currentNodeAssessments = {};
+            TaxonomyBrowse.updateExportGroupVisibility();
+        });
+        assert.equal(await page.locator('#exportGroup').isVisible(), false, 'neither scores nor assessments still hides exports');
+    } finally { await finish(page); }
+});
+
+for (const withSession of [false, true]) test(`source edits warn for assessment-only evidence (session=${withSession})`, async () => {
+    const page = await reportFixture();
+    try {
+        if (withSession) await page.addScriptTag({path: path.join(resources, 'static/js/core/taxonomy-analysis-session-core.js')});
+        await bootBrowseWithReport(page);
+        await page.evaluate(assessments => {
+            TaxonomyState.currentScores = {};
+            TaxonomyState.currentArchView = null;
+            TaxonomyState.currentRelationSearchReport = null;
+            TaxonomyState.currentNodeAssessments = assessments;
+        }, unresolvedRequirementEvidence);
+        await page.clock.install();
+        await page.locator('#businessText').fill('Geänderte Zeiterfassung');
+        await page.clock.runFor(400);
+        assert.equal(await page.locator('#businessText').evaluate(input => input.classList.contains('stale-results')), true);
+        assert.equal(await page.locator('#statusArea').getAttribute('data-analysis-session-message'), 'stale');
+        assert.equal(await page.locator('#statusArea .btn-warning').isVisible(), true);
+    } finally { await finish(page); }
+});
+
 test('portable Copilot import renders and re-exports retained evidence without granting a server reference', async () => {
     const page = await reportFixture();
     const copilot = {schemaVersion:2,state:'PARTIAL',gaps:{profileId:'compatibility',profileVersion:'1.0.0',totalAnchors:0,totalGaps:0,notes:[],judgments:[],evidenceCompleteness:'INCOMPLETE'},

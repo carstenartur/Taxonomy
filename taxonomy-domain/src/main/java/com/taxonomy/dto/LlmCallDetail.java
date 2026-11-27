@@ -1,5 +1,6 @@
 package com.taxonomy.dto;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -9,6 +10,7 @@ import java.util.Map;
 public class LlmCallDetail {
 
     private Map<String, Double> scores;
+    private Map<String, List<RequirementNodeAssessment>> nodeAssessments = Map.of();
     private Map<String, String> reasons;
     private Map<String, Double> assessedProductScores = Map.of();
     private String prompt;
@@ -29,6 +31,13 @@ public class LlmCallDetail {
 
     public void setAssessedProductScores(Map<String, Double> scores) {
         assessedProductScores = Map.copyOf(AnalysisScoreSemantics.normalizeScores(scores));
+    }
+
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_EMPTY)
+    public Map<String, List<RequirementNodeAssessment>> getNodeAssessments() { return nodeAssessments; }
+
+    public void setNodeAssessments(Map<String, List<RequirementNodeAssessment>> values) {
+        nodeAssessments = RequirementNodeAssessment.immutableMap(values);
     }
 
     public Map<String, String> getReasons() { return reasons; }

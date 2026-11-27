@@ -17,6 +17,7 @@ import com.taxonomy.dto.AnalysisResult;
 import com.taxonomy.exchange.backup.PortableJsonPayloads;
 import com.taxonomy.dto.ProductCoverageGap;
 import com.taxonomy.dto.RelationHypothesisDto;
+import com.taxonomy.dto.RequirementNodeAssessment;
 import com.taxonomy.dto.TaxonomyNodeDto;
 import com.taxonomy.dto.ViewContext;
 import com.taxonomy.extension.api.report.ReportFormatDescriptor;
@@ -49,6 +50,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 
+import static com.taxonomy.dto.RequirementNodeAssessment.*;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -72,6 +74,56 @@ class DecisionRationaleSnapshotReportTest {
     @AfterEach
     void resetLocaleContext() {
         LocaleContextHolder.resetLocaleContext();
+    }
+
+    @Test
+    void scorelessFrozenDecisionReportsRenderTheSavedQuestionOverHttp() throws Exception {
+        var repository = mock(RequirementAnalysisSnapshotRepository.class);
+        var mapper = new tools.jackson.databind.ObjectMapper();
+        var codec = new PortfolioJsonCodec(mapper);
+        var catalogue = mock(com.taxonomy.catalog.service.TaxonomyService.class);
+        var build = mock(com.taxonomy.architecture.decision.DecisionReportBuildMetadataService.class);
+        when(build.current()).thenReturn(new com.taxonomy.architecture.decision.DecisionReportBuildMetadataService.BuildMetadata("1", "commit"));
+        var reports = new DecisionRationaleReportService(catalogue, null, build, "UTC");
+        var service = new DecisionRationaleSnapshotReportService(repository, codec, reports);
+        var snapshot = snapshot("MOCK", "model-a", "taxonomy-sha", "prompt-sha", "main", "commit-a", AnalysisStatus.SUCCESS);
+        var analysis = reportableAnalysis();
+        analysis.setScores(Map.of());
+        analysis.setReasons(Map.of());
+        analysis.setProductCoverageGaps(List.of());
+        analysis.setNodeAssessments(Map.of("CP", List.of(new RequirementNodeAssessment("immutable requirement",
+                List.of(SubjectKind.CAPABILITY), List.of(RequirementKind.FUNCTIONAL),
+                ContributionType.DIRECT_SUBJECT, EvidenceStatus.UNRESOLVED, EvidenceBasis.UNSPECIFIED,
+                Necessity.UNDETERMINED, Scope.UNSPECIFIED, "", "The details remain open.", "What delivery is expected?"))));
+        when(snapshot.getAnalysisPayload()).thenReturn(codec.write(analysis));
+        when(repository.findByIdAndProjectIdAndScopeKey(eq("snapshot-1"), eq(41L), anyString())).thenReturn(Optional.of(snapshot));
+        var resolver = mock(WorkspaceResolver.class);
+        when(resolver.resolveCurrentContext()).thenReturn(CONTEXT);
+        when(resolver.resolveCurrentUsername()).thenReturn("auditor");
+        var diagrams = new com.taxonomy.reporting.render.decision.DecisionChapterDiagramRenderer();
+        var renderers = new ReportRendererRegistry(List.of(
+                new com.taxonomy.reporting.render.decision.DecisionRationaleJsonRenderer(mapper),
+                new com.taxonomy.reporting.render.decision.DecisionRationaleHtmlRenderer(diagrams),
+                new com.taxonomy.reporting.render.decision.DecisionRationaleDocxRenderer(diagrams)));
+        var controller = new DecisionRationaleSnapshotReportController(service, renderers, resolver);
+        var http = org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(controller).build();
+        String route = "/api/projects/41/snapshots/snapshot-1/decision-report/";
+        for (String format : List.of("json", "html", "docx")) {
+            var response = http.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                    .get(route + format).param("profile", "COMPACT").param("treeLayout", "TABLE"))
+                    .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
+                    .andReturn().getResponse();
+            if (format.equals("docx")) {
+                try (var doc = new org.apache.poi.xwpf.usermodel.XWPFDocument(
+                        new java.io.ByteArrayInputStream(response.getContentAsByteArray()));
+                        var extractor = new org.apache.poi.xwpf.extractor.XWPFWordExtractor(doc)) {
+                    assertThat(extractor.getText()).contains("What delivery is expected?");
+                }
+            } else {
+                assertThat(response.getContentAsString(StandardCharsets.UTF_8)).contains("What delivery is expected?");
+            }
+        }
+        verifyNoInteractions(catalogue);
     }
 
     @Test
@@ -144,12 +196,18 @@ class DecisionRationaleSnapshotReportTest {
                 Map.of(), List.of(), java.util.Set.of(), null, "used-catalogue-4");
         analysis.setModelBinding(model);
         analysis.setAnalysisReasonLength(com.taxonomy.dto.AnalysisReasonLength.DETAILED);
+        var claim = new RequirementNodeAssessment("immutable requirement", List.of(SubjectKind.CAPABILITY),
+                List.of(RequirementKind.CONTEXT), ContributionType.SUPPORTS, EvidenceStatus.SUPPORTED,
+                EvidenceBasis.INFERRED, Necessity.CONTEXT, Scope.EXISTING_ENVIRONMENT, "",
+                "The recorded context supports operation.", "");
+        var assessments = Map.of("CP", List.of(claim));
+        analysis.setNodeAssessments(assessments);
         analysis.setAnalysisScope(new com.taxonomy.dto.AnalysisScope(java.util.Set.of("CP"), com.taxonomy.dto.AnalysisMode.TAXONOMIES_ONLY));
         analysis.setAnalysisCoverage(com.taxonomy.dto.AnalysisCoverage.derive(analysis.getTree(), analysis.getScores(), analysis.getScores(), Map.of()));
         when(jsonCodec.readField("analysis-json", "analysisScope", com.taxonomy.dto.AnalysisScope.class)).thenReturn(analysis.getAnalysisScope());
         analysis.setViewContext(new ViewContext(
                 "commit-a", "main", COMMIT_TIME, true, true, false));
-        DecisionRationaleReport expected = report(7);
+        DecisionRationaleReport expected = report(7).withNodeAssessments(assessments);
 
         when(repository.findByIdAndProjectIdAndScopeKey(
                 eq("snapshot-1"), eq(41L), anyString()))
@@ -166,6 +224,7 @@ class DecisionRationaleSnapshotReportTest {
         assertThat(actual.requirement()).isEqualTo(expected.requirement());
         assertThat(actual.status()).isEqualTo(expected.status());
         assertThat(actual.scoreDetails()).containsKey("CP");
+        assertThat(actual.nodeAssessments()).isEqualTo(assessments);
         assertThat(actual.metadata().analysisSnapshotFingerprintSha256())
                 .hasSize(64)
                 .isNotEqualTo(
@@ -181,6 +240,7 @@ class DecisionRationaleSnapshotReportTest {
         assertThat(mapper.treeToValue(mapper.valueToTree(input.snapshotProvenance()).path("modelBinding"),
                 com.taxonomy.dto.AnalysisModelBinding.class)).isEqualTo(model);
         assertThat(input.analysisScope()).isEqualTo(analysis.getAnalysisScope());
+        assertThat(input.nodeAssessments()).isEqualTo(assessments);
         assertThat(input.analysisReasonLength()).isEqualTo(com.taxonomy.dto.AnalysisReasonLength.DETAILED);
         assertThat(input.analysisCoverage()).isEqualTo(analysis.getAnalysisCoverage());
         assertThat(input.businessText()).isEqualTo("immutable requirement");

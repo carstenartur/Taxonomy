@@ -20,6 +20,7 @@
                 'currentProductSuitabilityScores','scoreSemanticsVersion','currentScoreSemanticsWarnings','lastAnalysisDurationMillis',
                 'lastAnalysisStatus','activeAnalysisLanguage']) saved[key] = S[key];
             saved.currentReasons = Object.assign({}, S.currentReasons);
+            saved.currentNodeAssessments = Object.assign({}, S.currentNodeAssessments);
             entry.restoreSource = () => {
                 if (context.workspaceId !== C.runtime.workspaceId || sourceGeneration !== (C.runtime.analysisGeneration || 0)
                         || C.runtime.invalidating || !entry.canProjectProgress()) return false;
@@ -71,18 +72,20 @@
             return (hash >>> 0).toString(16).padStart(8, '0');
         }).join('');
     }
-    function nodeEvidence(raw, effective, displayed, reasons) {
-        return evidenceChecksum(JSON.stringify([raw || {}, effective || {}, displayed || {}, reasons || {}].map(function (values) {
+    function nodeEvidence(raw, effective, displayed, reasons, assessments) {
+        var fields = [raw || {}, effective || {}, displayed || {}, reasons || {}];
+        if (Object.keys(assessments || {}).length) fields.push(assessments);
+        return evidenceChecksum(JSON.stringify(fields.map(function (values) {
             return Object.keys(values).sort().map(function (key) { return [key, values[key]]; });
         })));
     }
     function resultNodeEvidence(result) {
         var effective = result.effectiveScores || result.scores || {};
-        return nodeEvidence(result.rawScores || result.scores, effective, result.scores || effective, result.reasons);
+        return nodeEvidence(result.rawScores || result.scores, effective, result.scores || effective, result.reasons, result.nodeAssessments);
     }
     function currentNodeEvidence() {
         var effective = S.currentEffectiveScores || S.currentScores || {};
-        return nodeEvidence(S.currentRawScores, effective, S.currentScores || effective, S.currentReasons);
+        return nodeEvidence(S.currentRawScores, effective, S.currentScores || effective, S.currentReasons, S.currentNodeAssessments);
     }
     function requestedScope(request) { return request.taxonomyRequestedScope || request.analysisScope; }
     function evidenceScope(context) {
@@ -358,6 +361,7 @@
         S.scoreSemanticsVersion = result.scoreSemanticsVersion || 0;
         S.currentScoreSemanticsWarnings = result.scoreSemanticsWarnings || [];
         S.currentReasons = result.reasons || {};
+        S.currentNodeAssessments = result.nodeAssessments || {};
         S.currentDiscrepancies = result.discrepancies || [];
         S.currentProductCoverageGaps = result.productCoverageGaps || [];
         // A temporary response without a view does not erase the accepted same-scope

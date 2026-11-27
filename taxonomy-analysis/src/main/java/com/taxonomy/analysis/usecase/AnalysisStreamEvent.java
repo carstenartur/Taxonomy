@@ -2,6 +2,7 @@ package com.taxonomy.analysis.usecase;
 
 import com.taxonomy.dto.AnalysisCoverage;
 import com.taxonomy.dto.LlmCallDetail;
+import com.taxonomy.dto.RequirementNodeAssessment;
 import com.taxonomy.dto.ProductCoverageGap;
 import com.taxonomy.dto.TaxonomyDiscrepancy;
 
@@ -35,7 +36,19 @@ public sealed interface AnalysisStreamEvent
                     List<ProductCoverageGap> productCoverageGaps,
                     Map<String, String> allReasons,
                     Long analysisDurationMillis,
-                    AnalysisCoverage analysisCoverage) implements AnalysisStreamEvent {
+                    AnalysisCoverage analysisCoverage,
+                    Map<String, List<RequirementNodeAssessment>> nodeAssessments) implements AnalysisStreamEvent {
+        public Complete {
+            nodeAssessments = RequirementNodeAssessment.immutableMap(nodeAssessments);
+        }
+
+        public Complete(String status, Map<String, Double> allScores, List<String> warnings,
+                        List<TaxonomyDiscrepancy> discrepancies, List<ProductCoverageGap> productCoverageGaps,
+                        Map<String, String> allReasons, Long analysisDurationMillis, AnalysisCoverage analysisCoverage) {
+            this(status, allScores, warnings, discrepancies, productCoverageGaps, allReasons,
+                    analysisDurationMillis, analysisCoverage, Map.of());
+        }
+
         public Complete(String status, Map<String, Double> allScores, List<String> warnings,
                         List<TaxonomyDiscrepancy> discrepancies, List<ProductCoverageGap> productCoverageGaps,
                         Long analysisDurationMillis, AnalysisCoverage analysisCoverage) {
@@ -61,7 +74,20 @@ public sealed interface AnalysisStreamEvent
                  List<ProductCoverageGap> productCoverageGaps,
                  Map<String, String> partialReasons,
                  Long analysisDurationMillis,
-                 AnalysisCoverage analysisCoverage) implements AnalysisStreamEvent {
+                 AnalysisCoverage analysisCoverage,
+                 Map<String, List<RequirementNodeAssessment>> nodeAssessments) implements AnalysisStreamEvent {
+        public Error {
+            nodeAssessments = RequirementNodeAssessment.immutableMap(nodeAssessments);
+        }
+
+        public Error(String status, String errorMessage, Map<String, Double> partialScores,
+                     List<String> warnings, List<TaxonomyDiscrepancy> discrepancies,
+                     List<ProductCoverageGap> productCoverageGaps, Map<String, String> partialReasons,
+                     Long analysisDurationMillis, AnalysisCoverage analysisCoverage) {
+            this(status, errorMessage, partialScores, warnings, discrepancies, productCoverageGaps,
+                    partialReasons, analysisDurationMillis, analysisCoverage, Map.of());
+        }
+
         public Error(String status, String errorMessage, Map<String, Double> partialScores,
                      List<String> warnings, List<TaxonomyDiscrepancy> discrepancies,
                      List<ProductCoverageGap> productCoverageGaps, Map<String, String> partialReasons,

@@ -324,6 +324,8 @@ public final class ArchitectureReportTextRenderer {
             html.append(markdownToHtml(footer(labels)));
         }
 
+        RequirementEvidenceSection.appendHtml(html, report.getNodeAssessments(),
+                report.getScores() == null ? java.util.Set.of() : report.getScores().keySet(), labels);
         html.append("\n</body>\n</html>\n");
 
         return html.toString();

@@ -320,11 +320,11 @@ public class ExportApiController {
         @SuppressWarnings("unchecked")
         Map<String, Object> rawScores = body.get("scores") instanceof Map<?, ?>
                 ? (Map<String, Object>) body.get("scores") : null;
-        if (rawScores == null || rawScores.isEmpty()) {
+        if (rawScores == null && body.get("scores") != null) return ResponseEntity.badRequest().build();
+        if ((rawScores == null || rawScores.isEmpty()) && body.get("nodeAssessments") == null)
             return ResponseEntity.badRequest().build();
-        }
         final Map<String, Double> scores;
-        try { scores = percentageMap(rawScores); }
+        try { scores = rawScores == null ? Map.of() : percentageMap(rawScores); }
         catch (IllegalArgumentException invalid) { return ResponseEntity.badRequest().build(); }
         @SuppressWarnings("unchecked")
         Map<String, String> reasons = body.get("reasons") instanceof Map<?, ?>
@@ -332,6 +332,15 @@ public class ExportApiController {
         String provider = body.get("provider") instanceof String p
                 ? p : exportFacade.getActiveProviderName();
         SavedAnalysis exported = exportFacade.buildExport(requirement, scores, reasons, provider);
+        if (body.get("nodeAssessments") != null) {
+            try {
+                exported.setNodeAssessments(recoveryObjectMapper.convertValue(body.get("nodeAssessments"),
+                        new tools.jackson.core.type.TypeReference<Map<String, List<com.taxonomy.dto.RequirementNodeAssessment>>>() {}));
+            } catch (IllegalArgumentException | tools.jackson.core.JacksonException invalid) {
+                return ResponseEntity.badRequest().build();
+            }
+        }
+        if (scores.isEmpty() && exported.getNodeAssessments().isEmpty()) return ResponseEntity.badRequest().build();
         if (body.get("modelBinding") != null) {
             try {
                 exported.setModelBinding(recoveryObjectMapper.convertValue(body.get("modelBinding"),
@@ -426,6 +435,7 @@ public class ExportApiController {
             result.put("requirement", saved.getRequirement());
             result.put("scores", saved.getScores() != null ? saved.getScores() : Map.of());
             result.put("reasons", saved.getReasons() != null ? saved.getReasons() : Map.of());
+            result.put("nodeAssessments", saved.getNodeAssessments());
             result.put("provider", saved.getProvider());
             result.put("copilot", saved.getCopilot());
             if (saved.getModelBinding() != null) result.put("modelBinding", saved.getModelBinding());

@@ -37,6 +37,14 @@ public class ArchitectureReport {
     private Map<String, Double> scores;
     private Map<String, String> nodeReasons;
     private String languageTag;
+    private Map<String, List<RequirementNodeAssessment>> nodeAssessments = Map.of();
+
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_EMPTY)
+    public Map<String, List<RequirementNodeAssessment>> getNodeAssessments() { return nodeAssessments; }
+
+    public void setNodeAssessments(Map<String, List<RequirementNodeAssessment>> values) {
+        nodeAssessments = RequirementNodeAssessment.immutableMap(values);
+    }
 
     private RequirementArchitectureView architectureView;
     private GapAnalysisView gapAnalysis;

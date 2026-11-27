@@ -49,6 +49,66 @@ class SavedScopeExchangeTest {
         return controller;
     }
 
+
+    @Test
+    void assessmentOnlyScoreFileRoundTripChecksOwningTaxonomyScope() throws Exception {
+        var claim = new RequirementNodeAssessment("Retain archive copies.",
+                List.of(RequirementNodeAssessment.SubjectKind.INFORMATION), List.of(RequirementNodeAssessment.RequirementKind.FUNCTIONAL),
+                RequirementNodeAssessment.ContributionType.SUPPORTS, RequirementNodeAssessment.EvidenceStatus.SUPPORTED,
+                RequirementNodeAssessment.EvidenceBasis.EXPLICIT, RequirementNodeAssessment.Necessity.REQUIRED,
+                RequirementNodeAssessment.Scope.DELIVERY, "", "Archive copies support retention.", "");
+        var http = MockMvcBuilders.standaloneSetup(controller()).build();
+        var payload = new HashMap<String, Object>(Map.of(
+                "requirement", "Retain archive copies.", "scores", Map.of(), "provider", "RECORDED",
+                "analysisScope", new AnalysisScope(Set.of("BP"), AnalysisMode.TAXONOMIES_ONLY),
+                "nodeAssessments", Map.of("IP-looking-selected", List.of(claim))));
+        var exported = http.perform(post("/api/scores/export").contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsBytes(payload))).andExpect(status().isOk()).andReturn().getResponse();
+        var imported = http.perform(post("/api/scores/import").contentType(MediaType.APPLICATION_JSON)
+                .content(exported.getContentAsByteArray())).andExpect(status().isOk()).andReturn().getResponse();
+        var importedBody = mapper.readTree(imported.getContentAsByteArray());
+        assertThat(importedBody.path("scores").isEmpty()).isTrue();
+        assertThat(importedBody.path("nodeAssessments").has("IP-looking-selected")).isTrue();
+
+        payload.put("nodeAssessments", Map.of("BP-looking-other", List.of(claim)));
+        http.perform(post("/api/scores/export").contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsBytes(payload))).andExpect(status().isBadRequest());
+        payload.put("version", 4);
+        http.perform(post("/api/scores/import").contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsBytes(payload))).andExpect(status().isBadRequest());
+
+        payload.put("nodeAssessments", Map.of("IP-looking-selected", List.of()));
+        http.perform(post("/api/scores/export").contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsBytes(payload))).andExpect(status().isBadRequest());
+        http.perform(post("/api/scores/import").contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsBytes(payload))).andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void portableScoreFilesPreserveVerbatimNodeClaims() throws Exception {
+        String quote = "  Keep archive copies.  ";
+        var claim = new RequirementNodeAssessment(quote, List.of(RequirementNodeAssessment.SubjectKind.INFORMATION),
+                List.of(RequirementNodeAssessment.RequirementKind.FUNCTIONAL),
+                RequirementNodeAssessment.ContributionType.SUPPORTS, RequirementNodeAssessment.EvidenceStatus.SUPPORTED,
+                RequirementNodeAssessment.EvidenceBasis.EXPLICIT, RequirementNodeAssessment.Necessity.REQUIRED,
+                RequirementNodeAssessment.Scope.DELIVERY, "", "Archive copies support retention.", "");
+        var assessments = Map.of("BP", List.of(claim));
+        var body = Map.<String, Object>of("requirement", quote + "\nOriginal scope.", "scores", Map.of("BP", 70),
+                "provider", "RECORDED", "nodeAssessments", mapper.valueToTree(assessments));
+        var http = MockMvcBuilders.standaloneSetup(controller()).build();
+        var exported = http.perform(post("/api/scores/export").contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsBytes(body))).andExpect(status().isOk()).andReturn().getResponse();
+        var imported = http.perform(post("/api/scores/import").contentType(MediaType.APPLICATION_JSON)
+                .content(exported.getContentAsByteArray())).andExpect(status().isOk()).andReturn().getResponse();
+        assertThat(mapper.readTree(imported.getContentAsByteArray()).path("nodeAssessments"))
+                .isEqualTo(mapper.valueToTree(assessments));
+
+        var edited = new HashMap<>(body);
+        edited.put("requirement", "An unrelated requirement.");
+        http.perform(post("/api/scores/export").contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsBytes(edited))).andExpect(status().isBadRequest());
+    }
+
     @Test
     void modelBindingSurvivesScoreFileRoundTripAsPortableEvidence() throws Exception {
         var scope = new AnalysisScope(Set.of("BP"), AnalysisMode.TAXONOMIES_ONLY);

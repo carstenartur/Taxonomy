@@ -65,6 +65,33 @@ final class TaxonomyExtensionEvidence {
         return result;
     }
 
+    /** Reopened scoreless evidence remains in the source receipt and leaves the target's accepted seed. */
+    static void discardReopenedClarifications(AnalysisResult result, Set<String> reopened) {
+        if (result == null || reopened.isEmpty()) return;
+        var reasons = new LinkedHashMap<>(result.getReasons());
+        var assessments = new LinkedHashMap<>(result.getNodeAssessments());
+        reasons.keySet().removeAll(reopened);
+        assessments.keySet().removeAll(reopened);
+        result.setReasons(reasons);
+        result.setNodeAssessments(assessments);
+        result.setWarnings(result.getWarnings().stream().filter(warning -> reopened.stream().noneMatch(code ->
+                warning.startsWith("Incomplete analysis for " + code + ": ROOT_UNRESOLVED:"))).toList());
+        var coverage = result.getAnalysisCoverage();
+        if (coverage != null) {
+            var nodes = new LinkedHashMap<>(coverage.nodes());
+            for (String code : reopened) {
+                var prior = nodes.get(code);
+                if (prior != null && prior.state() == AnalysisCoverage.State.UNKNOWN
+                        && prior.reason() != null && prior.reason().startsWith("CLARIFICATION:")) {
+                    nodes.put(code, new AnalysisCoverage.NodeAssessment(prior.state(), prior.score(),
+                            prior.effectiveRelevance(), prior.descendants(), "INTERRUPTED:REASSESSMENT_PENDING"));
+                }
+            }
+            result.setAnalysisCoverage(new AnalysisCoverage(nodes, coverage.assessedNodes(),
+                    coverage.unknownNodes(), coverage.failedOrBlockedNodes()));
+        }
+    }
+
     static boolean noWork(String state, AnalysisRequest source, AnalysisRequest target, AnalysisResult result,
             List<TaxonomyNodeDto> tree) {
         if (!"COMPLETED".equals(state) || !"SUCCESS".equals(result.getStatus())
@@ -103,8 +130,15 @@ final class TaxonomyExtensionEvidence {
             String accepted = reasons.putIfAbsent(code, value);
             if (accepted != null && !accepted.equals(value)) throw conflict("An extension changed an accepted node explanation");
         });
+        var assessments = new LinkedHashMap<>(previous.getNodeAssessments());
+        result.getNodeAssessments().forEach((code, value) -> {
+            var accepted = assessments.putIfAbsent(code, value);
+            if (accepted != null && !accepted.equals(value))
+                throw conflict("An extension changed accepted requirement evidence");
+        });
         result.setRawScores(raw);
         result.setReasons(reasons);
+        result.setNodeAssessments(assessments);
     }
 
     static ResponseStatusException conflict(String reason) {

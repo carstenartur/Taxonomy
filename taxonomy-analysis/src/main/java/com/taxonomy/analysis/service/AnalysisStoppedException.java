@@ -2,6 +2,7 @@ package com.taxonomy.analysis.service;
 
 import com.taxonomy.dto.AnalysisResult;
 import com.taxonomy.dto.LlmCallDetail;
+import com.taxonomy.dto.RequirementNodeAssessment;
 import com.taxonomy.dto.TaxonomyDiscrepancy;
 import java.util.ArrayList;
 import java.util.List;
@@ -26,6 +27,7 @@ public final class AnalysisStoppedException extends RuntimeException {
                 || RootAssessmentEvidence.isClarification(detail) ? withPartial(detail) : this;
     }
     private final Map<String, Double> partialScores = new LinkedHashMap<>();
+    private final Map<String, List<RequirementNodeAssessment>> partialNodeAssessments = new LinkedHashMap<>();
     private final Map<String, String> partialReasons = new LinkedHashMap<>();
     private final List<TaxonomyDiscrepancy> partialDiscrepancies = new ArrayList<>();
 
@@ -37,10 +39,14 @@ public final class AnalysisStoppedException extends RuntimeException {
     public Reason reason() { return reason; }
     public Map<String, Double> partialScores() { return partialScores; }
     public Map<String, String> partialReasons() { return partialReasons; }
+    public Map<String, List<RequirementNodeAssessment>> partialNodeAssessments() {
+        return RequirementNodeAssessment.immutableMap(partialNodeAssessments);
+    }
     public List<TaxonomyDiscrepancy> partialDiscrepancies() { return List.copyOf(partialDiscrepancies); }
 
     public AnalysisStoppedException withPartial(LlmCallDetail detail) {
         if (detail.getScores() != null) detail.getScores().forEach(partialScores::putIfAbsent);
+        detail.getNodeAssessments().forEach(partialNodeAssessments::putIfAbsent);
         if (detail.getReasons() != null) detail.getReasons().forEach(partialReasons::putIfAbsent);
         if (detail.getDiscrepancy() != null && !partialDiscrepancies.contains(detail.getDiscrepancy())) {
             partialDiscrepancies.add(detail.getDiscrepancy());

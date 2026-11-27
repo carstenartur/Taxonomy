@@ -610,7 +610,7 @@
         if (!state.account?.architectureMutationAllowed) return '';
         const analysis = detail.analysis, report = analysis?.relationSearchReport ?? analysis?.architectureView?.relationSearchReport;
         const source = state.versions.find(version => String(version.id) === String(detail.summary.requirementVersionId));
-        const hasQuestion = source?.decisionSectionPresent || Object.values(analysis?.analysisCoverage?.nodes || {})
+        const hasQuestion = source?.decisionSectionPresent || window.TaxonomyRequirementEvidence?.questions(analysis).length > 0 || Object.values(analysis?.analysisCoverage?.nodes || {})
             .some(node => node.reason?.startsWith('CLARIFICATION:'))
             || report?.sources?.some(source => source.question?.trim())
             || report?.result?.unfinished?.some(work => ['UNRESOLVED', 'ENDPOINT_REFINEMENT'].includes(work.reason) && work.question?.trim());
@@ -751,7 +751,8 @@
 
         const relationReport = Object.prototype.hasOwnProperty.call(analysis, 'relationSearchReport')
             ? analysis.relationSearchReport : analysis.architectureView?.relationSearchReport;
-        return overview + renderModelEvidence(analysis) + renderRelationSearchSummary(relationReport) + warningHtml
+        return overview + (window.TaxonomyRequirementEvidence?.html(analysis, {locale}) || '')
+            + renderModelEvidence(analysis) + renderRelationSearchSummary(relationReport) + warningHtml
             + (skipped ? '' : `<div class="portfolio-result-grid mt-3">`
                 + renderGapResult(gap, judgments)
                 + renderPatternResult(patterns, matched, retained, patternCoverage)

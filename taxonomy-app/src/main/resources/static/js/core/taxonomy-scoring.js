@@ -176,6 +176,7 @@
     function refreshScoreStatistics() {
         var statistics = window.TaxonomyResultStatistics;
         if (statistics && typeof statistics.refresh === 'function') statistics.refresh();
+        window.TaxonomyRequirementEvidence?.refresh();
     }
 
     function describeScore(code, effective) {
@@ -452,7 +453,7 @@
     }
 
     // A live preview can omit an explanation; absence does not erase saved evidence.
-    function mergeAnalysisReasons(reasons) {
+    function mergeAnalysisReasons(reasons, assessments) {
         var changed = [];
         S.currentReasons = S.currentReasons || {};
         Object.entries(reasons || {}).forEach(function ([code, reason]) {
@@ -460,7 +461,14 @@
             S.currentReasons[code] = reason;
             changed.push(code);
         });
-        return changed;
+        S.currentNodeAssessments = S.currentNodeAssessments || {};
+        Object.entries(assessments || {}).forEach(function ([code, claims]) {
+            if (!Array.isArray(claims) || JSON.stringify(S.currentNodeAssessments[code]) === JSON.stringify(claims)) return;
+            S.currentNodeAssessments[code] = claims;
+            changed.push(code);
+        });
+        window.TaxonomyRequirementEvidence?.refresh();
+        return Array.from(new Set(changed));
     }
 
     // A single setting describes the reasons only while every contributing batch
@@ -499,6 +507,7 @@
         S.currentModelBinding = result.modelBinding || null;
         acceptAnalysisReasonLength(result, true);
         S.currentReasons = result.reasons || {};
+        S.currentNodeAssessments = result.nodeAssessments || {};
         S.currentDiscrepancies = result.discrepancies || [];
         S.currentProductCoverageGaps = result.productCoverageGaps || [];
         S.lastAnalysisProvider = result.provider || provider || null;
@@ -696,6 +705,7 @@
         if (!options.continuation || options.newOperation === true) {
         B().resetDiagramContext?.();
         S.currentReasons = {};
+        S.currentNodeAssessments = {};
         S.currentDiscrepancies = [];
         S.currentProductCoverageGaps = [];
         clearDerivedAnalysisView();
@@ -743,7 +753,7 @@
                 setAnalyzing(false);
                 return result;
             }
-            if (progress) progress.finish(result.status, true, result.analysisDurationMillis);
+            if (progress) progress.finish(result.status, true, result.analysisDurationMillis, result);
             acceptedResult = applyAnalysisResult(result, { text: text, requestedScope: requestedScope, provider: provider,
                 options: options, analysisStart: analysisStart, operationId: operationId, durable: clusterObserved });
             if (!options.continuation && requestBody.resumable) {
@@ -766,7 +776,7 @@
                 applyLocalRawScores(options.continuation
                     ? Object.assign({}, previousRaw, snapshot.rawScores || {}) : snapshot.rawScores || {}, true, true, true);
                 refinement?.present(operationId, {status:'IN_PROGRESS', scores:S.currentEffectiveScores, details:S.currentScoreDetails});
-                var reasonChanges = mergeAnalysisReasons(snapshot.reasons);
+                var reasonChanges = mergeAnalysisReasons(snapshot.reasons, snapshot.nodeAssessments);
                 options.rememberProgressEvidence?.();
                 var changed = Array.from(new Set(Object.keys(S.currentScores || {}).filter(function (code) {
                     var before = previousDetails[code] || {}, after = S.currentScoreDetails[code] || {};
@@ -911,7 +921,8 @@
         field.classList.remove('stale-results');
         B().resetDiagramContext?.();
         if (lifecycle && typeof lifecycle.clearDerivedUi === 'function') lifecycle.clearDerivedUi();
-        S.currentReasons = {}; S.currentDiscrepancies = []; S.currentProductCoverageGaps = [];
+        S.currentReasons = {};
+        S.currentNodeAssessments = {}; S.currentDiscrepancies = []; S.currentProductCoverageGaps = [];
         S.currentArchView = null;
         acceptRelationSearchReport(null);
         S.evaluatedNodes = new Set(); S.pendingProposalNodeCode = null;
@@ -931,7 +942,7 @@
             if (resultHandled || !inScope() || monitor && !monitor.acceptsResult()
                     || field.value !== saved.businessText) return;
             applyLocalRawScores(snapshot.rawScores || {}, true, true, true);
-            mergeAnalysisReasons(snapshot.reasons);
+            mergeAnalysisReasons(snapshot.reasons, snapshot.nodeAssessments);
             B().renderView(S.taxonomyData, S.currentScores);
         }, function (result) {
             if (!inScope() || !monitor.acceptsResult()) return;
@@ -939,7 +950,7 @@
                 monitor.finish(result.status, false); setAnalyzing(false); return;
             }
             resultHandled = true;
-            monitor.finish(result.status, false, result.analysisDurationMillis);
+            monitor.finish(result.status, false, result.analysisDurationMillis, result);
             applyAnalysisResult(result, { text: saved.businessText, provider: saved.provider,
                 requestedScope: saved.analysisScope, options: { recoveryManaged: true }, operationId: operationId, durable: true });
         }, saved.scope);
@@ -974,6 +985,7 @@
         S.scoreSemanticsVersion = 0;
         S.currentScoreSemanticsWarnings = [];
         S.currentReasons = {};
+        S.currentNodeAssessments = {};
         var interactiveProvider = document.getElementById('providerSelect');
         S.lastAnalysisProvider = interactiveProvider ? interactiveProvider.value : null;
         S.analysisProviderId = S.lastAnalysisProvider;
@@ -1024,6 +1036,7 @@
         S.scoreSemanticsVersion = 0;
         S.currentScoreSemanticsWarnings = [];
         S.currentReasons = {};
+        S.currentNodeAssessments = {};
         S.analysisCoverage = null;
         S.lastAnalysisDurationMillis = null;
         S.lastAnalysisReasonLength = null;
@@ -1087,7 +1100,7 @@
             Object.assign(S.currentRawScores, rawScores);
             Object.assign(S.currentScoreDetails, details);
             acceptAnalysisReasonLength(data, false);
-            var reasonChanges = mergeAnalysisReasons(data.reasons);
+            var reasonChanges = mergeAnalysisReasons(data.reasons, data.nodeAssessments);
             // A later family batch must reconcile products that already arrived.
             var changedScores = Object.assign({}, rawScores);
             reasonChanges.forEach(function (code) {
@@ -1166,7 +1179,7 @@
                 analysisDurationMillis: data.analysisDurationMillis
             });
             acceptAnalysisReasonLength(data, false);
-            mergeAnalysisReasons(data.reasons);
+            mergeAnalysisReasons(data.reasons, data.nodeAssessments);
             if (Object.prototype.hasOwnProperty.call(data, 'analysisCoverage')) S.analysisCoverage = data.analysisCoverage;
             syncVisibleScoreNodes(previousEvidence);
             S.currentDiscrepancies = data.discrepancies || [];
@@ -1211,7 +1224,7 @@
                     var previousEvidence = scoreViewEvidence();
                     S.lastAnalysisStatus = data.status || 'PARTIAL';
                     acceptAnalysisReasonLength(data, false);
-                    mergeAnalysisReasons(data.reasons);
+                    mergeAnalysisReasons(data.reasons, data.nodeAssessments);
                     if (data.scoreSemanticsUnavailable) {
                         // A failed server-side projection supplies raw evidence only. Rebuild
                         // comparable relevance from the already loaded catalogue, not raw suitability.
