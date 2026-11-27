@@ -26,9 +26,24 @@ public final class RelationSearchProtocol {
         Do not infer edges from term similarity or distribute percentages.
         Return one JSON object; no prose, extra fields or duplicate keys.
         """;
+    private static final String FUNCTIONAL_SCOPE = """
+        Ground contributions in requested functions regardless of language, names or vendor.
+        Unconditional need holds in every allowed implementation.
+        Availability, convention and generic usefulness are insufficient.
+        Keep exclusions, conditions and alternatives. Missing facts and choices stay open.
+        Scores and node contributions alone prove no edge. Verify direction, function and conditions.
+        Context and hypotheses add no requirements.
+        """;
     private static final String SOURCES_TASK = PromptTemplateService.shippedTemplate("relation-sources");
     private static final String NAVIGATE_TASK = PromptTemplateService.shippedTemplate("relation-navigate");
     private static final String VERIFY_TASK = PromptTemplateService.shippedTemplate("relation-verify");
+    private static final String PROMPT_POLICY_FINGERPRINT = "relation-functional-scope-v1="
+            + AnalysisCheckpointSession.digest(PREAMBLE, FUNCTIONAL_SCOPE, SOURCES_TASK, NAVIGATE_TASK, VERIFY_TASK);
+
+    /** Identity of the mandatory guidance and shipped phase instructions. */
+    public static String promptPolicyFingerprint() {
+        return PROMPT_POLICY_FINGERPRINT;
+    }
 
     /** Only changed instructions are retained in a frozen relation plan. */
     @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
@@ -102,7 +117,7 @@ public final class RelationSearchProtocol {
 
     private static String sourcePrompt(String original, List<Node> nodes, Map<String, String> errors, Templates templates) {
         return PREAMBLE + com.taxonomy.analysis.service.AnalysisLanguageContext.promptContract()
-                + PromptTemplateService.functionalScopeContract() + instruction(templates.sources(), SOURCES_TASK)
+                + FUNCTIONAL_SCOPE + instruction(templates.sources(), SOURCES_TASK)
                 + "INPUT\n" + JSON.writeValueAsString(input(original, nodes, errors));
     }
 
@@ -235,7 +250,8 @@ public final class RelationSearchProtocol {
         input.put("candidates", query.candidates().stream().map(node -> promptNode(node, false)).toList());
         input.put("proposal", query.proposal());
         if (!errors.isEmpty()) input.put("validationErrors", errors);
-        return PREAMBLE + com.taxonomy.analysis.service.AnalysisLanguageContext.promptContract() + PromptTemplateService.functionalScopeContract() + relationMeaning(query.type()) + "\n"
+        return PREAMBLE + com.taxonomy.analysis.service.AnalysisLanguageContext.promptContract()
+                + FUNCTIONAL_SCOPE + relationMeaning(query.type()) + "\n"
                 + "Source context policy: relation-source-context-v1. Ancestors do not broaden the assessed contribution. Candidates keep full context.\n"
                 + "OUTGOING = source contribution -> candidate. "
                 + "INCOMING = candidate -> source contribution. Apply this also during VERIFY.\n"

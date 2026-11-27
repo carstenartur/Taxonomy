@@ -1,5 +1,6 @@
 package com.taxonomy;
 
+import com.taxonomy.analysis.relations.RelationSearchProtocol;
 import com.taxonomy.analysis.service.PromptTemplateService;
 import com.taxonomy.preferences.storage.GitPromptOverrideStore;
 import io.github.carstenartur.jgit.storage.hibernate.HibernateRepositoryFactory;
@@ -66,15 +67,18 @@ class PromptTemplateTests {
         assertThat(baseline).containsKeys("default", "reformulation-node", "reformulation-node-v3")
                 .doesNotContainKeys("architecture-dialogue", "architecture-focus", "mail-analysis-command",
                         "requirement-intake", "relation-sources", "relation-navigate", "relation-verify");
-        assertThat(promptTemplateService.analysisFingerprintTemplates(true)).isEqualTo(baseline);
+        var portfolio = promptTemplateService.analysisFingerprintTemplates(true);
+        assertThat(portfolio).containsAllEntriesOf(baseline)
+                .containsEntry("relation-prompt-policy", RelationSearchProtocol.promptPolicyFingerprint())
+                .hasSize(baseline.size() + 1);
 
         promptTemplateService.setTemplate("requirement-intake", "Independent classification instructions");
         promptTemplateService.setTemplate("relation-verify", "Custom relation verification instructions");
         assertThat(promptTemplateService.analysisFingerprintTemplates(false)).isEqualTo(baseline);
         assertThat(promptTemplateService.analysisFingerprintTemplates(true))
-                .containsAllEntriesOf(baseline)
+                .containsAllEntriesOf(portfolio)
                 .containsEntry("relation-verify", "Custom relation verification instructions")
-                .hasSize(baseline.size() + 1);
+                .hasSize(portfolio.size() + 1);
     }
 
     @Test

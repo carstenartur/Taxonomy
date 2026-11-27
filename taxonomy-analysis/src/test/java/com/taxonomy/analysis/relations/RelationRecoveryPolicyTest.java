@@ -61,6 +61,15 @@ class RelationRecoveryPolicyTest {
     }
 
     @Test
+    void previousSharedScopeAnswersCannotReplayUnderCompactRelationInstructions() {
+        String previous = "relation-downwalk-v10/hierarchy-specificity-v1/source-call-reservation=half/"
+                + "relation-semantics-v2/relation-source-context-v1/provider-profiles/taxonomy-cohorts/custom-defaults=3,16000/"
+                + "true/max-depth=8/standard-batch=10/standard-prompt=120000/batch-override=null/prompt-override=null/"
+                + "functional-necessity-v2";
+        assertThat(service.compatibleRecoveryPolicy(AnalysisCheckpointSession.digest(previous))).isNull();
+    }
+
+    @Test
     void unknownHistoricalSourceAndWorkSettingsRequireTheirOriginalDeploymentConfiguration() {
         assertThat(RelationRecoveryPolicy.compatible(AnalysisCheckpointSession.digest(
                 legacy(24, 8, 10, 513, 31, 120_000, "null", "null")),

@@ -1,5 +1,6 @@
 package com.taxonomy.analysis.service;
 
+import com.taxonomy.analysis.relations.RelationSearchProtocol;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -192,13 +193,16 @@ public class PromptTemplateService {
     }
 
     /**
-     * Preserves the identity of existing scoring checkpoints and portfolio jobs with shipped prompts.
-     * Portfolio analyses also account for customized relation guidance.
+     * Keeps scoring checkpoint identity independent of relation guidance.
+     * Portfolio analyses also account for the shipped relation policy and customized relation guidance.
      */
     public Map<String, String> analysisFingerprintTemplates(boolean includeRelationOverrides) {
         var templates = new TreeMap<>(effectiveTemplates());
         INDEPENDENT_CODES.forEach(templates::remove);
         templates.put(NODE_ASSESSMENT_POLICY, nodeAssessmentContract());
+        if (includeRelationOverrides) {
+            templates.put("relation-prompt-policy", RelationSearchProtocol.promptPolicyFingerprint());
+        }
         for (String code : RELATION_CODES) {
             if (!includeRelationOverrides || Objects.equals(templates.get(code), defaults.get(code))) {
                 templates.remove(code);

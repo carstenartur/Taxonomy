@@ -1,9 +1,16 @@
 package com.taxonomy.analysis.recovery;
 
+import com.taxonomy.analysis.relations.RelationSearchProtocol;
 import com.taxonomy.analysis.service.AnalysisStoppedException;
 import com.taxonomy.dto.AnalysisPercentages;
 import com.taxonomy.dto.AnalysisResult;
 import com.taxonomy.dto.LlmCallDetail;
+import com.taxonomy.dto.RelationSearchModel.Contribution;
+import com.taxonomy.dto.RelationSearchModel.Direction;
+import com.taxonomy.dto.RelationSearchModel.Node;
+import com.taxonomy.dto.RelationSearchModel.Outcome;
+import com.taxonomy.dto.RelationSearchModel.Phase;
+import com.taxonomy.dto.RelationSearchModel.Query;
 import com.taxonomy.dto.RequirementNodeAssessment;
 import com.taxonomy.dto.RequirementNodeAssessment.*;
 import com.taxonomy.dto.RootAssessment;
@@ -33,6 +40,7 @@ import java.util.Map;
 import java.util.Random;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -379,6 +387,46 @@ class RecoveryCheckpointCompressionTest {
                         .mapToLong(row -> ((String) row[0]).length() + ((String) row[1]).length()).sum();
                 assertEquals(actual, run.payloadCharacters); assertTrue(actual < RUN_LIMIT); return null;
             });
+        }
+    }
+
+    @Test void navigationRetainsItsFullExchangeInTheRemainingCheckpointBudget() {
+        try (var db = new Database(); var session = new AnalysisCheckpointSession(db.sessionStore())) {
+            // Represent a nearly full journal without allocating 24 million characters of other questions.
+            // The previous shared instructions consumed 3,733 stored characters for this same exchange.
+            db.transaction(em -> {
+                em.find(AnalysisContinuationRun.class, db.id).payloadCharacters = RUN_LIMIT - 3_600;
+                return null;
+            });
+            String original = "Consume the latest observation batch and show stale or unavailable data.";
+            var source = new Node("BP-1866", "BP", "Prepare Data", "Prepare incoming observations for display.", false);
+            var target = new Node("IP-1116", "IP", "Recognized Environmental Pictures",
+                    "An assembled environmental picture showing assessed conditions.", false);
+            var query = new Query(original, new Contribution(source, "Prepare incoming observations.", original, ""),
+                    "CONSUMES", Direction.OUTGOING, Phase.NAVIGATE, List.of(target), null);
+            String reply = """
+                    {"decisions":[{"targetId":"IP-1116","outcome":"UNRESOLVED","contribution":"","requirementQuote":"",
+                    "necessity":null,"condition":"","alternativeGroup":"","rationale":"The original does not identify the input product.",
+                    "question":"Is the observation batch already an assembled environmental picture?"}]}
+                    """;
+            var sent = new AtomicReference<String>();
+            var protocol = new RelationSearchProtocol((step, nodes, prompt) -> {
+                assertNull(sent.getAndSet(prompt), "Accepted evidence must replay without another provider request");
+                return reply;
+            }, "MOCK");
+
+            var decisions = protocol.evaluate(query);
+
+            assertEquals(Outcome.UNRESOLVED, decisions.getFirst().outcome());
+            assertEquals("Is the observation batch already an assembled environmental picture?", decisions.getFirst().question());
+            var question = AnalysisCheckpointSession.evidenceQuestion("NAVIGATE", "MOCK", List.of(target.id()), sent.get());
+            var stored = db.stored(question);
+            assertEquals("CLARIFICATION", stored.state());
+            assertTrue(stored.payloadCharacters() <= RUN_LIMIT);
+            var retained = db.transaction(em -> db.store(em).detail(db.id, question.key(), SCOPE));
+            assertEquals(sent.get(), retained.getPrompt());
+            assertEquals(reply, retained.getRawResponse());
+            assertEquals(decisions, protocol.evaluate(query));
         }
     }
 

@@ -1,5 +1,5 @@
 VERIFY: check original and endpoints for the proposal's direction, function, necessity and conditions.
-Verify the endpoints' own scoped functions. A requirement-to-node contribution does not establish a directed edge. A shared topic or ancestor category is insufficient.
+Verify the endpoints' own scoped functions. A shared topic or ancestor category is insufficient.
 REJECT an unsupported proposal with an empty question. Use UNRESOLVED for an open question.
 Return all keys: {"decisions":[{"targetId":"offered ID","outcome":"VERIFIED|REJECT|UNRESOLVED","rationale":"justification","question":""}]}.
 VERIFIED accepts exactly the unchanged proposal.
