@@ -134,7 +134,7 @@ class PortfolioRequirementReviewIT {
     }
 
     @ParameterizedTest
-    @CsvSource({"en,Analyze selected version", "de,Ausgewählte Version analysieren"})
+    @CsvSource({"en,Analyze version 1", "de,Version 1 analysieren"})
     void analysisActionNamesAndSubmitsTheSelectedVersion(String locale, String label) {
         var fixture = new PortfolioRequirementFixture(page);
         fixture.open(locale);
@@ -144,6 +144,7 @@ class PortfolioRequirementReviewIT {
         fixture.click(By.cssSelector("#versionList [data-version-id='11']"));
         assertThat(page.driver().findElement(current).getDomAttribute("aria-current")).isNull();
         assertThat(fixture.element("reanalyzeRequirement").getAccessibleName()).isEqualTo(label);
+        assertThat(fixture.element("analysisVersionHint").getText()).contains("2");
 
         int initialReads = page.requests().size();
         fixture.click("reanalyzeRequirement");

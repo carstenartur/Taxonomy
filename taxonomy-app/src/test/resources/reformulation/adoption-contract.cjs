@@ -60,5 +60,36 @@ const tick=()=>new Promise(resolve=>setImmediate(resolve));
  assert.equal(detailRefreshes,2,'A failed adoption callback must not suppress the independent detail refresh');
  assert.equal(action('confirm').disabled,true,'A failed refresh must not re-enable an already adopted command');
  assert(text(body).includes('Übernahme dokumentiert'),'A failed refresh hid successful adoption');
+ action('close').click();
+ const knownWarnings=['UNRESOLVED_QUESTIONS','REVIEW_PENDING_EDITS_AND_DECISIONS','SOURCE_DIFFERS_FROM_CURRENT',
+   'EXTERIOR_WHITESPACE_NORMALIZED','ADDITIONS_REQUIRE_REVIEW','NOT_SYNTHESIZED','SOURCE_ANSWER_CONFLICT',
+   'STALE_FOLLOW_UP_CONTEXT','STATEMENT_TEXT_CONFLICT','SOURCE_FORMULATION_REVIEW','GROUPED_SYNTHESIS',
+   'STATEMENT_CHANGED_OR_LOST','INVALID_SOURCE_SPAN','UNCONFIRMED_ADDITION','ORIGINAL_NOT_VISIBLE',
+   'SEMANTIC_REVIEW_REQUIRED','MODEL_UNCOVERED','NO_TAXONOMY_MATCH','UNREVIEWED_GENERATION',
+   'DUPLICATE_STATEMENT','DUPLICATE_QUESTION_REFERENCE','DUPLICATE_SECTION','UNKNOWN_QUESTION_REFERENCE',
+   'UNKNOWN_DECISION_REFERENCE','UNKNOWN_SECTION_REFERENCE','UNKNOWN_ANSWER_REFERENCE',
+   'REJECTED_ADDITION_REINTRODUCED','RECONCILED_UNCOVERED','RECONCILIATION_LIMIT','INCOMPATIBLE_ANSWER_CONTRACTS',
+   'CONFLICTING_ANSWERS','ORIGINAL_REMAINDER','BOUNDED_RECONCILIATION'];
+ for(const language of ['de','en']) {
+   preview.content.warnings=[...knownWarnings,'UNKNOWN_RETAINED_CODE','constructor'];
+   preview.content.blockingReasons=['UNKNOWN_SECTION_REFERENCE'];
+   const original=JSON.stringify(preview);
+   api.open({...options,language});await tick();previewResolve();await tick();
+   assert(text(body).includes(language==='de'?'Die Quellabdeckung wurde noch nicht ausgewertet.':'Source coverage has not been evaluated.'));
+   assert(text(body).includes(language==='de'?'Ein Abschnitt verweist auf unbekannte Inhalte.':'A section refers to unknown content.'));
+   assert(text(body).includes('UNKNOWN_RETAINED_CODE'));
+   const displayedWarnings=all(body).filter(n=>n.tagName==='p').map(n=>n.textContent);
+   for(const code of knownWarnings)assert(!displayedWarnings.includes(code),language+' must explain '+code);
+   assert(displayedWarnings.includes('constructor'),'Unknown values must remain exact text even when they name an object property');
+   assert(text(body).includes(language==='de'?'Offen':'Open'));
+   assert.equal(action('confirm').disabled,true,'Localized blockers must retain the adoption gate');
+   assert.equal(JSON.stringify(preview),original,'Display localization must never rewrite retained evidence');
+   const header=all(body).find(n=>n.className==='reformulation-adoption-header');
+   const content=all(body).find(n=>n.className==='reformulation-adoption-body');
+   assert.ok(header && content,'A fixed header and separately scrollable content keep Close reachable');
+   assert.equal(action('close').parent,header);
+   assert.equal(action('confirm').parent,content);
+   action('close').click();assert.equal(body.children.length,0);
+ }
  console.log('REFORMULATION_ADOPTION_CONTROLS_OK');
 })().catch(e=>{console.error(e);process.exitCode=1;}).finally(()=>canonicalFixture.dispose());

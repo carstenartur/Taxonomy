@@ -78,14 +78,58 @@ test('requirement impact uses the named scoped boundary and retains evidence on 
     assert.deepEqual(f.calls[0].ctx && JSON.parse(JSON.stringify(f.calls[0].ctx)),selected);
     assert.ok(f.ids.get('requirementImpactResults').innerHTML.includes(commit));
 });
-function detailHtml(detail) {
-    const sandbox=vm.createContext({URL,URLSearchParams,document:{documentElement:{lang:'en'},addEventListener(){}},
+function detailHtml(detail, language = 'en') {
+    const sandbox=vm.createContext({URL,URLSearchParams,document:{documentElement:{lang:language},addEventListener(){}},
         location:{pathname:'/projects/1/requirements/2',search:''},TaxonomyUtils:{escapeHtml},
         TaxonomyI18n:{getBasePath:()=>'',resolveUrl:v=>v,formatEnum:v=>v}});sandbox.window=sandbox;
     // Inspect the production renderer without changing its body or adding a production test hook.
     vm.runInContext(source('portfolio/requirement-detail.js').replace(/\}\)\(\);\s*$/,'window.renderResult = renderAnalysisSummary; })();'),sandbox);
     return sandbox.renderResult(detail);
 }
+
+for (const [language, coverageLabel, notEvaluated] of [
+    ['en', 'Pattern coverage', 'Not evaluated for this result'],
+    ['de', 'Musterabdeckung', 'Für dieses Ergebnis nicht bewertet']
+]) {
+    function patternResult(patterns, copilot = {}) {
+        const html = detailHtml({analysis:{copilot:{schemaVersion:2,state:'COMPLETED',
+            gaps:{judgments:[]},patterns,recommendation:{},...copilot}}}, language);
+        return {
+            metric: html.match(/<article[^>]*>[\s\S]*?<\/article>/g)
+                .find(article => article.includes(coverageLabel)),
+            panel: html.includes('id="patternResultSection"')
+                ? html.slice(html.indexOf('id="patternResultSection"'), html.indexOf('id="recommendationResultSection"')) : ''
+        };
+    }
+    for (const coverage of [0, 1, 37.5]) test(`${language} preserves recorded pattern coverage ${coverage}% independently of full matches`, () => {
+        const result = patternResult({patternCoverage:coverage,matchedPatterns:[],incompletePatterns:[{
+            patternName:'Authored partial chain',completeness:50,presentSteps:['A USES S'],missingSteps:['S SUPPORTS P']
+        }]});
+        assert.ok(result.metric.includes(`>${coverage}%</div>`), result.metric);
+        assert.ok(!result.metric.includes(notEvaluated), result.metric);
+        assert.ok(result.panel.includes(`${coverageLabel}: ${coverage}%`), result.panel);
+        assert.match(result.panel,/>50%<\/span>/, 'Individual chain completeness remains separate');
+    });
+    for (const coverage of [null, undefined]) test(`${language} does not infer missing pattern coverage from matched cards (${coverage})`, () => {
+        const result = patternResult({patternCoverage:coverage,matchedPatterns:[{
+            patternName:'Authored retained card',completeness:100,presentSteps:['A USES S'],missingSteps:[]
+        }],incompletePatterns:[]});
+        assert.ok(result.metric.includes(notEvaluated), result.metric);
+        assert.ok(result.panel.includes(`${coverageLabel}: ${notEvaluated}`), result.panel);
+        assert.match(result.panel,/>100%<\/span>/, 'A retained card does not invent its missing aggregate');
+    });
+    for (const state of ['SKIPPED_PARTIAL', 'SKIPPED_SCOPE']) test(`${language} leaves skipped pattern coverage unevaluated (${state})`, () => {
+        const result = patternResult({patternCoverage:0,matchedPatterns:[],incompletePatterns:[]}, {state});
+        assert.ok(result.metric.includes(notEvaluated), result.metric);
+        assert.equal(result.panel, '');
+    });
+    test(`${language} ignores an unsupported retained pattern schema`, () => {
+        const result = patternResult({patternCoverage:100,matchedPatterns:[{}],incompletePatterns:[]}, {schemaVersion:1});
+        assert.ok(result.metric.includes(notEvaluated), result.metric);
+        assert.equal(result.panel, '');
+    });
+}
+
 test('portfolio shows rule judgments, source and matched versus canonical members without fabricated confidence',()=>{
     const html=detailHtml({analysis:{copilot:{schemaVersion:2,state:'COMPLETE',gaps:{profileId:'authored-profile',profileVersion:'1',
         repositoryId:'fixture-repo',workspaceScopeKey:'fixture-workspace',branch:'feature/evidence',commitId:commit,evidenceCompleteness:'INCOMPLETE',

@@ -260,7 +260,7 @@ public final class ArchitectureEditorExportController {
         return documentResponse(document)
                 .header("X-Taxonomy-Layout-Source", document.layoutMode())
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=architecture.svg")
-                .body(svg.renderCanonical(document.scene(), document.evidence(), LocaleContextHolder.getLocale()));
+                .body(svg.renderCanonical(document.scene(), provenance(document), document.evidence(), LocaleContextHolder.getLocale()));
     }
 
     @GetMapping(value = "/api/architecture/editor.pdf", produces = "application/pdf")
@@ -281,15 +281,19 @@ public final class ArchitectureEditorExportController {
         var context = readContext(repositoryId, workspaceScopeKey, branch);
         ExportDocument document = viewId == null ? exports.read(context, commit, revision, strategy, layoutRevision)
                 : exports.read(context, commit, revision, strategy, layoutRevision, viewId);
-        String selected = "GIT_CHECKPOINT".equals(document.source())
-                ? "Checkpoint " + document.commit()
-                : "Revision " + document.revision() + " / checkpoint " + document.commit();
-        String provenance = document.repositoryId() + " / " + document.workspaceScopeKey()
-                + " / " + document.branch() + "\n" + selected;
         return documentResponse(document)
                 .header("X-Taxonomy-Layout-Source", document.layoutMode())
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=architecture.pdf")
-                .body(pdf.renderCanonical(document.scene(), provenance, document.evidence(), LocaleContextHolder.getLocale()));
+                .body(pdf.renderCanonical(document.scene(), provenance(document), document.evidence(), LocaleContextHolder.getLocale()));
+    }
+
+    private static String provenance(ExportDocument document) {
+        boolean german = "de".equals(LocaleContextHolder.getLocale().getLanguage());
+        String selected = "GIT_CHECKPOINT".equals(document.source()) ? "Checkpoint " + document.commit()
+                : "Revision " + document.revision() + (document.commit() == null || document.commit().isBlank()
+                        ? (german ? " (ohne Checkpoint)" : " (uncheckpointed)")
+                        : " / checkpoint " + document.commit());
+        return document.repositoryId() + " / " + document.workspaceScopeKey() + " / " + document.branch() + "\n" + selected;
     }
 
     public ResponseEntity<String> svg(String repositoryId, String workspaceScopeKey, String branch,

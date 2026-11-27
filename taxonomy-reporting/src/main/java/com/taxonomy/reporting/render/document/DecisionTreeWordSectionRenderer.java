@@ -73,7 +73,7 @@ public final class DecisionTreeWordSectionRenderer {
                         entry.bookmark(),
                         labels.chapter() + " " + entry.chapterNumber());
         }
-        writer.columnWidths(table, 48, 16, 24, 12);
+        writer.columnWidths(table, 41, 17, 22, 20);
         for (String code : tree.warnings()) writer.paragraph(labels.orphanWarning() + ": " + code);
     }
 }

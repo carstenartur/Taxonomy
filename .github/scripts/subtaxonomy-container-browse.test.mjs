@@ -194,7 +194,7 @@ function harness({ view = 'list', data = catalogue(), scores = null, interactive
     if (relevance) vm.runInContext(viewsSource, context);
     // Exercise the real expand/collapse commands without adding a production API.
     vm.runInContext(sources[1].replace('window.TaxonomyBrowse = {',
-        'window.TaxonomyBrowse = { expandAllForTest: expandAll, collapseAllForTest: collapseAll, bindPreviewsForTest: typeof bindProposalAdoptionPreviews === "function" ? bindProposalAdoptionPreviews : null, previewAdoptionForTest: typeof previewProposalAdoption === "function" ? previewProposalAdoption : null,'), context);
+        'window.TaxonomyBrowse = { expandAllForTest: expandAll, collapseAllForTest: collapseAll, renderProposalsForTest: renderProposalTable, bindPreviewsForTest: typeof bindProposalAdoptionPreviews === "function" ? bindProposalAdoptionPreviews : null, previewAdoptionForTest: typeof previewProposalAdoption === "function" ? previewProposalAdoption : null,'), context);
     vm.runInContext(sources[2], context);
     const browse = window.TaxonomyBrowse;
     browse.renderView(data, scores);
@@ -802,7 +802,7 @@ test('proposal badge reuses the single authoritative read under each filter with
     assert.ok(begin >= 0 && finish > begin && badgeBegin > finish && badgeEnd > badgeBegin);
     const functions = browseSource.slice(begin, finish) + browseSource.slice(badgeBegin, badgeEnd);
     for (const filter of ['PENDING', 'ALL', 'ACCEPTED', 'REJECTED']) {
-        let requests = 0, secondaryRequests = 0, renderCount = 0;
+        let requests = 0, secondaryRequests = 0, renderCount = 0, observedAutoPreview;
         const pending = [{id:'p1', status:'PENDING'}, {id:'p2', status:'PENDING'}];
         const all = [...pending, {id:'a1',status:'ACCEPTED'}, {id:'r1',status:'REJECTED'}];
         const badge = {textContent:'',className:''};
@@ -825,7 +825,7 @@ test('proposal badge reuses the single authoritative read under each filter with
             }},
             t: (key,n)=>key + ':' + n,
             renderProposalTable(proposals, autoPreview, signal, target) {
-                assert.equal(autoPreview,filter === 'ACCEPTED' ? 'all' : null);
+                observedAutoPreview = autoPreview;
                 assert.equal(target, container);
                 assert.ok(signal instanceof AbortSignal);
                 renderCount++;
@@ -837,6 +837,7 @@ test('proposal badge reuses the single authoritative read under each filter with
         assert.equal(requests,1,'One authoritative list read suffices for ' + filter);
         assert.equal(secondaryRequests,0,'No separately cancellable badge read for ' + filter);
         assert.equal(renderCount,1,'The filtered table is rendered for ' + filter);
+        assert.equal(observedAutoPreview,filter === 'ACCEPTED' ? 'central' : null);
         assert.equal(badge.textContent,'browse.proposals.pending:2');
         assert.match(badge.className,/bg-warning/);
     }
@@ -844,6 +845,22 @@ test('proposal badge reuses the single authoritative read under each filter with
 
 const sourceCommit = 'a'.repeat(40);
 const targetCommit = 'b'.repeat(40);
+
+for (const central of [true, false, undefined, null, 'true', 1]) {
+    test(`accepted proposal table requires explicit central provenance for adoption (${String(central)} ${typeof central})`, () => {
+        const h = harness();
+        const container = h.document.createElement('div');
+        h.document.body.appendChild(container);
+        h.browse.renderProposalsForTest([{id:17,status:'ACCEPTED',central,
+            sourceCode:'AUTHORED-SOURCE',targetCode:'AUTHORED-TARGET',relationType:'REALIZES'}],
+            'central', new AbortController().signal, container);
+        assert.match(container.innerHTML, /proposal-accepted-status/, 'The accepted decision remains visible');
+        assert.equal(container.innerHTML.includes('proposal-adoption-preview'), central === true, container.innerHTML);
+        assert.equal(container.innerHTML.includes('id="proposal-adoption-17"'), central === true, container.innerHTML);
+        if (central === true) assert.match(container.innerHTML, /data-central="true"/);
+    });
+}
+
 function adoptionFixture(overrides = {}, mode = 'EDITABLE') {
     const h = harness();
     const scope = {repositoryId:'repo-a',workspaceId:'',branch:'entwurf'};
@@ -866,6 +883,7 @@ function adoptionFixture(overrides = {}, mode = 'EDITABLE') {
     const cell = h.document.createElement('td');
     h.document.body.appendChild(cell);
     const button = h.document.createElement('button');
+    button.dataset.central = 'true';
     cell.appendChild(button);
     const details = h.document.createElement('div');
     cell.appendChild(details);
@@ -1017,6 +1035,7 @@ function acceptedRowsFixture(count) {
     for (let index = 0; index < count; index++) {
         const button = h.document.createElement('button');
         button.dataset.id = String(index + 1);
+        button.dataset.central = 'true';
         const status = h.document.createElement('div');
         status.id = 'adoption-' + button.dataset.id;
         button.setAttribute('aria-controls', status.id);
@@ -1067,10 +1086,11 @@ test('the accepted filter reads only visible rows and offers adoption without an
     assert.ok(h.requests.every(request => request.signal === h.controller.signal));
 });
 
-test('All automatically checks visible central acceptances and keeps other rows manual', async () => {
-    const h = acceptedRowsFixture(2);
-    h.buttons[0].dataset.central = 'true';
-    h.bind('central');
+for (const filter of ['all', 'central']) test(`${filter} never previews local or unknown accepted provenance automatically or on click`, async () => {
+    const h = acceptedRowsFixture(3);
+    h.buttons[1].dataset.central = 'false';
+    delete h.buttons[2].dataset.central;
+    h.bind(filter);
     assert.deepEqual([...h.observed], [h.buttons[0]]);
     h.visibility([0],true);
     assert.deepEqual(h.requests.map(request => request.id),[1]);
@@ -1079,11 +1099,31 @@ test('All automatically checks visible central acceptances and keeps other rows 
     assert.equal(h.details[0].dataset.state,'AVAILABLE');
     assert.equal(h.details[1].dataset.state,undefined);
     h.buttons[1].click();
-    assert.deepEqual(h.requests.map(request => request.id),[1,2]);
-    h.requests[1].resolve();
+    h.buttons[2].click();
     await settleAdoption();
-    assert.equal(h.details[1].dataset.state,'AVAILABLE');
+    assert.deepEqual(h.requests.map(request => request.id),[1]);
+    assert.equal(h.details[1].dataset.state,undefined);
+    assert.equal(h.details[2].dataset.state,undefined);
     assert.equal(h.calls.length,0);
+});
+
+for (const central of ['false', undefined]) test(`direct preview refuses missing central eligibility (${central})`, async () => {
+    const h = adoptionFixture();
+    if (central === undefined) delete h.button.dataset.central;
+    else h.button.dataset.central = central;
+    await h.inspect();
+    assert.equal(h.calls.length,0);
+    assert.equal(h.details.textContent,'');
+});
+
+test('the mixed accepted filter names the decision status in both interface languages', () => {
+    for (const [language, expected] of [['en', 'Accepted'], ['de', 'Akzeptiert']]) {
+        const file = '../../taxonomy-app/src/main/resources/i18n/messages' + (language === 'de' ? '_de' : '') + '.properties';
+        const messages = readFileSync(new URL(file, import.meta.url), 'utf8').replace(/\\u([0-9a-fA-F]{4})/g,
+            (_, hex) => String.fromCharCode(parseInt(hex,16)));
+        assert.equal(messages.split(/\r?\n/).find(line => line.startsWith('browse.proposals.adoption.filter=')),
+            'browse.proposals.adoption.filter=' + expected);
+    }
 });
 
 test('the preview button still works without automatic checks or an intersection observer', async () => {

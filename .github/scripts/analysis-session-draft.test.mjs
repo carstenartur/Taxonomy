@@ -1336,7 +1336,7 @@ test('cancelling during a full draft read cannot acknowledge an unapplied foreig
   assert.equal(h.state.currentScores.NEW, 100);
 });
 
-function evidenceReceiptHarness({ statusResponse, gitResponse, auditFinished } = {}) {
+function evidenceReceiptHarness({ statusResponse, gitResponse, proposalResponse, auditFinished } = {}) {
   let now = Date.UTC(2026, 10, 10), nextTimer = 0, server = null, heldBody = false;
   const timers = new Map(), timerDelays = [], requests = [], failures = [], audits = [], gitContacts = [];
   const bodyStarted = deferred(), bodyDelivered = deferred();
@@ -1371,7 +1371,7 @@ function evidenceReceiptHarness({ statusResponse, gitResponse, auditFinished } =
       window.clearTimeout = clearTimer;
       window.console = { warn() {} };
       sandbox.Date = EvidenceDate;
-      if (gitResponse) {
+      if (gitResponse || proposalResponse) {
         window.addEventListener = () => {};
         vm.runInNewContext(`(${installRoleStateGitPollBarrier.toString()})()`, { window, URL });
       }
@@ -1379,6 +1379,9 @@ function evidenceReceiptHarness({ statusResponse, gitResponse, auditFinished } =
         const url = new URL(input, window.location.href), method = options.method || 'GET';
         requests.push({ method, path: url.pathname, body: options.body });
         if (url.pathname === '/api/git/state' && gitResponse) return gitResponse();
+        if (/^(?:\/taxonomy)?\/api\/proposals(?:\/|$)/.test(url.pathname) && proposalResponse) {
+          return proposalResponse(url, method);
+        }
         assert.match(url.pathname, /^\/api\/analysis-drafts\/ws-1(?:\/status)?$/);
         if (url.pathname.endsWith('/status') && statusResponse) return statusResponse();
         if (method === 'PUT') {
@@ -1412,7 +1415,7 @@ function evidenceReceiptHarness({ statusResponse, gitResponse, auditFinished } =
       };
       canonical.install({ ...sandbox, window, document, Date: EvidenceDate,
         setTimeout: setTimer, clearTimeout: clearTimer },
-      ['api/analysis-session-api.js', 'api/workspace-api.js']);
+      ['api/analysis-session-api.js', 'api/workspace-api.js', 'api/proposals-api.js']);
       context.jsonRequest = (url, options, preserveReceipt) =>
         window.TaxonomyAnalysisSessionApi.request(url, options,
           preserveReceipt ? context.runtime.workspaceId : undefined, preserveReceipt === true)
@@ -1494,6 +1497,110 @@ test('blocking Axe lets an admitted Git status poll consume its successful respo
   assert.equal(f.audits.length, 1);
   assert.ok(f.timerDelays.includes(30_000), 'The canonical response deadline remains active');
 });
+
+for (const [filter, route] of [['PENDING', '/api/proposals/pending'], ['ALL', '/api/proposals']]) {
+  test(`blocking Axe lets an admitted ${route} read consume its successful body`, async t => {
+    t.after(() => canonical.dispose());
+    const bodyStarted = deferred(), allowBody = deferred();
+    const proposals = [{ id: 19, status: 'PENDING' }];
+    const response = Response.json(proposals);
+    const json = response.json.bind(response);
+    response.json = () => {
+      bodyStarted.resolve();
+      return allowBody.promise.then(json);
+    };
+    const f = evidenceReceiptHarness({ proposalResponse: () => response });
+    const signal = new AbortController().signal;
+    const read = f.h.window.TaxonomyProposalsApi.list(filter, { signal }).then(value => value.json());
+    const settledRead = read.then(value => ({ value }), error => ({ error }));
+    await bodyStarted.promise;
+    const audit = f.evidence.runAxe('analysis-success');
+    await new Promise(resolve => setImmediate(resolve));
+    allowBody.resolve();
+    await audit;
+    const { value, error } = await settledRead;
+    assert.ifError(error);
+    assert.deepEqual(value, proposals);
+    assert.equal(f.requests.filter(request => request.path === route).length, 1);
+    assert.equal(f.audits.length, 1);
+    assert.ok(f.timerDelays.includes(30_000), 'Transport retains its original response deadline');
+  });
+}
+
+test('the Axe barrier holds only same-origin selected proposal collection GETs and rejects obsolete deferred reads', async t => {
+  t.after(() => canonical.dispose());
+  const auditStarted = deferred(), finishAudit = deferred();
+  const proposalRequests = [];
+  const f = evidenceReceiptHarness({
+    proposalResponse(url, method) {
+      proposalRequests.push([url.origin, url.pathname, method]);
+      return Response.json([]);
+    },
+    auditFinished() { auditStarted.resolve(); return finishAudit.promise; }
+  });
+  const window = f.h.window;
+  const client = window.TaxonomyApiClient;
+  const changeContext = variantNavigation(window);
+  const audit = f.evidence.runAxe('analysis-success');
+  await auditStarted.promise;
+  const aborted = new AbortController();
+  const current = new AbortController();
+  const read = (filter, signal) => window.TaxonomyProposalsApi.list(filter, { signal }).then(response => response.json());
+  const canceledRead = assert.rejects(read('PENDING', aborted.signal), { code: 'ABORTED' });
+  const staleRead = assert.rejects(read('ALL', current.signal), { code: 'ABORTED' });
+  aborted.abort();
+  changeContext();
+  const liveRead = read('PENDING', current.signal);
+  const origin = window.location.origin;
+  const foreignOrigin = 'https://elsewhere.example';
+  const path = '/api/proposals';
+  const prefixedPath = '/taxonomy/api/proposals/pending';
+  const proposalRequest = (url, method, selectedRepository) => client.request(url, { method }, {
+    signal: current.signal, selectedRepository
+  }).then(response => response.json());
+  const prefixedRead = proposalRequest(origin + prefixedPath + '?branch=draft', 'GET', true);
+  const foreignRead = proposalRequest(foreignOrigin + path, 'GET', true);
+  await Promise.all([proposalRequest(path, 'GET', false), proposalRequest(path, 'POST', true),
+    proposalRequest(path + '/19/adoption', 'GET', true)]);
+  const duringAudit = proposalRequests.slice();
+  finishAudit.resolve({ violations: [] });
+  await Promise.all([audit, canceledRead, staleRead]);
+  assert.deepEqual(await Promise.all([liveRead, prefixedRead, foreignRead]), [[], [], []]);
+  assert.deepEqual(duringAudit, [[foreignOrigin, path, 'GET'], [origin, path, 'GET'],
+    [origin, path, 'POST'], [origin, path + '/19/adoption', 'GET']]);
+  assert.deepEqual(proposalRequests.slice(duringAudit.length), [[origin, path + '/pending', 'GET'],
+    [origin, prefixedPath, 'GET']]);
+});
+
+test('abandoning a proposal after successful headers releases the Axe barrier', async t => {
+  t.after(() => canonical.dispose());
+  const f = evidenceReceiptHarness({ proposalResponse: () => Response.json([]) });
+  const controller = new AbortController();
+  await f.h.window.TaxonomyProposalsApi.list('PENDING', { signal: controller.signal });
+  const audit = f.evidence.runAxe('analysis-success');
+  controller.abort();
+  await audit;
+  assert.equal(f.audits.length, 1);
+});
+
+for (const status of [404, 503]) {
+  test(`an admitted proposal ${status} releases the Axe barrier and remains visible to its caller`, async t => {
+    t.after(() => canonical.dispose());
+    const server = deferred(), started = deferred();
+    const f = evidenceReceiptHarness({ proposalResponse() { started.resolve(); return server.promise; } });
+    const signal = new AbortController().signal;
+    const read = f.h.window.TaxonomyProposalsApi.list('PENDING', { signal });
+    const failure = status === 503 ? assert.rejects(read, { code: 'HTTP_ERROR', status }) : null;
+    await started.promise;
+    const audit = f.evidence.runAxe('analysis-success');
+    server.resolve(Response.json({ detail: 'No proposals available' }, { status }));
+    if (failure) await failure;
+    else assert.equal((await read).status, status);
+    await audit;
+    assert.equal(f.audits.length, 1);
+    assert.equal(f.requests.filter(request => request.path === '/api/proposals/pending').length, 1);
+  });
+}
 
 test('a real failure from the admitted Git poll blocks the draft audit', async t => {
   t.after(() => canonical.dispose());

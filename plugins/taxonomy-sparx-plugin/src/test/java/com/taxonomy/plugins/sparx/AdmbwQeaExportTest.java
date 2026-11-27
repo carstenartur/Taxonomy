@@ -119,6 +119,30 @@ class AdmbwQeaExportTest {
     }
 
     @Test
+    void newPackagesLeaveUnselectedNativePackageReferencesUnresolved() throws Exception {
+        try (var basis = basis()) {
+            basis.sql("INSERT INTO t_object (Object_ID,Object_Type,Name,Package_ID,ea_guid) VALUES (110,'Class','Orphan',4,?)",
+                    "{30000000-0000-0000-0000-000000000110}");
+            basis.sql("UPDATE t_diagram SET Package_ID=5 WHERE Diagram_ID=30");
+            basis.sql("INSERT INTO t_package (Package_ID,Name,Parent_ID,ea_guid) VALUES (3,'Orphan branch',6,'{20000000-0000-0000-0000-000000000003}')");
+            basis.sql("UPDATE t_object SET PDATA1='7' WHERE Object_ID=100");
+            basis.sql("UPDATE t_object SET PDATA1='8' WHERE Object_ID=110");
+            basis.sql("UPDATE t_object SET Note='Reference' WHERE Object_ID=11");
+            byte[] original = basis.bytes();
+            var connector = new SparxQeaWriterConnector();
+            assertFalse(connector.inspectAdmbwBasis(original).roots().isEmpty());
+            var file = connector.exportAdmbw(delivery(), QeaFixture.ROOT, original);
+            Path target = Files.write(temp.resolve("package-owners.qea"), file.content());
+            try (var read = DriverManager.getConnection("jdbc:sqlite:" + target)) {
+                assertEquals(List.of(), column(read, "SELECT Name FROM t_package WHERE Package_ID BETWEEN 4 AND 7"));
+                assertEquals(List.of("8"), column(read, "SELECT Package_ID FROM t_package WHERE Name='Service Specifications'"));
+                assertEquals(List.of("4"), column(read, "SELECT Package_ID FROM t_object WHERE Object_ID=110"));
+            }
+            assertArrayEquals(original, basis.bytes());
+        }
+    }
+
+    @Test
     void createsNativeViewsAndKeepsCatalogueObjectsInTheirPackages() throws Exception {
         try (var basis = basis()) {
             byte[] original = basis.bytes();

@@ -32,6 +32,9 @@
             loading:'Wird geladen…', working:'Wird verarbeitet…', dirty:'Ungespeicherte Bearbeitung bleibt erhalten.', failed:'Aktion fehlgeschlagen: ',
             referenceUnavailable:'Der Bezug ist im eingefrorenen Snapshot nicht vorhanden.', architecture:'Architekturbezug', findings:'Konflikte und Quellabdeckung', true:'Ja', false:'Nein', refresh:'Status aktualisieren',
             OPEN:'Offen', ANSWERED:'Beantwortet', DEFERRED:'Zurückgestellt', NOT_APPLICABLE:'Nicht anwendbar', CONFLICT:'Konflikt',
+            PENDING:'Ausstehend', QUEUED:'In Warteschlange', RUNNING:'Wird ausgeführt', SUCCESS:'Erfolgreich',
+            PARTIAL:'Teilergebnis', FAILED:'Fehlgeschlagen', CANCELLED:'Abgebrochen', CANCELLING:'Wird abgebrochen',
+            COMPLETED:'Abgeschlossen', NOT_STARTED:'Noch nicht gestartet',
             MODEL_ADDITION:'Modellergänzung', ORIGINAL:'Original', ADOPTED_SOURCE:'Übernommener Quelltext', CATALOGUE_INSPIRATION:'Kataloganregung', ARCHITECTURE_HYPOTHESIS:'Architekturhypothese', HUMAN_DECISION:'Menschliche Entscheidung',
             changeDecision:'Abweichende menschliche Entscheidung erfassen', applicable:'Bedingte Folgefrage', unavailable:'Erst bei passender Antwort auf die vorausgesetzte Frage beantworten.'},
         en: {usage:'Recorded request attempts', usageUnrecorded:'Usage recording has not been started for this run.',
@@ -59,6 +62,9 @@
             loading:'Loading…', working:'Working…', dirty:'Unsaved edit has been preserved.', failed:'Action failed: ',
             referenceUnavailable:'This reference is not present in the frozen snapshot.', architecture:'Architecture reference', findings:'Conflicts and source coverage', true:'Yes', false:'No', refresh:'Refresh status',
             OPEN:'Open', ANSWERED:'Answered', DEFERRED:'Deferred', NOT_APPLICABLE:'Not applicable', CONFLICT:'Conflict',
+            PENDING:'Pending', QUEUED:'Queued', RUNNING:'Running', SUCCESS:'Successful',
+            PARTIAL:'Partial result', FAILED:'Failed', CANCELLED:'Cancelled', CANCELLING:'Cancelling',
+            COMPLETED:'Completed', NOT_STARTED:'Not started',
             MODEL_ADDITION:'Model addition', ORIGINAL:'Original', ADOPTED_SOURCE:'Adopted source text', CATALOGUE_INSPIRATION:'Catalogue inspiration', ARCHITECTURE_HYPOTHESIS:'Architecture hypothesis', HUMAN_DECISION:'Human decision',
             changeDecision:'Record a different human decision', applicable:'Conditional follow-up', unavailable:'Answer only after the prerequisite decision selects the relevant variant.'}
     };
@@ -226,6 +232,7 @@
                     currentRequirement=await api.getRequirement(project,requirement);
                     render(); announce((lang==='de'?'Übernahme dokumentiert. Zielversion: ':'Adoption recorded. Target version: ')+result.targetVersionId);
                 }});
+            announce(t('state'));
         }));
         if (window.TaxonomyReformulationReports) controls.append(window.TaxonomyReformulationReports.controls({
             projectId:project,requirementId:requirement,proposalId:offer.id,revision:revision.number,language:lang
@@ -455,7 +462,7 @@
         if(generate)generate.disabled=runs.some(activeRun);
         // Older releases allowed concurrent runs. Keep all active runs reachable, not just the latest three.
         runs.filter((run,index)=>activeRun(run) || index>=runs.length-3).forEach(run=>{
-            target.append(el('p',run.status+(run.failureCode?' · '+run.failureCode:''),'small text-break'));
+            target.append(el('p',t(run.status)+(run.failureCode?' · '+run.failureCode:''),'small text-break'));
             const inspect=button(t('progress'),()=>showProgress(run.id));inspect.dataset.reformulationProgressOpen=run.id;target.append(inspect);
             if(activeRun(run))target.append(button(t('cancelRun'),async()=>{
                 if(mutationInFlight)throw new Error(t('working'));
@@ -477,16 +484,24 @@
         document.getElementById('reformulationHeading').textContent=t('heading');announce(t('loading'));
         const snapshots=await api.listRequirementSnapshots(project,requirement);currentRequirement=await api.getRequirement(project,requirement);
         const start=document.getElementById('reformulationStart'),select=el('select',undefined,'form-select');select.id='reformulationSnapshot';
-        snapshots.forEach(snapshot=>{const option=el('option','v'+snapshot.requirementVersionNumber+' · '+snapshot.id+' · '+snapshot.status);option.value=snapshot.id;select.append(option);});
+        snapshots.forEach(snapshot=>{const option=el('option','v'+snapshot.requirementVersionNumber+' · '+snapshot.id+' · '+t(snapshot.status));option.value=snapshot.id;select.append(option);});
         const requested=new URLSearchParams(location.search).get('snapshot');if(snapshots.some(s=>s.id===requested))select.value=requested;
-        start.append(field(t('snapshot'),select),button(t('create'),()=>transition(()=>{
+        const create=button(t('create'),()=>transition(()=>{
             const snapshot=snapshots.find(s=>s.id===select.value);if(!snapshot)throw new Error(t('noSnapshot'));
             return api.createReformulation(project,requirement,{sourceVersionId:snapshot.requirementVersionId,snapshotId:snapshot.id});
-        })));
+        }));
+        start.append(field(t('snapshot'),select),create);
+        if(!snapshots.length) {
+            select.disabled=true;create.disabled=true;
+            const hint=el('p',t('noSnapshot'),'small text-body-secondary mb-0');
+            hint.id='reformulationNoSnapshot';hint.dataset.reformulationNoSnapshot='';
+            select.setAttribute('aria-describedby',hint.id);create.setAttribute('aria-describedby',hint.id);
+            start.append(hint);
+        }
         offers=await api.listReformulations(project,requirement);
         const selected=offers.find(p=>p.id===new URLSearchParams(location.search).get('proposal')) || offers[0];
         offer=selected ? await api.getReformulation(project,requirement,selected.id) : undefined;
-        render();if(offer)await refreshRuns();else announce(t('empty'));
+        render();if(offer)await refreshRuns();else announce('');
     }
     window.addEventListener('beforeunload',event=>{if(hasDrafts() || mutationInFlight){event.preventDefault();event.returnValue='';}});
     const initialized = (async () => {

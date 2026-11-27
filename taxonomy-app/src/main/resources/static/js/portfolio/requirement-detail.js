@@ -250,7 +250,25 @@
         }
     }
 
+    function revealDetailTab(tabs, tab) {
+        if (tab?.getAttribute?.('role') !== 'tab' || tab.getAttribute('aria-selected') !== 'true'
+                || tab.closest('[role="tablist"]') !== tabs || tabs.scrollWidth <= tabs.clientWidth) return;
+
+        // Bootstrap activates keyboard tabs without scrolling focus. Move only this tab strip.
+        const strip = tabs.getBoundingClientRect();
+        const selected = tab.getBoundingClientRect();
+        const style = window.getComputedStyle(tabs);
+        const viewportLeft = strip.left + tabs.clientLeft;
+        const viewportRight = Math.min(strip.right, viewportLeft + tabs.clientWidth);
+        const left = selected.left - viewportLeft - (parseFloat(style.paddingLeft) || 0);
+        const right = selected.right - viewportRight + (parseFloat(style.paddingRight) || 0);
+        const offset = left < 0 ? Math.floor(left) : Math.max(0, Math.ceil(right));
+        if (offset) tabs.scrollBy({left: offset, behavior: 'instant'});
+    }
+
     function wireEvents() {
+        const detailTabs = document.getElementById('detailTabs');
+        detailTabs.addEventListener('shown.bs.tab', event => revealDetailTab(detailTabs, event.target));
         document.getElementById('jumpToRequirementText').addEventListener('click', () => {
             document.getElementById('text-tab').click();
             document.getElementById('textPane').focus({preventScroll: true});
@@ -373,7 +391,10 @@
     function renderVersions() {
         const list = document.getElementById('versionList');
         list.textContent = '';
-        if (!state.versions.length) return renderEmpty(list, t('noVersions'));
+        if (!state.versions.length) {
+            updateVersionSelection();
+            return renderEmpty(list, t('noVersions'));
+        }
         state.versions.forEach(version => {
             const button = document.createElement('button');
             button.type = 'button';
@@ -395,6 +416,23 @@
     }
 
     function updateVersionSelection() {
+        const version = state.selectedVersion;
+        const action = document.getElementById('reanalyzeRequirement');
+        const number = version?.versionNumber ?? '—';
+        const label = locale === 'de' ? 'Version ' + number + ' analysieren' : 'Analyze version ' + number;
+        action.textContent = label;
+        action.setAttribute('aria-label', label);
+        const hint = document.getElementById('analysisVersionHint');
+        if (hint) {
+            const current = state.requirement?.currentVersion;
+            const historical = version && current && version.id !== current.id;
+            hint.hidden = !historical;
+            hint.textContent = historical ? (locale === 'de'
+                ? 'Ausgewählt ist eine frühere Version. Der aktuelle Anforderungstext ist Version ' + current.versionNumber + '.'
+                : 'An earlier version is selected. The current requirement text is version ' + current.versionNumber + '.') : '';
+            if (historical) action.setAttribute('aria-describedby', hint.id);
+            else action.removeAttribute('aria-describedby');
+        }
         document.getElementById('versionList').querySelectorAll('[data-version-id]').forEach(button => {
             const selected = Boolean(state.selectedVersion
                 && String(state.selectedVersion.id) === String(button.dataset.versionId));
@@ -655,6 +693,11 @@
         const relations = asArray(detail.relationMappings);
         const judgments = asArray(gap.judgments);
         const matched = asArray(patterns.matchedPatterns);
+        // A recorded zero is an evaluated result even when no chain fully matched.
+        // Coverage is already in percent units; missing evidence is not zero.
+        const patternCoverage = !skipped && Number.isFinite(patterns.patternCoverage)
+            && patterns.patternCoverage >= 0 && patterns.patternCoverage <= 100
+            ? Math.round(patterns.patternCoverage * 10) / 10 : null;
         const matches = asArray(recommendation.matchedElements);
         const accepted = asArray(recommendation.acceptedElements);
         const proposed = asArray(recommendation.proposedElements);
@@ -675,8 +718,8 @@
             + resultMetric(t('obligationAssessment'), skipped || !judgments.length ? '—' : violated,
                 skipped || !judgments.length ? t('notEvaluated') : inconclusive + ' ' + t('INCONCLUSIVE'),
                 violated ? 'warning' : 'secondary')
-            + resultMetric(t('patternCoverage'), skipped || !matched.length ? '—' : percentage(patterns.patternCoverage) + '%',
-                skipped || !matched.length ? t('notEvaluated') : matched.length + ' ' + t('matchedPatterns'), 'secondary')
+            + resultMetric(t('patternCoverage'), patternCoverage === null ? '—' : patternCoverage + '%',
+                patternCoverage === null ? t('notEvaluated') : matched.length + ' ' + t('matchedPatterns'), 'secondary')
             + resultMetric(t('meanRelevance'), skipped || relevance === null ? '—' : relevance + '%',
                 skipped || relevance === null ? t('notEvaluated') : suggested.length + ' ' + t('suggestedRelations'), 'secondary')
             + resultMetric(t('assessmentMatches'), skipped ? '—' : matches.length,
@@ -711,7 +754,7 @@
         return overview + renderModelEvidence(analysis) + renderRelationSearchSummary(relationReport) + warningHtml
             + (skipped ? '' : `<div class="portfolio-result-grid mt-3">`
                 + renderGapResult(gap, judgments)
-                + renderPatternResult(patterns, matched, retained)
+                + renderPatternResult(patterns, matched, retained, patternCoverage)
                 + renderRecommendationResult(recommendation, matches, accepted, proposed, suggested, reasoning)
                 + `</div>`) + technicalHtml;
     }
@@ -762,7 +805,7 @@
             + findings + asArray(gap.notes).map(note => `<p class="small">${escapeHtml(note)}</p>`).join('') + `</section>`;
     }
 
-    function renderPatternResult(patterns, matched, retained) {
+    function renderPatternResult(patterns, matched, retained, patternCoverage) {
         const displayed = retained ? matched.concat(asArray(patterns.incompletePatterns)) : matched;
         const cards = displayed.length ? displayed.map(pattern => {
             const completeness = percentage(pattern.completeness);
@@ -782,7 +825,7 @@
         }).join('') : `<p class="text-body-secondary mb-0">—</p>`;
         return `<section id="patternResultSection" class="portfolio-result-panel" aria-labelledby="patternResultTitle">`
             + `<div class="portfolio-result-panel-header"><h3 id="patternResultTitle" class="h6 mb-0">${escapeHtml(t('patternDetection'))}</h3>`
-            + `<span class="badge text-bg-secondary">${displayed.length && patterns.patternCoverage != null ? percentage(patterns.patternCoverage) + '%' : escapeHtml(t('notEvaluated'))}</span></div>`
+            + `<span class="badge text-bg-secondary text-wrap">${escapeHtml(t('patternCoverage'))}: ${patternCoverage === null ? escapeHtml(t('notEvaluated')) : patternCoverage + '%'}</span></div>`
             + `<div class="vstack gap-2 mt-3">${cards}</div></section>`;
     }
 
@@ -1100,7 +1143,13 @@
     function versionRetryLabel(retry) {
         const button=document.querySelector('#newVersionForm button[type="submit"]');
         if(!button.dataset.versionOriginalLabel) button.dataset.versionOriginalLabel=button.textContent;
-        button.textContent=retry?(locale==='de'?'Gespeicherten Vorgang wiederholen':'Retry saved operation'):button.dataset.versionOriginalLabel;
+        const pending=retry?(locale==='de'?'Gespeicherten Vorgang wiederholen':'Retry saved operation'):null;
+        if(window.TaxonomyRequirementIntake?.setPendingLabel) {
+            window.TaxonomyRequirementIntake.setPendingLabel(document.getElementById('newVersionForm'),pending);
+        } else {
+            button.textContent=pending||button.dataset.versionOriginalLabel;
+            button.setAttribute?.('aria-label',button.textContent);
+        }
     }
 
     function showSavedRequirement(saved,message) {

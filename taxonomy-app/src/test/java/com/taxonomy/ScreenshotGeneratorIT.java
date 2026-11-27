@@ -1771,6 +1771,7 @@ class ScreenshotGeneratorIT {
            "}).then(r => { if (!r.ok) throw new Error('Proposal creation failed: ' + r.status); return r.json(); })" +
            ".then(function(data) {" +
            "  window._createdProposalId = data.id;" +
+           "  window._createdProposalCentral = data.central;" +
            "  return fetch('/api/proposals/' + data.id + '/accept', {method: 'POST'});" +
            "}).then(r => { if (!r.ok) throw new Error('Proposal accept failed: ' + r.status); return r.json(); })" +
            ".then(function() { window._proposalCreated = true; })" +
@@ -1790,6 +1791,8 @@ class ScreenshotGeneratorIT {
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", panel);
         js("document.getElementById('filterAccepted').click();");
         JavascriptExecutor browser = (JavascriptExecutor) driver;
+        Assertions.assertEquals(Boolean.FALSE, browser.executeScript("return window._createdProposalCentral;"),
+                "The capture must show the actual workspace acceptance, not a central adoption source");
         Number id = (Number) browser.executeScript("return window._createdProposalId;");
         By acceptedRow = By.cssSelector("#proposalsTableContainer tr[data-proposal-id='" + id.longValue()
                 + "'][data-status='ACCEPTED']");
@@ -1800,9 +1803,11 @@ class ScreenshotGeneratorIT {
         boolean german = driver.findElement(By.tagName("html")).getAttribute("lang").equals("de");
         Assertions.assertEquals(german ? "Akzeptiert" : "Accepted",
                 row.findElement(By.cssSelector(".proposal-accepted-status")).getText());
-        WebElement check = row.findElement(By.cssSelector(".proposal-adoption-preview"));
-        Assertions.assertTrue(check.isDisplayed(), "The accepted proposal must offer an adoption preview");
-        Assertions.assertEquals(german ? "Übernahme prüfen" : "Check adoption", check.getText());
+        Assertions.assertEquals(german ? "Akzeptiert" : "Accepted", driver.findElement(By.id("filterAccepted")).getText());
+        Assertions.assertTrue(row.findElements(By.cssSelector(".proposal-adoption-preview, .proposal-adoption-apply")).isEmpty(),
+                "A workspace acceptance must not offer central branch adoption");
+        Assertions.assertTrue(row.findElements(By.cssSelector("[id^='proposal-adoption-']")).isEmpty(),
+                "The local acceptance must not trigger an inapplicable central-preview status");
         saveElementScreenshot(panel, "36-proposal-accepted.png");
     }
 

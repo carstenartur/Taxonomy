@@ -79,6 +79,7 @@ KI-gestützte Modi:
 
 ---
 
+<a id="supported-llm-providers"></a>
 ## Unterstützte LLM-Anbieter
 
 | Anbieter | Modell | API-Endpunkt | Datenspeicherort | Kostenloses Kontingent |
@@ -161,6 +162,7 @@ Der Anbieter wird in folgender Priorität ausgewählt:
 
 ---
 
+<a id="scoring-and-explainability"></a>
 ## Bewertung und Erklärbarkeit
 
 ### Wie Bewertungen generiert werden
@@ -221,6 +223,7 @@ Bei den [nativen Korpusmessungen](../testing/local-onnx-multilingual-retrieval.m
 
 ---
 
+<a id="human-oversight"></a>
 ## Menschliche Aufsicht
 
 Die Anwendung ist als **Human-in-the-Loop**-System konzipiert:
@@ -237,6 +240,7 @@ Die Anwendung ist als **Human-in-the-Loop**-System konzipiert:
 
 ---
 
+<a id="limitations-and-risks"></a>
 ## Einschränkungen und Risiken
 
 | Risiko | Gegenmaßnahme |
@@ -250,6 +254,7 @@ Die Anwendung ist als **Human-in-the-Loop**-System konzipiert:
 
 ---
 
+<a id="diagnostics-and-monitoring"></a>
 ## Diagnose und Überwachung
 
 ### KI-Statusanzeige
@@ -285,6 +290,7 @@ Dieses Protokoll ist nur für Administratoren zugänglich und wird im Arbeitsspe
 
 ---
 
+<a id="configuration-for-government-use"></a>
 ## Konfiguration für den behördlichen Einsatz
 
 ### Empfohlene Konfiguration

@@ -245,6 +245,7 @@ Der Taxonomie-Baum kann in fünf verschiedenen visuellen Layouts dargestellt wer
 
 ---
 
+<a id="relation-type"></a>
 ## Beziehungstyp
 
 Jede Beziehung hat einen Typ, der die Art der Verbindung zwischen zwei Taxonomie-Knoten definiert. Das System definiert 12 Beziehungstypen, die jeweils einem Konzept eines Standard-Architektur-Frameworks entsprechen:

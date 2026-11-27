@@ -49,7 +49,7 @@ class InventoryVariantConcurrencyTest extends ReformulationWorkflowFixture {
             case FIELDS -> solutions.updateSolution(solution.id(),json.readValue("{\"title\":\"Changed solution\"}",UpdateSolutionRequest.class),"architect",context);
             case COVERAGE -> solutions.upsertTaxonomyCoverage(solution.id(),new UpsertTaxonomyCoverageRequest("BP",0,"Explicit zero mapping",ReviewStatus.CONFIRMED),"architect",context);
             case LINK -> solutions.linkRequirement(project.id(),decision.id(),new LinkRequirementSolutionRequest(requirement.id(),snapshot,20,RequirementSolutionRole.USES,ReviewStatus.CONFIRMED,"Changed link"),"architect",context);
-            case MEMBERSHIP -> products.upsertCandidate(project.id(),decision.id(),new UpsertProductCandidateRequest(product.id(),70,null,null,null,"Evidence",0,ReviewStatus.CONFIRMED,ProductSelectionStatus.CANDIDATE),"architect",context);
+            case MEMBERSHIP -> products.upsertCandidate(project.id(),decision.id(),new UpsertProductCandidateRequest(product.id(),70,null,null,null,"Evidence",0.0,ReviewStatus.CONFIRMED,ProductSelectionStatus.CANDIDATE),"architect",context);
             case PROJECT_SOLUTION -> solutions.updateProjectSolution(project.id(),decision.id(),new UpdateProjectSolutionRequest(null,null,75,"Changed decision"),"architect",context);
         }};
         try(var executor=Executors.newFixedThreadPool(2)) {

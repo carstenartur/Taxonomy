@@ -143,7 +143,7 @@ public class DecisionRationaleHtmlRenderer implements ReportRendererExtension {
             }
             if (!architecture.unresolvedGaps().isEmpty()) {
                 html.append("<h3>").append(text(labels.gaps())).append("</h3><ul>");
-                architecture.unresolvedGaps().forEach(gap -> html.append("<li>").append(text(gap)).append("</li>"));
+                architecture.unresolvedGaps().forEach(gap -> html.append("<li>").append(text(com.taxonomy.export.GeneratedDiagnosticText.display(gap, labels.german()))).append("</li>"));
                 html.append("</ul>");
             }
             html.append("<table><thead><tr><th>").append(text(labels.node())).append("</th><th>")
@@ -182,7 +182,7 @@ public class DecisionRationaleHtmlRenderer implements ReportRendererExtension {
                 html.append("</dl>");
             }
             var saved = architecture.evidence();
-            html.append("<h3>").append(text(labels.provenance())).append("</h3><dl class=\"evidence-list\">");
+            html.append("<h3>").append(text(labels.architectureProvenance())).append("</h3><dl class=\"evidence-list\">");
             evidence(html, labels.analysisSnapshot(), saved.snapshotId());
             evidence(html, labels.graphDigest(), saved.graphSha256());
             evidence(html, labels.repository(), saved.repositoryId());
@@ -211,7 +211,7 @@ public class DecisionRationaleHtmlRenderer implements ReportRendererExtension {
             html.append("<h3 id=\"").append(DecisionNodeEvidence.reasonBookmark(code)).append("\">")
                     .append(text(code + " · " + node.row().title())).append("</h3><p class=\"muted\">")
                     .append(text(DecisionNodeEvidence.source(node.evidence(), labels))).append("</p><p>")
-                    .append(text(node.evidence().text())).append("</p>");
+                    .append(text(DecisionReportPresentation.reason(node.evidence().text(), node.evidence().source(), labels))).append("</p>");
         });
         html.append("</section>");
     }
@@ -364,7 +364,7 @@ public class DecisionRationaleHtmlRenderer implements ReportRendererExtension {
                     .append(text(step.title())).append("</span></td><td>")
                     .append(score(step.absoluteScore())).append("</td><td>")
                     .append(percent(step.localSharePercent())).append("</td><td>")
-                    .append(text(step.reason()));
+                    .append(text(DecisionReportPresentation.reason(step.reason(), step.reasonSource(), labels)));
             if (reasonCodes.contains(step.code())) {
                 html.append("<br>");
                 renderNodeActions(html, step.code(), reasonCodes, java.util.Map.of(), labels);
@@ -377,7 +377,7 @@ public class DecisionRationaleHtmlRenderer implements ReportRendererExtension {
             html.append("<div class=\"warning-box\"><h3>")
                     .append(text(labels.warnings())).append("</h3><ul>");
             report.warnings().forEach(warning -> html.append("<li>")
-                    .append(text(warning)).append("</li>"));
+                    .append(text(com.taxonomy.export.GeneratedDiagnosticText.display(warning, labels.german()))).append("</li>"));
             html.append("</ul></div>");
         }
         html.append("</section>");
@@ -444,7 +444,7 @@ public class DecisionRationaleHtmlRenderer implements ReportRendererExtension {
                         .append(score(child.absoluteScore())).append("</td><td>")
                         .append(percent(child.localSharePercent())).append("</td><td>")
                         .append(text(disposition(child, labels))).append("</td><td>")
-                        .append(text(child.reason())).append("</td><td>")
+                        .append(text(DecisionReportPresentation.reason(child.reason(), child.reasonSource(), labels))).append("</td><td>")
                         .append(text(reasonSource(child.reasonSource(), labels))).append("</td></tr>");
             }
             html.append("</tbody></table></div>");
@@ -482,7 +482,7 @@ public class DecisionRationaleHtmlRenderer implements ReportRendererExtension {
                     .append(leaf.score()).append(" %</td><td>")
                     .append(text(leaf.taxonomyRoot())).append("</td><td>")
                     .append(text(leaf.hierarchyPath())).append("</td><td>")
-                    .append(text(leaf.reason())).append("</td></tr>");
+                    .append(text(DecisionReportPresentation.reason(leaf.reason(), leaf.reasonSource(), labels))).append("</td></tr>");
         }
         html.append("</tbody></table><h3>").append(text(labels.taxonomyBasis()))
                 .append("</h3><dl class=\"evidence-list\">");

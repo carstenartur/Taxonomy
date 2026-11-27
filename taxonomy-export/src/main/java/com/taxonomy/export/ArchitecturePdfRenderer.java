@@ -89,18 +89,11 @@ public final class ArchitecturePdfRenderer {
         requireScene(scene);
         var language = DiagramLanguage.from(locale);
         if (metadata == null) throw new IllegalArgumentException("Architecture snapshot metadata is required");
-        var header = new ArrayList<String>();
-        header.add(language.text("Project ", "Projekt ") + metadata.projectKey()
-                + language.text(" · Requirement ", " · Anforderung ") + metadata.requirementKey()
-                + " · Snapshot " + metadata.snapshotId());
-        header.add(language.text("Provider ", "Anbieter ") + safe(metadata.provider())
-                + " · Branch " + safe(metadata.branchName()) + " · Commit " + abbreviated(metadata.commitSha()));
-        if (metadata.analysisStatus() != null)
-            header.add(language.text("Recorded analysis status: ", "Gespeicherter Analysestatus: ") + metadata.analysisStatus());
-        var decoration = new Decoration(scene.title(), header, List.of(language.text(
+        var context = DiagramExportContext.snapshot(metadata, locale);
+        var decoration = new Decoration(DiagramExportContext.title(scene.title(), locale), context.header(), List.of(language.text(
                 "Generated from persisted architecture snapshot; no page screenshot and no LLM re-analysis.",
                 "Aus dem gespeicherten Architektursnapshot erzeugt. Keine Bildschirmaufnahme und keine erneute KI-Analyse.")),
-                metadata.warnings(), null);
+                context.warnings(), null);
         return renderScene(scene, document -> configureMetadata(document, scene, metadata, language),
                 decoration, nodeReasons, relationReasons, language);
     }
@@ -123,16 +116,11 @@ public final class ArchitecturePdfRenderer {
         var language = DiagramLanguage.from(locale);
         requireScene(scene);
         Objects.requireNonNull(evidence, "canonical evidence");
-        var header = new ArrayList<>(safe(provenance).lines().limit(2).toList());
-        String scope = evidence.viewId() == null || evidence.viewId().isBlank()
-                ? language.text("Scope: canonical workspace", "Umfang: kanonischer Arbeitsbereich")
-                : language.text("Scope: canonical view ", "Umfang: kanonische Sicht ") + evidence.viewId();
-        var partial = evidence.analysisSources().stream().filter(source -> "PARTIAL".equals(source.status())).count();
-        if (partial != 0) scope += language.text(" · PARTIAL analysis sources: ", " · Analysequellen mit Status PARTIAL: ") + partial;
-        header.add(scope);
-        return renderScene(scene, document -> configureSource(document, scene, provenance),
-                new Decoration(scene.title(), header, List.of(language.text("Derived server layout · Canonical architecture", "Serverlayout · Kanonische Architektur")),
-                        List.of(), evidence), Map.of(), Map.of(), language);
+        var context = DiagramExportContext.canonical(provenance, evidence, locale);
+        String title = DiagramExportContext.title(scene.title(), locale);
+        return renderScene(scene, document -> configureSource(document, title, provenance),
+                new Decoration(title, context.header(), List.of(language.text("Derived server layout · Canonical architecture", "Serverlayout · Kanonische Architektur")),
+                        context.warnings(), evidence), Map.of(), Map.of(), language);
     }
 
     /** Supplied working data has no verified Git or persisted-snapshot authority. */
@@ -181,8 +169,12 @@ public final class ArchitecturePdfRenderer {
     }
 
     private static void configureSource(PDDocument document, DiagramScene scene, String provenance) {
+        configureSource(document, scene.title(), provenance);
+    }
+
+    private static void configureSource(PDDocument document, String title, String provenance) {
         var information = new PDDocumentInformation();
-        information.setTitle(scene.title());
+        information.setTitle(title);
         information.setSubject(provenance);
         information.setCreator("Taxonomy server-side vector renderer");
         document.setDocumentInformation(information);
@@ -335,7 +327,7 @@ public final class ArchitecturePdfRenderer {
 
     private static void configureMetadata(PDDocument document, DiagramScene scene, SnapshotMetadata metadata, DiagramLanguage language) {
         PDDocumentInformation information = new PDDocumentInformation();
-        information.setTitle(scene.title());
+        information.setTitle(DiagramExportContext.title(scene.title(), Locale.forLanguageTag(language.tag())));
         information.setSubject(language.text("Requirement-derived architecture snapshot ", "Anforderungsbezogener Architektursnapshot ") + metadata.snapshotId());
         information.setAuthor("Taxonomy Architecture Analyzer");
         information.setCreator("Taxonomy server-side vector renderer");
@@ -553,6 +545,7 @@ public final class ArchitecturePdfRenderer {
         var entries = new ArrayList<Entry>();
         entries.add(new Entry(language.text("Export summary", "Exportübersicht"),
                 DiagramPresentation.inventorySummary(scene, language, canonical)));
+        if (!decoration.header().isEmpty()) entries.add(new Entry(language.text("Source context", "Quellenkontext"), decoration.header()));
         var warnings = decoration.warnings();
         for (int i = 0; i < warnings.size(); i++) {
             String identity = language.text("Recorded warning ", "Gespeicherter Hinweis ") + (i + 1);

@@ -221,6 +221,16 @@ The production profile deliberately fails closed for unsafe bootstrap credential
 
 Health and static-resource exposure is controlled by the active security configuration and deployment profile. Do not assume that an endpoint is safe merely because it is reachable in a development configuration. In particular, review actuator and OpenAPI exposure before deployment.
 
+<a id="audit-logging"></a>
+## Authentication audit events
+
+Set `TAXONOMY_AUDIT_LOGGING=true` (`taxonomy.security.audit-logging`) to enable the authentication audit listener. It records successful logins and failed password authentication with the account name and remote address; successful stable-principal authentication also includes the principal ID. The base configuration disables this listener; the production and Kubernetes profiles enable it by default. It is not a complete history of every application operation. Configure access, retention and collection of these logs for the deployment. Versioned branch-policy changes have their own transactional audit records, described below.
+
+<a id="sbom-software-bill-of-materials"></a>
+## Software bill of materials (SBOM)
+
+The Maven build generates a CycloneDX dependency inventory. **About Taxonomy** links the packaged build's JSON and XML inventories; the corresponding application routes are `/api/about/sbom.json` and `/api/about/sbom.xml`. Keep the inventory with the exact release being assessed. The security workflow scans dependencies, secrets and configuration; an inventory by itself is not a vulnerability assessment or a guarantee that all deployed components are safe.
+
 ## Security verification
 
 The canonical Maven build exercises authentication, authorization, password bootstrap and migration, production hardening, container startup, persistence, browser workflows, accessibility, and selected failure paths:

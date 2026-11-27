@@ -54,6 +54,7 @@ class InventoryComparisonUiIT extends ReformulationWorkflowFixture {
             panel.findElement(By.cssSelector("[data-inventory-organization]")).sendKeys("north");
             ((JavascriptExecutor)driver).executeScript("arguments[0].value='2030-01-01'",panel.findElement(By.cssSelector("[data-inventory-start]")));
             new Select(panel.findElement(By.xpath(".//label[contains(.,'Time question')]/select"))).selectByValue("START_WINDOW");
+            click(driver,"//div[@id='inventoryComparison']//details[@data-inventory-options]/summary");
             panel.findElement(By.xpath(".//label[contains(.,'Target environment')]/input")).sendKeys("production");
             ((JavascriptExecutor)driver).executeScript("arguments[0].value='2031-01-01'",panel.findElement(By.xpath(".//label[contains(.,'End (exclusive)')]/input")));
             click(driver,"//div[@id='inventoryComparison']//button[normalize-space()='Start comparison']");
@@ -61,8 +62,8 @@ class InventoryComparisonUiIT extends ReformulationWorkflowFixture {
             assertThat(requests(driver)).noneMatch(r->!r.get("method").equals("GET"));
             click(driver,"//div[@id='inventoryComparison']//input[@type='checkbox' and @value='BP']");
             click(driver,"//div[@id='inventoryComparison']//button[normalize-space()='Start comparison']");
-            wait.until(d->d.findElement(By.cssSelector("[data-inventory-result]")).getText().contains("CONTRADICTED"));
-            assertThat(driver.findElement(By.cssSelector("[data-inventory-result]")).getText()).contains("UNKNOWN","AVAILABILITY","SUPPORT","UNEXAMINED");
+            wait.until(d->d.findElement(By.cssSelector("[data-inventory-result]")).getText().contains("Contradicted"));
+            assertThat(driver.findElement(By.cssSelector("[data-inventory-result]")).getText()).contains("Unknown","Availability","Support","Unexamined");
             assertThat(driver.findElement(By.cssSelector("[data-inventory-select]")).isEnabled()).isFalse();
             assertThat(driver.findElement(By.cssSelector("[data-inventory-result] strong")).getText()).isEqualTo("<img src=x onerror=alert(1)>");
             assertThat(driver.findElements(By.cssSelector("[data-inventory-result] img"))).isEmpty();
@@ -84,7 +85,7 @@ class InventoryComparisonUiIT extends ReformulationWorkflowFixture {
             observeRequests(driver);
             selectRetainedComparison(driver,id);
             click(driver,"//div[@id='inventoryComparison']//button[normalize-space()='Open retained comparison']");
-            wait.until(d->d.findElement(By.cssSelector("[data-inventory-result]")).getText().contains("CONTRADICTED"));
+            wait.until(d->d.findElement(By.cssSelector("[data-inventory-result]")).getText().contains("Contradicted"));
             click(driver,"//div[@id='inventoryComparison']//summary[normalize-space()='Retained reviews']");
             wait.until(d->d.findElement(By.cssSelector("[data-inventory-result]")).getText().contains("Support ended before intended use"));
             assertThat(jdbc.queryForObject("select count(*) from inventory_comparison where scope_key=?",Integer.class,PortfolioScope.key("architect",context))).isEqualTo(1);
@@ -153,6 +154,7 @@ class InventoryComparisonUiIT extends ReformulationWorkflowFixture {
             click(driver,"//div[@id='inventoryComparison']//input[@value='BP']");
             driver.findElement(By.cssSelector("[data-inventory-organization]")).sendKeys("north");
             ((JavascriptExecutor)driver).executeScript("arguments[0].value='2030-01-01'",driver.findElement(By.cssSelector("[data-inventory-start]")));
+            click(driver,"//div[@id='inventoryComparison']//details[@data-inventory-options]/summary");
             click(driver,"//div[@id='inventoryComparison']//button[normalize-space()='Add directed requirement']");
             driver.findElement(By.cssSelector("[data-relationship-source]")).sendKeys("product:"+first.id());
             driver.findElement(By.cssSelector("[data-relationship-target]")).sendKeys("product:"+second.id());
@@ -162,7 +164,7 @@ class InventoryComparisonUiIT extends ReformulationWorkflowFixture {
             driver.findElement(By.cssSelector("[data-variant-candidates]")).sendKeys("product:"+first.id());
             click(driver,"//div[@id='inventoryComparison']//button[normalize-space()='Start comparison']");
             wait.until(ExpectedConditions.presenceOfElementLocated(By.cssSelector("[data-variant-review]")));
-            assertThat(driver.findElement(By.cssSelector("[data-inventory-result]")).getText()).contains("Existing domain variant","DEPENDENCY","UNKNOWN");
+            assertThat(driver.findElement(By.cssSelector("[data-inventory-result]")).getText()).contains("Existing domain variant","Dependency","Unknown");
             driver.findElement(By.cssSelector("[data-variant-review] textarea")).sendKeys("Evaluate existing solution; confirm dependency with its owner before selection.");
             driver.findElement(By.cssSelector("[data-variant-review] input[type=number]")).sendKeys("60");
             click(driver,"//div[@id='inventoryComparison']//button[normalize-space()='Save variant decision']");

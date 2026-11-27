@@ -161,7 +161,8 @@
                     if ((attr.name === 'href' || attr.name === 'src') &&
                         /^\s*javascript:/i.test(attr.value)) { continue; }
                     var value = attr.value;
-                    if (attr.name === 'src' && value.startsWith('/help/images/')) {
+                    if ((attr.name === 'src' || attr.name === 'href')
+                            && value.startsWith('/') && !value.startsWith('//')) {
                         value = TaxonomyI18n.resolveUrl(value);
                     }
                     el.setAttribute(attr.name, value);

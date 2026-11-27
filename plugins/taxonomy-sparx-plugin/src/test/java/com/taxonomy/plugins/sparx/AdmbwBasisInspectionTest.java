@@ -38,20 +38,47 @@ class AdmbwBasisInspectionTest {
         }
     }
 
-    @Test void readsSourceTaggedServiceSpecificationsAsEvidenceWithoutAddingSelectableReferences() throws Exception {
+    @ParameterizedTest
+    @ValueSource(strings = {"Quelle", "Source"})
+    void readsSourceTaggedServiceSpecificationsAsEvidenceWithoutAddingSelectableReferences(String property) throws Exception {
         try (var fixture = basis()) {
             fixture.sql("INSERT INTO t_object (Object_ID,Object_Type,Name,Package_ID,ea_guid,Stereotype) VALUES (12,'Class','Records service',2,?,'ServiceSpecification')", QeaFixture.C);
             fixture.sql("INSERT INTO t_xref (Name,Type,Client,Description) VALUES ('Stereotypes','element property',?,'@STEREO;Name=ServiceSpecification;FQName=NAFv4-ADMBw::ServiceSpecification;@ENDSTEREO;')", QeaFixture.C);
-            fixture.sql("INSERT INTO t_objectproperties (Object_ID,Property,Value) VALUES (12,'Quelle','NATO C3 Taxonomy')");
+            fixture.sql("INSERT INTO t_objectproperties (Object_ID,Property,Value) VALUES (12,?,'NATO C3 Taxonomy')", property);
             var result = connector.inspectAdmbwBasis(fixture.bytes());
             assertEquals(List.of(new AdmbwQeaExport.ServiceSpecification(QeaFixture.C, "Records service",
                     List.of("Root", "Child"), QeaFixture.ROOT, "NATO C3 Taxonomy")), result.serviceSpecifications());
             assertFalse(result.references().stream().anyMatch(reference -> reference.guid().equals(QeaFixture.C)));
 
+            fixture.sql("UPDATE t_objectproperties SET Value='<memo>', Notes='NATO C3 Taxonomy' WHERE Object_ID=12");
+            assertEquals(result.serviceSpecifications(), connector.inspectAdmbwBasis(fixture.bytes()).serviceSpecifications());
+            fixture.sql("UPDATE t_objectproperties SET Notes=? WHERE Object_ID=12", "x".repeat(QeaDatabase.MAX_CELL + 1));
+            var oversized = assertThrows(QeaFailure.class, () -> connector.inspectAdmbwBasis(fixture.bytes()));
+            assertTrue(oversized.getMessage().startsWith("QEA_LIMIT:"), oversized.getMessage());
+            fixture.sql("UPDATE t_objectproperties SET Notes='NATO C3 Taxonomy' WHERE Object_ID=12");
             fixture.sql("INSERT INTO t_objectproperties (Object_ID,Property,Value) VALUES (12,'Source','Ambiguous alternative')");
             assertNull(connector.inspectAdmbwBasis(fixture.bytes()).serviceSpecifications().getFirst().source());
             fixture.sql("UPDATE t_xref SET Description=replace(Description,'NAFv4-ADMBw','Other') WHERE Client=?", QeaFixture.C);
             assertTrue(connector.inspectAdmbwBasis(fixture.bytes()).serviceSpecifications().isEmpty());
+        }
+    }
+
+    @Test void onlyTheExactMemoSentinelWithTextInNotesOverridesTheInlineValue() throws Exception {
+        try (var fixture = basis()) {
+            fixture.sql("INSERT INTO t_object (Object_ID,Object_Type,Name,Package_ID,ea_guid,Stereotype) VALUES (12,'Class','Records service',2,?,'ServiceSpecification')", QeaFixture.C);
+            fixture.sql("INSERT INTO t_xref (Name,Type,Client,Description) VALUES ('Stereotypes','element property',?,'@STEREO;Name=ServiceSpecification;FQName=NAFv4-ADMBw::ServiceSpecification;@ENDSTEREO;')", QeaFixture.C);
+            fixture.sql("DROP TABLE t_objectproperties");
+            fixture.sql("CREATE TABLE t_objectproperties (PropertyID INTEGER PRIMARY KEY, Object_ID INTEGER, Property TEXT, Value TEXT COLLATE NOCASE, Notes TEXT, ea_guid TEXT)");
+            fixture.sql("INSERT INTO t_objectproperties (Object_ID,Property,Value,Notes) VALUES (12,'Source','<MEMO>','Unrelated notes')");
+            assertEquals("<MEMO>", connector.inspectAdmbwBasis(fixture.bytes()).serviceSpecifications().getFirst().source());
+            fixture.sql("UPDATE t_objectproperties SET Value='<memo>', Notes=NULL");
+            assertEquals("<memo>", connector.inspectAdmbwBasis(fixture.bytes()).serviceSpecifications().getFirst().source());
+            fixture.sql("UPDATE t_objectproperties SET Notes=''");
+            assertEquals("<memo>", connector.inspectAdmbwBasis(fixture.bytes()).serviceSpecifications().getFirst().source());
+            fixture.sql("ALTER TABLE t_objectproperties DROP COLUMN Notes");
+            assertEquals("<memo>", connector.inspectAdmbwBasis(fixture.bytes()).serviceSpecifications().getFirst().source());
+            fixture.sql("UPDATE t_objectproperties SET Value='Inline source'");
+            assertEquals("Inline source", connector.inspectAdmbwBasis(fixture.bytes()).serviceSpecifications().getFirst().source());
         }
     }
 

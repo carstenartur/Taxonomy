@@ -265,7 +265,8 @@
         loadProposals('PENDING');
         ['taxonomy:entity-context-changed', 'taxonomy:repository-context-changed', 'taxonomy:architecture-source-changed'].forEach(function (event) {
             document.addEventListener(event, function () {
-                if (!proposalRead || proposalSource === currentProposalSource()) return;
+                if (!proposalRead || proposalRead.authorizationCurrent?.() === false) return;
+                if (proposalSource === currentProposalSource() && proposalRead.contextCurrent?.() !== false) return;
                 document.getElementById('undoToast')?.remove();
                 loadProposals(S.currentProposalFilter);
             });
@@ -2319,7 +2320,8 @@
     // ── Relation Proposal Review ──────────────────────────────────────────────
 
     function currentProposalRead(controller) {
-        return startupPageActive && proposalRead === controller && !controller.signal.aborted;
+        return startupPageActive && proposalRead === controller && !controller.signal.aborted
+            && controller.contextCurrent?.() !== false;
     }
 
     function currentProposalSource() {
@@ -2334,6 +2336,12 @@
         if (!container || !startupPageActive) return;
         if (proposalRead) proposalRead.abort();
         const controller = new AbortController();
+        // Match the canonical transport's complete navigation identity, including
+        // model revision and frozen source evidence within the same repository.
+        // Authentication/page ownership is independent: a context event cannot
+        // revive a read after access was lost or the page departed.
+        controller.contextCurrent = window.TaxonomyApiClient?.captureContext?.();
+        controller.authorizationCurrent = window.TaxonomyApiClient?.captureContext?.({contextSensitive:false});
         proposalRead = controller;
         proposalSource = currentProposalSource();
         const badge = document.getElementById('proposalPendingBadge');
@@ -2367,7 +2375,7 @@
                     filtered = proposals.filter(function (p) { return p.status === statusFilter; });
                 }
                 let autoPreview = null;
-                if (statusFilter === 'ACCEPTED') autoPreview = 'all';
+                if (statusFilter === 'ACCEPTED') autoPreview = 'central';
                 else if (working && statusFilter === 'ALL') autoPreview = 'central';
                 renderProposalTable(filtered, autoPreview, controller.signal, container);
                 if (showCentralAcceptances) {
@@ -2450,6 +2458,7 @@
                 : rationale;
 
             const isPending = p.status === 'PENDING';
+            const adoptionEligible = p.central === true && Number.isSafeInteger(p.id) && p.id > 0;
             const actionHtml = isPending
                 ? '<button class="btn btn-accept btn-sm me-1" ' +
                     'aria-label="Accept proposal ' + p.id + '" ' +
@@ -2457,16 +2466,16 @@
                   '<button class="btn btn-reject btn-sm" ' +
                     'aria-label="Reject proposal ' + p.id + '" ' +
                     'onclick="window._proposalReject(' + p.id + ')">&#10060; Reject</button>'
-                : p.status === 'ACCEPTED' && Number.isSafeInteger(p.id) && p.id > 0
-                    ? '<span class="badge bg-success proposal-accepted-status">' + t('quality.accepted') + '</span> ' +
-                        '<button type="button" class="btn btn-sm btn-outline-primary proposal-adoption-preview" data-id="' +
-                        p.id + '"' + (p.central ? ' data-central="true"' : '') +
+                : p.status === 'ACCEPTED'
+                    ? '<span class="badge bg-success proposal-accepted-status">' + t('quality.accepted') + '</span>' +
+                        (adoptionEligible ? ' <button type="button" class="btn btn-sm btn-outline-primary proposal-adoption-preview" data-id="' +
+                        p.id + '" data-central="true"' +
                         ' data-source-element="' + escapeHtml(p.sourceCode || '') + '"' +
                         ' data-target-element="' + escapeHtml(p.targetCode || '') + '"' +
                         ' data-relation-type="' + escapeHtml(p.relationType || '') + '"' +
                         ' aria-controls="proposal-adoption-' + p.id + '">' +
                         t('browse.proposals.adoption.inspect') + '</button><div class="text-wrap small" role="status" id="proposal-adoption-' +
-                        p.id + '"></div>'
+                        p.id + '"></div>' : '')
                     : '<span class="badge bg-secondary">' + escapeHtml(p.status) + '</span>';
 
             html += '<tr data-proposal-id="' + escapeHtml(String(p.id)) + '" data-status="' + escapeHtml(p.status) + '">';
@@ -2501,6 +2510,9 @@
     }
 
     function bindProposalAdoptionPreviews(buttons, autoPreview, signal) {
+        // Branch adoption reads central provenance. A local acceptance is already
+        // a workspace decision and is not a source for this endpoint.
+        buttons = Array.from(buttons).filter(button => button.dataset.central === 'true');
         if (!buttons.length) return;
         const selected = window.TaxonomyApiClient.captureContext();
         const visible = new Set();
@@ -2543,7 +2555,7 @@
     }
 
     async function previewProposalAdoption(id, button, details, {signal = proposalRead?.signal, moveFocus = true} = {}) {
-        if (button.disabled || button.getAttribute('aria-busy') === 'true' || !details) return;
+        if (button.dataset.central !== 'true' || button.disabled || button.getAttribute('aria-busy') === 'true' || !details) return;
         const scope = window.TaxonomyArchitectureWorkflow?.getScope?.();
         if (!scope?.repositoryId || !scope.branch || scope.workspaceId === undefined) return;
         const current = window.TaxonomyApiClient.captureContext();

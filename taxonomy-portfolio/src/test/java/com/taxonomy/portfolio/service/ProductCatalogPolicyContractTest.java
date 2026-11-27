@@ -15,6 +15,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.Optional;
+import java.util.List;
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
@@ -41,6 +42,7 @@ class ProductCatalogPolicyContractTest {
         when(products.findByIdAndScopeKeyForUpdate(9L,PortfolioScope.key("alice",context))).thenReturn(Optional.of(product));
         when(nodes.findByCode("CP-1")).thenReturn(Optional.of(mock(TaxonomyNode.class)));
         decision=mock(ProjectSolution.class);when(decision.getId()).thenReturn(3L);
+        var project=mock(ArchitectureProject.class);when(project.getId()).thenReturn(1L);when(decision.getProject()).thenReturn(project);
         when(decisions.findByIdAndProjectId(3L,1L)).thenReturn(Optional.of(decision));
         clearInvocations(products,coverage,candidates,decisions,projects);
     }
@@ -107,6 +109,94 @@ class ProductCatalogPolicyContractTest {
         assertThatThrownBy(()->service.upsertTaxonomyCoverage(9L,request,"alice",context)).hasMessageContaining("Unknown taxonomy node");
         assertThatThrownBy(()->service.upsertCandidate(1L,999L,candidate(),"alice",context)).hasMessageContaining("Project solution not found");
         assertThatThrownBy(()->service.listCandidates(1L,999L,"alice",context)).hasMessageContaining("Project solution not found");
+    }
+    @Test void trustedInventoryReviewReplacesOldContextExclusionsAndPreservesOtherEvidence() {
+        var stored=storedInventoryCandidate(null,"Old inventory exclusion");
+        var request=new UpsertProductCandidateRequest(9L,42,null,null,null,"New inventory review",0.0,
+                ReviewStatus.CONFIRMED,ProductSelectionStatus.SELECTED);
+        var result=service.applyReviewedInventoryCandidate(1L,3L,request,"new-comparison","new-fingerprint","","alice",context);
+        assertThat(result.selectionStatus()).isEqualTo(ProductSelectionStatus.SELECTED);
+        assertThat(result.hardExclusions()).isNullOrEmpty();
+        assertThat(stored.getInventoryComparisonId()).isEqualTo("new-comparison");
+        assertThat(stored.getInventoryFingerprint()).isEqualTo("new-fingerprint");
+        assertThat(stored.getInventoryHardExclusions()).isEmpty();
+        assertThat(stored.getStrengths()).isEqualTo("Stored strength");
+        assertThat(stored.getWeaknesses()).isEqualTo("Stored weakness");
+        assertThat(stored.getOpenEvidence()).isEqualTo("New inventory review");
+        assertThat(stored.getCoveragePercent()).isEqualTo(42);assertThat(stored.getConfidence()).isZero();
+    }
+    @Test void trustedInventoryCreationKeepsFindingsSeparateFromManualEvidence() {
+        var request=new UpsertProductCandidateRequest(9L,42,"Inventory exclusion",null,null,"Inventory review",0.0,
+                ReviewStatus.CONFIRMED,ProductSelectionStatus.REJECTED);
+        var result=service.applyReviewedInventoryCandidate(1L,3L,request,"comparison","fingerprint","Inventory exclusion","alice",context);
+        var captured=org.mockito.ArgumentCaptor.forClass(SolutionProductCandidate.class);verify(candidates).save(captured.capture());
+        assertThat(captured.getValue().getHardExclusions()).isNull();
+        assertThat(captured.getValue().getInventoryHardExclusions()).isEqualTo("Inventory exclusion");
+        assertThat(result.hardExclusions()).isEqualTo("Inventory exclusion");
+    }
+    @Test void inventoryReplacementCannotEraseAnIndependentManualExclusion() {
+        var stored=storedInventoryCandidate("Manual exclusion","Old inventory exclusion");
+        var request=new UpsertProductCandidateRequest(9L,42,null,null,null,"New inventory review",0.0,
+                ReviewStatus.CONFIRMED,ProductSelectionStatus.SELECTED);
+        assertThatThrownBy(()->service.applyReviewedInventoryCandidate(1L,3L,request,"new-comparison","new-fingerprint","","alice",context))
+                .isInstanceOf(PortfolioException.class).hasMessageContaining("hard exclusions");
+        assertThat(stored.getInventoryComparisonId()).isEqualTo("old-comparison");
+        assertThat(stored.getInventoryHardExclusions()).isEqualTo("Old inventory exclusion");
+        assertThat(stored.getHardExclusions()).isEqualTo("Manual exclusion");
+        verify(candidates,never()).save(any());
+    }
+    @Test void rejectedInventorySelectionDoesNotChangeItsPreviouslyRetainedEvidence() {
+        var stored=storedInventoryCandidate("Old inventory exclusion","Old inventory exclusion");
+        var request=new UpsertProductCandidateRequest(9L,42,null,null,null,"New inventory review",0.0,
+                ReviewStatus.CONFIRMED,ProductSelectionStatus.SELECTED);
+        assertThatThrownBy(()->service.applyReviewedInventoryCandidate(1L,3L,request,"new-comparison","new-fingerprint","Still excluded","alice",context))
+                .isInstanceOf(PortfolioException.class);
+        assertThat(stored.getInventoryComparisonId()).isEqualTo("old-comparison");
+        assertThat(stored.getInventoryFingerprint()).isEqualTo("old-fingerprint");
+        assertThat(stored.getInventoryHardExclusions()).isEqualTo("Old inventory exclusion");
+        assertThat(stored.getCoveragePercent()).isEqualTo(73);
+        verify(candidates,never()).save(any());
+    }
+    @Test void gitRoundtripKeepsManualExclusionsIndependentOfReplaceableInventoryFindings() {
+        var stored=storedInventoryCandidate("Manual exclusion","Old inventory exclusion");
+        var project=decision.getProject();when(project.getProjectKey()).thenReturn("P");
+        var definition=mock(SolutionDefinition.class);when(definition.getId()).thenReturn(5L);
+        when(definition.getSolutionKey()).thenReturn("SOL");when(definition.getTitle()).thenReturn("Solution");
+        when(decision.getSolution()).thenReturn(definition);
+        var projectRepository=mock(ArchitectureProjectRepository.class);
+        when(projectRepository.findByScopeKeyOrderByUpdatedAtDesc(anyString())).thenReturn(List.of(project));
+        when(projectRepository.findByIdAndScopeKeyForUpdate(eq(1L),anyString())).thenReturn(Optional.of(project));
+        var definitions=mock(SolutionDefinitionRepository.class);
+        when(definitions.findByScopeKeyOrderByTitleAsc(anyString())).thenReturn(List.of(definition));
+        when(definitions.findByScopeKeyAndSolutionKeyIgnoreCase(anyString(),eq("SOL"))).thenReturn(Optional.of(definition));
+        when(definitions.findByIdAndScopeKeyForUpdate(eq(5L),anyString())).thenReturn(Optional.of(definition));
+        when(definitions.save(any())).thenReturn(definition);
+        when(products.findByScopeKeyOrderByManufacturerAscProductNameAsc(anyString())).thenReturn(List.of(product));
+        when(products.findByScopeKeyAndProductKeyIgnoreCase(anyString(),eq("PRD-ONE"))).thenReturn(Optional.of(product));
+        when(decisions.findByProjectIdOrderByPriorityDescSolutionTitleAsc(1L)).thenReturn(List.of(decision));
+        when(decisions.findByProjectIdAndSolutionId(1L,5L)).thenReturn(Optional.of(decision));
+        when(decisions.save(any())).thenReturn(decision);
+        when(candidates.findByProjectSolutionIdOrderByCoveragePercentDesc(3L)).thenReturn(List.of(stored));
+        var git=new PortfolioDecisionGitContributor(projectRepository,mock(ProjectRequirementRepository.class),definitions,
+                mock(SolutionTaxonomyCoverageRepository.class),decisions,mock(RequirementSolutionLinkRepository.class),
+                products,coverage,candidates,mock(com.taxonomy.workspace.service.RepositoryMutationFence.class));
+        String dsl=git.contributeTo("","alice",context);
+        assertThat(dsl).contains("Manual exclusion");
+        assertThat(git.materialize(dsl,"alice",context).warnings()).isEmpty();
+        assertThat(stored.getHardExclusions()).isEqualTo("Manual exclusion");
+        assertThat(stored.getInventoryHardExclusions()).isEqualTo("Old inventory exclusion");
+        var request=new UpsertProductCandidateRequest(9L,42,null,null,null,"New inventory review",0.0,
+                ReviewStatus.CONFIRMED,ProductSelectionStatus.SELECTED);
+        assertThatThrownBy(()->service.applyReviewedInventoryCandidate(1L,3L,request,"new-comparison","new-fingerprint","","alice",context))
+                .isInstanceOf(PortfolioException.class).hasMessageContaining("hard exclusions");
+        assertThat(stored.getInventoryComparisonId()).isEqualTo("old-comparison");
+    }
+    private SolutionProductCandidate storedInventoryCandidate(String manual,String retained) {
+        var stored=new SolutionProductCandidate(decision,product,73,manual,"Stored strength","Stored weakness","Stored source",
+                0.81,ReviewStatus.CONFIRMED,ProductSelectionStatus.REJECTED,"alice",Instant.EPOCH);
+        ReflectionTestUtils.setField(stored,"id",17L);stored.bindInventoryEvidence("old-comparison","old-fingerprint",retained);
+        when(candidates.findByProjectSolutionIdAndProductId(3L,9L)).thenReturn(Optional.of(stored));
+        when(candidates.findById(17L)).thenReturn(Optional.of(stored));return stored;
     }
     private UpsertProductCandidateRequest candidate() {
         var request=mock(UpsertProductCandidateRequest.class);when(request.productId()).thenReturn(9L);

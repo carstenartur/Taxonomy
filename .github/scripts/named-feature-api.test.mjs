@@ -93,6 +93,24 @@ function bootDraftSession(fetchImpl) {
   return {...app, session};
 }
 
+test('snapshot comparison uses the retained project snapshot endpoint with ordered identities', async () => {
+  const requests = [];
+  const app = boot(async (url, init) => {
+    requests.push({url: new URL(String(url), 'https://taxonomy.example'), init});
+    return Response.json({olderSnapshotId: 'old/snapshot', newerSnapshotId: 'new snapshot',
+      scoreChanges: {}, addedElements: [], removedElements: [], addedRelations: [], removedRelations: [],
+      taxonomyFingerprintChanged: false, promptFingerprintChanged: false, providerChanged: false});
+  });
+  const result = await app.window.TaxonomyPortfolioApi.compareRequirementAnalyses(7, 11, 'new snapshot', 'old/snapshot');
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].url.pathname, '/taxonomy/api/projects/7/snapshots/diff');
+  assert.equal(requests[0].url.searchParams.get('older'), 'old/snapshot');
+  assert.equal(requests[0].url.searchParams.get('newer'), 'new snapshot');
+  assert.equal(requests[0].init.method, 'GET');
+  assert.equal(new Headers(requests[0].init.headers).get('X-Taxonomy-Workspace-Id'), 'workspace-a');
+  assert.equal(result.newerSnapshotId, 'new snapshot');
+});
+
 for (const transition of ['reanalysis', 'architecture navigation']) {
 test(`the canonical transport preserves an admitted draft acknowledgement across ${transition}`, async () => {
   const first = deferred(), requests = [];
@@ -276,7 +294,7 @@ for (const [description, search, usesDefault] of [
 ]) {
 test(`an early portfolio with ${description} enables intake and creation for its confirmed source`, async () => {
   const requests = [], nodes = new Map();
-  const submit = {disabled: false};
+  const submit = {disabled: false, dataset: {}, closest: () => null};
   const stand = {workspaceId: 'ready-workspace', workspaceScopeKey: 'ready-workspace',
     repositoryId: 'ready-repository', branch: 'draft', revision: 1, commit: 'a'.repeat(40)};
   function element() {

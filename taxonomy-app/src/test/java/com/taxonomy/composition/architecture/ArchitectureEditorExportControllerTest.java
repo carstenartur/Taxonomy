@@ -699,6 +699,14 @@ class ArchitectureEditorExportControllerTest {
         var svg = exports.svg("repo-a", "workspace-a", "draft", null, 3L);
         var pdf = exports.pdf("repo-a", "workspace-a", "draft", null, 3L);
 
+        assertThat(svg.getBody()).contains("repo-a / workspace-a / draft", "Revision 3", "uncheckpointed")
+                .doesNotContain("checkpoint null");
+        try (var parsed = org.apache.pdfbox.Loader.loadPDF(pdf.getBody())) {
+            assertThat(new org.apache.pdfbox.text.PDFTextStripper().getText(parsed))
+                    .contains("repo-a / workspace-a / draft", "Revision 3", "uncheckpointed")
+                    .doesNotContain("checkpoint null");
+        }
+
         for (var responseItem : List.of(json, svg, pdf)) {
             assertThat(responseItem.getHeaders().getETag())
                     .isEqualTo("\"workspace-revision-3\"");

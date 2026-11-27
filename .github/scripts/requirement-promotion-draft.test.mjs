@@ -13,7 +13,7 @@ const lifecycleApiSource=await readFile(new URL('../../taxonomy-app/src/main/res
 const lifecycleSource=await readFile(new URL('../../taxonomy-app/src/main/resources/static/js/shared/architecture-lifecycle.js',import.meta.url),'utf8');
 afterEach(()=>canonicalFixture.dispose());
 
-function detailStartup({holdOffers=false,forbidden=false,copilot=false,probe=false,lifecycleFetch=null,route='/projects/7/requirements/11'}={}) {
+function detailStartup({holdOffers=false,forbidden=false,copilot=false,probe=false,lifecycleFetch=null,route='/projects/7/requirements/11',locale='en',reformulationOnly=false}={}) {
   const nodes=new Map(),listeners=new Map(),windowListeners=new Map(),requests=[],auth=[],all=[];
   let finishLifecycle,finishOffers;
   const lifecycle=new Promise(resolve=>{finishLifecycle=resolve;});
@@ -25,8 +25,10 @@ function detailStartup({holdOffers=false,forbidden=false,copilot=false,probe=fal
       contains:name=>values.has(name),toggle(name,force){if(force)values.add(name);else values.delete(name);},[Symbol.iterator]:()=>values.values()},
       append(...children){this.children.push(...children);},appendChild(child){this.append(child);return child;},
       replaceChildren(...children){this.children=children;},focus(){},remove(){this.removed=true;},reportValidity:()=>true,
+      setCustomValidity(message){this.validationMessage=message;},
       addEventListener(type,listener){if(!events.has(type))events.set(type,[]);events.get(type).push(listener);},
-      fire(type){return Promise.all((events.get(type)||[]).map(listener=>listener({preventDefault(){},target:this})));},
+      fire(type,target=this){return Promise.all((events.get(type)||[]).map(listener=>listener({preventDefault(){},target})));},
+      closest(){return this;},
       showModal(){this.open=true;},close(){this.open=false;this.closed=(this.closed||0)+1;return this.fire('close');},
       setAttribute(name,text){this[name]=text;},removeAttribute(name){delete this[name];},
       querySelectorAll(selector){
@@ -42,13 +44,13 @@ function detailStartup({holdOffers=false,forbidden=false,copilot=false,probe=fal
     if(id.startsWith('application') || id==='architectureWorkspace' || id==='projectFilter' || id==='importMain' || id==='matrixMain' || id==='reportsMain')return null;
     return nodes.get(id)||node(id);
   };
-  const document={readyState:'loading',documentElement:{lang:'en'},head:{appendChild(){}},getElementById:get,
+  const document={readyState:'loading',documentElement:{lang:locale},head:{appendChild(){}},getElementById:get,
     body:node('body','body'),querySelector:selector=>selector.startsWith('meta')?null:node(),querySelectorAll:selector=>selector==='#textPane h2'?[node(),node()]:[],createElement:tag=>node('',tag),
     addEventListener(type,listener){if(!listeners.has(type))listeners.set(type,[]);listeners.get(type).push(listener);},
     dispatchEvent(event){if(event.type==='taxonomy-api-auth-failure')auth.push(event);for(const listener of listeners.get(event.type)||[])listener(event);}};
-  const window={location:{pathname:route,search:'?lang=en&proposal=offer',href:'https://example.test'+route+'?lang=en&proposal=offer',origin:'https://example.test'},
+  const window={location:{pathname:route,search:'?lang='+locale+'&proposal=offer',href:'https://example.test'+route+'?lang='+locale+'&proposal=offer',origin:'https://example.test'},
     addEventListener(type,listener){if(!windowListeners.has(type))windowListeners.set(type,[]);windowListeners.get(type).push(listener);},
-    TaxonomyI18n:{t:key=>key,ready:async()=>{},resolveUrl:path=>path,getBasePath:()=>'',getLocale:()=> 'en',formatEnum:String},
+    TaxonomyI18n:{t:key=>key,ready:async()=>{},resolveUrl:path=>path,getBasePath:()=>'',getLocale:()=>locale,formatEnum:String},
     TaxonomyUtils:{escapeHtml:String},TaxonomyRequirementCopilot:{},TaxonomyArchitectureLifecycle:{ready:()=>lifecycle}};
   const requirement={id:11,requirementKey:'REQ',title:'Requirement',currentVersionId:44,currentVersion:{id:44,versionNumber:1,text:'Original'},status:'APPROVED',reviewStatus:'CONFIRMED'};
   const offer={id:'offer',baseline:{originalText:'Original',sourceVersionId:44},currentRevision:{number:1,text:'Retained draft',questions:[],statements:[],validation:{findings:[]}}};
@@ -72,7 +74,10 @@ function detailStartup({holdOffers=false,forbidden=false,copilot=false,probe=fal
     return Response.json(value);
   }},['api/portfolio-api.js','api/copilot-api.js']);
   const detail=probe?detailSource.replace(/\}\)\(\);\s*$/,'window.publicationProbe={state,createVersion,captureVersionDraftBase,setObservers:function(reload,saved){loadAll=reload;const renderSaved=showSavedRequirement;showSavedRequirement=function(value,message){saved(value,message);renderSaved(value,message);};}};})();'):detailSource;
-  for(const [source,name] of [[chromeSource,'application-chrome.js'],[detail,'requirement-detail.js'],[reformulationSource,'requirement-reformulation.js']])vm.runInContext(source,context,{filename:name});
+  const components=reformulationOnly?[[reformulationSource,'requirement-reformulation.js']]
+    :[[chromeSource,'application-chrome.js'],[detail,'requirement-detail.js'],[reformulationSource,'requirement-reformulation.js']];
+  if(reformulationOnly)window.TaxonomyRequirementDetail={whenReady:async()=>{}};
+  for(const [source,name] of components)vm.runInContext(source,context,{filename:name});
   if(copilot)vm.runInContext(copilotSource,context,{filename:'requirement-copilot.js'});
   return {window,context,document,requests,auth,get,all,
     start:()=>Promise.all((listeners.get('DOMContentLoaded')||[]).map(listener=>listener({}))),
@@ -80,6 +85,67 @@ function detailStartup({holdOffers=false,forbidden=false,copilot=false,probe=fal
     releaseOffers:()=>finishOffers(),pagehide(){for(const listener of windowListeners.get('pagehide')||[])listener({});}};
 }
 const settleStartup=async()=>{for(let i=0;i<6;i++)await new Promise(resolve=>setImmediate(resolve));};
+
+function detailTabViewport(h, left, right) {
+  const tabs = h.get('detailTabs');
+  const tab = h.get('solutions-tab');
+  const scrolls = [];
+  const initialScroll = 200;
+  Object.assign(tabs, {
+    clientLeft: 0, clientWidth: 364, scrollWidth: 1000, scrollLeft: initialScroll, scrollTop: 1,
+    getBoundingClientRect: () => ({left: 13, right: 377}),
+    scrollBy({left, top = 0}) {
+      scrolls.push({left, top});
+      this.scrollLeft += left;
+      this.scrollTop += top;
+    }
+  });
+  Object.assign(tab, {
+    getAttribute: name => ({role: 'tab', 'aria-selected': 'true'})[name],
+    closest: selector => selector === '[role="tablist"]' ? tabs : null,
+    getBoundingClientRect: () => {
+      const shift = initialScroll - tabs.scrollLeft;
+      return {left: left + shift, right: right + shift};
+    }
+  });
+  h.window.getComputedStyle = node => {
+    assert.equal(node, tabs);
+    return {paddingLeft: '8px', paddingRight: '8px'};
+  };
+  return {tabs, tab, scrolls};
+}
+
+for (const [position, start, end, offset] of [
+  ['off-screen right', 428, 588, 219],
+  ['off-screen left', -135, 15, -156],
+  ['at the fractional right boundary', 186.765625, 377.078125, 9],
+  ['at the fractional left boundary', 12.921875, 203.234375, -9],
+  ['already fully in view', 40, 240, 0]
+]) {
+  test(`showing an owned selected requirement tab ${position} preserves the horizontal gutter`, async () => {
+    const h = detailStartup();
+    const {tabs, tab, scrolls} = detailTabViewport(h, start, end);
+    const started = h.start(); h.releaseLifecycle(); await started; await settleStartup();
+    const requests = h.requests.length;
+    await tabs.fire('shown.bs.tab', tab);
+    assert.deepEqual(scrolls, offset ? [{left: offset, top: 0}] : []);
+    const bounds = tab.getBoundingClientRect();
+    assert.ok(bounds.left >= 21 && bounds.right <= 369, 'The tab fits within the measured viewing gutter');
+    assert.equal(tabs.scrollTop, 1);
+    assert.equal(h.requests.length, requests);
+  });
+}
+
+test('the requirement tab strip ignores stale, nested and unrelated shown events', async () => {
+  const h = detailStartup();
+  const {tabs, tab, scrolls} = detailTabViewport(h, 428, 588);
+  const started = h.start(); h.releaseLifecycle(); await started;
+  await tabs.fire('shown.bs.modal', tab);
+  await tabs.fire('shown.bs.tab', {...tab, getAttribute: name => ({role: 'tab', 'aria-selected': 'false'})[name]});
+  await tabs.fire('shown.bs.tab', {...tab, getAttribute: name => ({role: 'button', 'aria-selected': 'true'})[name]});
+  await tabs.fire('shown.bs.tab', {...tab, closest: () => h.get('nestedTablist')});
+  assert.deepEqual(scrolls, []);
+});
 
 test('the reformulation editor separates saved draft wording from collapsed taxonomy evidence',async()=>{
   const h=detailStartup({lifecycleFetch:async url=>{
@@ -247,7 +313,7 @@ for(const transition of ['own-publication','changed-draft','history','branch','p
 
 for(const [dialogKind,transition] of [['existing','current'],['new','current'],['existing','history'],['new','source'],
   ['existing','authentication'],['new','pagehide'],['existing','source-during-reset'],
-  ['existing','source-during-reset-rejection'],['existing','reconciliation']]) {
+  ['existing','source-during-reset-rejection'],['existing','reconciliation'],['new','reconciliation']]) {
   test(`analysis ${dialogKind}-project dialog retains its source ownership across ${transition}`,async()=>{
     const base={repositoryId:'repository-a',workspaceScopeKey:'workspace-a',branch:'draft',revision:1,
       commit:'1'.repeat(40),actor:'owner',writeMode:'PRIVATE_WORKSPACE'};
@@ -329,6 +395,10 @@ for(const [dialogKind,transition] of [['existing','current'],['new','current'],[
       assert.equal(h.window.analysisProbe.promotionAttempts.get(form),attempt,'Departure must retain the original admitted command');
       if(transition==='reconciliation') {
         assert.ok(message.querySelector('[data-lifecycle-publication-recovery]'));
+        if(dialogKind==='new') {
+          const include=form.querySelectorAll('input').find(control=>control.id==='analysis-session-create-first-requirement');
+          include.checked=false;await include.fire('change');
+        }
         await form.fire('submit');await settleStartup();
         assert.equal(preparations,1);assert.equal(saves,1);assert.equal(writes,2);
         const replay=h.requests.filter(value=>value.pathname==='/api/architecture/editor/requirements')[1];
@@ -398,6 +468,7 @@ function harness(reset){
   vm.runInNewContext(source,{window,document:{readyState:'loading',addEventListener(){}},Promise,Date,String,Object,JSON,Math,encodeURIComponent});
   return{C,events,edit(){payload={businessText:'new edit'};}};
 }
+
 test('failed reset after a successful promotion leaves the draft and page intact',async()=>{
   const h=harness(async()=>{throw new Error('reset failed');});
   await assert.rejects(h.C.discardDraftAndNavigate('/saved'),/reset failed/);
@@ -482,7 +553,7 @@ test('portfolio intake keeps one interactive choice, releases cancellation and p
   function element(id){
     if(!elements.has(id)) {
       const classes=new Set(['d-none']);
-      elements.set(id,{value:'',textContent:'',disabled:false,scrollIntoView(){},
+      elements.set(id,{value:'',textContent:'',dataset:{},disabled:false,scrollIntoView(){},closest:()=>null,
         classList:{add:className=>classes.add(className),remove:className=>classes.delete(className),
           contains:className=>classes.has(className),toggle(className,force){if(force)classes.add(className);else classes.delete(className);}}});
     }
@@ -530,7 +601,7 @@ for (const surface of ['detail','portfolio']) {
     function element(id){
       if(!elements.has(id)) {
         const classes=new Set(['d-none']);
-        elements.set(id,{value:'',textContent:'',dataset:{},disabled:false,focus(){},scrollIntoView(){},
+        elements.set(id,{value:'',textContent:'',dataset:{},disabled:false,focus(){},scrollIntoView(){},closest:()=>null,
           classList:{add(...values){values.forEach(value=>classes.add(value));},remove(...values){values.forEach(value=>classes.delete(value));},
             contains:value=>classes.has(value),toggle(value,force){if(force)classes.add(value);else classes.delete(value);}}});
       }
@@ -620,3 +691,90 @@ for (const transition of ['stay', 'pagehide', 'other requirement']) {
     assert.deepEqual(reads, transition === 'stay' ? [7] : []);
   });
 }
+
+for (const locale of ['de','en']) {
+  test(`${locale} analysis action names the actual selected version and explains historical selection`,async()=>{
+    const versions=[{id:45,versionNumber:2,text:'Current text'},{id:44,versionNumber:1,text:'Frozen source text'}];
+    const h=detailStartup({locale,lifecycleFetch:async(url,init)=>{
+      if(url.pathname.endsWith('/requirements/11'))return Response.json({id:11,requirementKey:'REQ',title:'Requirement',currentVersionId:45,currentVersion:versions[0]});
+      if(url.pathname.endsWith('/versions'))return Response.json(versions);
+      if(url.pathname.endsWith('/account/me'))return Response.json({architectureMutationAllowed:true,analysisExecutionAllowed:true});
+    }});
+    const started=h.start();h.releaseLifecycle();await started;await settleStartup();
+    const button=h.get('reanalyzeRequirement'),hint=h.get('analysisVersionHint');
+    assert.equal(button.textContent,locale==='de'?'Version 2 analysieren':'Analyze version 2');
+    assert.equal(button['aria-label'],button.textContent);
+    assert.equal(hint.hidden,true);
+    const historical=h.get('versionList').children.find(n=>n.dataset.versionId===44);
+    await h.get('versionList').fire('click',historical);
+    assert.equal(button.textContent,locale==='de'?'Version 1 analysieren':'Analyze version 1');
+    assert.equal(button['aria-label'],button.textContent);
+    assert.equal(button['aria-describedby'],'analysisVersionHint');
+    assert.equal(hint.hidden,false);
+    assert.match(hint.textContent,/2/);
+    const current=h.get('versionList').children.find(n=>n.dataset.versionId===45);
+    await h.get('versionList').fire('click',current);
+    assert.equal(hint.hidden,true);
+  });
+  test(`${locale} empty reformulation has one empty message and explained disabled snapshot controls`,async()=>{
+    const h=detailStartup({locale,lifecycleFetch:async url=>url.pathname.endsWith('/reformulations')?Response.json([]):null});
+    const started=h.start();h.releaseLifecycle();await started;await settleStartup();
+    const start=h.get('reformulationStart'),select=start.querySelector('select'),create=start.querySelector('button');
+    assert.equal(select.disabled,true);
+    assert.equal(create.disabled,true);
+    const hint=start.querySelector('[data-reformulation-no-snapshot]');assert.ok(hint);
+    assert.equal(select['aria-describedby'],hint.id);
+    assert.equal(create['aria-describedby'],hint.id);
+    assert.equal(h.get('reformulationStatus').textContent,'');
+    assert.equal(h.get('reformulationList').querySelectorAll('p').filter(n=>n.textContent===(locale==='de'?'Noch kein Angebot vorhanden.':'No offer yet.')).length,1);
+  });
+  test(`${locale} reformulation snapshot and run statuses are labels and preserve unknown evidence`,async()=>{
+    const labels={PENDING:['Ausstehend','Pending'],QUEUED:['In Warteschlange','Queued'],RUNNING:['Wird ausgeführt','Running'],
+      SUCCESS:['Erfolgreich','Successful'],PARTIAL:['Teilergebnis','Partial result'],FAILED:['Fehlgeschlagen','Failed'],
+      CANCELLED:['Abgebrochen','Cancelled'],CANCELLING:['Wird abgebrochen','Cancelling'],COMPLETED:['Abgeschlossen','Completed'],
+      NOT_STARTED:['Noch nicht gestartet','Not started'],ORIGINAL_SNAPSHOT_STATUS:['ORIGINAL_SNAPSHOT_STATUS','ORIGINAL_SNAPSHOT_STATUS']};
+    const h=detailStartup({locale,reformulationOnly:true,lifecycleFetch:async url=>{
+      if(url.pathname.endsWith('/snapshots'))return Response.json(Object.keys(labels).map(status=>({id:'saved-'+status,requirementVersionNumber:2,requirementVersionId:45,status})));
+      if(url.pathname.endsWith('/synthesis-runs'))return Response.json([{id:'run-unknown',status:'ORIGINAL_RUN_STATUS'},
+        {id:'run-completed',status:'COMPLETED'},{id:'run-1',status:'PARTIAL',failureCode:'ORIGINAL_UNKNOWN_EVIDENCE'}]);
+    }});
+    await settleStartup();
+    for(const [code,names]of Object.entries(labels))assert.equal(h.get('reformulationStart').querySelectorAll('option')
+      .find(option=>option.value==='saved-'+code).textContent,'v2 · saved-'+code+' · '+names[locale==='de'?0:1]);
+    assert.ok(h.all.some(n=>n.textContent===(locale==='de'?'Teilergebnis':'Partial result')+' · ORIGINAL_UNKNOWN_EVIDENCE'));
+    assert.ok(h.all.some(n=>n.textContent==='ORIGINAL_RUN_STATUS'));
+    assert.ok(h.all.some(n=>n.textContent===(locale==='de'?'Abgeschlossen':'Completed')));
+  });
+  test(`${locale} opening adoption leaves the offer in a settled independent state`,async()=>{
+    let opened;
+    const h=detailStartup({locale,reformulationOnly:true});
+    h.window.TaxonomyReformulationAdoption={open:options=>{opened=options;}};
+    await settleStartup();
+    const button=h.all.find(n=>n.tagName==='BUTTON'&&n.textContent===(locale==='de'?'Übernahme prüfen…':'Review adoption…'));
+    assert.ok(button);await button.fire('click');
+    assert.equal(opened.proposalId,'offer');assert.equal(opened.revision,1);assert.equal(opened.isCurrent(),true);
+    assert.equal(h.get('reformulationStatus').textContent,locale==='de'?'Eigenständiges Neuformulierungsangebot':'Independent reformulation offer');
+    assert.equal(h.requests.some(request=>request.init.method==='POST'),false);
+  });
+}
+
+for (const locale of ['de','en']) test(`${locale} Copilot distinguishes manual readiness from autopilot configuration and permission`,async()=>{
+  const reason='Autopilot is disabled. Set TAXONOMY_AI_AUTOPILOT_ENABLED=true to opt in.';
+  const h=detailStartup({locale,copilot:true,lifecycleFetch:async url=>{
+    if(url.pathname==='/api/ai-automation')return Response.json({manualCopilotReady:false,autopilotReady:false,reason});
+    if(url.pathname==='/api/account/me')return Response.json({architectureMutationAllowed:true,analysisExecutionAllowed:true});
+  }});
+  const started=h.start();h.releaseLifecycle();await started;await settleStartup();
+  assert.match(h.get('copilotRun').title,locale==='de'?/manuelle Vollanalyse.*nicht bereit/i:/manual full analysis.*not ready/i);
+  assert.doesNotMatch(h.get('copilotRun').title,/AUTOPILOT_ENABLED|permissions|Berechtigungen/);
+  assert.equal(h.get('copilotRun').disabled,true);
+  assert.match(h.get('copilotPolicy').innerHTML,/COPILOT_AUTOPILOT/);
+  if(locale==='de')assert.doesNotMatch(h.get('copilotPolicy').innerHTML,/Autopilot is disabled/);
+});
+test('Copilot preserves an unknown server policy explanation as text',async()=>{
+  const h=detailStartup({copilot:true,lifecycleFetch:async url=>url.pathname==='/api/ai-automation'
+    ?Response.json({manualCopilotReady:true,autopilotReady:false,reason:'Original provider explanation'}):null});
+  const started=h.start();h.releaseLifecycle();await started;await settleStartup();
+  assert.match(h.get('copilotPolicy').innerHTML,/Original provider explanation/);
+  assert.match(h.get('copilotRun').title,/permissions/);
+});

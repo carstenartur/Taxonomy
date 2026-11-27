@@ -112,8 +112,13 @@
 
     function setDialogBusy(parts, busy) {
         parts.submit.disabled = busy;
-        parts.submit.textContent = busy ? text('saving') : parts.savedPending
-            ? (language()==='de'?'Gespeicherten Vorgang wiederholen':'Retry saved operation') : text('create');
+        var pending = busy ? text('saving') : parts.savedPending
+            ? (language()==='de'?'Gespeicherten Vorgang wiederholen':'Retry saved operation') : null;
+        if(window.TaxonomyRequirementIntake?.setPendingLabel)window.TaxonomyRequirementIntake.setPendingLabel(parts.form,pending);
+        else {
+            parts.submit.textContent=pending||parts.submit.dataset?.intakeLabel||text('create');
+            parts.submit.setAttribute?.('aria-label',parts.submit.textContent);
+        }
     }
 
     function safeDialogErrorMessage(error) {
@@ -430,15 +435,33 @@
                 field(text('requirementText'), textInput)
             );
             window.TaxonomyRequirementIntake.attach(parts.form, {
-                textElement:textInput, projectId:function () { return Number(projectSelect.value); },versionTarget:options?.versionTarget
+                textElement:textInput, projectId:function () { return Number(projectSelect.value); },versionTarget:options?.versionTarget,
+                reviewContainer:parts.body,submitElement:parts.submit
             });
 
+            var keyGeneration = 0;
+            var keyEdited = false;
+            keyInput.addEventListener('input', function () { keyEdited = true; });
+
             function refreshKey() {
-                jsonRequest('/api/projects/' + encodeURIComponent(projectSelect.value) + '/requirements', {
+                if (keyEdited) return;
+                var generation = ++keyGeneration;
+                var projectId = projectSelect.value;
+                var previousKey = keyInput.value;
+                var current = capturePromotionContext();
+
+                function applyKey(key) {
+                    if (parts.dialog.open && generation === keyGeneration && projectSelect.value === projectId
+                            && !keyEdited && keyInput.value === previousKey && current()) {
+                        keyInput.value = key;
+                    }
+                }
+
+                jsonRequest('/api/projects/' + encodeURIComponent(projectId) + '/requirements', {
                     method: 'GET'
                 }).then(function (requirements) {
-                    keyInput.value = nextRequirementKey(requirements);
-                }).catch(function () { keyInput.value = 'REQ-001'; });
+                    applyKey(nextRequirementKey(requirements));
+                }).catch(function () { applyKey('REQ-001'); });
             }
             projectSelect.addEventListener('change', refreshKey);
             refreshKey();
@@ -526,7 +549,13 @@
             seedTextInput = document.createElement('textarea');
             seedTextInput.className = 'form-control'; seedTextInput.rows = 8; seedTextInput.value = seed;
             parts.body.appendChild(field(text('requirementText'), seedTextInput));
-            window.TaxonomyRequirementIntake.attach(parts.form, {textElement:seedTextInput,projectId:null});
+            window.TaxonomyRequirementIntake.attach(parts.form, {textElement:seedTextInput,projectId:null,
+                reviewContainer:parts.body,submitElement:parts.submit,
+                enabled:function () { return createRequirementCheck.checked; },inactiveSubmitLabel:text('create')});
+            createRequirementCheck.addEventListener('change', function () {
+                if (!createRequirementCheck.checked) seedTextInput.setCustomValidity('');
+                setDialogBusy(parts,parts.submit.disabled);
+            });
         }
 
         parts.form.addEventListener('submit', function (event) {
@@ -537,7 +566,7 @@
                 projectKey:keyInput.value.trim(), title:titleInput.value.trim(), description:descriptionInput.value.trim(),
                 status:'PLANNING',targetArchitecture:null,targetDate:null,budgetAmount:null,budgetCurrency:null
             };
-            if (seed && createRequirementCheck && createRequirementCheck.checked) {
+            if (promotionAttempts.has(parts.form) || (seed && createRequirementCheck && createRequirementCheck.checked)) {
                 createRequirement(null, {requirementKey:'REQ-001',title:deriveTitle(seedTextInput.value),text:seedTextInput.value},
                     parts.form, options, projectRequest).then(function (result) {
                     if (!result || !result.current()) { setDialogBusy(parts,false); return; }

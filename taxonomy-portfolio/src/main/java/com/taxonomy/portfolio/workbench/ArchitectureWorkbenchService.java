@@ -213,8 +213,9 @@ public class ArchitectureWorkbenchService {
     }
 
     String renderSvg(Projection projection, Locale override) {
-        return svgRenderer.render(projection.scene(), projection.nodeReasons(), projection.relationReasons(),
-                diagramLocale(projection, override));
+        var locale = diagramLocale(projection, override);
+        var context = com.taxonomy.export.DiagramExportContext.snapshot(ArchitecturePdfRenderer.metadata(projection), locale);
+        return svgRenderer.render(projection.scene(), context, projection.nodeReasons(), projection.relationReasons(), locale);
     }
 
     @Transactional(readOnly = true)

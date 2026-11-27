@@ -249,6 +249,29 @@ class ArchitectureWorkbenchServiceTest {
     }
 
     @Test
+    void svgShowsFrozenSnapshotIdentityPartialStatusAndUnfinishedWorkOnItsCanvas() throws Exception {
+        var snapshot = snapshotWithArchitecture();
+        snapshot.analysis().setStatus("PARTIAL");
+        String partial = "RELATION_SEARCH_PARTIAL: 24/24 evaluation attempts; 231 unfinished search batches. "
+                + "42 unassessed sources; 298 pending and 2 unresolved source/target searches.";
+        String question = "CI-1151: Original unresolved question?";
+        snapshot.analysis().setWarnings(List.of(partial, question));
+        prepareSnapshot(snapshot);
+        var projection = service.load(PROJECT_ID, SNAPSHOT_ID, "alice", CONTEXT);
+        var factory = javax.xml.parsers.DocumentBuilderFactory.newInstance();
+        factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+        var doc = factory.newDocumentBuilder().parse(new org.xml.sax.InputSource(new java.io.StringReader(
+                service.renderSvg(projection, java.util.Locale.ENGLISH))));
+        var nodes = doc.getElementsByTagName("text");
+        var visible = new StringBuilder();
+        for (int index = 0; index < nodes.getLength(); index++) visible.append(nodes.item(index).getTextContent()).append('\n');
+        assertThat(visible.toString().replaceAll("\\s+", " ")).contains("PARTIAL", SNAPSHOT_ID, projection.projectKey(), projection.requirementKey(),
+                projection.provider(), projection.commitSha(), question, "24/24 evaluation attempts", "42 unassessed sources",
+                "298 pending and 2 unresolved");
+        assertThat(snapshot.analysis().getWarnings()).containsExactly(partial, question);
+    }
+
+    @Test
     void failsClearlyWhenSnapshotContainsNoArchitecture() {
         AnalysisResult analysis = new AnalysisResult(Map.of("CP-1", 90), List.of());
         analysis.setStatus("SUCCESS");

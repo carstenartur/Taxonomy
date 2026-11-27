@@ -202,7 +202,7 @@ public class DecisionRationaleDocxRenderer implements ReportRendererExtension {
             renderExecutiveSummary(document, report, labels);
         if (architecture) new ArchitectureWordSectionRenderer().write(document, report.architecture());
         if (!shortCompact) {
-            writer.heading(labels.provenance(), 1, "decision_source");
+            writer.heading(labels.reportProvenance(), 1, "decision_source");
             sourceNotice.stream().skip(4).forEach(writer::paragraph);
             writer.paragraph(report.executiveSummary().methodologyNote());
             if (options.includes(DecisionReportOptions.Section.TITLE_PAGE)) renderTitleEvidence(document, report, labels);
@@ -532,8 +532,7 @@ public class DecisionRationaleDocxRenderer implements ReportRendererExtension {
             XWPFDocument document,
             DecisionRationaleReport report,
             DecisionReportLabels labels) {
-        addSectionHeading(document, "03", labels.appendix());
-        new WordDocumentWriter(document,labels).bookmark(document.getParagraphs().getLast(),"decision_evidence");
+        new WordDocumentWriter(document, labels).heading(labels.appendix(), 1, "decision_evidence");
         addHeading(document, labels.leadingLeaves(), 2, false);
         XWPFTable leafTable = document.createTable(1, 5);
         RationaleIndex reasons = new RationaleIndex();
@@ -651,7 +650,7 @@ public class DecisionRationaleDocxRenderer implements ReportRendererExtension {
             styleDataRow(row, fill);
             rowNumber++;
         }
-        tableWidths(table, 7, 32, 12, 16, 19, 14);
+        tableWidths(table, 7, 30, 12, 14, 23, 14);
         reasons.render(document, labels);
     }
 
@@ -1041,7 +1040,7 @@ public class DecisionRationaleDocxRenderer implements ReportRendererExtension {
             for (var entry : entries.entrySet()) {
                 addLabel(document, "R" + index++ + " · " + String.join(", ", entry.getValue())
                         + " · " + reasonSource(entry.getKey().source(), labels));
-                addBodyParagraph(document, entry.getKey().text(), false);
+                addBodyParagraph(document, DecisionReportPresentation.reason(entry.getKey().text(), entry.getKey().source(), labels), false);
             }
         }
     }

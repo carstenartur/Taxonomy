@@ -117,6 +117,8 @@ Workspaces anderer Benutzer werden nicht durchsucht. Ein historischer Treffer
 <a id="requirement-intake"></a>
 ## Eingehenden Text vor dem Speichern prüfen
 
+**Text prüfen** öffnet oder aktualisiert die Prüfung, bevor etwas gespeichert wird. Nach einer ausdrücklichen Auswahl übernimmt **Auswahl speichern** die Entscheidung. Die Prüfung erscheint innerhalb des Dialogs und erhält bei nötiger Rückmeldung den Tastaturfokus. Muss ein Auftrag wiederholt werden, bleiben Wiederholungsbeschriftung und Auftragsidentität erhalten. Die kontextbezogene Hilfe öffnet diesen Abschnitt separat und erhält damit die begonnene Eingabe. Reine Leerzeichen führen zu einem Hinweis am Textfeld.
+
 Die Eingangsprüfung beim Speichern einer neuen Anforderung oder beim Übertragen
 einer Analyse in ein Projekt verwenden. Sie kann Duplikate, Änderungen, Ergänzungen
 oder Konflikte unter den zugelassenen Kandidaten vorschlagen. Quellauszüge und
@@ -293,6 +295,8 @@ Eine Textänderung erzeugt eine neue Version und überschreibt keine Historie.
 
 ## 4. Anforderungen analysieren, ohne die Seite zu blockieren
 
+Die Analyseaktion nennt die ausgewählte Textversion. Diese Nummer vor dem Start prüfen; ein historischer Snapshot zeigt weiterhin die tatsächlich analysierte Version. In einem leeren Projekt erklärt ein Hinweis, warum die Sammelanalyse nicht verfügbar ist.
+
 Verwenden Sie **Analysieren** für eine Anforderung oder **Alle analysieren** für das ausgewählte Projekt.
 
 Die Anfrage wird als persistenter Hintergrundjob angenommen. Während der Verarbeitung bleibt die Oberfläche bedienbar. Das Job-Center zeigt:
@@ -330,6 +334,8 @@ Im Reiter **Lösungen** können wiederverwendbare Lösungsdefinitionen angelegt 
 Nach Prüfung der Taxonomieabdeckung werden Lösungen mit den von ihnen abgedeckten Anforderungen verbunden. Vorgeschlagene Beziehungen bleiben Vorschläge, bis sie ausdrücklich bestätigt werden.
 
 Im Reiter **Produkte** werden belegte Hersteller-, Produkt- und Versionsangaben erfasst. Produktbehauptungen behalten Quelle und Prüfzeitpunkt. Produkte können als Kandidaten einer Lösung hinzugefügt, verglichen, in die engere Wahl genommen oder ausdrücklich ausgewählt werden. Harte Ausschlussgründe verhindern eine Auswahl.
+
+Bei einer Statusänderung bleiben vorhandene Bewertungen, Begründungen und Nachweise erhalten. Manuelle Ausschlussgründe werden getrennt von den Befunden eines Bestandsvergleichs gespeichert. Ein neuer geprüfter Bestandsvergleich ersetzt nur seine eigenen Befunde. Ein manuell gespeicherter Ausschlussgrund bleibt wirksam, bis er ausdrücklich korrigiert wird; gleicher Wortlaut belegt keine gemeinsame Herkunft.
 
 ## 7. Konflikte erkennen und auflösen
 
@@ -374,6 +380,8 @@ Sie können:
 5. zwei unterschiedliche Branches über den semantischen Git-Merge-Dienst zusammenführen.
 
 Ändert sich der Zielbranch nach der Vorschau, wird die Materialisierung ohne Änderung der Portfoliodaten abgewiesen. Dadurch kann eine veraltete Prüfung keine neueren Arbeiten überschreiben.
+
+Produktkandidaten behalten ihre Vergleichskennung, den Fingerprint und gespeicherte Ausschlussgründe auch beim Import in einen neuen Arbeitsbereich. Ein Import kann bereits vorhandene Bestandsnachweise nicht ersetzen. Bei einem Widerspruch wird der betreffende Kandidat nicht übernommen und eine Warnung ausgegeben; seine gespeicherten Entscheidungen bleiben erhalten.
 
 <a id="portfolio-reports"></a>
 ## 10. Berichte und Exporte erzeugen

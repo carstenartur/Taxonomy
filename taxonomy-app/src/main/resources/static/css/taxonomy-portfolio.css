@@ -550,3 +550,9 @@
         padding: 0.75rem;
     }
 }
+#detailTabs { scroll-padding-inline: .5rem; overflow-y: hidden; }
+#detailTabs .nav-item { flex: 0 0 auto; }
+#detailTabs .nav-link { white-space: nowrap; }
+#analysisVersionHint { max-width: 24rem; }
+.inventory-node-options { max-height: 20rem; overflow-y: auto; margin-block: .75rem; padding-inline: .5rem; border: 1px solid var(--bs-border-color); border-radius: .25rem; }
+.inventory-optional-settings { margin-block: .75rem; }

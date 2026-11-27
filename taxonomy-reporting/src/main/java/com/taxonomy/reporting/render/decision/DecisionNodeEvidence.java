@@ -134,7 +134,7 @@ public final class DecisionNodeEvidence {
                 var p = excerptNodes.indexOf(node) == 0 ? reasonCell.getParagraphs().getFirst() : reasonCell.addParagraph();
                 p.setSpacingAfter(60);
                 var run = p.createRun(); run.setFontSize(10);
-                run.setText(node.row().code() + " · " + source(node.evidence(), labels) + ": " + excerpt(node.evidence().text()));
+                run.setText(node.row().code() + " · " + source(node.evidence(), labels) + ": " + excerpt(DecisionReportPresentation.reason(node.evidence().text(), node.evidence().source(), labels)));
                 if (includesFullReasons()) writer.link(p, reasonBookmark(node.row().code()), " · Original", 10);
             }
             if (report.scope().options().includes(Section.TREE) && treeContains(root.row().code()))
@@ -170,7 +170,7 @@ public final class DecisionNodeEvidence {
                 for (var node : entry.getValue()) writer.bookmark(p, reasonBookmark(node.row().code()));
                 String reason = entry.getKey().text();
                 writer.paragraph(reason == null || reason.isBlank()
-                        ? labels.missingReason() : DecisionReportPresentation.nodeReason(reason, labels));
+                        ? labels.missingReason() : DecisionReportPresentation.reason(reason, entry.getKey().source(), labels));
             }
             if (report.scope().options().includes(Section.TREE) && treeContains(group.getFirst().root()))
                 writer.link(writer.paragraph(""), rootBookmark(group.getFirst().root()), labels.german() ? "Zurück zum Wurzelbaum" : "Back to root tree");
