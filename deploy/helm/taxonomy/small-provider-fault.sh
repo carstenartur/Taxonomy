@@ -12,8 +12,8 @@ render_small_provider() {
   fi
   # Buffer the result until both namespaces and the single image have been
   # replaced. Template drift must fail before any Secret or workload is created.
-  awk -v namespace="${NAMESPACE}" -v image="${IMAGE_REFERENCE}" '
-    $0 == "  namespace: taxonomy-smoke" { $0 = "  namespace: " namespace; namespaces++ }
+  awk -v smoke_namespace="${NAMESPACE}" -v image="${IMAGE_REFERENCE}" '
+    $0 == "  namespace: taxonomy-smoke" { $0 = "  namespace: " smoke_namespace; namespaces++ }
     $0 == "          image: fixture-image-placeholder:render-required" {
       $0 = "          image: " image; images++
     }

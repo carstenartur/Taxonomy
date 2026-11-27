@@ -157,6 +157,19 @@ application test classpath, including OpenTelemetry 1.67.0. This verifies the
 session helper's unit contract, not an actual browser journey. The wider Selenium
 and reconciliation suites remain assigned to the full CI gates.
 
+The first PR CI run caught a renderer portability defect: GNU awk reserves
+`namespace`, while local mawk accepted that variable. The existing provider
+regression failed in both the plugin-profile and document-report lanes before
+runtime deployment. The renderer now uses the specific name `smoke_namespace`.
+All 20 unchanged Helm contract tests pass with GNU awk 5.2.1 first in PATH, using
+locally extracted official Debian packages rather than replacing system tools.
+
+CodeQL's first PR push run completed successfully. Its Java SARIF export logged
+three internal `java/csrf-unprotected-request-type` graph errors for login/edit/localEdit.
+The same three messages are present in the successful main-base run 46062421210;
+after removing timestamps they match byte for byte. This is an existing scanner
+limitation, not a new finding or a claimed error-free export.
+
 After all deployment corrections, the configuration scan on integration base
 `487c2646721e41c42b8c0e57a06621fffab20b44` still covers seven targets and passes all
 99 Helm checks. It contains exactly 32 LOW findings: fifteen KSV-0039, fifteen
