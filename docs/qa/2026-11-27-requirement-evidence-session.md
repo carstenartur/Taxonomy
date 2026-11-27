@@ -179,6 +179,8 @@ The rendered pages were inspected for legibility, clipping, blank body pages and
 
 A separate test-only CodeQL finding was corrected by checking mixed-case script input, its exact escaped text, case-insensitive absence of a raw script element and absence of a percentage separately. All five JavaScript cases passed. CodeQL completed successfully on remote correction `682e3d9246718e0ec4b444eab0ab501c2ba51f7c`; the final combined source change still requires its own CI result.
 
+The first full-scope CI run found one further test-inventory mismatch: the exact base-path script-order assertion did not yet include the new requirement-evidence module. The same assertion surfaced through three jobs that execute the JavaScript contract suite. A direct run reproduced the failure; adding the module at its actual production-loader position made that test pass without weakening the ordered equality assertion. This correction is included in the final source revision and reruns the normal CI gates.
+
 ### Actual persistence read-path correction
 
 The earlier streaming JSON correction did not prevent Hibernate from first hydrating supposedly lazy adoption/preview/proposal/snapshot associations through non-primary-key joins. The retained example contains two proposal baselines of 17,721,331 and 17,956,960 characters plus two snapshot payloads of 5,728,459 and 5,781,800 characters. Loading that graph expanded approximately 47 million characters before the codec could skip unused fields.
