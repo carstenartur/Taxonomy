@@ -114,6 +114,9 @@
         <!-- Patched databind families for CVE-2026-91776 and CVE-2026-91777. -->
         <jackson-2-bom.version>2.22.4</jackson-2-bom.version>
         <jackson-bom.version>3.1.7</jackson-bom.version>
+        <!-- Align Selenium's test dependencies on the patched OpenTelemetry BOM
+             for W3C tracestate parsing (CVE-2026-118259). -->
+        <opentelemetry.version>1.67.0</opentelemetry.version>
         <selenium.version>4.46.0</selenium.version>
         <selenium.container.image>selenium/standalone-chrome:4.46.0-20260707</selenium.container.image>
         <archunit.version>1.5.1</archunit.version>

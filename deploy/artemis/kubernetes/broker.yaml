@@ -45,7 +45,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: broker
-          image: apache/artemis:2.53.0-alpine@sha256:ce784035e4c5c5c91c505d7bd8edb8842559b909f3d5c2fddff968a2accc612e
+          image: docker.io/apache/artemis:2.53.0-alpine@sha256:ce784035e4c5c5c91c505d7bd8edb8842559b909f3d5c2fddff968a2accc612e
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false

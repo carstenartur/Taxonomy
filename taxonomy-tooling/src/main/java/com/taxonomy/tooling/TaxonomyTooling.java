@@ -61,7 +61,7 @@ public final class TaxonomyTooling {
             case "render-delivery-state", "render-deploy-url", "render-service-id" ->
                     DeploymentVerifier.renderCommand(
                             command, commandArguments, environment, workingDirectory, output, error);
-            case "write-release-image-evidence", "read-evidence-digest", "check-trivy-sarif",
+            case "write-release-image-evidence", "read-evidence-digest", "check-trivy-sarif", "check-trivy-coverage",
                     "storage-contract-selectors" -> ReleaseEvidence.run(
                             command, commandArguments, environment, workingDirectory, output, error);
             case "check-release-delivery-contract", "check-delivery-hardening" -> DeliveryGuards.run(

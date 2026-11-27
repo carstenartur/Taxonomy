@@ -2,12 +2,17 @@ package com.taxonomy.build;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.yaml.snakeyaml.LoaderOptions;
+import org.yaml.snakeyaml.Yaml;
+import org.yaml.snakeyaml.constructor.SafeConstructor;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -206,6 +211,116 @@ class HelmConstrainedSmokeContractTest {
             }
         }
     }
+
+    @Test
+    void providerFixtureAppliesTheExactSourceImageAndExplicitIdentityInBothOwnedNamespaces() throws Exception {
+        String source = "0123456789abcdef0123456789abcdef01234567";
+        String image = "taxonomy-smoke:sha-0123456789abcdef0123456789abcdef01234567";
+        for (String namespace : List.of("taxonomy-smoke", "taxonomy-artemis-smoke")) {
+            ProviderInstall result = installProvider(namespace, source, image,
+                    findRepositoryRoot().resolve("deploy/helm/taxonomy"));
+            assertThat(result.exitCode()).as(result.output()).isZero();
+            List<Map<?, ?>> documents = new ArrayList<>();
+            new Yaml(new SafeConstructor(new LoaderOptions())).loadAll(read(result.manifest()))
+                    .forEach(document -> documents.add((Map<?, ?>) document));
+            assertThat(documents).hasSize(2).allSatisfy(document ->
+                    assertThat(yamlMap(document, "metadata").get("namespace")).isEqualTo(namespace));
+            Map<?, ?> deployment = documents.stream().filter(document -> "Deployment".equals(document.get("kind")))
+                    .findFirst().orElseThrow();
+            Map<?, ?> pod = yamlMap(deployment, "spec", "template", "spec");
+            Map<?, ?> security = yamlMap(pod, "securityContext");
+            assertThat(security.get("runAsNonRoot")).isEqualTo(true);
+            for (String identity : List.of("runAsUser", "runAsGroup", "fsGroup")) {
+                assertThat(security.get(identity)).as(identity).isEqualTo(10001);
+            }
+            Map<?, ?> container = (Map<?, ?>) ((List<?>) pod.get("containers")).getFirst();
+            assertThat(container.get("image")).isEqualTo(image);
+            assertThat(container.get("imagePullPolicy")).isEqualTo("Never");
+            assertThat(read(result.calls())).contains("apply --namespace " + namespace + " -f -");
+        }
+    }
+
+    @Test
+    void providerFixtureRejectsUnsafeTargetsBeforeCreatingClusterResources() throws Exception {
+        String source = "0123456789abcdef0123456789abcdef01234567";
+        String image = "taxonomy-smoke:sha-0123456789abcdef0123456789abcdef01234567";
+        for (List<String> input : List.of(
+                List.of("", source, image), List.of("default", source, image),
+                List.of("production", source, image), List.of("taxonomy-smoke", "", image),
+                List.of("taxonomy-smoke", "invalid", image), List.of("taxonomy-smoke", source, ""),
+                List.of("taxonomy-smoke", source, "taxonomy-smoke"),
+                List.of("taxonomy-smoke", source, "taxonomy-smoke:latest"),
+                List.of("taxonomy-smoke", source, "taxonomy-smoke:sha-1111111111111111111111111111111111111111"),
+                List.of("taxonomy-smoke", source, image + "&unexpected"))) {
+            ProviderInstall result = installProvider(input.get(0), input.get(1), input.get(2),
+                    findRepositoryRoot().resolve("deploy/helm/taxonomy"));
+            assertThat(result.exitCode()).as(input + ": " + result.output()).isNotZero();
+            assertThat(result.calls()).as("Reject unsafe targets before any kubectl operation").doesNotExist();
+            assertThat(result.manifest()).doesNotExist();
+        }
+    }
+
+    @Test
+    void providerFixtureRejectsUnrenderableTemplatesBeforeCreatingClusterResources() throws Exception {
+        String template = read(findRepositoryRoot().resolve("deploy/helm/taxonomy/small-provider.yaml"));
+        for (String changed : List.of(
+                template.replace("fixture-image-placeholder:render-required", "fixture-image-placeholder:changed"),
+                template.replace("namespace: taxonomy-smoke", "namespace: unowned"))) {
+            Path chart = Files.createTempDirectory(temporary, "provider-chart-");
+            Files.writeString(chart.resolve("small-provider.yaml"), changed);
+            ProviderInstall result = installProvider("taxonomy-artemis-smoke",
+                    "0123456789abcdef0123456789abcdef01234567",
+                    "taxonomy-smoke:sha-0123456789abcdef0123456789abcdef01234567", chart);
+            assertThat(result.exitCode()).as(result.output()).isNotZero();
+            assertThat(result.calls()).doesNotExist();
+        }
+    }
+
+    private ProviderInstall installProvider(String namespace, String source, String image, Path chart) throws Exception {
+        Path state = Files.createTempDirectory(temporary, "provider-install-");
+        Path calls = state.resolve("calls.txt");
+        Path manifest = state.resolve("applied.yaml");
+        Path log = state.resolve("output.log");
+        ProcessBuilder builder = new ProcessBuilder("bash", "-c", """
+                set -euo pipefail
+                source "$PROVIDER_SCRIPT"
+                keytool() { :; }
+                javac() { :; }
+                kubectl() {
+                  printf '%s\\n' "$*" >>"$PROVIDER_CALLS"
+                  case "$1" in
+                    create|rollout) ;;
+                    apply) cat >"$PROVIDER_MANIFEST" ;;
+                    *) return 97 ;;
+                  esac
+                }
+                install_small_provider
+                """).directory(findRepositoryRoot().toFile()).redirectErrorStream(true).redirectOutput(log.toFile());
+        Map<String, String> environment = builder.environment();
+        environment.put("PROVIDER_SCRIPT", findRepositoryRoot().resolve("deploy/helm/taxonomy/small-provider-fault.sh").toString());
+        environment.put("PROVIDER_CALLS", calls.toString());
+        environment.put("PROVIDER_MANIFEST", manifest.toString());
+        environment.put("CHART_DIR", chart.toString());
+        environment.put("NAMESPACE", namespace);
+        environment.put("SOURCE_SHA", source);
+        environment.put("IMAGE_REPOSITORY", "taxonomy-smoke");
+        environment.put("IMAGE_REFERENCE", image);
+        Process process = builder.start();
+        try {
+            assertThat(process.waitFor(10, TimeUnit.SECONDS)).as("Provider fixture preflight completed").isTrue();
+            return new ProviderInstall(process.exitValue(), read(log), calls, manifest);
+        } finally {
+            if (process.isAlive()) process.destroyForcibly();
+        }
+    }
+
+    private static Map<?, ?> yamlMap(Map<?, ?> value, String... keys) {
+        Map<?, ?> result = value;
+        for (String key : keys) result = (Map<?, ?>) result.get(key);
+        return result;
+    }
+
+    private record ProviderInstall(int exitCode, String output, Path calls, Path manifest) { }
 
     private static String read(Path path) throws Exception {
         return Files.readString(path, StandardCharsets.UTF_8);

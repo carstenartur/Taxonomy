@@ -1,0 +1,8 @@
+# Keep successful checks in JSON so the Maven-owned evidence gate can prove that
+# Trivy rendered and scanned the Helm chart. SARIF conversion retains failures.
+misconfiguration:
+  include-non-failures: true
+
+rego:
+  data:
+    - .github/trivy-data

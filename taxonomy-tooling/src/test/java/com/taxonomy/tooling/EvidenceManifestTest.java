@@ -147,6 +147,9 @@ class EvidenceManifestTest {
                   "runs",
                   List.of(
                       Map.of(
+                          "tool",
+                          Map.of("driver", Map.of("name", "Trivy", "rules", List.of(
+                              Map.of("id", "fixture", "help", Map.of("text", "Severity: HIGH"))))),
                           "results",
                           List.of(
                               Map.of(
@@ -433,7 +436,9 @@ class EvidenceManifestTest {
     onnx.put("digest", "sha256:" + "e".repeat(64));
     onnx.put("image", "ghcr.io/fixture/taxonomy@sha256:" + "e".repeat(64));
     QualitySite.write(root.resolve("image-onnx.json"), onnx);
-    QualitySite.write(root.resolve("security.json"), Map.of("version", "2.1.0", "runs", List.of()));
+    QualitySite.write(root.resolve("security.json"), Map.of("version", "2.1.0", "runs", List.of(
+        Map.of("tool", Map.of("driver", Map.of("name", "Trivy", "rules", List.of())),
+            "results", List.of()))));
     var output = new java.io.ByteArrayOutputStream();
     assertThat(
             DeploymentVerifier.renderCommand(

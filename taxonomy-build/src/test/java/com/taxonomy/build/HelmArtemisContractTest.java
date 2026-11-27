@@ -204,6 +204,11 @@ class HelmArtemisContractTest {
             assertThat(map(claim, "spec")).containsEntry("accessModes", List.of("ReadWriteOnce"));
             assertThat(map(claim, "spec", "resources", "requests")).containsEntry("storage", "512Mi");
             var service = named(kind(fixtures, "Deployment"), deployment);
+            var identity = map(service, "spec", "template", "spec", "securityContext");
+            assertThat(identity).containsEntry("runAsNonRoot", true);
+            assertThat((Integer) identity.get("runAsUser")).isGreaterThan(10000);
+            assertThat(identity.get("runAsGroup")).isEqualTo(identity.get("runAsUser"));
+            assertThat(identity.get("fsGroup")).isEqualTo(identity.get("runAsGroup"));
             var volumes = list(map(service, "spec", "template", "spec").get("volumes"));
             assertThat(volumes).filteredOn(volume -> volume.containsKey("persistentVolumeClaim"))
                     .singleElement().satisfies(volume -> assertThat(map(volume, "persistentVolumeClaim"))

@@ -16,7 +16,10 @@ runs:
       run: |
         : "${ImageOS:?Missing hosted runner ImageOS}" "${ImageVersion:?Missing hosted runner ImageVersion}" "${RUNNER_ARCH:?Missing runner architecture}"
         [[ "$VARIANT" == writer || "$VARIANT" == writer-draw ]] || { echo 'Unknown document package variant' >&2; exit 2; }
-        echo "key=${PACKAGE_KEY_PREFIX}-${VARIANT}-${ImageOS}-${ImageVersion}-${RUNNER_ARCH}" >> "$GITHUB_OUTPUT"
+        source .github/scripts/apt-packages.sh
+        package_baseline="$(package_cache_fingerprint)"
+        echo "baseline=${package_baseline}" >> "$GITHUB_OUTPUT"
+        echo "key=${PACKAGE_KEY_PREFIX}-${VARIANT}-${ImageOS}-${ImageVersion}-${RUNNER_ARCH}-${package_baseline}" >> "$GITHUB_OUTPUT"
     - name: Restore document system packages (exact runner image)
       id: packages
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
@@ -29,12 +32,20 @@ runs:
       shell: bash
       env:
         PACKAGE_KEY: ${{ steps.cache-key.outputs.key }}
+        PACKAGE_BASELINE: ${{ steps.cache-key.outputs.baseline }}
         PACKAGE_CACHE_HIT: ${{ steps.packages.outputs.cache-hit }}
         PACKAGE_CACHE_MATCHED_KEY: ${{ steps.packages.outputs.cache-matched-key }}
       run: |
         : "${ImageOS:?Missing hosted runner ImageOS}" "${ImageVersion:?Missing hosted runner ImageVersion}" "${RUNNER_ARCH:?Missing runner architecture}"
-        [[ "$PACKAGE_KEY" == *"-${ImageOS}-${ImageVersion}-${RUNNER_ARCH}" ]] || {
-          echo '::error title=Document rendering packages::Package cache does not match this runner image.'
+        : "${PACKAGE_BASELINE:?Missing system package cache baseline}"
+        source .github/scripts/apt-packages.sh
+        current_baseline="$(package_cache_fingerprint)"
+        [[ "$current_baseline" == "$PACKAGE_BASELINE" ]] || {
+          echo '::error title=Document rendering packages::Installed packages or APT architectures changed after cache identification.'
+          exit 1
+        }
+        [[ "$PACKAGE_KEY" == *"-${ImageOS}-${ImageVersion}-${RUNNER_ARCH}-${current_baseline}" ]] || {
+          echo '::error title=Document rendering packages::Package cache does not match this runner image and package baseline.'
           exit 1
         }
         if [[ -n "$PACKAGE_CACHE_MATCHED_KEY" || "$PACKAGE_CACHE_HIT" == true ]]; then
