@@ -45,6 +45,12 @@
       "itTest": "LocalOnnxPipelineIT,OnnxSeleniumIT",
       "systemProperty": "runOnnxTests"
     },
+    "local-embedding-comparison": {
+      "purpose": "Opt-in CPU ONNX comparison of three pinned encoders over the packaged catalogue and fixed English/German reference cases",
+      "test": "LocalEmbeddingComparisonSupportTest,LocalEmbeddingComparisonTest",
+      "systemProperty": "taxonomy.embedding.comparison.models",
+      "requires": ["Java 25", "AVX2-capable x86-64 CPU", "Locally provisioned pinned model bundles"]
+    },
     "ci-onnx-reference": {
       "purpose": "Explicit CI companion to onnx; selects App ONNX and reference unit tests plus WorkerRuntimeFootprintTest, retains both ONNX Failsafe suites and upstream/build-policy tests, and omits the unrelated product demo and partial coverage aggregate",
       "profile": "ci-onnx-reference",

@@ -1,15 +1,37 @@
 /* taxonomy-analysis-progress.js – bounded observation of existing analysis operations */
 (function () {
     'use strict';
-    var active = null;
+    var active = null, diagnosticGeneration = 0;
+    function clearDetachedDiagnostics() {
+        diagnosticGeneration++;
+        document.getElementById('analysisCancellationDiagnostics')?.remove();
+    }
+    function reportUnconfirmed(id) {
+        const anchor = document.getElementById('statusArea');
+        if (!anchor) return;
+        let region = document.getElementById('analysisCancellationDiagnostics');
+        if (!region) {
+            region = node('section', '', 'alert alert-warning mt-2');
+            region.id = 'analysisCancellationDiagnostics';
+            region.setAttribute('role','status');
+            anchor.insertAdjacentElement('afterend',region);
+        }
+        region.append(node('div', text('Abbruch unbestätigt. Prüfe den gespeicherten Status des Laufs ',
+            'Cancellation unconfirmed. Check the saved status of run ') + id));
+    }
 
     function createMonitor(options) {
         var initial = options.context();
         var stopped = false, timer = null, request = null, sequence = 0, cancelling = false;
         var seen = false, cancelPending = false, cancelInFlight = false, cancelAcknowledged = false, cancelUncertain = false;
-        var cleanupStarted = false, observedTerminal = false, finalRead = null, finalRequest = null;
+        var cleanupStarted = false, observedTerminal = false, terminalStatus = null, finalRead = null, finalRequest = null;
         var stream = null, clusterScope = null, resultRead = null, resultRequest = null;
         var id = options.id;
+        var reportCleanup, cleanupState;
+        function cleanupOutcome(status) {
+            cleanupState = status;
+            if (reportCleanup) reportCleanup(status);
+        }
         function sameContext() {
             var now = options.context();
             return now.workspaceId === initial.workspaceId
@@ -82,6 +104,7 @@
             observedTerminal = ['COMPLETED', 'PARTIAL', 'ERROR', 'CANCELLED'].indexOf(data.status) >= 0;
             options.onSnapshot(data, changed);
             if (observedTerminal) {
+                terminalStatus = data.status;
                 cancelPending = false;
                 stop();
                 if (clusterScope && options.onResult) {
@@ -129,11 +152,13 @@
             try {
                 await options.api.cancelRun(id, { workspaceId: initial.workspaceId });
                 cancelAcknowledged = true;
+                if (cleanupStarted) cleanupOutcome('REQUEST_ACCEPTED');
                 if (current() && options.onCancelling) options.onCancelling();
             } catch (error) {
                 cancelling = false;
                 if (error.status === 410) {
                     cancelPending = false;
+                    if (cleanupStarted) cleanupOutcome('UNCONFIRMED');
                     if (current()) options.onUnavailable('ANALYSIS_EXPIRED', true);
                     stop();
                 } else if (error.status === 404 && !seen) {
@@ -145,6 +170,7 @@
                     // A lost write response cannot safely be retried by automatic cleanup.
                     // A later explicit user click may retry, but observation never does.
                     cancelUncertain = true;
+                    if (cleanupStarted) cleanupOutcome('UNCONFIRMED');
                     if (current()) options.onUnavailable(error.message);
                 }
             } finally { cancelInFlight = false; }
@@ -152,9 +178,16 @@
 
         // UI invalidation must not erase a pending cancellation. A separate, bounded
         // observer retains the original identity without touching old or new UI state.
-        function cancelAndStop() {
+        function cancelAndStop(report) {
+            if (typeof report === 'function') {
+                reportCleanup = report;
+                if (cleanupState) report(cleanupState);
+                else if (observedTerminal) report(terminalStatus);
+                else if (stopped) report('UNCONFIRMED');
+            }
             if (cleanupStarted || stopped) return false;
             cleanupStarted = true;
+            cleanupOutcome(cancelUncertain ? 'UNCONFIRMED' : cancelAcknowledged ? 'REQUEST_ACCEPTED' : 'DETACHED');
             stop();
             if (clusterScope) {
                 // Durable registration is already known. Departure needs one pinned
@@ -164,8 +197,8 @@
                     var clusterCancel = new AbortController();
                     var clusterDeadline = options.setTimeout(function () { clusterCancel.abort(); }, 5000);
                     options.api.cancelRun(id, { workspaceId: initial.workspaceId, signal: clusterCancel.signal })
-                        .then(function () { cancelAcknowledged = true; })
-                        .catch(function () { cancelUncertain = true; })
+                        .then(function () { cancelAcknowledged = true; cleanupOutcome('REQUEST_ACCEPTED'); })
+                        .catch(function () { cancelUncertain = true; cleanupOutcome('UNCONFIRMED'); })
                         .finally(function () {
                             cancelInFlight = false;
                             options.clearTimeout(clusterDeadline);
@@ -175,10 +208,11 @@
             }
             var done = false, cleanupTimer = null, cleanupRequest = null, readTimeout = null;
             var cleanupSeen = seen;
-            var deadline = options.setTimeout(endCleanup, 30000);
-            function endCleanup() {
+            var deadline = options.setTimeout(function () { endCleanup('UNCONFIRMED'); }, 30000);
+            function endCleanup(status) {
                 if (done) return;
                 done = true;
+                if (status) cleanupOutcome(status);
                 options.clearTimeout(deadline);
                 if (cleanupTimer !== null) options.clearTimeout(cleanupTimer);
                 if (readTimeout !== null) options.clearTimeout(readTimeout);
@@ -208,7 +242,7 @@
                     if (done || data.operationId !== id) return;
                     cleanupSeen = true;
                     if (['COMPLETED', 'PARTIAL', 'ERROR', 'CANCELLED', 'CANCELLING'].indexOf(data.status) >= 0) {
-                        endCleanup(); return;
+                        endCleanup(data.status); return;
                     }
                     if (data.status !== 'RUNNING' && data.status !== 'QUEUED') return;
                     writing = true;
@@ -216,12 +250,12 @@
                         workspaceId: initial.workspaceId, signal: cleanupRequest.signal
                     });
                     cancelAcknowledged = true;
-                    endCleanup();
+                    endCleanup('REQUEST_ACCEPTED');
                 } catch (error) {
                     // Never retry a write whose delivery is ambiguous. The bounded server
                     // operation deadline remains the final safeguard when transport is lost.
                     if (writing || error.status === 410 || error.status === 400 || error.status === 401 || error.status === 403
-                            || (error.status === 404 && cleanupSeen)) endCleanup();
+                            || (error.status === 404 && cleanupSeen)) endCleanup('UNCONFIRMED');
                 } finally {
                     if (readTimeout !== null) options.clearTimeout(readTimeout);
                     readTimeout = null;
@@ -908,6 +942,13 @@
             },
             finished: function (status, measuredDuration) {
                 retryResult.hidden = true;
+                if (status === 'REJECTED') {
+                    title.textContent = text('Analyse nicht gestartet', 'Analysis did not start');
+                    state.textContent = text('Start abgewiesen. Es gibt keinen gespeicherten Lauf.',
+                        'Start rejected. No saved execution was found.');
+                    cancelState(true, text('Nicht gestartet', 'Not started'));
+                    return;
+                }
                 if (Number.isSafeInteger(measuredDuration) && measuredDuration >= 0) terminalDuration = measuredDuration;
                 // A running estimate may include admission/connection time. Only an
                 // authoritative result or measured terminal snapshot can finalize it.
@@ -942,6 +983,19 @@
                 state.textContent = reason === 'WAITING_FOR_RUN'
                     ? text('Warte auf Aufnahme des Laufs; noch keine LLM-Anfrage bestätigt.', 'Waiting for admission; no LLM request confirmed yet.')
                     : text('Statusverbindung unterbrochen; letzter Stand bleibt sichtbar. ', 'Status connection interrupted; retaining the last state. ') + reason;
+            },
+            detached: function (id, outcome) {
+                const states = {
+                    DETACHED: text('Beobachtung beendet. Der Abbruch wird geprüft.', 'Observation stopped. Checking cancellation.'),
+                    REQUEST_ACCEPTED: text('Abbruchanforderung angenommen.', 'Cancellation request accepted.'),
+                    CANCELLING: text('Abbruch wird verarbeitet.', 'Cancellation is in progress.'),
+                    CANCELLED: text('Abbruch vom Server bestätigt.', 'Cancellation confirmed by the server.'),
+                    UNCONFIRMED: text('Abbruch unbestätigt. Der Lauf kann weiterarbeiten. Prüfe den gespeicherten Analysestatus.',
+                        'Cancellation unconfirmed. The run may still be working. Check its saved analysis status.')
+                };
+                title.textContent = text('Früherer Analyselauf', 'Previous analysis run');
+                state.textContent = id + ' · ' + (states[outcome] || text('Serverstatus', 'Server status') + ' ' + outcome);
+                cancelState(true, text('Beobachtung beendet', 'Observation stopped'));
             },
             cancelling: function () {
                 cancelState(true, text('Abbruch angefordert', 'Cancellation requested'));
@@ -1096,6 +1150,17 @@
         // Result ownership outlives polling: a terminal snapshot may arrive before the
         // complete HTTP envelope, but a replacement operation must never accept it.
         monitor.acceptsResult = function () { return active === monitor && monitor.isInScope(); };
+        const diagnosticScope = diagnosticGeneration;
+        let warned = false;
+        monitor.detachRefinement = function () {
+            monitor.cancelAndStop(function (outcome) {
+                // Only this operation's presentation can show the outcome. A late cancellation
+                // response must never update the replacement run or another workspace's panel.
+                if (diagnosticScope !== diagnosticGeneration || !monitor.isInScope()) return;
+                if (active === monitor) view.detached(id, outcome);
+                if (outcome === 'UNCONFIRMED' && !warned) { warned = true; reportUnconfirmed(id); }
+            });
+        };
         monitor.transportFailed = function () {
             monitor.cancelAndStop();
             view.unavailable('CONNECTION_LOST', true);
@@ -1204,6 +1269,7 @@
     if (typeof document !== 'undefined' && document.addEventListener) {
         document.addEventListener('taxonomy:repository-context-changed', function (event) {
             if (!event.detail?.selectionChanged) return;
+            clearDetachedDiagnostics();
             var streaming = window.TaxonomyScoring?.cancelStreamingAnalysis?.();
             var observing = active !== null;
             if (active) {
@@ -1219,6 +1285,7 @@
         });
         ['taxonomy:analysis-invalidated', 'taxonomy:analysis-cancelled'].forEach(function (name) {
             document.addEventListener(name, function (event) {
+                if (name === 'taxonomy:analysis-invalidated') clearDetachedDiagnostics();
                 if (active) {
                     // A remote draft revision only replaces this tab's view. It
                     // must not cancel durable work still used by another tab.

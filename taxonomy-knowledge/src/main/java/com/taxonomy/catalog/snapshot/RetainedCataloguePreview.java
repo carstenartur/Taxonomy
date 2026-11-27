@@ -70,7 +70,8 @@ public class RetainedCataloguePreview {
         }
 
         private static Node node(CataloguePreviewIndex.Match match, Double score) {
-            return new Node(match.code(), match.parentCode(), match.root(), match.nameEn(), match.nameDe(), score);
+            return new Node(match.code(), match.parentCode(), match.root(), match.nameEn(), match.nameDe(), score,
+                    match.analysisRole(), score != null && match.architectureCandidate(), match.sourceOrder());
         }
     }
 }

@@ -11,7 +11,7 @@ public record CatalogueAnalysisPreview(String method, String catalogueRevision, 
 
     /** A null score identifies an ancestor included solely to display the tree. */
     public record Node(String code, String parentCode, String taxonomyRoot, String nameEn, String nameDe,
-                       Double score) { }
+                       Double score, String analysisRole, boolean architectureCandidate, Integer sourceOrder) { }
 
     public record Association(String sourceCode, String targetCode, List<String> sharedTerms) { }
 

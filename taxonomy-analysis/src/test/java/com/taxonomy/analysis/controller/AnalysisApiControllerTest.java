@@ -126,6 +126,10 @@ class AnalysisApiControllerTest {
         var request = new com.taxonomy.dto.AnalysisRequest("Public library");
         request.setExpectedCommit(model.commit());
         request.setExpectedSemanticRevision(6L);
+        request.setExpectedCatalogueRevision("previous-catalogue");
+        mockMvc.perform(post("/api/analyze").contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(request))).andExpect(status().isConflict());
+        request.setExpectedCatalogueRevision(model.analysisCatalogueRevision());
         var altered = mapper.readValue(mapper.writeValueAsString(model).replace("c".repeat(64), "f".repeat(64)),
                 com.taxonomy.dto.AnalysisModelBinding.class);
         request.setModelBinding(altered);

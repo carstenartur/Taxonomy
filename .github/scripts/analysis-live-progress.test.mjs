@@ -1423,3 +1423,29 @@ test('an explicit cancel still sends one cancellation for a shared durable run',
     await new Promise(resolve => setImmediate(resolve));
     assert.equal(f.calls.filter(call => call.options.method === 'POST').length, 1);
 });
+
+for(const transport of ['local','artemis'])test(`detachment reports an uncertain pinned cancellation without claiming termination on ${transport}`,async()=>{
+ const outcomes=[];
+ const f=fixture(async(_,options)=>{
+  if(options.method==='POST')throw new Error('Write response lost');
+  return response(transport==='artemis'?clusterSnapshot():snapshot());
+ });
+ await f.step(0);f.monitor.cancelAndStop(status=>outcomes.push(status));
+ if(transport==='local') await f.step(0);
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.deepEqual(outcomes,['DETACHED','UNCONFIRMED']);
+ assert.equal(f.calls.filter(call=>call.options.method==='POST').length,1);
+});
+
+test('a delayed cancellation failure retains the previous run identity without relabeling the replacement',async()=>{
+ let reject;
+ const f=fixture(async(_,options)=>options.method==='POST'?new Promise((yes,no)=>{reject=no;}):response(clusterSnapshot()),'workspace-a',true);
+ await f.step(0);f.monitor.detachRefinement();
+ const replacement='5d1e1c2c-3d33-4f19-be89-6789444eca56';
+ f.window.TaxonomyAnalysisProgress.start(replacement,()=>{});
+ const newPanel=f.elements.get('analysisLiveProgress'), previousText=newPanel.textContent;
+ reject(new Error('Original cancellation response lost'));await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(newPanel.textContent,previousText);
+ assert.match(f.elements.get('analysisCancellationDiagnostics')?.textContent || '',new RegExp(id));
+ assert.match(f.elements.get('analysisCancellationDiagnostics').textContent,/unconfirmed/i);
+});

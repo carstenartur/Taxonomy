@@ -1,5 +1,6 @@
 package com.taxonomy.catalog.snapshot;
 
+import com.taxonomy.dto.TaxonomyNodeDto;
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.LowerCaseFilter;
 import org.apache.lucene.analysis.StopFilter;
@@ -28,7 +29,8 @@ import java.util.stream.Collectors;
 
 /** Read-only, requirement-independent index of one captured catalogue revision. */
 public final class CataloguePreviewIndex {
-    public record Match(String code, String root, String parentCode, String nameEn, String nameDe, double score) {}
+    public record Match(String code, String root, String parentCode, String nameEn, String nameDe, double score,
+                        String analysisRole, boolean architectureCandidate, Integer sourceOrder) {}
     /** Undirected vocabulary overlap between two directly matched nodes, with catalogue title terms as evidence. */
     public record Association(String sourceCode, String targetCode, List<String> sharedTerms) {}
     public record Result(List<Match> matches, List<Match> ancestors, List<Association> associations) {}
@@ -39,6 +41,7 @@ public final class CataloguePreviewIndex {
             .thenComparing(Match::code);
     private final Set<String> roots;
     private final Map<String, RootCatalogueSnapshot.Node> nodes = new HashMap<>();
+    private final Set<String> navigationOnly;
     private final LanguageIndex english = new LanguageIndex();
     private final LanguageIndex german = new LanguageIndex();
 
@@ -55,6 +58,7 @@ public final class CataloguePreviewIndex {
                 }
             }
         }
+        navigationOnly = navigationOnly(nodes);
         english.indexTopics(nodes);
         german.indexTopics(nodes);
     }
@@ -136,8 +140,29 @@ public final class CataloguePreviewIndex {
         }
     }
 
-    private static Match match(RootCatalogueSnapshot.Node node, double score) {
-        return new Match(node.code(), node.taxonomyRoot(), node.parentCode(), node.nameEn(), node.nameDe(), score);
+    // Assess wrapper identity once on the entire admitted hierarchy, before per-root top-k filtering.
+    private static Set<String> navigationOnly(Map<String, RootCatalogueSnapshot.Node> recorded) {
+        var tree = new HashMap<String, TaxonomyNodeDto>();
+        for (var node : recorded.values()) {
+            var dto = new TaxonomyNodeDto();
+            dto.setCode(node.code());
+            dto.setParentCode(node.parentCode());
+            dto.setTaxonomyRoot(node.taxonomyRoot());
+            dto.setLevel(node.level());
+            dto.setAnalysisRole(node.analysisRole());
+            tree.put(node.code(), dto);
+        }
+        for (var node : tree.values()) {
+            var parent = tree.get(node.getParentCode());
+            if (parent != null) parent.getChildren().add(node);
+        }
+        return tree.values().stream().filter(node -> node.architectureNavigationOnly(tree.get(node.getParentCode())))
+                .map(TaxonomyNodeDto::getCode).collect(Collectors.toUnmodifiableSet());
+    }
+
+    private Match match(RootCatalogueSnapshot.Node node, double score) {
+        return new Match(node.code(), node.taxonomyRoot(), node.parentCode(), node.nameEn(), node.nameDe(), score,
+                node.analysisRole(), !navigationOnly.contains(node.code()), node.sortOrder());
     }
 
     private static final class LanguageIndex {

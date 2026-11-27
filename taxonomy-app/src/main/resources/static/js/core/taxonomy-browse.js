@@ -2179,6 +2179,7 @@
                                 if (score !== null) {
                                     var val = score.trim() === "" ? NaN : Number(score);
                                     if (Number.isFinite(val) && val >= 0 && val <= 100) {
+                                        document.dispatchEvent(new CustomEvent('taxonomy:analysis-manual-edit'));
                                         SC().applyLocalRawScores({ [code]: val });
                                         S.currentReasons[code] = t('browse.manual.reason');
                                         S.lastAnalysisReasonLength = null;
@@ -3160,6 +3161,7 @@
             return;
         }
 
+        document.dispatchEvent(new CustomEvent('taxonomy:analysis-manual-edit'));
         SC().applyLocalRawScores(scores, true);
         S.lastAnalysisScope = null;
         S.lastAnalysisReasonLength = null;

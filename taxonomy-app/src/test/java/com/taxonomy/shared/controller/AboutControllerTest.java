@@ -12,6 +12,7 @@ import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -44,7 +45,11 @@ class AboutControllerTest {
                 .andExpect(jsonPath("$.sbomXmlUrl").value("/api/about/sbom.xml"))
                 .andExpect(jsonPath("$.version").exists())
                 .andExpect(jsonPath("$.commit").exists())
-                .andExpect(jsonPath("$.branch").exists());
+                .andExpect(jsonPath("$.branch").exists())
+                .andExpect(jsonPath("$.ai.embedding.state").exists())
+                .andExpect(jsonPath("$.ai.embedding.configuredProfile.id").exists())
+                .andExpect(jsonPath("$.ai.analysis.state").exists())
+                .andExpect(header().string("Cache-Control", "no-store"));
     }
 
     @Test

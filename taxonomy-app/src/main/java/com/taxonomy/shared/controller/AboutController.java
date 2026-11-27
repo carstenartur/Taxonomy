@@ -1,13 +1,15 @@
 package com.taxonomy.shared.controller;
 
+import com.taxonomy.composition.about.AiInformationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.info.BuildProperties;
 import org.springframework.boot.info.GitProperties;
 import org.springframework.core.io.ClassPathResource;
+import org.springframework.http.CacheControl;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -35,19 +37,17 @@ public class AboutController {
     private final BuildProperties buildProperties;
     private final GitProperties gitProperties;
 
-    @Autowired(required = false)
-    public AboutController(BuildProperties buildProperties, GitProperties gitProperties) {
-        this.buildProperties = buildProperties;
-        this.gitProperties = gitProperties;
-    }
+    private final AiInformationService aiInformation;
 
-    public AboutController() {
-        this.buildProperties = null;
-        this.gitProperties = null;
+    public AboutController(ObjectProvider<BuildProperties> buildProperties, ObjectProvider<GitProperties> gitProperties,
+                           AiInformationService aiInformation) {
+        this.buildProperties = buildProperties.getIfAvailable();
+        this.gitProperties = gitProperties.getIfAvailable();
+        this.aiInformation = aiInformation;
     }
 
     @GetMapping
-    @Operation(summary = "Application info", description = "Returns version, build, source and packaged legal-resource information.")
+    @Operation(summary = "Application info", description = "Returns version, build, source, AI runtime status and packaged legal-resource information.")
     public ResponseEntity<Map<String, Object>> about() {
         Map<String, Object> info = new LinkedHashMap<>();
         info.put("product", "Taxonomy Architecture Analyzer");
@@ -66,7 +66,8 @@ public class AboutController {
         info.put("runtimeThirdPartyLicensesUrl", "/api/about/runtime-licenses");
         info.put("sbomJsonUrl", "/api/about/sbom.json");
         info.put("sbomXmlUrl", "/api/about/sbom.xml");
-        return ResponseEntity.ok(info);
+        info.put("ai", aiInformation.snapshot());
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(info);
     }
 
     @GetMapping("/license")

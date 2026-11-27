@@ -290,6 +290,27 @@
     },
     {
       "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.composition.about",
+      "toContext": "analysis",
+      "toPackage": "com.taxonomy.analysis.dto",
+      "classDependencyCount": 3
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.composition.about",
+      "toContext": "analysis",
+      "toPackage": "com.taxonomy.analysis.service",
+      "classDependencyCount": 2
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.composition.about",
+      "toContext": "knowledge",
+      "toPackage": "com.taxonomy.catalog.service",
+      "classDependencyCount": 5
+    },
+    {
+      "fromContext": "app-composition",
       "fromPackage": "com.taxonomy.composition.analysis",
       "toContext": "analysis",
       "toPackage": "com.taxonomy.analysis.operation",

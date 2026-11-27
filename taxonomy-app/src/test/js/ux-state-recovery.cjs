@@ -72,7 +72,10 @@ function dom() {
             click() {if (this.tagName === 'a') downloads.push(this); return this.fire('click');},
             focus() {document.activeElement = this;}, scrollIntoView() {},
             showModal() {this.open = true;}, close() {this.open = false; this.fire('close');},
-            remove() {this.removed = true;},
+            remove() {this.removed = true; if (this.parentElement) {
+                this.parentElement.children = this.parentElement.children.filter(child => child !== this);
+                this.parentElement = null;
+            }},
             querySelectorAll(selector) {const result = []; const visit = n => {for (const c of n.children) {if (!c.removed && c.tagName === selector) result.push(c); visit(c);}}; visit(this); return result;},
             querySelector(selector) {return this.querySelectorAll(selector)[0] || null;}
         };
@@ -2222,8 +2225,8 @@ test('editing a requirement debounces a scoped preview, rejects a late response 
     const entries = node('Tree').querySelectorAll('li');
     assert.equal(entries.length,3);
     assert.equal(entries[0].children[0].textContent,'Abläufe (BP)');
-    assert.equal(entries[0].children[1].tagName,'ul');
-    assert.equal(entries[1].children[1].textContent,' 90/100');
+    assert.equal(entries[0].children[2].tagName,'ul');
+    assert.match(entries[1].children[1].textContent,/localScore 90/);
     assert.match(node('Associations').querySelector('li').textContent,/Bücher ausleihen.*Book record/);
     assert.match(node('Source').textContent,/R1.*3/);
     assert.equal(window.TaxonomyState.currentScores,score);
@@ -2300,4 +2303,89 @@ test('editing a requirement debounces a scoped preview, rejects a late response 
     assert.equal(preparations.length,1,'Read-only accounts must not warm the protected index');
     assert.match(node('Status').textContent,/permission/);
     assert.ok(node('Retry').hidden);
+});
+
+test('a detailed preview refines stable component and tree elements only for its admitted input generation', async () => {
+    const f = dom(), el = id => f.document.getElementById(id);
+    const input = f.element('textarea','businessText'), panel = f.element('details','analysisPreview');
+    panel.open = true;
+    for (const id of ['Status','Results','Tree','Associations','Source','Retry','Components','Refine','Refinement','ArchitectureLink'])
+        f.element(id === 'Refine' ? 'button' : 'div','analysisPreview' + id);
+    const standard = f.element('button','analyzeBtn');
+    const provider = f.element('select','providerSelect'); provider.value = 'LOCAL_ONNX';
+    const interactive = f.element('input','interactiveMode');
+    const timers = new Map(), jobs = [], scope = {repositoryId:'repo',workspaceId:'desk',branch:'draft'};
+    let sequence = 0, cancelled = 0;
+    const node = {code:'fixture.a', taxonomyRoot:'fixture', parentCode:'fixture', nameEn:'Recorded component',
+        score:71, analysisRole:'PRODUCT', architectureCandidate:true, sourceOrder:1};
+    const data = {method:'CATALOGUE_LEXICAL',catalogueRevision:'catalogue',semanticRevision:4,
+        nodes:[{code:'fixture',taxonomyRoot:'fixture',score:80,architectureCandidate:false},node],associations:[]};
+    const window = {location:{hash:'#analyze'}, TaxonomyI18n:{t:(key,...values) => [key,...values].join(' ')},
+        TaxonomyRoleSurface:{ready:Promise.resolve(),getContext:() => ({analysisExecutionAllowed:true})},
+        TaxonomyAnalysisSession:{state:() => ({ready:true,workspaceId:'desk'})},
+        TaxonomyAnalysisRecovery:{startPlan:() => ({kind:'NEW'}), startManagedAnalysis(owner) {
+            jobs.push(owner); owner.bind('run-' + jobs.length, () => cancelled++); return new Promise(() => {});
+        }},
+        TaxonomyArchitectureLifecycle:{ready:async () => ({}), selectedAnalysisModel:() => ({expectedSemanticRevision:4})},
+        TaxonomyArchitectureWorkspace:{ready:async () => true}, TaxonomyArchitectureWorkflow:{getScope:() => scope},
+        TaxonomyAnalysisScope:{read:() => ({taxonomyRoots:[],mode:'FULL'})},
+        AnalysisApi:{preview:async () => data}};
+    vm.runInNewContext(source('core/taxonomy-analysis-preview.js'), {window,document:f.document,AbortController,URLSearchParams,
+        setTimeout:fn => (timers.set(++sequence,fn),sequence), clearTimeout:key => timers.delete(key)});
+    async function type(value) { input.value=value;await input.fire('input'); }
+    async function flush() { for (const fn of timers.values()) fn();timers.clear();await tick(); }
+    await type('First version'); await flush();
+    const components = el('analysisPreviewComponents'), action = el('analysisPreviewRefine');
+    const textOf = item => item.textContent + item.children.map(textOf).join(' ');
+    assert.match(textOf(components),/Recorded component/);
+    assert.equal(components.querySelectorAll('li').length,1,'a directly matching root remains navigation only');
+    assert.equal(jobs.length,0,'typing must never submit provider work');
+    provider.value = 'MANUAL'; await provider.fire('change'); await flush();
+    assert.equal(action.disabled,true);
+    provider.value = 'LOCAL_ONNX'; await provider.fire('change'); await flush();
+    interactive.checked=true; await interactive.fire('change'); await flush();assert.equal(action.disabled,true);
+    interactive.checked=false; await interactive.fire('change'); await flush();
+    assert.equal(standard.disabled,false); assert.equal(action.disabled,false);
+    const start = window.TaxonomyAnalysisRecovery.startManagedAnalysis;
+    window.TaxonomyAnalysisRecovery.startManagedAnalysis = () => undefined;
+    action.click(); await tick();
+    assert.equal(action.disabled,false,'an unbound preflight refusal leaves the same version retryable');
+    window.TaxonomyAnalysisRecovery.startManagedAnalysis = start;
+    action.click(); await tick();
+    assert.equal(jobs.length,1);
+    const card = components.querySelector('li'), tree = el('analysisPreviewTree').querySelector('li');
+    const job=jobs[0]; assert.equal(job.current(),true);
+    const detail = {kind:'PRODUCT_SUITABILITY', parentCode:'fixture', effectiveRelevance:null};
+    job.present('run-1',{scores:{'fixture.a':0},details:{'fixture.a':detail},status:'IN_PROGRESS'});
+    assert.doesNotMatch(textOf(card),/assessed 0/,'an unresolved family is not zero assessed relevance');
+    job.present('run-1',{status:'CHECKING'});
+    assert.doesNotMatch(textOf(card),/assessed 0/,'transport uncertainty is not an assessed score');
+    job.present('run-1',{scores:{'fixture.a':0},details:{'fixture.a':{...detail,effectiveRelevance:0}},status:'IN_PROGRESS'});
+    assert.equal(components.querySelector('li'),card); assert.equal(el('analysisPreviewTree').querySelector('li'),tree);
+    assert.match(textOf(card),/assessed 0/); assert.match(textOf(tree),/assessed 0/);
+    await type('Second version'); await type('First version'); await flush();
+    assert.equal(job.current(),false);assert.equal(cancelled,1);
+    job.present('run-1',{scores:{'fixture.a':99},status:'SUCCESS',architecture:true});
+    assert.doesNotMatch(textOf(components),/assessed 99/);
+    assert.equal(el('analysisPreviewArchitectureLink').hidden,true);
+    const retry = el('analysisPreviewRetry');
+    // The old lexical candidates cannot authorize provider work during or after a failed refresh.
+    const replacement = deferred();
+    window.AnalysisApi.preview = () => replacement.promise;
+    await retry.click();
+    assert.equal(action.disabled,true);
+    await flush(); await action.click();
+    assert.equal(jobs.length,1);
+    replacement.reject(new Error('No semantic preview available')); await tick(); await action.click();
+    assert.equal(action.disabled,true); assert.equal(jobs.length,1);
+    assert.match(el('analysisPreviewStatus').textContent,/error/);
+
+    const semantic = {...data, method:'CATALOGUE_ONNX', nodes:[data.nodes[0],{...node,code:'fixture.b',nameEn:'Semantic component'}]};
+    window.AnalysisApi.preview = async () => semantic;
+    await retry.click(); await flush(); await action.click();
+    assert.equal(jobs.length,2);
+    jobs[1].present('run-2',{status:'IN_PROGRESS',scores:{'fixture.a':0,'fixture.b':42},
+        details:{'fixture.a':{...detail,effectiveRelevance:0},'fixture.b':{...detail,effectiveRelevance:42}}});
+    assert.match(textOf(components.querySelector('li')),/Semantic component.*assessed 42/);
+    assert.doesNotMatch(textOf(components.querySelector('li')),/assessed 0/);
 });

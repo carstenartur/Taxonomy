@@ -20,6 +20,13 @@ public final class AnalysisRequestModelAdmission {
         return captured;
     }
 
+    /** A workspace without an explicit catalogue pin may change execution catalogues between preview and start. */
+    public static void requireCatalogue(AnalysisModelBinding saved, String expectedRevision) {
+        if (expectedRevision != null && (saved == null || !expectedRevision.equals(saved.analysisCatalogueRevision()))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The preview catalogue differs from the admitted catalogue");
+        }
+    }
+
     public static AnalysisModelBinding requireExpected(AnalysisModelBinding saved, String expectedCommit, Long expectedRevision) {
         if ((expectedCommit != null && (saved == null || !Objects.equals(expectedCommit, saved.commit())))
                 || (expectedRevision != null && (saved == null || !Objects.equals(expectedRevision, saved.semanticRevision())))) {

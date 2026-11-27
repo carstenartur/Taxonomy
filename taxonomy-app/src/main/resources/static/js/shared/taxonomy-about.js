@@ -7,6 +7,7 @@ window.TaxonomyAbout = (function () {
 
     var noticesLoaded = false;
     var aboutInfo = null;
+    var aboutRequest = 0;
     // Resolve from this served application asset, not the current page path.
     // This preserves context paths and avoids /admin/admin/sessions on nested pages.
     var sourceScript = document.currentScript;
@@ -78,10 +79,109 @@ window.TaxonomyAbout = (function () {
         container.appendChild(links);
     }
 
+    function setAiStatus(status) {
+        var message = el('aboutAiStatus');
+        if (!message) return;
+        message.textContent = status ? message.getAttribute('data-' + status) : '';
+        message.hidden = !status;
+    }
+
+    function translatedCode(field, value) {
+        if (typeof value !== 'string' || !value) return null;
+        var key = 'about.ai.' + field + '.' + value;
+        var text = t(key);
+        return text === key ? t('about.ai.unknown') : text;
+    }
+
+    function addHeading(section, tag, key) {
+        var heading = document.createElement(tag);
+        heading.className = 'h6';
+        heading.textContent = t('about.ai.' + key);
+        section.appendChild(heading);
+    }
+
+    function addDetails(section, rows) {
+        var list = document.createElement('dl');
+        list.className = 'row gx-0 gy-1 small mb-2';
+        rows.forEach(function (row) {
+            if (typeof row[1] !== 'string' || !row[1]) return;
+            var name = document.createElement('dt');
+            name.className = 'col-sm-4';
+            name.textContent = t('about.ai.' + row[0]);
+            var value = document.createElement('dd');
+            value.className = 'col-sm-8 text-break';
+            value.textContent = row[1];
+            list.append(name, value);
+        });
+        if (list.firstChild) section.appendChild(list);
+    }
+
+    function upstreamDetails(model) {
+        return model ? [
+            ['model', model.modelId],
+            ['origin', model.origin],
+            ['license', model.license],
+            ['revision', model.revision]
+        ] : [];
+    }
+
+    function renderEmbedding(container, embedding) {
+        addHeading(container, 'h4', 'embedding');
+        addDetails(container, [['status', translatedCode('embedding.state', embedding.state)]]);
+        var configured = embedding.configuredProfile;
+        if (configured) {
+            addHeading(container, 'h5', 'configured.profile');
+            addDetails(container, [
+                ['profile', configured.id],
+                ['configured.source', translatedCode('embedding.source', configured.source)]
+            ].concat(upstreamDetails(configured.upstream)));
+        }
+        var loaded = embedding.loadedArtifact;
+        if (loaded) {
+            addHeading(container, 'h5', 'loaded.artifact');
+            addDetails(container, [
+                ['provenance', translatedCode('embedding.provenance', loaded.provenance)]
+            ].concat(upstreamDetails(loaded.upstream), [
+                ['model.sha256', loaded.modelSha256],
+                ['tokenizer.sha256', loaded.tokenizerSha256],
+                ['inference.version', loaded.inferenceVersion],
+                ['inference.identity', loaded.inferenceIdentity]
+            ]));
+        }
+    }
+
+    function renderAi(ai, request) {
+        var details = el('aboutAiDetails');
+        if (!details) return;
+        if (!ai || (!ai.embedding && !ai.analysis)) {
+            setAiStatus('unavailable');
+            return;
+        }
+        return TaxonomyI18n.ready().then(function () {
+            if (request !== aboutRequest) return;
+            setAiStatus(null);
+            if (ai.embedding) renderEmbedding(details, ai.embedding);
+            if (ai.analysis) {
+                addHeading(details, 'h4', 'analysis');
+                addDetails(details, [
+                    ['provider', ai.analysis.provider],
+                    ['model', ai.analysis.model],
+                    ['status', translatedCode('analysis.state', ai.analysis.state)],
+                    ['execution.mode', translatedCode('analysis.mode', ai.analysis.mode)]
+                ]);
+            }
+        });
+    }
+
     function loadAboutInfo() {
-        window.TaxonomyReferenceApi.about()
+        var request = ++aboutRequest;
+        var details = el('aboutAiDetails');
+        if (details) details.textContent = '';
+        setAiStatus('loading');
+        return window.TaxonomyReferenceApi.about()
             .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
             .then(function (data) {
+                if (request !== aboutRequest) return;
                 aboutInfo = data;
 
                 // Update navbar version
@@ -121,9 +221,13 @@ window.TaxonomyAbout = (function () {
                 var branchEl = el('aboutBranch');
                 if (branchEl) branchEl.textContent = data.branch || '—';
                 renderLegalResources(data);
+                return renderAi(data.ai, request);
             })
             .catch(function () {
-                // Build information is useful but not required for the main UI.
+                if (request === aboutRequest) {
+                    if (details) details.textContent = '';
+                    setAiStatus('error');
+                }
             });
     }
 
@@ -176,9 +280,9 @@ window.TaxonomyAbout = (function () {
             var modal = new window.bootstrap.Modal(aboutModalEl);
 
             aboutBtn.addEventListener('click', function () {
-                loadAboutInfo();
                 modal.show();
             });
+            aboutModalEl.addEventListener('show.bs.modal', loadAboutInfo);
             aboutModalEl.addEventListener('hidden.bs.modal', function () {
                 var menu = aboutBtn.closest('details');
                 var target = menu && !menu.open ? menu.querySelector('summary') : aboutBtn;

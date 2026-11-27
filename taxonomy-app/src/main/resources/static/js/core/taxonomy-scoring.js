@@ -681,6 +681,18 @@
             B().showStatus('danger', t('scoring.secure.id.unavailable'));
             return;
         }
+        const refinement = options.refinement;
+        if (refinement && !refinement.bind(operationId, function () {
+            // The closure retains the original local/Artemis monitor, including pre-registration cancellation.
+            if (progress) {
+                progress.detachRefinement();
+                if (progress.acceptsResult()) setAnalyzing(false);
+            }
+            resolveRecovered?.();
+        }, function (status) {
+            resultHandled = true;
+            if (progress?.acceptsResult()) { progress.finish(status, false); setAnalyzing(false); }
+        })) return;
         if (!options.continuation || options.newOperation === true) {
         B().resetDiagramContext?.();
         S.currentReasons = {};
@@ -708,17 +720,28 @@
         B().renderView(S.taxonomyData, S.currentScores);
         S.analysisCoverage = null;
         if (!options.recoveryManaged) { S.analysisRecovery = null; S.recoveryContext = null; }
+        options.rememberProgressEvidence?.();
         }
         var resultHandled = false, acceptedResult, clusterObserved = false, resolveRecovered;
         var recoveredResult = new Promise(function (resolve) { resolveRecovered = resolve; });
         function acceptResult(result) {
             if (resultHandled) return acceptedResult;
+            if (refinement && !refinement.current()) return;
             // Polling may have stopped after observing completion, but only the latest
             // in-scope operation owns this full response and may update the application.
             if (progress && !progress.acceptsResult()) return;
             if (options.recoveryManaged && document.getElementById('businessText').value.trim() !== text) {
                 if (progress) progress.finish(result.status, false);
                 setAnalyzing(false); return result;
+            }
+            if (options.canProjectProgress?.() === false) {
+                // The run finished, but adopting its scores now requires an explicit recovery decision.
+                resultHandled = true;
+                acceptedResult = result;
+                options.onEvidenceConflict?.(result);
+                progress?.finish(result.status, false, result.analysisDurationMillis);
+                setAnalyzing(false);
+                return result;
             }
             if (progress) progress.finish(result.status, true, result.analysisDurationMillis);
             acceptedResult = applyAnalysisResult(result, { text: text, requestedScope: requestedScope, provider: provider,
@@ -729,17 +752,22 @@
                 window.TaxonomyAnalysisRecovery?.bindAnalysisResult(result,requestBody,sessionState.workspaceId);
             }
             resultHandled = true;
+            refinement?.present(operationId, {status:result.status, scores:S.currentEffectiveScores,
+                architecture:Boolean(result.architectureView)});
             return acceptedResult;
         }
         var progress = window.TaxonomyAnalysisProgress.start(operationId, function (snapshot) {
-                if (resultHandled || progress && !progress.acceptsResult()) return;
+                if (resultHandled || progress && !progress.acceptsResult() || refinement && !refinement.current()) return;
                 clusterObserved = snapshot.transport === 'artemis' || clusterObserved;
+                if (options.canProjectProgress?.() === false) return;
                 var previous = S.currentEffectiveScores || {};
                 var previousRaw = S.currentRawScores || {};
                 var previousDetails = S.currentScoreDetails || {};
                 applyLocalRawScores(options.continuation
                     ? Object.assign({}, previousRaw, snapshot.rawScores || {}) : snapshot.rawScores || {}, true, true, true);
+                refinement?.present(operationId, {status:'IN_PROGRESS', scores:S.currentEffectiveScores, details:S.currentScoreDetails});
                 var reasonChanges = mergeAnalysisReasons(snapshot.reasons);
+                options.rememberProgressEvidence?.();
                 var changed = Array.from(new Set(Object.keys(S.currentScores || {}).filter(function (code) {
                     var before = previousDetails[code] || {}, after = S.currentScoreDetails[code] || {};
                     return previous[code] !== S.currentScores[code] || previousRaw[code] !== S.currentRawScores[code]
@@ -815,6 +843,7 @@
             .then(acceptResult)
             .catch(err => {
                 if (resultHandled) return acceptedResult;
+                if (refinement && !refinement.current()) return;
                 if (err.code === 'ABORTED') return;
                 var httpStatus = err.httpStatus || err.status;
                 if (typeof err.detail === 'string' && err.detail.trim()) err.message = err.detail.trim().slice(0, 1024);
@@ -825,6 +854,14 @@
                     return recoveredResult;
                 }
                 if (progress && !progress.acceptsResult()) return;
+                if (refinement && options.recoveryManaged) {
+                    // A failed transport is not a canonical result. Recovery checks the same continuation
+                    // without another START. Keep the original monitor cancellable until that check settles.
+                    refinement.present(operationId, {status:'CHECKING'});
+                    setAnalyzing(false);
+                    B().showStatus('warning', t('scoring.analysis.error', err.message));
+                    throw err;
+                }
                 if (progress) {
                     // A rejected HTTP request is not an active job. A lost connection may be.
                     if (!httpStatus && !options.recoveryManaged) progress.transportFailed();

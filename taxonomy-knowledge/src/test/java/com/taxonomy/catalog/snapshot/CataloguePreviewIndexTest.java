@@ -30,6 +30,17 @@ class CataloguePreviewIndexTest {
     }
 
     @Test
+    void componentEligibilityUsesChildrenOutsideTheMatches() {
+        var index = index();
+        var wrapper = index.query("Front desk", Set.of("BP")).matches();
+        assertThat(wrapper).extracting(CataloguePreviewIndex.Match::architectureCandidate).containsExactly(false);
+        assertThat(index.query("tasks", Set.of("BP")).matches())
+                .extracting(CataloguePreviewIndex.Match::architectureCandidate).containsExactly(false);
+        assertThat(index.query("permit", Set.of()).matches())
+                .extracting(CataloguePreviewIndex.Match::architectureCandidate).containsExactly(true, true);
+    }
+
+    @Test
     void doesNotPropagateScoresToRelatedNodesOnChangedTextOrAcrossRootFilters() {
         var index = index();
         var english = index.query("transparency", Set.of());

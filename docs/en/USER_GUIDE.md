@@ -334,6 +334,10 @@ Expand **System status** below the work-area navigation to inspect provider read
 - 🟢 **Green badge** — provider readiness is reported. Check capability support: local embeddings do not enable generative relationships or wording synthesis.
 - 🔴 **Red badge** — no LLM provider is configured; analysis is unavailable. Contact your administrator.
 
+Open **Help → About this application** on the analysis page and find **AI and models**. The local encoder shows its status and the expected model under **Configured embedding profile**. After loading, **Loaded embedding artifact** shows the model and tokenizer checksums and the inference identity. **Verified upstream bundle** means the loaded files match the pinned bundle, whose origin, license and revision are shown. Other loaded bundles are marked **Custom or unknown origin**.
+
+**Server-configured analysis provider** shows the installation's default provider and execution mode. A particular analysis uses the provider selected for that run.
+
 ---
 
 <a id="guide-section-3"></a>
@@ -437,12 +441,12 @@ Document language controls generated headings and labels in Word, HTML and Markd
 
 ### Standard Analysis
 
-Open **Preview changes to the requirement** in the requirement form and select one or more taxonomy roots. Try “We need an application for payroll” and replace “payroll” with “email”. After each pause in typing, the provisional decision tree shows up to twelve matches per selected root. Ancestors without scores show where a match sits in the hierarchy.
+For an optional check while drafting, open **Preview changes to the requirement** in the requirement form and select one or more taxonomy roots. Try “We need an application for payroll” and replace “payroll” with “email”. After a pause in typing, local matching on the application server updates the **Provisional decision tree** and **Provisional architecture components**. The tree shows up to twelve matches per selected root with their paths. The preview reports its method, using catalogue terms when local vectors are unavailable and ONNX similarity when they are ready. **Connections across taxonomies** identifies independently matched entries that share a title term from the requirement.
 
-The preview identifies its scoring method. It compares catalogue terms while local model vectors are being prepared or when embeddings are disabled. Once ready, the ONNX model measures semantic similarity. A possible cross-taxonomy connection names two independently matched entries and the term shared with the requirement. Start the full analysis to save an architecture with assessed relationships.
+In a ready, writable workspace with automatic analysis enabled, choose **Run detailed analysis for this version** to start the selected provider for the current text and scope. As assessments arrive, **Assessed relevance** appears beside the **Local match** on matching components and tree entries. If the run produces an architecture, select **View assessed architecture** to open the result and review its available relationships.
 
 1. Type your requirement in the textarea.
-2. Select the taxonomy roots and full or **Node assessment only** mode as described above. Leave **Interactive Mode** unchecked for an automatic hierarchical run.
+2. Select the taxonomy roots and full or **Node assessment only** mode. Leave **Interactive Mode** unchecked for an automatic hierarchical run. [Analysis scope and progress](#analysis-scope-and-progress)
 3. Click the **Analyze with AI** button.
 4. Progress appears in the inline analysis status. The taxonomy tree in the left panel starts showing colour-coded score bars as results arrive.
 5. When analysis is complete, the inline analysis status shows a summary and the export buttons become available.
