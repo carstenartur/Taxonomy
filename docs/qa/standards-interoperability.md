@@ -33,6 +33,22 @@ the source values when supplied with the original export. The check ran on
 generated files and compared diagram data. The results include the product and
 file digests and the comparison outcomes. [Recorded results](archimate-v3-archi-5.11-results.json)
 
+## Civic application process
+
+The synthetic German application process exercises both outcomes of the document
+check. An incomplete application goes back for more documents. A complete
+application proceeds to booking. The regression checks 17 directed relationships
+and seven responsibility assignments in the editor projection, checks the
+responsibilities in the decision tree, and reads the actual SVG and PDF exports.
+The model and scores are fixed so that a changed diagram or report can be traced
+to its projection. [DSL fixture](../../taxonomy-app/src/test/resources/scenarios/antragsbearbeitung-v1.taxdsl) · [Regression test](../../taxonomy-app/src/test/java/com/taxonomy/architecture/decision/CivilApplicationProcessProjectionTest.java)
+
+Run the case offline after Maven dependencies are available.
+
+```bash
+./mvnw -pl taxonomy-app -am test -Dtest=CivilApplicationProcessProjectionTest -Dsurefire.failIfNoSpecifiedTests=false
+```
+
 ## Installed-product evidence
 
 The [2026-09-08 product run](https://github.com/carstenartur/Taxonomy/actions/runs/34242073916/job/102116477328)
