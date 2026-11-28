@@ -633,7 +633,7 @@
         var provider = field(datasets, 'lifecycleArchitectureDataset', t('lifecycle.architecture.dataset'), 'select');
         option(provider, '', t('lifecycle.architecture.defaultDataset'));
         var create = button(t('lifecycle.architecture.create'), submit); create.id = 'lifecycleArchitectureCreate'; shell.form.append(create);
-        var request = null, architecture = null, workspace = null, attempted = false, workspaceAttempted = false, busy = false;
+        var request = null, architecture = null, workspace = null, attempted = false, workspaceName = null, busy = false;
         var openingGeneration = state.generation;
         var recovery = node('section'); recovery.hidden = true;
         var recoveryMessage = node('p'); recoveryMessage.setAttribute('role','status');
@@ -686,6 +686,34 @@
             architecture = item; attempted = true;
             submit();
         }
+        async function ensureWorkingCopy() {
+            var context = {repositoryId:architecture.repositoryId,workspaceScopeKey:'__shared__',branch:architecture.defaultBranch};
+            var suffix = ' (' + architecture.repositoryId + ')';
+            // The API permits 255 UTF-16 units. Preserve the complete repository ID and any complete character.
+            var scopedName = request.displayName.slice(0, 255 - suffix.length).replace(/[\uD800-\uDBFF]$/, '') + suffix;
+            async function findExisting() {
+                var copies = await api.workspaces(context.repositoryId);
+                var matches = (copies.workspaces || copies).filter(function (item) {
+                    return item.sourceRepositoryId === context.repositoryId && (item.sourceBranch || item.currentBranch) === context.branch;
+                });
+                return matches.find(function (item) { return item.displayName === workspaceName; })
+                    || matches.find(function (item) { return item.displayName === request.displayName || item.displayName === scopedName; });
+            }
+            if (workspaceName) {
+                var recovered = await findExisting();
+                if (recovered) return recovered;
+            } else workspaceName = request.displayName;
+            try {
+                return await api.createWorkspace(context, workspaceName);
+            } catch (error) {
+                if (error.status !== 409 || error.responseBody?.code !== 'WORKSPACE_NAME_CONFLICT' || workspaceName === scopedName) throw error;
+                // A racing request for this project may already have created the copy.
+                var existing = await findExisting();
+                if (existing) return existing;
+                workspaceName = scopedName;
+                return api.createWorkspace(context, workspaceName);
+            }
+        }
         async function submit() {
             if (busy || !shell.form.reportValidity()) return;
             busy = true; updateControls();
@@ -710,17 +738,7 @@
                     shell.message.textContent = t('lifecycle.architecture.state.' + lifecycle(architecture));
                     return;
                 }
-                if (!workspace && workspaceAttempted) {
-                    var copies = await api.workspaces(architecture.repositoryId);
-                    workspace = (copies.workspaces || copies || []).find(function (item) {
-                        return item.sourceRepositoryId === architecture.repositoryId && item.currentBranch === architecture.defaultBranch
-                            && item.displayName === request.displayName;
-                    });
-                }
-                if (!workspace) {
-                    workspaceAttempted = true;
-                    workspace = await api.createWorkspace({repositoryId:architecture.repositoryId,workspaceScopeKey:'__shared__',branch:architecture.defaultBranch},request.displayName);
-                }
+                if (!workspace) workspace = await ensureWorkingCopy();
                 var target = new URL(window.TaxonomyI18n.resolveUrl('/architecture/editor'),location.href);
                 target.search = location.search;
                 ['commit','revision','element','viewId','layoutRevision','projectId','requirementId'].forEach(function (key) { target.searchParams.delete(key); });

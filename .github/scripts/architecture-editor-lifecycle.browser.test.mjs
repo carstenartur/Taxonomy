@@ -1278,3 +1278,79 @@ test('dataset recovery displays the actual original provider when it is no longe
         assert.ok(await selector.isVisible()); assert.ok(await selector.isDisabled());
     } finally {await f.close();}
 });
+
+test('same-named projects recover their own personal copy after either creation response is lost', async () => {
+    const title = 'Bürgeranträge', projects = [], copies = [], attempts = [];
+    for (const project of ['one','two']) {
+        const f = await datasetFixture();
+        const {page} = f;
+        try {
+            await page.route(url => url.pathname.endsWith('/architectures') || url.pathname.endsWith('/workspaces'), async route => {
+                const request = route.request(), path = new URL(request.url()).pathname;
+                if (path.endsWith('/architectures')) {
+                    if (request.method() === 'GET') return route.fulfill({json:projects});
+                    const body = request.postDataJSON();
+                    const created = {...body, repositoryId:project, defaultBranch:'draft', owned:true, lifecycleState:'ACTIVE'};
+                    projects.push(created);
+                    return route.fulfill({status:201,json:created});
+                }
+                if (request.method() === 'GET') {
+                    assert.equal(path,'/api/architecture/lifecycle/architectures/' + project + '/workspaces');
+                    const otherBranch = {sourceRepositoryId:project,sourceBranch:'another',currentBranch:'draft',displayName:title,workspaceId:'wrong'};
+                    return route.fulfill({json:[otherBranch,...copies.filter(copy => copy.sourceRepositoryId === project)]});
+                }
+                assert.equal(path,'/api/architecture/editor/workspaces');
+                const body = request.postDataJSON();
+                attempts.push([body.repositoryId,body.displayName]);
+                if (copies.some(copy => copy.displayName === body.displayName))
+                    return route.fulfill({status:409,json:{code:'WORKSPACE_NAME_CONFLICT',detail:'Name already in use.'}});
+                copies.push({sourceRepositoryId:body.repositoryId,sourceBranch:body.branch,currentBranch:'draft',displayName:body.displayName,
+                    workspaceId:'copy-' + body.repositoryId,provisioningStatus:'READY'});
+                return route.fulfill({status:503,json:{detail:'Workspace response lost.'}});
+            });
+            await page.locator('[data-lifecycle-new-architecture]').click();
+            await page.locator('#lifecycleArchitectureName').fill(title);
+            const create = page.locator('#lifecycleArchitectureCreate');
+            await create.click();
+            await page.getByText('Workspace response lost.',{exact:true}).waitFor();
+            await create.click();
+            await page.waitForURL(url => url.pathname === '/architecture/editor');
+            const opened = new URL(page.url()).searchParams;
+            assert.equal(opened.get('repositoryId'),project);
+            assert.equal(opened.get('workspaceId'),'copy-' + project);
+            assert.equal(opened.get('branch'),'draft');
+        } finally {await f.close();}
+    }
+    assert.deepEqual(attempts,[['one',title],['two',title],['two',title + ' (two)']]);
+    assert.deepEqual(projects.map(item => item.displayName),[title,title]);
+    assert.equal(new Set(projects.map(item => item.slug)).size,2);
+    assert.equal(copies.length,2);
+});
+
+test('working-copy fallback requires the specific name conflict and fits the API limit for a recovered title', async () => {
+    const title = 'B'.repeat(215) + '🚀' + 'Z'.repeat(38);
+    const id = '9f479645-04da-46bf-a581-94bfa3ecb7aa';
+    const saved = {repositoryId:id,displayName:title,slug:'recovered',description:'',owned:true,lifecycleState:'FAILED',defaultBranch:'draft'};
+    const f = await datasetFixture({architectures:[saved]});
+    const {page} = f, attempts = [];
+    try {
+        await page.route(url => url.pathname.endsWith('/architectures') || url.pathname.endsWith('/workspaces'), async route => {
+            const request = route.request(), path = new URL(request.url()).pathname;
+            if (path.endsWith('/architectures'))
+                return route.fulfill({json:request.method() === 'GET' ? [saved] : {...saved,lifecycleState:'ACTIVE'}});
+            if (request.method() === 'GET') return route.fulfill({json:[]});
+            attempts.push(request.postDataJSON().displayName);
+            if (attempts.length === 1) return route.fulfill({status:409,json:{code:'SOURCE_CHANGED',detail:'Source changed.'}});
+            if (attempts.length === 2) return route.fulfill({status:409,json:{code:'WORKSPACE_NAME_CONFLICT'}});
+            return route.fulfill({status:201,json:{workspaceId:'bounded-copy',currentBranch:'draft'}});
+        });
+        await page.locator('[data-lifecycle-new-architecture]').click();
+        await page.locator('[data-lifecycle-recover-architecture]').click();
+        await page.getByText('Source changed.',{exact:true}).waitFor();
+        assert.deepEqual(attempts,[title]);
+        await page.locator('#lifecycleArchitectureCreate').click();
+        await page.waitForURL(url => url.pathname === '/architecture/editor' && url.searchParams.get('workspaceId') === 'bounded-copy');
+        assert.deepEqual(attempts,[title,title,'B'.repeat(215) + ' (' + id + ')']);
+        assert.ok(attempts.at(-1).length <= 255);
+    } finally {await f.close();}
+});
