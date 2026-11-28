@@ -1,6 +1,5 @@
 package com.taxonomy.exchange;
 
-import com.taxonomy.archimate.exchange.ArchiMateExchangeProfile;
 import com.taxonomy.extension.api.integration.IntegrationContracts.*;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
@@ -282,7 +281,7 @@ public final class ArchiMateExchangeCodec {
         }); return extensions;
     }
     private static void validateWorkbenchConnections(Document document, String profile) {
-        if (!ArchiMateExchangeProfile.VERSION.equals(profile)) return;
+        if (!ArchiMateEndpointOrder.PROFILE_V3.equals(profile)) return;
         Map<String, Element> relationships = new LinkedHashMap<>();
         for (Element relation : children(child(document.getDocumentElement(), "relationships"))) {
             relationships.put(required(relation, "identifier"), relation);
@@ -324,8 +323,8 @@ public final class ArchiMateExchangeCodec {
     // The generic codec keeps source XML and diagram evidence in native order.
     private static boolean reversedEndpoints(String profile, String workbenchType, String canonicalType, String nativeType) {
         if (workbenchType == null) return false;
-        boolean reversed = ArchiMateExchangeProfile.reversedEndpoints(profile, workbenchType, nativeType);
-        if (reversed != ArchiMateExchangeProfile.reversedEndpoints(profile, canonicalType, nativeType)) {
+        boolean reversed = ArchiMateEndpointOrder.reversed(profile, workbenchType, nativeType);
+        if (reversed != ArchiMateEndpointOrder.reversed(profile, canonicalType, nativeType)) {
             throw invalid("RELATION_DIRECTION_CONFLICT", "Conflicting Taxonomy relationship properties imply different endpoints");
         }
         return reversed;

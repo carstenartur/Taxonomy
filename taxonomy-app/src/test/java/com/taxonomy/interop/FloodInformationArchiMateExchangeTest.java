@@ -15,7 +15,7 @@ import java.util.zip.GZIPInputStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-class CivilianArchiMateExchangeTest {
+class FloodInformationArchiMateExchangeTest {
     @Test
     void reprojectsThePublishedFloodGraphAndRetainsItsDirectedEvidenceAndDiagramOccurrences() throws Exception {
         var reader = new ArchiMateExchangeReader();

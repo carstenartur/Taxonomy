@@ -4,7 +4,7 @@
     function publishContext(value) { window.TaxonomyAppChrome?.updateContext(value, 'working'); }
     var api = window.TaxonomyArchitectureLifecycleApi;
     var root, summary, status, rows, historyList, historySearch, disclosure, currentButton, reconcileButton;
-    var datasetButton, installedDatasets = [];
+    var datasetButton, datasetRead, installedDatasets = [];
     var listeners = new Set();
     var pendingRequirements = new Map();
     var requirementPublications = new WeakMap();
@@ -289,6 +289,7 @@
         status.textContent = t('lifecycle.state.' + (value.projectionState || value.publicationState || 'READY'));
         currentButton.hidden = !historicalSelection() && !['VERSION_CHANGED','RECONCILIATION_REQUIRED','CHECKPOINT_PENDING'].includes(value.projectionState);
         datasetButton.disabled = historicalSelection() || !value.mayEdit;
+        discoverDatasets();
         reconcileButton.hidden = historicalSelection() || !['VERSION_CHANGED','RECONCILIATION_REQUIRED'].includes(value.projectionState);
         rows.replaceChildren();
         visible.forEach(function (requirement) {
@@ -580,6 +581,13 @@
             throw error;
         }
     }
+    function discoverDatasets() {
+        if (!disclosure.open || !state.overview || state.suspended || !api.projectDataProviders || datasetRead) return;
+        datasetRead = api.projectDataProviders().then(function (choices) {
+            installedDatasets = choices;
+            datasetButton.hidden = !choices.length;
+        }).catch(function () { datasetRead = null; });
+    }
     function openProjectDataImport() {
         var captured = captureStand();
         if (!matchesStand(captured, true)) return;
@@ -774,9 +782,7 @@
         datasetButton = button(t('lifecycle.dataset.import'), openProjectDataImport); datasetButton.id = 'lifecycleProjectDataButton';
         datasetButton.hidden = true; datasetButton.disabled = true;
         commands.append(refreshButton,newArchitecture,datasetButton,reconcileButton);
-        if (api.projectDataProviders) api.projectDataProviders().then(function (choices) {
-            installedDatasets = choices; datasetButton.hidden = !choices.length;
-        }).catch(function () { datasetButton.hidden = true; });
+        disclosure.addEventListener('toggle', discoverDatasets);
         var table = node('table'); var head = node('thead'); var header = node('tr');
         ['requirement','selectedVersion','reviewedVersion','realization','actions'].forEach(function (key) { var cell = node('th',t('lifecycle.' + key)); cell.scope = 'col'; header.append(cell); });
         head.append(header); rows = node('tbody'); table.append(head,rows);

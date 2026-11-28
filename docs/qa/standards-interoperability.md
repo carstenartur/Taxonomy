@@ -21,7 +21,7 @@ canonical `REQUIRES` relationships from capabilities to a data object had an
 invalid native `Access` projection in v2. For the same graph in v3 the EAM
 checker reports zero matrix errors and the same eighteen isolated-element
 warnings. Taxonomy reports the two weaker associations and recovers both typed,
-directed requirements on import. [Regression test](../../taxonomy-app/src/test/java/com/taxonomy/interop/CivilianArchiMateExchangeTest.java)
+directed requirements on import. [Regression test](../../taxonomy-app/src/test/java/com/taxonomy/interop/FloodInformationArchiMateExchangeTest.java)
 
 A separately installed Archi 5.11.0 imported and re-exported both the small
 workbench example and the flood model. Both retained element and relationship

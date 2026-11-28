@@ -1,6 +1,7 @@
 package com.taxonomy.archimate.exchange;
 
 import com.taxonomy.archimate.ArchiMateRelationship;
+import com.taxonomy.exchange.ArchiMateEndpointOrder;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -14,7 +15,7 @@ import java.util.Set;
 
 /** Versioned Taxonomy-to-ArchiMate projection and its bounded endpoint rules. */
 public final class ArchiMateExchangeProfile {
-    public static final String VERSION = "taxonomy-archimate-3.1-v3";
+    public static final String VERSION = ArchiMateEndpointOrder.PROFILE_V3;
     public static final String LEGACY_VERSION = "taxonomy-archimate-3.1-v2";
     public static final String RESOURCE = "/archimate/profile-v3.tsv";
     private static final Map<String, Mapping> CURRENT = load(RESOURCE, VERSION);
@@ -62,9 +63,7 @@ public final class ArchiMateExchangeProfile {
     }
 
     public static boolean reversedEndpoints(String profileVersion, String taxonomyType, String nativeType) {
-        return VERSION.equals(profileVersion)
-                && (("USES".equals(taxonomyType) || "DEPENDS_ON".equals(taxonomyType)) && "Serving".equals(nativeType)
-                    || "PART_OF".equals(taxonomyType) && "Composition".equals(nativeType));
+        return ArchiMateEndpointOrder.reversed(profileVersion, taxonomyType, nativeType);
     }
 
     static boolean directedAssociation(String profileVersion, String taxonomyType, String nativeType) {
