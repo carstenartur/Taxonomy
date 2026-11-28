@@ -22,9 +22,27 @@ Unterstützte Anhänge sind PDF, DOCX, HTML, Markdown und Text. Texthaltige PDFs
 
 Unterstützt der Posteingangsserver IMAP IDLE, meldet er neue Nachrichten über eine offene TLS-Verbindung. Nach einem Verbindungsabbruch liest Taxonomy auch zwischenzeitlich eingetroffene Nachrichten. Ohne IDLE prüft Taxonomy das Postfach im konfigurierten Intervall (`imap.poll-interval`, standardmäßig 30 Sekunden).
 
-Sobald Taxonomy eine Nachricht eingelesen und einen Platz reserviert hat, bestätigt es den Eingang per E-Mail mit Warteschlangenposition und Live-Link. Eine volle Warteschlange führt zur sofortigen Ablehnung beim Einlesen. Der Live-Link zeigt den Bearbeitungsstand und die aktuelle Position des eigenen Auftrags. Für das gesamte Postfach zeigt er die belegten und konfigurierten Warteplätze, die Zahl der laufenden Analysen und die Ergebnisse im Versand. Ein Auftrag gibt seinen Warteplatz bei Beginn der Analyse frei. Ist der eigene Auftrag abgeschlossen, bleiben die Zahlen der Warteschlange bis zum Ablauf des Links sichtbar und werden weiter aktualisiert. Wer den Link hat, kann diese Angaben sehen. Nachricht, Anforderung und Exporte erscheinen dort nicht. Die Ergebnisse kommen als Anhänge an die zugelassene Absenderadresse. Teilstände sind in der Ergebnisnachricht gekennzeichnet.
+Sobald Taxonomy eine Nachricht eingelesen und einen Platz reserviert hat, bestätigt es den Eingang per E-Mail mit Warteschlangenposition und persönlichem Live-Link. Eine volle Warteschlange führt zur sofortigen Ablehnung beim Einlesen. Über den Link sehen Sie den Bearbeitungsstand Ihres Auftrags und seine Position. Die Übersicht zeigt alle wartenden, laufenden und im Versand befindlichen Aufträge mit anonymen Kennungen. Sie zeigt außerdem die belegten und konfigurierten Warteplätze und den Zustand des Workers. Ein Auftrag gibt seinen Warteplatz bei Beginn der Analyse frei.
+
+Auftragsart, Teiltaxonomien und Ausgabeformate erscheinen, sobald Taxonomy die Einstellungen ermittelt und geprüft hat. Das kann bereits während der Wartezeit geschehen. Für Ihren eigenen Auftrag erscheinen die ausgewählten Teiltaxonomien. Bei anderen Aufträgen werden nur Art, Anzahl der ausgewählten Teiltaxonomien und Ausgabeformate angezeigt. Wer den persönlichen Link besitzt, kann diese Statusangaben bis zu seinem Ablauf lesen. Betreff, Absenderadressen, Anforderungen und Exportdateien bleiben privat. Die Ergebnisse gehen als Anhänge an die zugelassene Absenderadresse. Teilstände sind in der Ergebnisnachricht gekennzeichnet.
+
+Die geschätzte Wartezeit bezieht sich auf den Bearbeitungsbeginn. Taxonomy verwendet den Median von bis zu 32 kürzlich gemessenen erfolgreichen oder teilweise erfolgreichen Analysen innerhalb der Aufbewahrungsdauer. Die verbleibende Laufzeit einer aktiven Analyse und die bestätigten Aufträge vor dem eigenen fließen in die Schätzung ein. Liegen weniger als drei Messungen vor, fehlen Zeitangaben, ist die Verarbeitung blockiert oder dauert der aktuelle Auftrag bereits länger als die typische Laufzeit, bleibt die Schätzung offen. Nach Abschluss des eigenen Auftrags können Sie die Warteschlange bis zum Ablauf des Links weiter verfolgen.
 
 Bestätigte Aufträge warten, bis der Katalog und der veröffentlichte Stand auf dem Standardzweig des primären Repositorys verfügbar sind. Für Ergebnisse im Versand gilt eine eigene Obergrenze in Höhe der konfigurierten Warteplätze, mindestens jedoch eins. Ist sie erreicht, bleiben weitere bestätigte Aufträge in der Warteschlange, während ausstehende Nachrichten erneut gesendet werden. Die Aufbewahrungsdauer begrenzt auch die Versandversuche.
+
+### Extern gehostetes Statusportal
+
+Die Bestätigung verlinkt standardmäßig die Statusseite unter `taxonomy.mail.public-base-url`. Ein separat bereitgestelltes Portal lässt sich über `taxonomy.mail.status-portal-url` oder `TAXONOMY_MAIL_STATUS_PORTAL_URL` aktivieren, beispielsweise mit `https://status.example.org/monitor/`. Mail-Empfänger benötigen Zugriff auf das Portal und von ihrem Browser aus auf die Taxonomy-Instanz. Beide Adressen müssen HTTPS verwenden. Geben Sie im Portalpfad weder Zugangsdaten noch Query oder Fragment an.
+
+Neue Bestätigungen hängen die persönliche JSON-Statusadresse als URL-kodiertes Fragment `#status=…` an die Portaladresse an. Das Fragment bleibt beim Aufruf des Portals im Browser. Das Portal liest es und ruft den Status direkt bei Taxonomy ohne Anmeldecookies ab. Nur der konfigurierte Portalursprung erhält Lesezugriff über CORS auf den tokengebundenen Statusendpunkt. Frühere Links bleiben bis zu ihrem Ablauf gültig.
+
+Die eigenständige Website wird aus derselben HTML-Vorlage und denselben CSS-, JavaScript- und Bilddateien wie die integrierte Statusseite erzeugt. Der Export benötigt weder eine laufende Instanz noch ein Postfach. Führen Sie im Checkout mit Java 25 aus:
+
+```bash
+./mvnw -N antrun:run@export-mail-status-portal
+```
+
+Das Verzeichnis `target/mail-status-portal/` enthält die veröffentlichungsfertigen statischen Dateien. Veröffentlichen Sie bei einem Update das neu erzeugte Verzeichnis vollständig. Änderungen an der Oberfläche gehören in `taxonomy-app/src/main/resources/`. Ein direkter Aufruf ohne Statuslink öffnet die gekennzeichnete Beispielansicht.
 
 ## Einrichtung
 

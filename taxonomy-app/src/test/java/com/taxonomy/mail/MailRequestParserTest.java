@@ -126,7 +126,11 @@ class MailRequestParserTest {
     }
 
     static MailTransportProperties properties(int characterLimit) {
-        return new MailTransportProperties(URI.create("https://example.test/taxonomy/"),
+        return properties(characterLimit, null);
+    }
+
+    static MailTransportProperties properties(int characterLimit, URI portal) {
+        return new MailTransportProperties(URI.create("https://example.test/taxonomy/"), portal,
                 List.of(SENDER, "taxonomy@example.test"), 10485760, 8, characterLimit,
                 new MailTransportProperties.Imap("imap.example.test", 993, "account", "fixture-password",
                         "INBOX", Duration.ofSeconds(30), 20, true),

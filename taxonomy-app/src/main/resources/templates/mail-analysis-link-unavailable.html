@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en" th:lang="${#locale.language}" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="referrer" content="no-referrer">
+    <title th:text="#{mail.analysis.link.unavailable}">Status link unavailable</title>
+    <link rel="stylesheet" th:href="@{/css/mail-analysis-status.css}">
+</head>
+<body>
+    <main class="receipt-fallback">
+        <p class="receipt-brand">Taxonomy</p>
+        <h1 th:text="#{mail.analysis.link.unavailable}">Status link unavailable</h1>
+        <p th:text="#{mail.analysis.link.help}">Open the full link in your Taxonomy confirmation email. A job can be tracked until its status link expires.</p>
+    </main>
+</body>
+</html>

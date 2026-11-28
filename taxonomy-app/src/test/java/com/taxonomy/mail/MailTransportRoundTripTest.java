@@ -79,7 +79,7 @@ class MailTransportRoundTripTest {
     private void exerciseMailbox(GreenMail servers) throws Exception {
         var inbox = servers.setUser(INBOX, PASSWORD);
         var recipient = servers.setUser(AUTHOR, PASSWORD);
-        var properties = new MailTransportProperties(URI.create("https://example.test/taxonomy"), List.of(AUTHOR),
+        var properties = new MailTransportProperties(URI.create("https://example.test/taxonomy"), null, List.of(AUTHOR),
                 1_000_000, 4, 5000, new MailTransportProperties.Imap("127.0.0.1", servers.getImaps().getPort(),
                 INBOX, PASSWORD, "INBOX", Duration.ofMinutes(2), 20, true),
                 new MailTransportProperties.Smtp("127.0.0.1", servers.getSmtps().getPort(), INBOX, PASSWORD, INBOX, true));

@@ -503,6 +503,36 @@
             </plugins>
         </pluginManagement>
         <plugins>
+            <!-- A standalone distribution of the same receipt UI served by Spring. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-antrun-plugin</artifactId>
+                <version>3.2.0</version>
+                <inherited>false</inherited>
+                <executions>
+                    <execution>
+                        <id>export-mail-status-portal</id>
+                        <phase>none</phase>
+                        <goals><goal>run</goal></goals>
+                        <configuration>
+                            <target>
+                                <property name="mail.resources" location="${project.basedir}/taxonomy-app/src/main/resources"/>
+                                <property name="mail.output" location="${project.build.directory}/mail-status-portal"/>
+                                <delete dir="${mail.output}"/>
+                                <copy file="${mail.resources}/templates/mail-analysis-status.html" tofile="${mail.output}/index.html"/>
+                                <copy todir="${mail.output}">
+                                    <fileset dir="${mail.resources}/static">
+                                        <include name="css/mail-analysis-status.css"/>
+                                        <include name="js/mail-analysis-status.js"/>
+                                        <include name="js/api/taxonomy-api-client.js"/>
+                                        <include name="images/mail-queue-signal.svg"/>
+                                    </fileset>
+                                </copy>
+                            </target>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
             <!-- Surefire contracts in taxonomy-app already execute Node. Provision it
                  once before any reactor test, including runs with the UI matrix disabled. -->
             <plugin>
