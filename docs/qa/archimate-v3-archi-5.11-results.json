@@ -1,0 +1,101 @@
+{
+  "product": "Archi",
+  "version": "5.11.0",
+  "archiveSha256": "a13f4f058c16d8653c1307a145b9dd6bddd4226abc952f58c586c46d61db219e",
+  "mechanism": "Unmodified Archi Linux commandline.application via authenticated virtual Xorg display. Import using --xmlexchange.import, immediately re-export using --xmlexchange.export. No manual visual inspection. Production WorkbenchInteroperabilityProbe used separately with checkout classes (not a commit-bound packaged application).",
+  "fixtures": [
+    {
+      "id": "workbench",
+      "inputSha256": "d210add77fbfebfa6e7da35a26b1dfa2066de47373aad7da78725bb47857f4c1",
+      "returnedSha256": "1ac43cd604852517a15df0444b7463a2e84304e4cec6d4a43dc6206c5415ce59",
+      "nativeElementIdentityTypeNameEqual": true,
+      "elements": 2,
+      "nativeRelationshipIdentityTypeAccessNameEndpointsEqual": true,
+      "relationships": 1,
+      "viewIdentityMembershipNodeGeometryConnectionBendpointsEqual": true,
+      "views": [
+        {
+          "id": "id-view-000000076c617965726564",
+          "nodes": 2,
+          "connections": 1
+        },
+        {
+          "id": "id-view-00000006696d70616374",
+          "nodes": 1,
+          "connections": 0
+        }
+      ],
+      "propertyIdentitySetsEqual": true,
+      "propertyValues": 96,
+      "changedPropertyValues": 0,
+      "changesByProperty": {},
+      "allChangesExactlyXmlWhitespaceFold": true,
+      "originalBoundReturnProfile": "taxonomy-archi-5.10-return-v1",
+      "originalBoundReturnDiagramEqual": true,
+      "reportedReturnLosses": {
+        "ARCHI_PROPERTY_LANGUAGE_OMITTED": 96,
+        "ARCHI_TYPE_FOLDERS_OMITTED": 2,
+        "ARCHI_NAME_LANGUAGE_OMITTED": 89,
+        "ARCHI_NODE_LABEL_OMITTED": 3,
+        "ARCHI_CONNECTION_STYLE_ADDED": 1,
+        "ARCHI_NODE_LINE_WIDTH_OMITTED": 2,
+        "ARCHI_NODE_STYLE_DEFAULTS_ADDED": 3,
+        "ARCHI_PROPERTY_DEFINITION_ID_REWRITTEN": 83,
+        "ARCHI_PROPERTY_TYPE_TO_STRING": 8,
+        "ARCHI_DIAGRAM_TYPE_EXPLICIT": 2
+      },
+      "independentFullComparison": "PASS"
+    },
+    {
+      "id": "flood",
+      "inputSha256": "4e30ac963ffeb9cda3c51b13bc5ed0dbacccf91eebd8fa0cfc38438707e50861",
+      "returnedSha256": "310a42e1c5483a8598224884a62706e19ae9101ea8eb26fae712744dc18fcf50",
+      "nativeElementIdentityTypeNameEqual": true,
+      "elements": 50,
+      "nativeRelationshipIdentityTypeAccessNameEndpointsEqual": true,
+      "relationships": 36,
+      "viewIdentityMembershipNodeGeometryConnectionBendpointsEqual": true,
+      "views": [
+        {
+          "id": "id-view-000000076c617965726564",
+          "nodes": 50,
+          "connections": 36
+        },
+        {
+          "id": "id-view-00000006696d70616374",
+          "nodes": 46,
+          "connections": 36
+        }
+      ],
+      "propertyIdentitySetsEqual": true,
+      "propertyValues": 3136,
+      "changedPropertyValues": 351,
+      "changesByProperty": {
+        "taxonomy.provenance.evidence.#.contribution.source.assessedSourceDescription": 72,
+        "taxonomy.provenance.evidence.#.contribution.source.description": 72,
+        "taxonomy.provenance.evidence.#.target.assessedSourceDescription": 72,
+        "taxonomy.provenance.evidence.#.target.description": 72,
+        "taxonomy.provenance.derivationReason": 21,
+        "taxonomy.provenance.includedBecause": 21,
+        "taxonomy.provenance.presenceReason": 21
+      },
+      "allChangesExactlyXmlWhitespaceFold": true,
+      "originalBoundReturnProfile": "taxonomy-archi-5.10-return-v1",
+      "originalBoundReturnDiagramEqual": true,
+      "reportedReturnLosses": {
+        "ARCHI_PROPERTY_LANGUAGE_OMITTED": 3136,
+        "ARCHI_PROPERTY_WHITESPACE_NORMALIZED": 351,
+        "ARCHI_TYPE_FOLDERS_OMITTED": 7,
+        "ARCHI_NAME_LANGUAGE_OMITTED": 594,
+        "ARCHI_NODE_LABEL_OMITTED": 96,
+        "ARCHI_CONNECTION_STYLE_ADDED": 72,
+        "ARCHI_NODE_LINE_WIDTH_OMITTED": 28,
+        "ARCHI_NODE_STYLE_DEFAULTS_ADDED": 96,
+        "ARCHI_PROPERTY_TYPE_TO_STRING": 13,
+        "ARCHI_PROPERTY_DEFINITION_ID_REWRITTEN": 505,
+        "ARCHI_DIAGRAM_TYPE_EXPLICIT": 2
+      },
+      "independentFullComparison": "FAIL_EXACT_PROPERTY_CONTENT"
+    }
+  ]
+}

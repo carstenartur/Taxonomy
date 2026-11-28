@@ -261,7 +261,7 @@ class ArchiMateDiagramTests {
         assertThat(rel.id()).isEqualTo("e1");
         assertThat(rel.sourceId()).isEqualTo("A");
         assertThat(rel.targetId()).isEqualTo("B");
-        assertThat(rel.archiMateType()).isEqualTo("Serving");
+        assertThat(rel.archiMateType()).isEqualTo("Association");
         assertThat(rel.accessType()).isNull();
         assertThat(rel.name()).isEqualTo("SUPPORTS");
     }
@@ -447,7 +447,7 @@ class ArchiMateDiagramTests {
         String xmlStr = new String(archiMateXmlExporter.export(archiModel), StandardCharsets.UTF_8);
 
         assertThat(xmlStr).contains("identifier=\"" + ArchiMateIds.id("relationship", "e1") + "\"");
-        assertThat(xmlStr).contains("xsi:type=\"Serving\"");
+        assertThat(xmlStr).contains("xsi:type=\"Association\"", "isDirected=\"true\"");
         assertThat(xmlStr).contains("source=\"" + ArchiMateIds.id("element", "A") + "\"");
         assertThat(xmlStr).contains("target=\"" + ArchiMateIds.id("element", "B") + "\"");
     }

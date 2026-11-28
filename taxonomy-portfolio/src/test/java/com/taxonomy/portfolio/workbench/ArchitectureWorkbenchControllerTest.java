@@ -207,7 +207,7 @@ class ArchitectureWorkbenchControllerTest {
                         "application/xml",
                         "architecture-snapshot-1-abcdef123456"
                                 + ".archimate.xml",
-                        "taxonomy-archimate-3.1-v2",
+                        "taxonomy-archimate-3.1-v3",
                         "xml-hash",
                         "<model/>".getBytes(StandardCharsets.UTF_8)));
         when(snapshotExportService.exportVisio(

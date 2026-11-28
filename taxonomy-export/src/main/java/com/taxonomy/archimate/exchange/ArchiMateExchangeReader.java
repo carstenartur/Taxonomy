@@ -21,39 +21,54 @@ public final class ArchiMateExchangeReader {
         requireSupportedStructure(root);
         Map<String, Definition> definitions = definitions(root);
         Map<String, ArchiMateProperty> modelProperties = properties(root, definitions);
-        if (!ArchiMateExchangeProfile.VERSION.equals(value(modelProperties, "taxonomy.mappingProfile"))) {
+        String version = value(modelProperties, "taxonomy.mappingProfile");
+        if (!ArchiMateExchangeProfile.supported(version)) {
             throw new IllegalArgumentException("Unsupported Taxonomy ArchiMate exchange profile");
         }
         String modelId = identity(root, "model", modelProperties);
         modelProperties.remove("taxonomy.id");
         List<ArchiMateLoss> losses = losses(modelProperties);
         List<ArchiMateElement> elements = new ArrayList<>();
+        Map<String, ArchiMateExchangeProfile.Mapping> elementMappings = new HashMap<>();
         for (Element element : children(child(root, "elements"), "element")) {
             Map<String, ArchiMateProperty> props = properties(element, definitions);
             String id = identity(element, "element", props);
             props.remove("taxonomy.id");
-            var mapping = ArchiMateExchangeProfile.element(value(props, "taxonomy.type"));
+            var mapping = ArchiMateExchangeProfile.element(version, value(props, "taxonomy.type"));
+            elementMappings.put(id, mapping);
             String type = type(element);
             if (!mapping.targetType().equals(type)) throw new IllegalArgumentException("Element type conflicts with mapping profile: " + id);
             elements.add(new ArchiMateElement(id, content(element, "name"), type,
                     content(element, "documentation"), props));
         }
         List<ArchiMateRelationship> relationships = new ArrayList<>();
+        Set<String> reversed = new HashSet<>();
         for (Element relation : children(child(root, "relationships"), "relationship")) {
             Map<String, ArchiMateProperty> props = properties(relation, definitions);
             String id = identity(relation, "relationship", props);
             props.remove("taxonomy.id");
-            var mapping = ArchiMateExchangeProfile.relationship(value(props, "taxonomy.type"));
+            String taxonomyType = value(props, "taxonomy.type");
+            String type = type(relation);
+            boolean invert = ArchiMateExchangeProfile.reversedEndpoints(version, taxonomyType, type);
+            if (invert) reversed.add(id);
+            String source = decode("element", relation.getAttribute(invert ? "target" : "source"));
+            String target = decode("element", relation.getAttribute(invert ? "source" : "target"));
+            if (!elementMappings.containsKey(source) || !elementMappings.containsKey(target)) {
+                throw new IllegalArgumentException("Unknown relationship endpoint: " + id);
+            }
+            var mapping = ArchiMateExchangeProfile.relationship(version, taxonomyType, elementMappings.get(source), elementMappings.get(target));
+            boolean directed = "true".equals(relation.getAttribute("isDirected")) || "1".equals(relation.getAttribute("isDirected"));
+            if (directed != ArchiMateExchangeProfile.directedAssociation(version, taxonomyType, type)) {
+                throw new IllegalArgumentException("Relationship direction conflicts with mapping profile: " + id);
+            }
             String accessType = relation.hasAttribute("accessType") ? relation.getAttribute("accessType") : null;
             // Schema validation materializes the XSD default. Unqualified Access
             // means the same thing whether a consumer writes that default or omits it.
             if (mapping.accessType() == null && "Access".equals(accessType)) accessType = null;
-            String type = type(relation);
             if (!mapping.targetType().equals(type) || !Objects.equals(mapping.accessType(), accessType)) {
                 throw new IllegalArgumentException("Relationship qualifier conflicts with mapping profile: " + id);
             }
-            relationships.add(new ArchiMateRelationship(id, decode("element", relation.getAttribute("source")),
-                    decode("element", relation.getAttribute("target")), type, accessType, content(relation, "name"), props));
+            relationships.add(new ArchiMateRelationship(id, source, target, type, accessType, content(relation, "name"), props));
         }
         Map<String, List<String>> organizations = new TreeMap<>();
         for (Element item : children(child(root, "organizations"), "item")) {
@@ -86,12 +101,13 @@ public final class ArchiMateExchangeReader {
             List<ArchiMateViewConnection> connections = new ArrayList<>();
             for (Element connection : children(view, "connection")) {
                 if (!"Relationship".equals(type(connection))) throw new IllegalArgumentException("Unsupported connection type");
-                connections.add(new ArchiMateViewConnection(viewIdentity("connection", connection, viewId),
+                var nativeConnection = new ArchiMateViewConnection(viewIdentity("connection", connection, viewId),
                         decode("relationship", connection.getAttribute("relationshipRef")),
                         viewReference("node", connection.getAttribute("source"), viewId),
                         viewReference("node", connection.getAttribute("target"), viewId),
                         children(connection, "bendpoint").stream().map(point -> new ArchiMateViewConnection.Bendpoint(
-                                integer(point, "x"), integer(point, "y"))).toList()));
+                                integer(point, "x"), integer(point, "y"))).toList());
+                connections.add(reversed.contains(nativeConnection.relationshipId()) ? nativeConnection.reversed() : nativeConnection);
             }
             views.add(new ArchiMateView(viewId, content(view, "name"), nodes, connections));
         }
@@ -322,7 +338,7 @@ public final class ArchiMateExchangeReader {
             case "model", "element" -> Set.of("identifier");
             case "view" -> Set.of("identifier", "viewpoint");
             case "propertyDefinition" -> Set.of("identifier", "type");
-            case "relationship" -> Set.of("identifier", "source", "target", "accessType");
+            case "relationship" -> Set.of("identifier", "source", "target", "accessType", "isDirected");
             case "node" -> Set.of("identifier", "elementRef", "x", "y", "w", "h");
             case "connection" -> Set.of("identifier", "relationshipRef", "source", "target");
             case "bendpoint" -> Set.of("x", "y");

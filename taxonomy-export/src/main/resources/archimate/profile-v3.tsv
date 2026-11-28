@@ -1,0 +1,132 @@
+scope	sourceType	targetType	accessType	properties	kind	rationale	allowedRelationships	profileVersion
+element	Capabilities	Capability		taxonomy.id;taxonomy.type;taxonomy.relevance;taxonomy.anchor;taxonomy.selectedForImpact;taxonomy.layer;taxonomy.depth;taxonomy.parentId	MAPPED	Taxonomy category projected to ArchiMate; exact source type retained in taxonomy.type.		taxonomy-archimate-3.1-v3
+element	Business Processes	BusinessProcess		taxonomy.id;taxonomy.type;taxonomy.relevance;taxonomy.anchor;taxonomy.selectedForImpact;taxonomy.layer;taxonomy.depth;taxonomy.parentId	MAPPED	Taxonomy category projected to ArchiMate; exact source type retained in taxonomy.type.		taxonomy-archimate-3.1-v3
+element	Business Roles	BusinessRole		taxonomy.id;taxonomy.type;taxonomy.relevance;taxonomy.anchor;taxonomy.selectedForImpact;taxonomy.layer;taxonomy.depth;taxonomy.parentId	MAPPED	Taxonomy category projected to ArchiMate; exact source type retained in taxonomy.type.		taxonomy-archimate-3.1-v3
+element	Services	ApplicationService		taxonomy.id;taxonomy.type;taxonomy.relevance;taxonomy.anchor;taxonomy.selectedForImpact;taxonomy.layer;taxonomy.depth;taxonomy.parentId	MAPPED	Taxonomy category projected to ArchiMate; exact source type retained in taxonomy.type.		taxonomy-archimate-3.1-v3
+element	COI Services	BusinessService		taxonomy.id;taxonomy.type;taxonomy.relevance;taxonomy.anchor;taxonomy.selectedForImpact;taxonomy.layer;taxonomy.depth;taxonomy.parentId	MAPPED	Taxonomy category projected to ArchiMate; exact source type retained in taxonomy.type.		taxonomy-archimate-3.1-v3
+element	Communications Services	CommunicationNetwork		taxonomy.id;taxonomy.type;taxonomy.relevance;taxonomy.anchor;taxonomy.selectedForImpact;taxonomy.layer;taxonomy.depth;taxonomy.parentId	MAPPED	Taxonomy category projected to ArchiMate; exact source type retained in taxonomy.type.		taxonomy-archimate-3.1-v3
+element	Core Services	TechnologyService		taxonomy.id;taxonomy.type;taxonomy.relevance;taxonomy.anchor;taxonomy.selectedForImpact;taxonomy.layer;taxonomy.depth;taxonomy.parentId	MAPPED	Taxonomy category projected to ArchiMate; exact source type retained in taxonomy.type.		taxonomy-archimate-3.1-v3
+element	Applications	ApplicationComponent		taxonomy.id;taxonomy.type;taxonomy.relevance;taxonomy.anchor;taxonomy.selectedForImpact;taxonomy.layer;taxonomy.depth;taxonomy.parentId	MAPPED	Taxonomy category projected to ArchiMate; exact source type retained in taxonomy.type.		taxonomy-archimate-3.1-v3
+element	User Applications	ApplicationComponent		taxonomy.id;taxonomy.type;taxonomy.relevance;taxonomy.anchor;taxonomy.selectedForImpact;taxonomy.layer;taxonomy.depth;taxonomy.parentId	MAPPED	Taxonomy category projected to ArchiMate; exact source type retained in taxonomy.type.		taxonomy-archimate-3.1-v3
+element	Information Products	DataObject		taxonomy.id;taxonomy.type;taxonomy.relevance;taxonomy.anchor;taxonomy.selectedForImpact;taxonomy.layer;taxonomy.depth;taxonomy.parentId	MAPPED	Taxonomy category projected to ArchiMate; exact source type retained in taxonomy.type.		taxonomy-archimate-3.1-v3
+element	Systems	ApplicationComponent		taxonomy.id;taxonomy.type;taxonomy.relevance;taxonomy.anchor;taxonomy.selectedForImpact;taxonomy.layer;taxonomy.depth;taxonomy.parentId	MAPPED	Taxonomy category projected to ArchiMate; exact source type retained in taxonomy.type.		taxonomy-archimate-3.1-v3
+element	Components	ApplicationComponent		taxonomy.id;taxonomy.type;taxonomy.relevance;taxonomy.anchor;taxonomy.selectedForImpact;taxonomy.layer;taxonomy.depth;taxonomy.parentId	MAPPED	Taxonomy category projected to ArchiMate; exact source type retained in taxonomy.type.		taxonomy-archimate-3.1-v3
+element	System	Node		taxonomy.id;taxonomy.type;taxonomy.relevance;taxonomy.anchor;taxonomy.selectedForImpact;taxonomy.layer;taxonomy.depth;taxonomy.parentId	MAPPED	Taxonomy category projected to ArchiMate; exact source type retained in taxonomy.type.		taxonomy-archimate-3.1-v3
+element	Component	ApplicationComponent		taxonomy.id;taxonomy.type;taxonomy.relevance;taxonomy.anchor;taxonomy.selectedForImpact;taxonomy.layer;taxonomy.depth;taxonomy.parentId	MAPPED	Taxonomy category projected to ArchiMate; exact source type retained in taxonomy.type.		taxonomy-archimate-3.1-v3
+element	UserApplication	ApplicationComponent		taxonomy.id;taxonomy.type;taxonomy.relevance;taxonomy.anchor;taxonomy.selectedForImpact;taxonomy.layer;taxonomy.depth;taxonomy.parentId	MAPPED	Taxonomy category projected to ArchiMate; exact source type retained in taxonomy.type.		taxonomy-archimate-3.1-v3
+element	CoreService	TechnologyService		taxonomy.id;taxonomy.type;taxonomy.relevance;taxonomy.anchor;taxonomy.selectedForImpact;taxonomy.layer;taxonomy.depth;taxonomy.parentId	MAPPED	Taxonomy category projected to ArchiMate; exact source type retained in taxonomy.type.		taxonomy-archimate-3.1-v3
+relationship	SUPPORTS	Serving		taxonomy.id;taxonomy.type;taxonomy.relevance;taxonomy.relationCategory	MAPPED	Primary native projection, checked against the directed endpoint matrix. The Taxonomy type is retained.		taxonomy-archimate-3.1-v3
+relationship	ENABLES	Serving		taxonomy.id;taxonomy.type;taxonomy.relevance;taxonomy.relationCategory	MAPPED	Primary native projection, checked against the directed endpoint matrix. The Taxonomy type is retained.		taxonomy-archimate-3.1-v3
+relationship	USES	Serving		taxonomy.id;taxonomy.type;taxonomy.relevance;taxonomy.relationCategory	MAPPED	Native Serving runs from provider to consumer, opposite to the Taxonomy dependency.		taxonomy-archimate-3.1-v3
+relationship	DEPENDS_ON	Serving		taxonomy.id;taxonomy.type;taxonomy.relevance;taxonomy.relationCategory	MAPPED	Native Serving runs from provider to consumer, opposite to the Taxonomy dependency.		taxonomy-archimate-3.1-v3
+relationship	PRODUCES	Access	Write	taxonomy.id;taxonomy.type;taxonomy.relevance;taxonomy.relationCategory	MAPPED	Primary native projection, checked against the directed endpoint matrix. The Taxonomy type is retained.		taxonomy-archimate-3.1-v3
+relationship	CONSUMES	Access	Read	taxonomy.id;taxonomy.type;taxonomy.relevance;taxonomy.relationCategory	MAPPED	Primary native projection, checked against the directed endpoint matrix. The Taxonomy type is retained.		taxonomy-archimate-3.1-v3
+relationship	REQUIRES	Access		taxonomy.id;taxonomy.type;taxonomy.relevance;taxonomy.relationCategory	MAPPED	Primary native projection, checked against the directed endpoint matrix. The Taxonomy type is retained.		taxonomy-archimate-3.1-v3
+relationship	REALIZES	Realization		taxonomy.id;taxonomy.type;taxonomy.relevance;taxonomy.relationCategory	MAPPED	Primary native projection, checked against the directed endpoint matrix. The Taxonomy type is retained.		taxonomy-archimate-3.1-v3
+relationship	IMPLEMENTS	Realization		taxonomy.id;taxonomy.type;taxonomy.relevance;taxonomy.relationCategory	MAPPED	Primary native projection, checked against the directed endpoint matrix. The Taxonomy type is retained.		taxonomy-archimate-3.1-v3
+relationship	FULFILLS	Realization		taxonomy.id;taxonomy.type;taxonomy.relevance;taxonomy.relationCategory	MAPPED	Primary native projection, checked against the directed endpoint matrix. The Taxonomy type is retained.		taxonomy-archimate-3.1-v3
+relationship	ASSIGNED_TO	Assignment		taxonomy.id;taxonomy.type;taxonomy.relevance;taxonomy.relationCategory	MAPPED	Primary native projection, checked against the directed endpoint matrix. The Taxonomy type is retained.		taxonomy-archimate-3.1-v3
+relationship	COMMUNICATES_WITH	Flow		taxonomy.id;taxonomy.type;taxonomy.relevance;taxonomy.relationCategory	MAPPED	Primary native projection, checked against the directed endpoint matrix. The Taxonomy type is retained.		taxonomy-archimate-3.1-v3
+relationship	PART_OF	Composition		taxonomy.id;taxonomy.type;taxonomy.relevance;taxonomy.relationCategory	MAPPED	Native Composition runs from whole to part, opposite to Taxonomy PART_OF.		taxonomy-archimate-3.1-v3
+relationship	CONTAINS	Composition		taxonomy.id;taxonomy.type;taxonomy.relevance;taxonomy.relationCategory	MAPPED	Primary native projection, checked against the directed endpoint matrix. The Taxonomy type is retained.		taxonomy-archimate-3.1-v3
+relationship	RELATED_TO	Association		taxonomy.id;taxonomy.type;taxonomy.relevance;taxonomy.relationCategory	MAPPED	Primary native projection, checked against the directed endpoint matrix. The Taxonomy type is retained.		taxonomy-archimate-3.1-v3
+endpoints	ApplicationComponent	ApplicationComponent					Aggregation;Association;Composition;Flow;Realization;Serving;Specialization;Triggering	taxonomy-archimate-3.1-v3
+endpoints	ApplicationComponent	ApplicationService					Assignment;Association;Flow;Realization;Serving;Triggering	taxonomy-archimate-3.1-v3
+endpoints	ApplicationComponent	BusinessProcess					Association;Flow;Realization;Serving;Triggering	taxonomy-archimate-3.1-v3
+endpoints	ApplicationComponent	BusinessRole					Association;Flow;Serving;Triggering	taxonomy-archimate-3.1-v3
+endpoints	ApplicationComponent	BusinessService					Association;Flow;Realization;Serving;Triggering	taxonomy-archimate-3.1-v3
+endpoints	ApplicationComponent	Capability					Association;Realization	taxonomy-archimate-3.1-v3
+endpoints	ApplicationComponent	CommunicationNetwork					Association;Flow;Serving;Triggering	taxonomy-archimate-3.1-v3
+endpoints	ApplicationComponent	DataObject					Access;Association	taxonomy-archimate-3.1-v3
+endpoints	ApplicationComponent	Node					Association;Flow;Serving;Triggering	taxonomy-archimate-3.1-v3
+endpoints	ApplicationComponent	TechnologyService					Association;Flow;Serving;Triggering	taxonomy-archimate-3.1-v3
+endpoints	ApplicationService	ApplicationComponent					Association;Flow;Serving;Triggering	taxonomy-archimate-3.1-v3
+endpoints	ApplicationService	ApplicationService					Aggregation;Association;Composition;Flow;Serving;Specialization;Triggering	taxonomy-archimate-3.1-v3
+endpoints	ApplicationService	BusinessProcess					Association;Flow;Serving;Triggering	taxonomy-archimate-3.1-v3
+endpoints	ApplicationService	BusinessRole					Association;Flow;Serving;Triggering	taxonomy-archimate-3.1-v3
+endpoints	ApplicationService	BusinessService					Association;Flow;Realization;Serving;Triggering	taxonomy-archimate-3.1-v3
+endpoints	ApplicationService	Capability					Association;Realization	taxonomy-archimate-3.1-v3
+endpoints	ApplicationService	CommunicationNetwork					Association;Flow;Serving;Triggering	taxonomy-archimate-3.1-v3
+endpoints	ApplicationService	DataObject					Access;Association	taxonomy-archimate-3.1-v3
+endpoints	ApplicationService	Node					Association;Flow;Serving;Triggering	taxonomy-archimate-3.1-v3
+endpoints	ApplicationService	TechnologyService					Association;Flow;Serving;Triggering	taxonomy-archimate-3.1-v3
+endpoints	BusinessProcess	ApplicationComponent					Association;Flow;Serving;Triggering	taxonomy-archimate-3.1-v3
+endpoints	BusinessProcess	ApplicationService					Association;Flow;Serving;Triggering	taxonomy-archimate-3.1-v3
+endpoints	BusinessProcess	BusinessProcess					Aggregation;Association;Composition;Flow;Serving;Specialization;Triggering	taxonomy-archimate-3.1-v3
+endpoints	BusinessProcess	BusinessRole					Association;Flow;Serving;Triggering	taxonomy-archimate-3.1-v3
+endpoints	BusinessProcess	BusinessService					Association;Flow;Realization;Serving;Triggering	taxonomy-archimate-3.1-v3
+endpoints	BusinessProcess	Capability					Association;Realization	taxonomy-archimate-3.1-v3
+endpoints	BusinessProcess	CommunicationNetwork					Association;Flow;Serving;Triggering	taxonomy-archimate-3.1-v3
+endpoints	BusinessProcess	DataObject					Access;Association	taxonomy-archimate-3.1-v3
+endpoints	BusinessProcess	Node					Association;Flow;Serving;Triggering	taxonomy-archimate-3.1-v3
+endpoints	BusinessProcess	TechnologyService					Association;Flow;Serving;Triggering	taxonomy-archimate-3.1-v3
+endpoints	BusinessRole	ApplicationComponent					Association;Flow;Serving;Triggering	taxonomy-archimate-3.1-v3
+endpoints	BusinessRole	ApplicationService					Association;Flow;Serving;Triggering	taxonomy-archimate-3.1-v3
+endpoints	BusinessRole	BusinessProcess					Assignment;Association;Flow;Serving;Triggering	taxonomy-archimate-3.1-v3
+endpoints	BusinessRole	BusinessRole					Aggregation;Association;Composition;Flow;Serving;Specialization;Triggering	taxonomy-archimate-3.1-v3
+endpoints	BusinessRole	BusinessService					Assignment;Association;Flow;Realization;Serving;Triggering	taxonomy-archimate-3.1-v3
+endpoints	BusinessRole	Capability					Association;Realization	taxonomy-archimate-3.1-v3
+endpoints	BusinessRole	CommunicationNetwork					Association;Flow;Serving;Triggering	taxonomy-archimate-3.1-v3
+endpoints	BusinessRole	DataObject					Access;Association	taxonomy-archimate-3.1-v3
+endpoints	BusinessRole	Node					Association;Flow;Serving;Triggering	taxonomy-archimate-3.1-v3
+endpoints	BusinessRole	TechnologyService					Association;Flow;Serving;Triggering	taxonomy-archimate-3.1-v3
+endpoints	BusinessService	ApplicationComponent					Association;Flow;Serving;Triggering	taxonomy-archimate-3.1-v3
+endpoints	BusinessService	ApplicationService					Association;Flow;Serving;Triggering	taxonomy-archimate-3.1-v3
+endpoints	BusinessService	BusinessProcess					Association;Flow;Serving;Triggering	taxonomy-archimate-3.1-v3
+endpoints	BusinessService	BusinessRole					Association;Flow;Serving;Triggering	taxonomy-archimate-3.1-v3
+endpoints	BusinessService	BusinessService					Aggregation;Association;Composition;Flow;Serving;Specialization;Triggering	taxonomy-archimate-3.1-v3
+endpoints	BusinessService	Capability					Association;Realization	taxonomy-archimate-3.1-v3
+endpoints	BusinessService	CommunicationNetwork					Association;Flow;Serving;Triggering	taxonomy-archimate-3.1-v3
+endpoints	BusinessService	DataObject					Access;Association	taxonomy-archimate-3.1-v3
+endpoints	BusinessService	Node					Association;Flow;Serving;Triggering	taxonomy-archimate-3.1-v3
+endpoints	BusinessService	TechnologyService					Association;Flow;Serving;Triggering	taxonomy-archimate-3.1-v3
+endpoints	Capability	ApplicationComponent					Association	taxonomy-archimate-3.1-v3
+endpoints	Capability	ApplicationService					Association	taxonomy-archimate-3.1-v3
+endpoints	Capability	BusinessProcess					Association	taxonomy-archimate-3.1-v3
+endpoints	Capability	BusinessRole					Association	taxonomy-archimate-3.1-v3
+endpoints	Capability	BusinessService					Association	taxonomy-archimate-3.1-v3
+endpoints	Capability	Capability					Aggregation;Association;Composition;Flow;Serving;Specialization;Triggering	taxonomy-archimate-3.1-v3
+endpoints	Capability	CommunicationNetwork					Association	taxonomy-archimate-3.1-v3
+endpoints	Capability	DataObject					Association	taxonomy-archimate-3.1-v3
+endpoints	Capability	Node					Association	taxonomy-archimate-3.1-v3
+endpoints	Capability	TechnologyService					Association	taxonomy-archimate-3.1-v3
+endpoints	CommunicationNetwork	ApplicationComponent					Association;Flow;Realization;Serving;Triggering	taxonomy-archimate-3.1-v3
+endpoints	CommunicationNetwork	ApplicationService					Association;Flow;Realization;Serving;Triggering	taxonomy-archimate-3.1-v3
+endpoints	CommunicationNetwork	BusinessProcess					Association;Flow;Realization;Serving;Triggering	taxonomy-archimate-3.1-v3
+endpoints	CommunicationNetwork	BusinessRole					Association;Flow;Realization;Serving;Triggering	taxonomy-archimate-3.1-v3
+endpoints	CommunicationNetwork	BusinessService					Association;Flow;Realization;Serving;Triggering	taxonomy-archimate-3.1-v3
+endpoints	CommunicationNetwork	Capability					Association;Realization	taxonomy-archimate-3.1-v3
+endpoints	CommunicationNetwork	CommunicationNetwork					Aggregation;Association;Composition;Flow;Serving;Specialization;Triggering	taxonomy-archimate-3.1-v3
+endpoints	CommunicationNetwork	DataObject					Access;Association	taxonomy-archimate-3.1-v3
+endpoints	CommunicationNetwork	Node					Association;Flow;Realization;Serving;Triggering	taxonomy-archimate-3.1-v3
+endpoints	CommunicationNetwork	TechnologyService					Assignment;Association;Flow;Realization;Serving;Triggering	taxonomy-archimate-3.1-v3
+endpoints	DataObject	ApplicationComponent					Association	taxonomy-archimate-3.1-v3
+endpoints	DataObject	ApplicationService					Association	taxonomy-archimate-3.1-v3
+endpoints	DataObject	BusinessProcess					Association	taxonomy-archimate-3.1-v3
+endpoints	DataObject	BusinessRole					Association	taxonomy-archimate-3.1-v3
+endpoints	DataObject	BusinessService					Association	taxonomy-archimate-3.1-v3
+endpoints	DataObject	Capability					Association;Realization	taxonomy-archimate-3.1-v3
+endpoints	DataObject	CommunicationNetwork					Association	taxonomy-archimate-3.1-v3
+endpoints	DataObject	DataObject					Aggregation;Association;Composition;Specialization	taxonomy-archimate-3.1-v3
+endpoints	DataObject	Node					Association	taxonomy-archimate-3.1-v3
+endpoints	DataObject	TechnologyService					Association	taxonomy-archimate-3.1-v3
+endpoints	Node	ApplicationComponent					Association;Flow;Realization;Serving;Triggering	taxonomy-archimate-3.1-v3
+endpoints	Node	ApplicationService					Association;Flow;Realization;Serving;Triggering	taxonomy-archimate-3.1-v3
+endpoints	Node	BusinessProcess					Assignment;Association;Flow;Realization;Serving;Triggering	taxonomy-archimate-3.1-v3
+endpoints	Node	BusinessRole					Assignment;Association;Flow;Serving;Triggering	taxonomy-archimate-3.1-v3
+endpoints	Node	BusinessService					Assignment;Association;Flow;Realization;Serving;Triggering	taxonomy-archimate-3.1-v3
+endpoints	Node	Capability					Association;Realization	taxonomy-archimate-3.1-v3
+endpoints	Node	CommunicationNetwork					Association;Flow;Serving;Triggering	taxonomy-archimate-3.1-v3
+endpoints	Node	DataObject					Access;Association	taxonomy-archimate-3.1-v3
+endpoints	Node	Node					Aggregation;Assignment;Association;Composition;Flow;Serving;Specialization;Triggering	taxonomy-archimate-3.1-v3
+endpoints	Node	TechnologyService					Assignment;Association;Flow;Realization;Serving;Triggering	taxonomy-archimate-3.1-v3
+endpoints	TechnologyService	ApplicationComponent					Association;Flow;Serving;Triggering	taxonomy-archimate-3.1-v3
+endpoints	TechnologyService	ApplicationService					Association;Flow;Realization;Serving;Triggering	taxonomy-archimate-3.1-v3
+endpoints	TechnologyService	BusinessProcess					Association;Flow;Serving;Triggering	taxonomy-archimate-3.1-v3
+endpoints	TechnologyService	BusinessRole					Association;Flow;Serving;Triggering	taxonomy-archimate-3.1-v3
+endpoints	TechnologyService	BusinessService					Association;Flow;Realization;Serving;Triggering	taxonomy-archimate-3.1-v3
+endpoints	TechnologyService	Capability					Association;Realization	taxonomy-archimate-3.1-v3
+endpoints	TechnologyService	CommunicationNetwork					Association;Flow;Serving;Triggering	taxonomy-archimate-3.1-v3
+endpoints	TechnologyService	DataObject					Access;Association	taxonomy-archimate-3.1-v3
+endpoints	TechnologyService	Node					Association;Flow;Serving;Triggering	taxonomy-archimate-3.1-v3
+endpoints	TechnologyService	TechnologyService					Aggregation;Association;Composition;Flow;Serving;Specialization;Triggering	taxonomy-archimate-3.1-v3

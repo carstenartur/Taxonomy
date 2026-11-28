@@ -69,21 +69,19 @@ public class ArchiMateDiagramService {
                 throw new IllegalArgumentException("Invalid node parent: " + node.id());
             }
         }
-        // Collect non-container node IDs — container-only nodes are visual grouping
-        // constructs and must not appear as ArchiMate elements or relationship endpoints.
-        Set<String> elementIds = model.nodes().stream()
-                .filter(n -> !n.container())
-                .map(DiagramNode::id)
-                .collect(Collectors.toSet());
-
         List<ArchiMateLoss> losses = new ArrayList<>();
         List<ArchiMateElement> elements = buildElements(model.nodes(), losses);
-        List<ArchiMateRelationship> relationships = buildRelationships(model.edges(), elementIds, losses);
+        Map<String, ArchiMateExchangeProfile.Mapping> elementMappings = elements.stream().collect(Collectors.toMap(
+                ArchiMateElement::id, e -> ArchiMateExchangeProfile.element(e.properties().get("taxonomy.type").value())));
+        Set<String> elementIds = elementMappings.keySet();
+        List<ArchiMateRelationship> relationships = buildRelationships(model.edges(), elementMappings, losses);
         Map<String, List<String>> organizations = buildOrganizations(model.nodes());
-        ArchiMateView view = buildView(model, elementIds);
+        Set<String> reversed = relationships.stream().filter(r -> ArchiMateExchangeProfile.reversedEndpoints(ArchiMateExchangeProfile.VERSION, r))
+                .map(ArchiMateRelationship::id).collect(Collectors.toSet());
+        ArchiMateView view = buildView(model, elementIds, reversed);
         Map<String, ArchiMateProperty> properties = new LinkedHashMap<>();
         properties.put("taxonomy.mappingProfile", ArchiMateProperty.text(ArchiMateExchangeProfile.VERSION));
-        properties.put("taxonomy.exporterVersion", ArchiMateProperty.text("archimate-writer-v2"));
+        properties.put("taxonomy.exporterVersion", ArchiMateProperty.text("archimate-writer-v3"));
         properties.put("taxonomy.idProfile", ArchiMateProperty.text("length-prefixed-utf8-hex-v1"));
         properties.put("taxonomy.scoreSemantics", ArchiMateProperty.text("relevance in [0,1]; anchor and impact are separate selection flags"));
         if (model.layout() != null) {
@@ -155,18 +153,21 @@ public class ArchiMateDiagramService {
     }
 
     private List<ArchiMateRelationship> buildRelationships(List<DiagramEdge> edges,
-                                                           Set<String> elementIds, List<ArchiMateLoss> losses) {
+                                                           Map<String, ArchiMateExchangeProfile.Mapping> elements,
+                                                           List<ArchiMateLoss> losses) {
         List<ArchiMateRelationship> relationships = new ArrayList<>();
         Set<String> identities = new java.util.HashSet<>();
         for (DiagramEdge edge : edges) {
             ArchiMateIds.requireIdentity(edge.id());
             if (!identities.add(edge.id())) throw new IllegalArgumentException("Duplicate relationship identity: " + edge.id());
-            if (!elementIds.contains(edge.sourceId()) || !elementIds.contains(edge.targetId())) {
+            var source = elements.get(edge.sourceId());
+            var target = elements.get(edge.targetId());
+            if (source == null || target == null) {
                 losses.add(new ArchiMateLoss("relationship", edge.id(), "endpoints", "OMITTED",
                         "Relationship touches an omitted visual container."));
                 continue;
             }
-            var mapping = ArchiMateExchangeProfile.relationship(edge.relationType());
+            var mapping = ArchiMateExchangeProfile.relationship(ArchiMateExchangeProfile.VERSION, edge.relationType(), source, target);
             Map<String, ArchiMateProperty> properties = new LinkedHashMap<>();
             properties.put("taxonomy.type", ArchiMateProperty.text(edge.relationType()));
             properties.put("taxonomy.relevance", score(edge.relevance()));
@@ -194,7 +195,7 @@ public class ArchiMateDiagramService {
         return organizations;
     }
 
-    private ArchiMateView buildView(DiagramModel model, Set<String> elementIds) {
+    private ArchiMateView buildView(DiagramModel model, Set<String> elementIds, Set<String> reversed) {
         Map<Integer, List<DiagramNode>> layerGroups = new TreeMap<>();
         for (DiagramNode node : model.nodes()) {
             if (node.container()) continue;
@@ -240,7 +241,8 @@ public class ArchiMateDiagramService {
         }
         // Archi serializes outgoing connections in view-node order. Match that
         // order while retaining the sequence of connections from each source.
-        viewConnections.sort(Comparator.comparingInt(connection -> nodeOrder.get(connection.sourceNodeId())));
+        viewConnections.sort(Comparator.comparingInt(connection -> nodeOrder.get(reversed.contains(connection.relationshipId())
+                ? connection.targetNodeId() : connection.sourceNodeId())));
 
         String viewName = model.title() != null ? model.title() : "Architecture View";
         return new ArchiMateView("layered", viewName, viewNodes, routeConnections(viewNodes, viewConnections));

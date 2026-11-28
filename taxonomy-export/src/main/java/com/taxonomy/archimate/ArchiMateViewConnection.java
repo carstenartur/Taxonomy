@@ -20,5 +20,10 @@ public record ArchiMateViewConnection(
         this(id, relationshipId, sourceNodeId, targetNodeId, List.of());
     }
 
+    /** Reverse the traversal of the existing route, preserving every point and both occurrence IDs. */
+    public ArchiMateViewConnection reversed() {
+        return new ArchiMateViewConnection(id, relationshipId, targetNodeId, sourceNodeId, bendpoints.reversed());
+    }
+
     public record Bendpoint(int x, int y) { }
 }

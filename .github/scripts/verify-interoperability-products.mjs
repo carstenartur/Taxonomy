@@ -124,7 +124,7 @@ try {
       throw new Error('Workbench comparison did not execute the expected bounded return profile');
     const workbenchLossLine = workbenchComparison.split('\n').find(line => line.startsWith('PRODUCT_MAPPING_LOSSES '));
     if (!workbenchLossLine) throw new Error('Workbench product comparison did not return its transformation report');
-    report.results.push({ product: 'Archi', version: archiVersion, releaseSha256: archiSha, profile: 'taxonomy-archimate-3.1-v2',
+    report.results.push({ product: 'Archi', version: archiVersion, releaseSha256: archiSha, profile: 'taxonomy-archimate-3.1-v3',
       direction: 'Taxonomy workbench bundle -> Archi -> bounded original-bound return reader and semantic comparison',
       returnProfile: 'taxonomy-archi-5.10-return-v1', fixture: 'authored frozen workbench projection',
       bundleSha256: await digest(workbenchBundle), inputSha256: await digest(workbenchXml), outputSha256: await digest(workbenchReturned),
@@ -138,7 +138,7 @@ try {
       limitations: ['Archi 5.10.0 converts number/boolean declarations to string. This is a bounded import/export check with recorded losses, not preservation of the typed Taxonomy profile; the strict reader still rejects the returned type-erased contract. The separate original-bound return profile requires exact unchanged semantic content, records every transformation and does not certify semantic editing or relation application.',
         'Bounded authored projection; no live analysis, authorization, independent consumer or Visio acceptance is implied.'] });
   } catch (error) {
-    for (const profile of ['archimate-3.1/1', 'taxonomy-archimate-3.1-v2']) {
+    for (const profile of ['archimate-3.1/1', 'taxonomy-archimate-3.1-v3']) {
       if (!report.results.some(result => result.product === 'Archi' && result.profile === profile))
         report.results.push({ product: 'Archi', profile, result: 'failed', failure: error.message });
     }

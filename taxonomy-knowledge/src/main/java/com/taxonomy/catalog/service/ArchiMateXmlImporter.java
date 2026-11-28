@@ -131,7 +131,7 @@ public class ArchiMateXmlImporter {
         ArchiMateImportResult result = new ArchiMateImportResult();
         result.setPreview(!materialize);
         if (model.exchange() != null) {
-            result.setMappingProfile(com.taxonomy.archimate.exchange.ArchiMateExchangeProfile.VERSION);
+            result.setMappingProfile(model.exchange().properties().get("taxonomy.mappingProfile").value());
             result.setLosses(model.exchange().losses().stream().map(loss ->
                     new ArchiMateImportResult.ImportLoss(loss.scope(), loss.id(), loss.field(), loss.kind(), loss.rationale())).toList());
             List<ArchiMateImportResult.ImportLoss> importLosses = new ArrayList<>(result.getLosses());

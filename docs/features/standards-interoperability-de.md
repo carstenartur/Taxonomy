@@ -136,8 +136,8 @@ CI-Abnahme bleibt erforderlich. Details und API-Verträge stehen in der
 
 Das explizite Profil `taxonomy-archi-5.10-return-v1` unterstützt die **inhaltserhaltende
 Rückgabe** eines Taxonomy-Workbench-Exports über Archi 5.10. Inhaltliche Bearbeitung
-in Archi wird nicht unterstützt. Die normale XML-Interpretation und der strenge Reader
-für `taxonomy-archimate-3.1-v2` bleiben unverändert. Beide HTTP-Importaktionen erfordern
+in Archi wird nicht unterstützt. Der Reader prüft ursprüngliche Workbench-Exporte der Versionen v2 und v3
+jeweils anhand ihres Profilvertrags. Beide HTTP-Importaktionen erfordern
 eine bearbeitbare Arbeitskopie; zentrale Lesekontexte erlauben nur die Vorschau.
 
 Unter **Architektur → Export → Archi-5.10-Rückgabe prüfen** wählen Sie die ursprüngliche

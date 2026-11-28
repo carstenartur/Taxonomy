@@ -68,7 +68,7 @@ class ArchitectureArchiMateExchangeAcceptanceTest {
         assertEquals(ArchiMateExchangeProfile.VERSION, artifact.exporterProfile());
         assertEquals("application/zip", artifact.mediaType());
         Map<String, byte[]> files = unzip(artifact.content());
-        assertEquals(Set.of("model.archimate.xml", "mapping-profile.tsv", "manifest.json"), files.keySet());
+        assertEquals(Set.of("model.archimate.xml", "mapping-profile.tsv", "manifest.json", "ORIGIN.md", "LICENSE-EPL-2.0.txt"), files.keySet());
         assertArrayEquals(ArchiMateExchangeProfile.resourceBytes(), files.get("mapping-profile.tsv"));
         var reader = new ArchiMateExchangeReader();
         var imported = reader.read(files.get("model.archimate.xml"));

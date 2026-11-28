@@ -5,6 +5,34 @@ standards boundary on the durable editing architecture from #1028. The required
 CI lanes verify the current pull-request head; historical evidence below proves
 only the recorded source revision and fixture subset.
 
+## Workbench v3 cross-check on 28 November 2026
+
+The Java/Maven tests compare the v3 endpoint table with the pinned Archi 3.2
+matrix and retain both canonical and native relationship directions across XML
+and diagram round trips. The independent Python EAM checker at revision
+`783c4c01753a2d168256bdb245cba58a76d8e275` reported zero findings for a
+generated set of 1,500 relationships covering ten source concepts, ten target
+concepts and fifteen Taxonomy relationship types. The export explicitly recorded
+932 weaker associations in this exhaustive set. Its composition is synthetic
+and cannot be used to estimate the frequency of such mappings in user models.
+
+The historical flood fixture contains 50 elements and 36 relationships. Two
+canonical `REQUIRES` relationships from capabilities to a data object had an
+invalid native `Access` projection in v2. For the same graph in v3 the EAM
+checker reports zero matrix errors and the same eighteen isolated-element
+warnings. Taxonomy reports the two weaker associations and recovers both typed,
+directed requirements on import. [Regression test](../../taxonomy-app/src/test/java/com/taxonomy/interop/CivilianArchiMateExchangeTest.java)
+
+A separately installed Archi 5.11.0 imported and re-exported both the small
+workbench example and the flood model. Both retained element and relationship
+identities, native directions and the geometry of their two views. The flood
+views contained 96 node placements and 72 connection occurrences. Archi folded
+whitespace in 351 of the 3,136 flood property values. Exact comparison of those
+raw strings fails. Taxonomy's return path identified every change and recovered
+the source values when supplied with the original export. The check ran on
+generated files and compared diagram data. The results include the product and
+file digests and the comparison outcomes. [Recorded results](archimate-v3-archi-5.11-results.json)
+
 ## Installed-product evidence
 
 The [2026-09-08 product run](https://github.com/carstenartur/Taxonomy/actions/runs/34242073916/job/102116477328)

@@ -63,10 +63,10 @@ class WorkbenchProductProbeTest {
 
     @Test
     void installedProductReceivesExactSnapshotServiceBytesAndProfile() throws Exception {
-        assertEquals(java.util.Set.of("model.archimate.xml", "mapping-profile.tsv", "manifest.json"), bundle.keySet());
+        assertEquals(java.util.Set.of("model.archimate.xml", "mapping-profile.tsv", "manifest.json", "ORIGIN.md", "LICENSE-EPL-2.0.txt"), bundle.keySet());
         assertArrayEquals(bundle.get("model.archimate.xml"), Files.readAllBytes(xml));
         var manifest = new ObjectMapper().readTree(bundle.get("manifest.json"));
-        assertEquals("taxonomy-archimate-3.1-v2", manifest.path("profile").asText());
+        assertEquals("taxonomy-archimate-3.1-v3", manifest.path("profile").asText());
         assertEquals(HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(xml))),
                 manifest.path("xmlSha256").asText());
         assertEquals("snapshot-archi-product", manifest.path("provenance").path("taxonomy.snapshotId").path("value").asText());

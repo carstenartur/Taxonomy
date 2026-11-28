@@ -202,6 +202,12 @@ public class ArchitectureSnapshotExportService {
                         .enable(tools.jackson.databind.SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS).build()
                         .writerWithDefaultPrettyPrinter().writeValueAsBytes(manifest));
                 zipEntry(zip, "mapping-profile.tsv", ArchiMateExchangeProfile.resourceBytes());
+                for (String name : java.util.List.of("ORIGIN.md", "LICENSE-EPL-2.0.txt")) {
+                    try (var resource = ArchiMateExchangeProfile.class.getResourceAsStream("/archimate/" + name)) {
+                        if (resource == null) throw new java.io.IOException("Missing ArchiMate profile notice " + name);
+                        zipEntry(zip, name, resource.readAllBytes());
+                    }
+                }
             }
             return output.toByteArray();
         } catch (java.io.IOException exception) {
