@@ -46,6 +46,38 @@ class TaxonomySchemaPostgresMigrationIT {
             .withPassword("taxonomy");
 
     @Test
+    void projectDataProviderUpgradePreservesRepositoriesAndRetainsNewSelection() throws Exception {
+        var source = isolatedDataSource("project_data_provider_upgrade");
+        migrateJgit(source);
+        installApplicationAtVersion(source, "66");
+        assertThat(columnExists(source, "system_repository", "project_data_provider")).isFalse();
+        execute(source, """
+                insert into system_repository(repository_id, display_name, topology_mode, default_branch, primary_repo, created_at)
+                values ('existing', 'Municipal registry', 'INTERNAL_SHARED', 'main', false, current_timestamp)
+                """);
+        var jdbc = new org.springframework.jdbc.core.JdbcTemplate(source);
+        var original = jdbc.queryForMap("select * from system_repository where repository_id='existing'");
+
+        var configuration = Flyway.configure().dataSource(source).load().getConfiguration();
+        TaxonomySchemaMigrationConfig.migrateApplicationSchema(configuration);
+        assertThat(jdbc.queryForMap("select * from system_repository where repository_id='existing'"))
+                .containsAllEntriesOf(original).containsEntry("project_data_provider", null);
+        execute(source, """
+                insert into system_repository(repository_id, topology_mode, default_branch, primary_repo, created_at, project_data_provider)
+                values ('regional-service', 'INTERNAL_SHARED', 'draft', false, current_timestamp, 'authority/directory')
+                """);
+        var migratedVersions = successfulVersions(source);
+        assertThat(migratedVersions).containsOnlyOnce("67");
+
+        TaxonomySchemaMigrationConfig.migrateApplicationSchema(configuration);
+        assertThat(successfulVersions(source)).isEqualTo(migratedVersions);
+        assertThat(singleString(source, "select project_data_provider from system_repository where repository_id='regional-service'"))
+                .isEqualTo("authority/directory");
+        assertThat(jdbc.queryForMap("select * from system_repository where repository_id='existing'"))
+                .containsAllEntriesOf(original).containsEntry("project_data_provider", null);
+    }
+
+    @Test
     void personalWorkspaceOwnerMigrationPreservesLegacyRowsAfterPortableStartup() throws Exception {
         var source = isolatedDataSource("personal_workspace_owner");
         migrateJgit(source);
