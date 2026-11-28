@@ -1,0 +1,143 @@
+# Source: https://github.com/Mitchel85/EAM-Toolfamilie/blob/783c4c01753a2d168256bdb245cba58a76d8e275/tests/bpmn/conftest.py
+# Fixture modell(), Michael Estel (MIT).
+# Authored Taxonomy projection of a synthetic two-pool process. All model IDs are local.
+# Pool and lane membership supplies responsibility. The two ends of the message flow
+# share the same message object. RELATED_TO approximates control flow and the
+# evidence on its branches records the gateway conditions. This checks authored
+# projections, outside BPMN execution, AI inference and real agency operations.
+requirement antragsbearbeitung {
+  title: "Antragsbearbeitung";
+  text: "Der Antragsteller erfasst und sendet den Antrag. Das Sachgebiet empfängt und prüft ihn. Bei unvollständigen Unterlagen fordert die Sachbearbeitung Unterlagen an und prüft die Vollständigkeit erneut. Bei vollständigen Unterlagen bucht sie den Antrag. Das Ergebnis ist ein Bescheid.";
+}
+organization antragstellende {
+  title: "Antragsteller";
+}
+organization fachstelle {
+  title: "Sachgebiet";
+}
+element antragsteller type BusinessRole {
+  title: "Antragsteller";
+  taxonomy: "BR";
+}
+element sachbearbeiter type BusinessRole {
+  title: "Sachbearbeiter";
+  taxonomy: "BR";
+}
+element erfassen type Process {
+  title: "Antrag erfassen";
+  taxonomy: "BP";
+  x-responsible-organization-id: "antragstellende";
+}
+element senden type Process {
+  title: "Antrag senden";
+  taxonomy: "BP";
+  x-responsible-organization-id: "antragstellende";
+}
+element eingang type Process {
+  title: "Antrag eingegangen";
+  taxonomy: "BP";
+  x-responsible-organization-id: "fachstelle";
+}
+element pruefen type Process {
+  title: "Antrag prüfen";
+  taxonomy: "BP";
+  x-responsible-organization-id: "fachstelle";
+}
+element entscheidung type Process {
+  title: "Vollständig?";
+  taxonomy: "BP";
+  x-responsible-organization-id: "fachstelle";
+}
+element nachfordern type Process {
+  title: "Unterlagen anfordern";
+  taxonomy: "BP";
+  x-responsible-organization-id: "fachstelle";
+}
+element buchen type Process {
+  title: "Antrag buchen";
+  taxonomy: "BP";
+  x-responsible-organization-id: "fachstelle";
+}
+element unterlagen type InformationProduct {
+  title: "Antragsunterlagen";
+  taxonomy: "IP";
+}
+element datensatz type InformationProduct {
+  title: "Antrag (Datensatz)";
+  taxonomy: "IP";
+}
+element nachricht type InformationProduct {
+  title: "Antrag (Nachricht)";
+  taxonomy: "IP";
+}
+element nachforderung type InformationProduct {
+  title: "Nachforderung";
+  taxonomy: "IP";
+}
+element bescheid type InformationProduct {
+  title: "Bescheid";
+  taxonomy: "IP";
+}
+relation antragsteller ASSIGNED_TO erfassen {
+  status: accepted;
+}
+relation antragsteller ASSIGNED_TO senden {
+  status: accepted;
+}
+relation sachbearbeiter ASSIGNED_TO pruefen {
+  status: accepted;
+}
+relation sachbearbeiter ASSIGNED_TO nachfordern {
+  status: accepted;
+}
+relation sachbearbeiter ASSIGNED_TO buchen {
+  status: accepted;
+}
+relation erfassen CONSUMES unterlagen {
+  status: accepted;
+}
+relation erfassen RELATED_TO senden {
+  status: accepted;
+}
+relation pruefen CONSUMES datensatz {
+  status: accepted;
+}
+relation senden PRODUCES nachricht {
+  status: accepted;
+}
+relation eingang CONSUMES nachricht {
+  status: accepted;
+}
+relation eingang RELATED_TO pruefen {
+  status: accepted;
+}
+relation pruefen RELATED_TO entscheidung {
+  status: accepted;
+}
+relation entscheidung RELATED_TO nachfordern {
+  status: accepted;
+}
+evidence unvollstaendig {
+  for-relation: "entscheidung RELATED_TO nachfordern";
+  summary: "Bei unvollständigen Unterlagen werden die fehlenden Unterlagen angefordert.";
+}
+relation nachfordern PRODUCES nachforderung {
+  status: accepted;
+}
+relation nachfordern RELATED_TO entscheidung {
+  status: accepted;
+}
+evidence rueckschleife {
+  for-relation: "nachfordern RELATED_TO entscheidung";
+  summary: "Nach der Nachforderung wird die Vollständigkeit erneut geprüft.";
+}
+relation entscheidung RELATED_TO buchen {
+  status: accepted;
+}
+evidence vollstaendig {
+  for-relation: "entscheidung RELATED_TO buchen";
+  summary: "Bei vollständigen Unterlagen wird der Antrag gebucht.";
+}
+relation buchen PRODUCES bescheid {
+  status: accepted;
+}
