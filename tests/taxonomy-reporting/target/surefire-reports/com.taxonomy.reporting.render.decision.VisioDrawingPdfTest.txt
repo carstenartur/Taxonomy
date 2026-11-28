@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.taxonomy.reporting.render.decision.VisioDrawingPdfTest
+-------------------------------------------------------------------------------
+Tests run: 5, Failures: 0, Errors: 0, Skipped: 2, Time elapsed: 0.270 s -- in com.taxonomy.reporting.render.decision.VisioDrawingPdfTest

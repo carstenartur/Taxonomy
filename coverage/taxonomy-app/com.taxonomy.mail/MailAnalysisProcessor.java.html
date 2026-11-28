@@ -1,0 +1,293 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>MailAnalysisProcessor.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.mail</a> &gt; <span class="el_source">MailAnalysisProcessor.java</span></div><h1>MailAnalysisProcessor.java</h1><pre class="source lang-java linenums">package com.taxonomy.mail;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.function.BooleanSupplier;
+
+import com.taxonomy.analysis.service.AnalysisRuntimeSettings;
+import com.taxonomy.composition.analysis.SelectedArchitectureAdmissionModel;
+import com.taxonomy.analysis.usecase.AnalyzeRequirementCommand;
+import com.taxonomy.analysis.usecase.AnalyzeRequirementUseCase;
+import com.taxonomy.architecture.decision.DecisionRationaleReportService;
+import com.taxonomy.architecture.decision.DecisionRationaleScoreSemanticsAdapter;
+import com.taxonomy.architecture.service.ArchitectureReportService;
+import com.taxonomy.catalog.service.TaxonomyService;
+import com.taxonomy.dto.AnalysisLanguage;
+import com.taxonomy.dto.AnalysisMode;
+import com.taxonomy.dto.AnalysisModelBinding;
+import com.taxonomy.dto.AnalysisResult;
+import com.taxonomy.dto.AnalysisScope;
+import com.taxonomy.dto.RequirementArchitectureView;
+import com.taxonomy.export.AnalysisDiagramSource;
+import com.taxonomy.export.ArchitecturePdfRenderer;
+import com.taxonomy.export.LayeredDiagramLayoutService;
+import com.taxonomy.export.service.ExportFacade;
+import com.taxonomy.export.spi.ExportContext;
+import com.taxonomy.extension.api.report.ReportRenderContext;
+import com.taxonomy.identity.StableIdentityHash;
+import com.taxonomy.reporting.api.decision.DecisionReportOptions;
+import com.taxonomy.shared.features.ConditionalOnFeature;
+import com.taxonomy.workspace.model.SystemRepository;
+import com.taxonomy.workspace.service.RepositoryMembershipService;
+import com.taxonomy.workspace.service.SystemRepositoryService;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.dao.DataAccessException;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.CannotCreateTransactionException;
+import org.springframework.web.server.ResponseStatusException;
+
+/** Adapts a validated email command to the same analysis and renderers as the application. */
+@Service
+@ConditionalOnProperty(name = &quot;taxonomy.mail.enabled&quot;, havingValue = &quot;true&quot;)
+@ConditionalOnFeature({&quot;analysis&quot;, &quot;architecture&quot;, &quot;reporting&quot;})
+final class MailAnalysisProcessor {
+<span class="fc" id="L54">    private static final Logger log = LoggerFactory.getLogger(MailAnalysisProcessor.class);</span>
+    private static final String READINESS_ACTOR = &quot;mail-readiness&quot;;
+
+    static final class Rejected extends RuntimeException {
+<span class="fc" id="L58">        Rejected(String message) { super(message); }</span>
+    }
+
+<span class="fc" id="L61">    static final class SourceUnavailable extends RuntimeException { }</span>
+
+    private final MailAnalysisCommandClassifier classifier;
+    private final TaxonomyService taxonomies;
+    private final SystemRepositoryService repositories;
+    private final RepositoryMembershipService membership;
+    private final SelectedArchitectureAdmissionModel admission;
+    private final AnalysisRuntimeSettings settings;
+    private final AnalyzeRequirementUseCase analysis;
+    private final ExportFacade diagrams;
+    private final MailAnalysisRenderers renderers;
+    private final LayeredDiagramLayoutService layout;
+    private final ArchitecturePdfRenderer pdf;
+    private final ArchitectureReportService architectureReport;
+    private final DecisionRationaleReportService reports;
+<span class="fc" id="L76">    private final DecisionRationaleScoreSemanticsAdapter scoreSemantics = new DecisionRationaleScoreSemanticsAdapter();</span>
+    private final Locale locale;
+    private final AnalysisLanguage language;
+    private final int maxResultBytes;
+
+    MailAnalysisProcessor(MailAnalysisCommandClassifier classifier, TaxonomyService taxonomies,
+            SystemRepositoryService repositories, RepositoryMembershipService membership,
+            SelectedArchitectureAdmissionModel admission, AnalysisRuntimeSettings settings,
+            AnalyzeRequirementUseCase analysis, ExportFacade diagrams, MailAnalysisRenderers renderers,
+            LayeredDiagramLayoutService layout, ArchitecturePdfRenderer pdf,
+            ArchitectureReportService architectureReport, DecisionRationaleReportService reports,
+            @Value(&quot;${taxonomy.mail.queue.language:de}&quot;) String language,
+<span class="fc" id="L88">            @Value(&quot;${taxonomy.mail.queue.max-result-bytes:15000000}&quot;) int maxResultBytes) {</span>
+<span class="fc" id="L89">        this.classifier = classifier;</span>
+<span class="fc" id="L90">        this.taxonomies = taxonomies;</span>
+<span class="fc" id="L91">        this.repositories = repositories;</span>
+<span class="fc" id="L92">        this.membership = membership;</span>
+<span class="fc" id="L93">        this.admission = admission;</span>
+<span class="fc" id="L94">        this.settings = settings;</span>
+<span class="fc" id="L95">        this.analysis = analysis;</span>
+<span class="fc" id="L96">        this.diagrams = diagrams;</span>
+<span class="fc" id="L97">        this.renderers = renderers;</span>
+<span class="fc" id="L98">        this.layout = layout;</span>
+<span class="fc" id="L99">        this.pdf = pdf;</span>
+<span class="fc" id="L100">        this.architectureReport = architectureReport;</span>
+<span class="fc" id="L101">        this.reports = reports;</span>
+<span class="fc" id="L102">        this.language = AnalysisLanguage.fromValue(language);</span>
+<span class="fc" id="L103">        this.locale = Locale.forLanguageTag(language);</span>
+<span class="pc bpc" id="L104" title="2 of 4 branches missed.">        if (maxResultBytes &lt; 1 || maxResultBytes &gt; 50_000_000) throw new IllegalArgumentException(&quot;Invalid email export size limit&quot;);</span>
+<span class="fc" id="L105">        this.maxResultBytes = maxResultBytes;</span>
+<span class="fc" id="L106">    }</span>
+
+    boolean sourceReady() {
+<span class="fc bfc" id="L109" title="All 2 branches covered.">        if (!taxonomies.isLiveCatalogueReady()) return false;</span>
+        try {
+<span class="fc" id="L111">            return admission.hasPrimarySource(primaryRepository(READINESS_ACTOR), READINESS_ACTOR);</span>
+<span class="fc" id="L112">        } catch (IOException | RuntimeException unavailable) {</span>
+<span class="fc" id="L113">            log.debug(&quot;Primary mail analysis source is unavailable ({})&quot;, unavailable.getClass().getSimpleName());</span>
+<span class="fc" id="L114">            return false;</span>
+        }
+    }
+
+    MailAnalysisCommand classify(String subject, String requirementText) {
+<span class="fc" id="L119">        int maxText = Math.max(100, Math.min(100_000, settings.getInt(&quot;limits.max-business-text&quot;, 5_000)));</span>
+<span class="pc bpc" id="L120" title="3 of 6 branches missed.">        if (requirementText == null || requirementText.isBlank() || requirementText.length() &gt; maxText) {</span>
+<span class="nc" id="L121">            throw new Rejected(&quot;Der Anforderungstext ist leer oder überschreitet die Grenze von &quot; + maxText + &quot; Zeichen.&quot;);</span>
+        }
+        try {
+<span class="fc" id="L124">            return classifier.classify(subject);</span>
+<span class="fc" id="L125">        } catch (DataAccessException | CannotCreateTransactionException unavailable) {</span>
+<span class="fc" id="L126">            throw new SourceUnavailable();</span>
+<span class="fc" id="L127">        } catch (IllegalArgumentException invalid) {</span>
+<span class="fc" id="L128">            throw new Rejected(&quot;Der Betreff beschreibt keinen eindeutigen Auftrag mit verfügbaren Exportformaten.&quot;</span>
+                    + &quot; Beispiel: Entscheidungsbaum BP und CR als Word.&quot;);
+        }
+    }
+
+    MailAnalysisQueue.Outcome process(String privateJobId, MailAnalysisCommand command, String requirementText,
+                                      BooleanSupplier sourceReady) {
+<span class="fc" id="L135">        Objects.requireNonNull(privateJobId, &quot;Private email analysis identity&quot;);</span>
+        // The queue generates this private key separately from its public status token.
+<span class="fc" id="L137">        String actor = &quot;mail-&quot; + StableIdentityHash.sha256(&quot;mail-analysis-owner:v1:&quot; + privateJobId);</span>
+<span class="fc" id="L138">        String operationId = &quot;mail-&quot; + StableIdentityHash.sha256(&quot;mail-analysis-operation:v1:&quot; + privateJobId);</span>
+<span class="fc" id="L139">        var primary = primaryRepository(actor);</span>
+<span class="fc" id="L140">        var context = new WorkspaceContext(actor, null, primary.getDefaultBranch(), primary.getRepositoryId());</span>
+
+<span class="fc bfc" id="L142" title="All 2 branches covered.">        boolean architecture = command.mode() == MailAnalysisCommand.Mode.ARCHITECTURE;</span>
+<span class="fc" id="L143">        Set&lt;String&gt; roots = Set.copyOf(command.taxonomyCodes());</span>
+<span class="fc bfc" id="L144" title="All 2 branches covered.">        AnalysisScope scope = new AnalysisScope(roots, architecture ? AnalysisMode.FULL : AnalysisMode.TAXONOMIES_ONLY);</span>
+        AnalysisResult result;
+        try {
+<span class="fc" id="L147">            result = analysis.analyzeUnpublished(operationId, context, requirementText,</span>
+<span class="fc" id="L148">                    () -&gt; captureRequest(primary, context, scope, architecture, requirementText, sourceReady)).analysisResult();</span>
+<span class="fc" id="L149">        } catch (DataAccessException | CannotCreateTransactionException unavailable) {</span>
+<span class="fc" id="L150">            throw new SourceUnavailable();</span>
+<span class="fc" id="L151">        }</span>
+<span class="pc bpc" id="L152" title="2 of 6 branches missed.">        if (result.getScores() == null || result.getScores().isEmpty() || &quot;ERROR&quot;.equals(result.getStatus())) {</span>
+<span class="fc" id="L153">            throw new Rejected(&quot;Die Analyse hat keine exportierbaren Bewertungen geliefert.&quot;);</span>
+        }
+
+<span class="fc bfc" id="L156" title="All 2 branches covered.">        var attachments = architecture ? architectureFiles(command, result, requirementText)</span>
+<span class="fc" id="L157">                : decisionFiles(command, result, requirementText, context);</span>
+<span class="fc bfc" id="L158" title="All 2 branches covered.">        boolean partial = !&quot;SUCCESS&quot;.equals(result.getStatus())</span>
+<span class="pc bpc" id="L159" title="1 of 4 branches missed.">                || result.getAnalysisCoverage() != null &amp;&amp; result.getAnalysisCoverage().hasOpenEvaluations();</span>
+<span class="fc bfc" id="L160" title="All 2 branches covered.">        String summary = partial</span>
+<span class="fc" id="L161">                ? &quot;Die Analyse enthält einen Teilstand. Offene Bewertungen oder Beziehungen können im Export gekennzeichnet sein.&quot;</span>
+<span class="fc" id="L162">                : &quot;Die Analyse ist abgeschlossen. Die angeforderten Exporte sind angehängt.&quot;;</span>
+<span class="fc" id="L163">        return new MailAnalysisQueue.Outcome(summary, List.copyOf(attachments), true, partial);</span>
+    }
+
+    private SystemRepository primaryRepository(String actor) {
+        try {
+<span class="fc" id="L168">            var primary = repositories.getPrimaryRepository();</span>
+<span class="pc bpc" id="L169" title="1 of 2 branches missed.">            if (!membership.canRead(primary, actor)) throw new Rejected(&quot;Die gemeinsame Taxonomie ist derzeit nicht verfügbar.&quot;);</span>
+<span class="fc" id="L170">            return primary;</span>
+<span class="fc" id="L171">        } catch (IllegalStateException | DataAccessException | CannotCreateTransactionException unavailable) {</span>
+<span class="fc" id="L172">            throw new SourceUnavailable();</span>
+        }
+    }
+
+    private AnalyzeRequirementCommand captureRequest(SystemRepository primary, WorkspaceContext context, AnalysisScope scope,
+            boolean architecture, String requirementText, BooleanSupplier sourceReady) {
+<span class="pc bpc" id="L178" title="1 of 2 branches missed.">        if (!sourceReady.getAsBoolean()) throw new SourceUnavailable();</span>
+        try {
+<span class="fc" id="L180">            scope.validateRoots(taxonomies.getRootCodes());</span>
+<span class="nc" id="L181">        } catch (IllegalArgumentException changed) {</span>
+<span class="nc" id="L182">            throw new Rejected(&quot;Eine ausgewählte Teiltaxonomie ist derzeit nicht verfügbar.&quot;);</span>
+<span class="fc" id="L183">        }</span>
+        AnalysisModelBinding source;
+        try {
+<span class="fc" id="L186">            source = admission.capturePrimary(primary, context.username(), scope);</span>
+<span class="fc" id="L187">        } catch (ResponseStatusException failure) {</span>
+<span class="fc bfc" id="L188" title="All 2 branches covered.">            if (HttpStatus.SERVICE_UNAVAILABLE.equals(failure.getStatusCode())) throw new SourceUnavailable();</span>
+<span class="fc" id="L189">            throw failure;</span>
+<span class="fc" id="L190">        }</span>
+<span class="fc" id="L191">        int maxNodes = Math.max(1, Math.min(1_000, settings.getInt(&quot;limits.max-architecture-nodes&quot;, 50)));</span>
+<span class="fc" id="L192">        return new AnalyzeRequirementCommand(requirementText, architecture, maxNodes, null, context.username(), context, null, scope)</span>
+<span class="fc" id="L193">                .withAnalysisLanguage(language).withModelBinding(source);</span>
+    }
+
+    private List&lt;MailAnalysisAttachment&gt; architectureFiles(MailAnalysisCommand command, AnalysisResult result, String requirementText) {
+<span class="fc" id="L197">        RequirementArchitectureView view = result.getArchitectureView();</span>
+<span class="pc bpc" id="L198" title="3 of 6 branches missed.">        if (view == null || view.getIncludedElements() == null || view.getIncludedElements().isEmpty()) {</span>
+<span class="nc" id="L199">            throw new Rejected(&quot;Die Analyse hat keine exportierbare Architektur geliefert.&quot;);</span>
+        }
+<span class="fc" id="L201">        boolean exportDrawing = command.exports().stream()</span>
+<span class="fc bfc" id="L202" title="All 2 branches covered.">                .anyMatch(format -&gt; format.architectureRoute() != MailAnalysisCommand.ArchitectureRoute.REPORT);</span>
+<span class="fc bfc" id="L203" title="All 2 branches covered.">        var diagram = exportDrawing ? diagrams.buildCurrentDiagram(view, language.value()) : null;</span>
+<span class="fc" id="L204">        var reasons = ExportFacade.elementReasons(view);</span>
+<span class="fc" id="L205">        var source = AnalysisDiagramSource.from(result);</span>
+<span class="fc" id="L206">        var options = new java.util.HashMap&lt;String, Object&gt;();</span>
+<span class="fc" id="L207">        options.put(&quot;elementReasons&quot;, reasons);</span>
+<span class="fc" id="L208">        options.put(&quot;locale&quot;, language.value());</span>
+<span class="fc" id="L209">        options.put(&quot;analysisSource&quot;, source);</span>
+<span class="fc bfc" id="L210" title="All 2 branches covered.">        if (view.getOriginalRequirementText() != null) options.put(&quot;originalRequirementText&quot;, view.getOriginalRequirementText());</span>
+
+<span class="fc" id="L212">        var files = new ArrayList&lt;MailAnalysisAttachment&gt;();</span>
+<span class="fc" id="L213">        ReportRenderContext report = null;</span>
+<span class="fc" id="L214">        long total = 0;</span>
+<span class="fc bfc" id="L215" title="All 2 branches covered.">        for (var format : command.exports()) {</span>
+            MailAnalysisAttachment file;
+<span class="pc bpc" id="L217" title="1 of 4 branches missed.">            switch (format.architectureRoute()) {</span>
+                case ARCHITECTURE_PDF -&gt; {
+<span class="fc" id="L219">                    byte[] bytes = pdf.renderAnalysis(layout.layout(diagram), source, reasons, locale);</span>
+<span class="fc" id="L220">                    file = new MailAnalysisAttachment(&quot;requirement-architecture.pdf&quot;, &quot;application/pdf&quot;, bytes);</span>
+<span class="fc" id="L221">                }</span>
+                case REPORT -&gt; {
+<span class="fc bfc" id="L223" title="All 2 branches covered.">                    if (report == null) report = prepareArchitectureReport(result, requirementText);</span>
+<span class="fc" id="L224">                    var renderer = renderers.report(command.mode(), format)</span>
+<span class="pc" id="L225">                            .orElseThrow(() -&gt; new Rejected(&quot;Ein angefordertes Berichtsformat ist derzeit nicht verfügbar.&quot;));</span>
+<span class="fc" id="L226">                    var descriptor = renderer.descriptor();</span>
+<span class="fc" id="L227">                    file = new MailAnalysisAttachment(&quot;architecture-report.&quot; + descriptor.fileExtension(),</span>
+<span class="fc" id="L228">                            descriptor.contentType(), renderer.render(report).bytes());</span>
+<span class="fc" id="L229">                }</span>
+                case DIAGRAM -&gt; {
+<span class="fc" id="L231">                    var renderer = renderers.diagram(format)</span>
+<span class="pc" id="L232">                            .orElseThrow(() -&gt; new Rejected(&quot;Ein angefordertes Diagrammformat ist derzeit nicht verfügbar.&quot;));</span>
+<span class="fc" id="L233">                    var descriptor = renderer.descriptor();</span>
+<span class="fc" id="L234">                    var output = renderer.export(new ExportContext(diagram, options));</span>
+<span class="fc" id="L235">                    file = new MailAnalysisAttachment(&quot;requirement-architecture.&quot; + descriptor.fileExtension(),</span>
+<span class="fc" id="L236">                            descriptor.contentType(), output.bytes());</span>
+<span class="fc" id="L237">                }</span>
+<span class="nc" id="L238">                default -&gt; throw new IllegalStateException(&quot;Unknown architecture export route&quot;);</span>
+            }
+<span class="fc" id="L240">            total = include(files, file, total);</span>
+<span class="fc" id="L241">        }</span>
+<span class="fc" id="L242">        return files;</span>
+    }
+
+    private ReportRenderContext prepareArchitectureReport(AnalysisResult result, String requirementText) {
+<span class="pc bpc" id="L246" title="1 of 2 branches missed.">        if (result.getCopilot() == null) throw new Rejected(&quot;Die Analyse hat keinen exportierbaren Architekturbericht geliefert.&quot;);</span>
+<span class="fc" id="L247">        var report = architectureReport.generateRetainedReport(result, requirementText);</span>
+<span class="pc bpc" id="L248" title="1 of 2 branches missed.">        Map&lt;String, String&gt; reasons = result.getReasons() == null ? Map.of() : result.getReasons();</span>
+<span class="fc" id="L249">        report.setNodeReasons(reasons);</span>
+<span class="fc" id="L250">        report.setLanguageTag(language.value());</span>
+<span class="fc" id="L251">        return new ReportRenderContext(report, Map.of(&quot;language&quot;, language.value(), &quot;nodeReasons&quot;, reasons));</span>
+    }
+
+    private List&lt;MailAnalysisAttachment&gt; decisionFiles(MailAnalysisCommand command, AnalysisResult result,
+            String requirementText, WorkspaceContext context) {
+<span class="fc" id="L256">        var scope = new AnalysisScope(Set.copyOf(command.taxonomyCodes()), AnalysisMode.TAXONOMIES_ONLY);</span>
+<span class="fc" id="L257">        var details = result.getScoreDetails();</span>
+<span class="fc" id="L258">        var reasons = scoreSemantics.enrichReasons(result.getReasons(), details, locale);</span>
+<span class="fc" id="L259">        var input = new DecisionRationaleReportService.DecisionAnalysisInput(requirementText, result.getEffectiveScores(),</span>
+<span class="fc" id="L260">                reasons, result.getProvider(), result.getStatus(), result.getDiscrepancies(), result.getProductCoverageGaps(),</span>
+<span class="fc" id="L261">                scope.selectedTree(result.getTree()), null, details, result.getAnalysisDurationMillis())</span>
+<span class="fc" id="L262">                .withRecordedReasons(result.getReasons()).withScope(scope, result.getAnalysisCoverage())</span>
+<span class="fc" id="L263">                .withAnalysisReasonLength(result.getAnalysisReasonLength())</span>
+<span class="fc" id="L264">                .withNodeAssessments(result.getNodeAssessments());</span>
+<span class="fc" id="L265">        var options = new DecisionReportOptions(DecisionReportOptions.Profile.COMPACT, scope.taxonomyRoots(),</span>
+<span class="fc" id="L266">                null, null, null, false);</span>
+
+        // Attribute exported reports to the mail adapter.
+<span class="fc" id="L269">        var reportContext = new WorkspaceContext(&quot;mail&quot;, context.workspaceId(), context.currentBranch(), context.repositoryId());</span>
+<span class="fc" id="L270">        var report = scoreSemantics.adapt(reports.generate(input, reportContext, result.getViewContext(), locale, options), details, locale);</span>
+<span class="fc bfc" id="L271" title="All 2 branches covered.">        if (result.getModelBinding() != null) report = report.withScope(report.scope().withModelBinding(result.getModelBinding()));</span>
+<span class="fc" id="L272">        var files = new ArrayList&lt;MailAnalysisAttachment&gt;();</span>
+<span class="fc" id="L273">        long total = 0;</span>
+<span class="fc bfc" id="L274" title="All 2 branches covered.">        for (var format : command.exports()) {</span>
+<span class="fc" id="L275">            var renderer = renderers.report(command.mode(), format)</span>
+<span class="pc" id="L276">                    .orElseThrow(() -&gt; new Rejected(&quot;Ein angefordertes Entscheidungsbaumformat ist derzeit nicht verfügbar.&quot;));</span>
+<span class="fc" id="L277">            var descriptor = renderer.descriptor();</span>
+<span class="fc" id="L278">            byte[] bytes = renderer.render(ReportRenderContext.ofPayload(report)).bytes();</span>
+<span class="fc" id="L279">            total = include(files, new MailAnalysisAttachment(&quot;decision-tree.&quot; + descriptor.fileExtension(),</span>
+<span class="fc" id="L280">                    descriptor.contentType(), bytes), total);</span>
+<span class="fc" id="L281">        }</span>
+<span class="fc" id="L282">        return files;</span>
+    }
+
+    private long include(List&lt;MailAnalysisAttachment&gt; files, MailAnalysisAttachment file, long previous) {
+<span class="fc" id="L286">        long total = previous + file.content().length;</span>
+<span class="pc bpc" id="L287" title="1 of 2 branches missed.">        if (file.content().length == 0) throw new Rejected(&quot;Ein angeforderter Export ist leer.&quot;);</span>
+<span class="pc bpc" id="L288" title="1 of 2 branches missed.">        if (total &gt; maxResultBytes) throw new Rejected(&quot;Die angeforderten Exporte sind zu groß für den E-Mail-Versand.&quot;);</span>
+<span class="fc" id="L289">        files.add(file);</span>
+<span class="fc" id="L290">        return total;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

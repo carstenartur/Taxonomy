@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>TaxonomyNodeRepository.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-knowledge</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.catalog.repository</a> &gt; <span class="el_source">TaxonomyNodeRepository.java</span></div><h1>TaxonomyNodeRepository.java</h1><pre class="source lang-java linenums">package com.taxonomy.catalog.repository;
+
+import com.taxonomy.catalog.model.TaxonomyNode;
+import com.taxonomy.dto.TaxonomyNodeDto;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.stereotype.Repository;
+
+import java.util.Collection;
+import java.util.List;
+import java.util.Optional;
+
+@Repository
+public interface TaxonomyNodeRepository extends JpaRepository&lt;TaxonomyNode, Long&gt; , com.taxonomy.catalog.api.TaxonomyNodeLookup {
+
+    Optional&lt;TaxonomyNode&gt; findByCode(String code);
+
+    List&lt;TaxonomyNode&gt; findByCodeIn(Collection&lt;String&gt; codes);
+
+    List&lt;TaxonomyNode&gt; findByParentIsNullOrderByCodeAsc();
+
+<span class="fc" id="L22">    record TreeRow(Long parentId, TaxonomyNodeDto node) {}</span>
+
+    /** The persisted parent ID links rows. The DTO aliases select the public fields without fetching embeddings. */
+    @Query(&quot;&quot;&quot;
+            select new com.taxonomy.catalog.repository.TaxonomyNodeRepository$TreeRow(
+                n.parent.id, new com.taxonomy.dto.TaxonomyNodeDto(
+                    n.id as id, n.code as code, n.uuid as uuid, n.nameEn as nameEn, n.nameDe as nameDe,
+                    n.descriptionEn as descriptionEn, n.descriptionDe as descriptionDe, n.parentCode as parentCode,
+                    n.taxonomyRoot as taxonomyRoot, n.level as level, n.dataset as dataset, n.externalId as externalId,
+                    n.source as source, n.reference as reference, n.sortOrder as sortOrder, n.state as state))
+            from TaxonomyNode n
+            order by case when n.parent is null then n.code else n.nameEn end, n.code
+            &quot;&quot;&quot;)
+    List&lt;TreeRow&gt; findAllInTreeOrder();
+
+    List&lt;TaxonomyNode&gt; findByParentCodeOrderByNameEnAsc(String parentCode);
+
+    List&lt;TaxonomyNode&gt; findByTaxonomyRootOrderByLevelAscNameEnAsc(String taxonomyRoot);
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

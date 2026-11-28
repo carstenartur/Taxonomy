@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>GeneratedDiagnosticText.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-export</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.export</a> &gt; <span class="el_source">GeneratedDiagnosticText.java</span></div><h1>GeneratedDiagnosticText.java</h1><pre class="source lang-java linenums">package com.taxonomy.export;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.regex.Pattern;
+
+/** Display translations for recognized generated diagnostics, never for original reasons or quotes. */
+public final class GeneratedDiagnosticText {
+<span class="fc" id="L9">    private static final Map&lt;String, String&gt; EXACT = Map.ofEntries(</span>
+<span class="fc" id="L10">            Map.entry(&quot;Requirement-scoped relation proposals; not accepted into the active architecture. Confidence has not been calibrated.&quot;,</span>
+                    &quot;Beziehungsvorschläge zur Anforderung wurden noch nicht in die aktive Architektur übernommen. Die Konfidenz wurde nicht kalibriert.&quot;),
+<span class="fc" id="L12">            Map.entry(&quot;No verified required relationships available; no score-product or catalogue-seed fallback was used.&quot;,</span>
+                    &quot;Es liegen keine verifizierten erforderlichen Beziehungen vor. Es wurden keine Ersatzbeziehungen aus Bewertungsprodukten oder Katalogvorlagen erzeugt.&quot;),
+<span class="fc" id="L14">            Map.entry(&quot;RELATION_SEARCH_PARTIAL: see the analysis report for unassessed work, questions and budget limits.&quot;,</span>
+                    &quot;RELATION_SEARCH_PARTIAL: Unbewertete Arbeit, offene Fragen und Budgetgrenzen sind im Analysebericht dokumentiert.&quot;),
+<span class="fc" id="L16">            Map.entry(&quot;The underlying relational projection was marked stale when the report was generated.&quot;,</span>
+                    &quot;Die zugrunde liegende relationale Projektion war bei der Berichterzeugung als veraltet markiert.&quot;));
+<span class="fc" id="L18">    private static final Map&lt;Pattern, String&gt; FORMATS = formats();</span>
+
+    private GeneratedDiagnosticText() { }
+
+    public static String display(String value, boolean german) {
+<span class="pc bpc" id="L23" title="1 of 4 branches missed.">        if (!german || value == null) return value;</span>
+<span class="fc" id="L24">        String exact = EXACT.get(value);</span>
+<span class="fc bfc" id="L25" title="All 2 branches covered.">        if (exact != null) return exact;</span>
+<span class="fc bfc" id="L26" title="All 2 branches covered.">        for (var format : FORMATS.entrySet()) {</span>
+<span class="fc" id="L27">            var match = format.getKey().matcher(value);</span>
+<span class="fc bfc" id="L28" title="All 2 branches covered.">            if (match.matches()) return match.replaceFirst(format.getValue());</span>
+<span class="fc" id="L29">        }</span>
+<span class="fc" id="L30">        return value;</span>
+    }
+
+    /** Call only when the source explicitly identifies a deterministic fallback reason. */
+    public static String deterministicReason(String value, boolean german) {
+<span class="pc bpc" id="L35" title="1 of 4 branches missed.">        if (!german || value == null) return value;</span>
+<span class="fc bfc" id="L36" title="All 3 branches covered.">        return switch (value) {</span>
+            case &quot;The node was evaluated, scored 0%, and was therefore not pursued in this path.&quot; -&gt;
+<span class="fc" id="L38">                    &quot;Der Knoten wurde bewertet, erhielt 0 % und wurde deshalb in diesem Pfad nicht weiter verfolgt.&quot;;</span>
+            case &quot;No separate AI reason was available for this positive score. Inclusion in the report follows only from the stored value and taxonomy hierarchy.&quot; -&gt;
+<span class="fc" id="L40">                    &quot;Für diesen positiven Bewertungswert lag keine separate KI-Einzelbegründung vor. Die Aufnahme in den Bericht folgt ausschließlich aus dem gespeicherten Wert und der Taxonomiehierarchie.&quot;;</span>
+<span class="fc" id="L41">            default -&gt; value;</span>
+        };
+    }
+
+    private static Map&lt;Pattern, String&gt; formats() {
+<span class="fc" id="L46">        var result = new LinkedHashMap&lt;Pattern, String&gt;();</span>
+<span class="fc" id="L47">        result.put(Pattern.compile(&quot;RELATION_SEARCH_PARTIAL: (\\d+)/(\\d+) evaluation attempts; (\\d+) unfinished search batches\\. (\\d+) unassessed sources; (\\d+) pending and (\\d+) unresolved source/target searches\\.(.*)&quot;, Pattern.DOTALL),</span>
+                &quot;RELATION_SEARCH_PARTIAL: $1/$2 Bewertungsversuche; $3 nicht abgeschlossene Suchpakete. $4 unbewertete Quellen; $5 ausstehende und $6 ungeklärte Suchen nach Quell-/Zielpaaren.$7&quot;);
+<span class="fc" id="L49">        result.put(Pattern.compile(&quot;RELATION_SEARCH_PARTIAL: (\\d+)/(\\d+) evaluation attempts; (\\d+) unfinished search batches\\.(.*)&quot;, Pattern.DOTALL),</span>
+                &quot;RELATION_SEARCH_PARTIAL: $1/$2 Bewertungsversuche; $3 nicht abgeschlossene Suchpakete.$4&quot;);
+<span class="fc" id="L51">        result.put(Pattern.compile(&quot;ROOT_SOURCE_UNRESOLVED (BP|BR|CP|CI|CO|CR|IP|UA): identify a concrete required contribution below this catalogue container\\.(.*)&quot;, Pattern.DOTALL),</span>
+                &quot;ROOT_SOURCE_UNRESOLVED $1: Einen konkreten erforderlichen Beitrag unterhalb dieses Katalogcontainers bestimmen.$2&quot;);
+<span class="fc" id="L53">        result.put(Pattern.compile(&quot;SOURCE_LIMIT: (\\d+) sources remain unassessed\\.(.*)&quot;, Pattern.DOTALL),</span>
+                &quot;SOURCE_LIMIT: $1 Quellen sind noch unbewertet.$2&quot;);
+<span class="fc" id="L55">        result.put(Pattern.compile(&quot;SOURCE_ONLY: (\\d+) quoted contribution proposals retained without verified required relationships; review their open dependencies\\.(.*)&quot;, Pattern.DOTALL),</span>
+                &quot;SOURCE_ONLY: $1 zitierte Beitragsvorschläge bleiben ohne verifizierte erforderliche Beziehungen erhalten. Ihre offenen Abhängigkeiten sind zu prüfen.$2&quot;);
+<span class="fc" id="L57">        result.put(Pattern.compile(&quot;GENERIC_RELATION_CONTEXT: (\\d+) automatic relationships used a taxonomy container\\. See retained analysis evidence for context\\.(.*)&quot;, Pattern.DOTALL),</span>
+                &quot;GENERIC_RELATION_CONTEXT: $1 automatisch ermittelte Beziehungen verwendeten einen Taxonomiecontainer. Der Kontext ist in der gespeicherten Analyseevidenz dokumentiert.$2&quot;);
+<span class="fc" id="L59">        result.put(Pattern.compile(&quot;DECISIONS_PENDING: (\\d+) optional/alternative contexts remain unaccepted in structured evidence; no optional-only edge is included in the required view\\.(.*)&quot;, Pattern.DOTALL),</span>
+                &quot;DECISIONS_PENDING: $1 optionale oder alternative Kontexte sind in der strukturierten Evidenz noch nicht angenommen. Rein optionale Beziehungen sind nicht in der erforderlichen Sicht enthalten.$2&quot;);
+<span class="fc" id="L61">        result.put(Pattern.compile(&quot;NODE_LIMIT: (\\d+) relations omitted from this view; complete evidence is unchanged in the analysis report\\.(.*)&quot;, Pattern.DOTALL),</span>
+                &quot;NODE_LIMIT: $1 Beziehungen sind in dieser Sicht ausgelassen. Die vollständige Evidenz bleibt im Analysebericht unverändert.$2&quot;);
+<span class="fc" id="L63">        result.put(Pattern.compile(&quot;NODE_LIMIT: (\\d+) source contribution proposals omitted from this view; full source evidence is retained in the report\\.(.*)&quot;, Pattern.DOTALL),</span>
+                &quot;NODE_LIMIT: $1 Beitragsvorschläge von Quellen sind in dieser Sicht ausgelassen. Die vollständige Quellevidenz bleibt im Bericht erhalten.$2&quot;);
+<span class="fc" id="L65">        result.put(Pattern.compile(&quot;PARTIAL ANALYSIS / TEILANALYSE: (\\d+) unassessed question\\(s\\); missing assessments are not negative findings\\.(.*)&quot;, Pattern.DOTALL),</span>
+                &quot;PARTIAL ANALYSIS / TEILANALYSE: Offene Fragen ohne Bewertung: $1. Fehlende Bewertungen sind keine negativen Befunde.$2&quot;);
+<span class="fc" id="L67">        result.put(Pattern.compile(&quot;The analysis status is (PARTIAL|ERROR|SUCCESS|PENDING|RUNNING|CANCELLED|FAILED); the result must not be treated as complete without review\\.(.*)&quot;, Pattern.DOTALL),</span>
+                &quot;Der Analysezustand lautet $1; das Ergebnis darf nicht ohne Prüfung als vollständig behandelt werden.$2&quot;);
+<span class="fc" id="L69">        result.put(Pattern.compile(&quot;((?:[A-Z]{2}-\\d+ · )?)The product family is relevant, but none of its (\\d+) catalogued products reached the suitability threshold of (\\d+(?:\\.\\d+)?)\\.(.*)&quot;, Pattern.DOTALL),</span>
+                &quot;$1Die Produktfamilie ist relevant, aber keines ihrer $2 katalogisierten Produkte erreichte die Eignungsschwelle von $3.$4&quot;);
+<span class="fc" id="L71">        result.put(Pattern.compile(&quot;Product coverage gap for (.+) \\((.+), (\\d+(?:\\.\\d+)?)%\\): None of the (\\d+) fully evaluated catalogue products reached the suitability threshold( \\(\\d+(?:\\.\\d+)? %\\))?\\. Candidates: (.*)&quot;, Pattern.DOTALL),</span>
+                &quot;Produktabdeckungslücke für $1 ($2, $3 %): Keines der $4 vollständig bewerteten Katalogprodukte erreichte den Eignungsschwellenwert$5. Kandidaten: $6&quot;);
+<span class="fc" id="L73">        return java.util.Collections.unmodifiableMap(result);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

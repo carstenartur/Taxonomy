@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>BranchAdoptionTargets.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.service</a> &gt; <span class="el_source">BranchAdoptionTargets.java</span></div><h1>BranchAdoptionTargets.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.service;
+
+import com.taxonomy.workspace.model.UserWorkspace;
+import com.taxonomy.workspace.model.WorkspaceProvisioningStatus;
+import com.taxonomy.workspace.repository.UserWorkspaceRepository;
+import com.taxonomy.workspace.storage.DslGitRepository;
+import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
+import org.eclipse.jgit.lib.Repository;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.stereotype.Component;
+
+/** Resolve only the configured default and the exact target; lock catalogue and memberships before ref mutations. */
+@Component
+class BranchAdoptionTargets {
+    private final SystemRepositoryService catalogue;
+    private final RepositoryMembershipService memberships;
+    private final UserWorkspaceRepository workspaces;
+    private final DslGitRepositoryFactory git;
+
+    BranchAdoptionTargets(SystemRepositoryService catalogue, RepositoryMembershipService memberships,
+<span class="fc" id="L21">            UserWorkspaceRepository workspaces, DslGitRepositoryFactory git) {</span>
+<span class="fc" id="L22">        this.catalogue = catalogue;</span>
+<span class="fc" id="L23">        this.memberships = memberships;</span>
+<span class="fc" id="L24">        this.workspaces = workspaces;</span>
+<span class="fc" id="L25">        this.git = git;</span>
+<span class="fc" id="L26">    }</span>
+
+<span class="fc" id="L28">    record Target(DslGitRepository source, DslGitRepository local, String sourceBranch, UserWorkspace workspace) {</span>
+    }
+
+    void lockRepository(String id) {
+<span class="fc" id="L32">        catalogue.lock(id);</span>
+<span class="fc" id="L33">    }</span>
+
+    String defaultBranch(RepositoryContext selected) {
+<span class="fc" id="L36">        return catalogue.getDefaultBranch(selected.repositoryId());</span>
+    }
+
+    /** The selected target was read-authorized; stopping does not require upstream contribution. */
+    boolean canStop(RepositoryContext selected, WorkspaceFetchAuthority.Grant grant, String originalPrincipal) {
+<span class="fc bfc" id="L41" title="All 2 branches covered.">        if (originalPrincipal.equals(grant.principalId()))</span>
+<span class="fc" id="L42">            return true;</span>
+<span class="fc bfc" id="L43" title="All 2 branches covered.">        if (selected.workspaceId() != null)</span>
+<span class="fc" id="L44">            return false;</span>
+<span class="fc" id="L45">        var row = catalogue.lockCurrentPublicationSource(selected.repositoryId());</span>
+<span class="fc" id="L46">        memberships.lockForRefMutation(selected.repositoryId());</span>
+<span class="fc" id="L47">        return memberships.canMaintain(row, selected.username());</span>
+    }
+
+    Target lock(RepositoryContext selected, WorkspaceFetchAuthority.Grant grant) {
+<span class="fc" id="L51">        var row = catalogue.lockCurrentPublicationSource(selected.repositoryId());</span>
+<span class="fc" id="L52">        memberships.lockForRefMutation(selected.repositoryId());</span>
+<span class="pc bpc" id="L53" title="1 of 2 branches missed.">        if (!memberships.canContribute(row, selected.username()))</span>
+<span class="nc" id="L54">            throw denied();</span>
+<span class="fc" id="L55">        String source = row.getDefaultBranch();</span>
+<span class="pc bpc" id="L56" title="2 of 4 branches missed.">        if (!valid(source) || !valid(selected.branch())</span>
+<span class="fc bfc" id="L57" title="All 4 branches covered.">                || (selected.workspaceId() == null &amp;&amp; source.equals(selected.branch())))</span>
+<span class="fc" id="L58">            throw new IllegalArgumentException(&quot;A working branch distinct from the configured default is required&quot;);</span>
+<span class="fc" id="L59">        var central = git.getCentralRepository(selected.repositoryId());</span>
+<span class="fc bfc" id="L60" title="All 2 branches covered.">        if (selected.workspaceId() == null)</span>
+<span class="fc" id="L61">            return new Target(central, central, source, null);</span>
+<span class="fc" id="L62">        var workspace = workspaces.findByWorkspaceIdForUpdate(selected.workspaceId())</span>
+<span class="fc" id="L63">                .orElseThrow(BranchAdoptionTargets::denied);</span>
+<span class="pc bpc" id="L64" title="1 of 4 branches missed.">        if (!workspace.matchesOwner(selected.username(), grant.principalId()) || workspace.isShared()</span>
+<span class="pc bpc" id="L65" title="1 of 2 branches missed.">                || workspace.isArchived()</span>
+<span class="pc bpc" id="L66" title="1 of 2 branches missed.">                || !selected.repositoryId().equals(workspace.getSourceRepositoryId())</span>
+<span class="pc bpc" id="L67" title="1 of 2 branches missed.">                || workspace.getProvisioningStatus() != WorkspaceProvisioningStatus.READY)</span>
+<span class="fc" id="L68">            throw denied();</span>
+<span class="pc bpc" id="L69" title="1 of 2 branches missed.">        if (!selected.branch().equals(workspace.getCurrentBranch()))</span>
+<span class="nc" id="L70">            throw new IllegalStateException(&quot;The working copy is on a different branch&quot;);</span>
+<span class="fc" id="L71">        return new Target(central, git.openWorkspaceRepository(selected.workspaceId()), source, workspace);</span>
+    }
+
+    private static boolean valid(String branch) {
+<span class="pc bpc" id="L75" title="2 of 4 branches missed.">        return branch != null &amp;&amp; Repository.isValidRefName(&quot;refs/heads/&quot; + branch)</span>
+<span class="pc bpc" id="L76" title="1 of 2 branches missed.">                &amp;&amp; !branch.startsWith(DslGitRepository.EXTERNAL_SYNC_BRANCH_PREFIX);</span>
+    }
+
+    static AccessDeniedException denied() {
+<span class="fc" id="L80">        return new AccessDeniedException(&quot;Current branch adoption authority is required&quot;);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

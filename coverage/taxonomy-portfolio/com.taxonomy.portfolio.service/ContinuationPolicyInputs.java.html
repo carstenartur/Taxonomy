@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ContinuationPolicyInputs.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-portfolio</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.service</a> &gt; <span class="el_source">ContinuationPolicyInputs.java</span></div><h1>ContinuationPolicyInputs.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.service;
+
+import com.taxonomy.dto.AnalysisResult;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+
+/** Immutable snapshot fields consulted by continuation policy. */
+record ContinuationPolicyInputs(String status, Recovery recovery, String errorMessage, List&lt;String&gt; warnings,
+                                RelationEvidence relation, boolean modelBound) {
+<span class="fc" id="L12">    ContinuationPolicyInputs {</span>
+        // Historical warning arrays can contain null. Policy decides whether to inspect them.
+<span class="pc bpc" id="L14" title="1 of 2 branches missed.">        warnings = warnings == null ? null : Collections.unmodifiableList(new ArrayList&lt;&gt;(warnings));</span>
+<span class="fc" id="L15">    }</span>
+
+    record Recovery(String id, long version, String state, List&lt;OpenQuestion&gt; openQuestions) {
+<span class="fc" id="L18">        Recovery { openQuestions = List.copyOf(openQuestions); }</span>
+    }
+
+<span class="fc" id="L21">    record OpenQuestion(String key, String error, boolean skipped, boolean outcomeUncertain) { }</span>
+
+    record RelationEvidence(String stopReason, List&lt;Source&gt; sources, List&lt;Unfinished&gt; unfinished, List&lt;String&gt; warnings) {
+<span class="fc" id="L24">        RelationEvidence {</span>
+<span class="fc" id="L25">            sources = List.copyOf(sources);</span>
+<span class="fc" id="L26">            unfinished = List.copyOf(unfinished);</span>
+<span class="fc" id="L27">            warnings = List.copyOf(warnings);</span>
+<span class="fc" id="L28">        }</span>
+    }
+
+<span class="fc" id="L31">    record Source(String nodeId, String question) { }</span>
+
+<span class="fc" id="L33">    record Unfinished(String reason, String question) { }</span>
+
+    static ContinuationPolicyInputs from(AnalysisResult analysis) {
+<span class="fc bfc" id="L36" title="All 2 branches covered.">        if (analysis == null) return null;</span>
+<span class="fc" id="L37">        var recovery = analysis.getRecovery();</span>
+<span class="fc" id="L38">        var report = analysis.getRelationSearchReport();</span>
+<span class="fc" id="L39">        return new ContinuationPolicyInputs(analysis.getStatus(),</span>
+<span class="fc bfc" id="L40" title="All 2 branches covered.">                recovery == null ? null : new Recovery(recovery.id(), recovery.version(), recovery.state(),</span>
+<span class="fc" id="L41">                        recovery.openQuestions().stream().map(question -&gt; new OpenQuestion(</span>
+<span class="fc" id="L42">                                question.key(), question.error(), question.skipped(), question.outcomeUncertain())).toList()),</span>
+<span class="fc" id="L43">                analysis.getErrorMessage(), analysis.getWarnings(),</span>
+<span class="fc bfc" id="L44" title="All 2 branches covered.">                report == null ? null : new RelationEvidence(report.stopReason(),</span>
+<span class="fc" id="L45">                        report.sources().stream().map(source -&gt; new Source(</span>
+<span class="fc bfc" id="L46" title="All 2 branches covered.">                                source.node() == null ? null : source.node().id(), source.question())).toList(),</span>
+<span class="fc" id="L47">                        report.result().unfinished().stream().map(work -&gt; new Unfinished(work.reason(), work.question())).toList(),</span>
+<span class="fc" id="L48">                        report.warnings()),</span>
+<span class="fc bfc" id="L49" title="All 2 branches covered.">                analysis.getModelBinding() != null);</span>
+    }
+
+    /** Conservative accounting for strings, record headers, list storage and references. */
+    long retainedBytes() {
+<span class="fc" id="L54">        long bytes = 128L + stringBytes(status) + stringBytes(errorMessage) + stringsBytes(warnings);</span>
+<span class="fc bfc" id="L55" title="All 2 branches covered.">        if (recovery != null) {</span>
+<span class="fc" id="L56">            bytes += 192L + stringBytes(recovery.id()) + stringBytes(recovery.state());</span>
+<span class="fc bfc" id="L57" title="All 2 branches covered.">            for (var question : recovery.openQuestions()) {</span>
+<span class="fc" id="L58">                bytes += 80L + stringBytes(question.key()) + stringBytes(question.error());</span>
+<span class="fc" id="L59">            }</span>
+        }
+<span class="fc bfc" id="L61" title="All 2 branches covered.">        if (relation != null) {</span>
+<span class="fc" id="L62">            bytes += 320L + stringBytes(relation.stopReason()) + stringsBytes(relation.warnings());</span>
+<span class="fc bfc" id="L63" title="All 2 branches covered.">            for (var source : relation.sources()) {</span>
+<span class="fc" id="L64">                bytes += 80L + stringBytes(source.nodeId()) + stringBytes(source.question());</span>
+<span class="fc" id="L65">            }</span>
+<span class="fc bfc" id="L66" title="All 2 branches covered.">            for (var work : relation.unfinished()) {</span>
+<span class="fc" id="L67">                bytes += 80L + stringBytes(work.reason()) + stringBytes(work.question());</span>
+<span class="fc" id="L68">            }</span>
+        }
+<span class="fc" id="L70">        return bytes;</span>
+    }
+
+    private static long stringsBytes(List&lt;String&gt; strings) {
+<span class="pc bpc" id="L74" title="1 of 2 branches missed.">        if (strings == null) return 0;</span>
+<span class="fc" id="L75">        long bytes = 128L;</span>
+<span class="fc bfc" id="L76" title="All 2 branches covered.">        for (String value : strings) bytes += 16L + stringBytes(value);</span>
+<span class="fc" id="L77">        return bytes;</span>
+    }
+
+    static long stringBytes(String value) {
+<span class="fc bfc" id="L81" title="All 2 branches covered.">        return value == null ? 0 : 64L + 2L * value.length();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

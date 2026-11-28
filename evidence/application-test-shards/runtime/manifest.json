@@ -1,0 +1,382 @@
+{
+  "schemaVersion": 1,
+  "shard": "runtime",
+  "commit": "bb3733c0cddd706a0b536c2c66a2bd98a03935d9",
+  "sourceTree": "8200951c1aa7eb1a2a8fa07e1ce6c610c9d5b201",
+  "buildId": "46110305090.1.runtime",
+  "reports": [
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.LlmMockScoringTests.xml",
+      "className": "com.taxonomy.LlmMockScoringTests",
+      "sha256": "d775e3d2a41d5fa35a198d60c012664740ffc9b5445bf175160cae37a879c957",
+      "tests": 2,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.backup.restore.RestoreIdentityImportTest.xml",
+      "className": "com.taxonomy.backup.restore.RestoreIdentityImportTest",
+      "sha256": "f7d9ce6846c5a1c0d2d4ec6a28b163f4eec899c2321bc38a06526ffef895219c",
+      "tests": 6,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.backup.restore.WorkspaceEditorRestoreRuntimeTest.xml",
+      "className": "com.taxonomy.backup.restore.WorkspaceEditorRestoreRuntimeTest",
+      "sha256": "83d2b577fb75a35522a9ae815707d7a80d12a73b512d6158d97a2819c8b117c8",
+      "tests": 10,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.backup.restore.WorkspaceRestoreImporterTest.xml",
+      "className": "com.taxonomy.backup.restore.WorkspaceRestoreImporterTest",
+      "sha256": "5d517ef964c311613d125de8201e89a2913de84fe8e6889ed9a95804bb525382",
+      "tests": 24,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.backup.runtime.BackupArchiveValidationTest.xml",
+      "className": "com.taxonomy.backup.runtime.BackupArchiveValidationTest",
+      "sha256": "866147c8d776be3f5a0c9d020df6edbad49f4f6ee3f5cf7eae765afcee10904b",
+      "tests": 21,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.composition.analysis.artemis.WorkerRuntimeFootprintTest.xml",
+      "className": "com.taxonomy.composition.analysis.artemis.WorkerRuntimeFootprintTest",
+      "sha256": "c76ec662ffe7ef181259c0c7a2c12005d973d75f8ab59d1656d3a0951efba8fc",
+      "tests": 1,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.ui.DatabaseSetupBrowserTest.xml",
+      "className": "com.taxonomy.ui.DatabaseSetupBrowserTest",
+      "sha256": "9210b7e823d9cce99402a8d87364e5e4c3de89cd4d88fcaacff138fbd68214ec",
+      "tests": 5,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/failsafe-reports/TEST-com.taxonomy.BackupExportBrowserIT.xml",
+      "className": "com.taxonomy.BackupExportBrowserIT",
+      "sha256": "5afce3daf4afac382a9237d9169e38f8f01ba47ec88b46221bca9d1c97b93f87",
+      "tests": 4,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/failsafe-reports/TEST-com.taxonomy.DiagnosticsContainerIT.xml",
+      "className": "com.taxonomy.DiagnosticsContainerIT",
+      "sha256": "d05564e4a0930d13d1ad1d702d8250179342b49a634331f72e2a517d3a7ca9b9",
+      "tests": 18,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/failsafe-reports/TEST-com.taxonomy.DiagnosticsPostgresContainerIT.xml",
+      "className": "com.taxonomy.DiagnosticsPostgresContainerIT",
+      "sha256": "60c374857ac33132de7c2a3b5886788ed285ffd411e7db668362f359437f2078",
+      "tests": 31,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/failsafe-reports/TEST-com.taxonomy.DiagnosticsWithApiKeyContainerIT.xml",
+      "className": "com.taxonomy.DiagnosticsWithApiKeyContainerIT",
+      "sha256": "04675c837b8b6c57b975cb3b8988bf3b333821a7430cd5a67be32714e23072df",
+      "tests": 5,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/failsafe-reports/TEST-com.taxonomy.KeycloakSecurityContainerIT.xml",
+      "className": "com.taxonomy.KeycloakSecurityContainerIT",
+      "sha256": "d7a15a72b341ee30559076c6091ca2fc4a7dfb35cdeaf85ea1f3f58374f4fc15",
+      "tests": 7,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/failsafe-reports/TEST-com.taxonomy.LocalOnnxPipelineIT.xml",
+      "className": "com.taxonomy.LocalOnnxPipelineIT",
+      "sha256": "8f7854e0aedd629a1380b9df0d0c1a800437c82d9ade2b86c8f20d134cd09e4a",
+      "tests": 9,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/failsafe-reports/TEST-com.taxonomy.ObservabilityContainerIT.xml",
+      "className": "com.taxonomy.ObservabilityContainerIT",
+      "sha256": "4e99bc1c74939baf93cfaa4f796a5df11db311706153a08fa0ad6bb6f9277cc0",
+      "tests": 1,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/failsafe-reports/TEST-com.taxonomy.OnnxSeleniumIT.xml",
+      "className": "com.taxonomy.OnnxSeleniumIT",
+      "sha256": "a20fd3207c0b0ff4992c6ac1002aca1fca47a0b398673a9152c3f0c6fc50e35e",
+      "tests": 9,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/failsafe-reports/TEST-com.taxonomy.PortfolioAnalysisUiDiagnosticIT.xml",
+      "className": "com.taxonomy.PortfolioAnalysisUiDiagnosticIT",
+      "sha256": "b94f81f546e89fdc150bbb70005f09fbda47d88143865498f98076cc8e91456c",
+      "tests": 1,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/failsafe-reports/TEST-com.taxonomy.TaxonomyLargeResultBudgetIT.xml",
+      "className": "com.taxonomy.TaxonomyLargeResultBudgetIT",
+      "sha256": "c233fcdf6b239fff5b21858b8fc15d60f21a4a3d3632d44baf8a4c3ce4624c68",
+      "tests": 7,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/failsafe-reports/TEST-com.taxonomy.backup.recovery.NativeInstallationPostgresRecoveryIT.xml",
+      "className": "com.taxonomy.backup.recovery.NativeInstallationPostgresRecoveryIT",
+      "sha256": "d0410593f0ab9dffe49d9fd7da32f9a1e52b557e7e55713fdeed31ff2b87b6a8",
+      "tests": 3,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/failsafe-reports/TEST-com.taxonomy.backup.runtime.AnalysisRecordsExportIT.xml",
+      "className": "com.taxonomy.backup.runtime.AnalysisRecordsExportIT",
+      "sha256": "d0df7a9c4fa6f09dfdb683a7f8b983923e81be599e3e4d7710160297a50c55cf",
+      "tests": 71,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/failsafe-reports/TEST-com.taxonomy.backup.runtime.PortfolioRecordsExportIT.xml",
+      "className": "com.taxonomy.backup.runtime.PortfolioRecordsExportIT",
+      "sha256": "4ec6089af4c46b38c642d0be8ab63e014ec0d9c701e1063cbf80df40cda99075",
+      "tests": 53,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/failsafe-reports/TEST-com.taxonomy.backup.runtime.ProductionCurrentBackupIT.xml",
+      "className": "com.taxonomy.backup.runtime.ProductionCurrentBackupIT",
+      "sha256": "384ca18a3e0ff2c6040d7d237976ed4933bfd147ddad97f33d1a8f8ccd6bc2a3",
+      "tests": 3,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/failsafe-reports/TEST-com.taxonomy.backup.runtime.ProductionHistoryBackupIT.xml",
+      "className": "com.taxonomy.backup.runtime.ProductionHistoryBackupIT",
+      "sha256": "cc0d7289a00ea945040147194c75ef937a80f13a01952838136f50e011256683",
+      "tests": 3,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/failsafe-reports/TEST-com.taxonomy.backup.runtime.WorkspaceRecordsExportIT.xml",
+      "className": "com.taxonomy.backup.runtime.WorkspaceRecordsExportIT",
+      "sha256": "c081687974b92b6dadc1995443bb56267f1b2db364f075452ab8c8d448c59445",
+      "tests": 25,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/failsafe-reports/TEST-com.taxonomy.composition.persistence.RelationHypothesisTenantMigrationPostgresIT.xml",
+      "className": "com.taxonomy.composition.persistence.RelationHypothesisTenantMigrationPostgresIT",
+      "sha256": "9988748cccaf15e851f2483d26beca39727acc03f82a5847d043de76ca051367",
+      "tests": 9,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/failsafe-reports/TEST-com.taxonomy.composition.persistence.RequirementTenantPostgresMigrationIT.xml",
+      "className": "com.taxonomy.composition.persistence.RequirementTenantPostgresMigrationIT",
+      "sha256": "2125d5d7b3f16a84c4ffc05e96089d327116a8bd8833e1e75d36641b283fdcc9",
+      "tests": 1,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/failsafe-reports/TEST-com.taxonomy.composition.persistence.TaxonomySchemaPostgresMigrationIT.xml",
+      "className": "com.taxonomy.composition.persistence.TaxonomySchemaPostgresMigrationIT",
+      "sha256": "ce59940af5f0c03e1a86961f93aa055bdc1b0fd020325f6147243c7d5e57c344",
+      "tests": 15,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    }
+  ],
+  "coverage": {
+    "path": "coverage.exec",
+    "sha256": "cd5dc74cd9ff40a82371af6e1921167c244ea8a610032e8ddf97a69b2567e445"
+  },
+  "timing": {
+    "durationSeconds": 1471.688,
+    "suites": [
+      {
+        "className": "com.taxonomy.composition.analysis.artemis.WorkerRuntimeFootprintTest",
+        "durationSeconds": 190.289
+      },
+      {
+        "className": "com.taxonomy.backup.recovery.NativeInstallationPostgresRecoveryIT",
+        "durationSeconds": 173.522
+      },
+      {
+        "className": "com.taxonomy.KeycloakSecurityContainerIT",
+        "durationSeconds": 112.499
+      },
+      {
+        "className": "com.taxonomy.LocalOnnxPipelineIT",
+        "durationSeconds": 100.606
+      },
+      {
+        "className": "com.taxonomy.OnnxSeleniumIT",
+        "durationSeconds": 98.097
+      },
+      {
+        "className": "com.taxonomy.DiagnosticsPostgresContainerIT",
+        "durationSeconds": 81.956
+      },
+      {
+        "className": "com.taxonomy.ObservabilityContainerIT",
+        "durationSeconds": 80.588
+      },
+      {
+        "className": "com.taxonomy.PortfolioAnalysisUiDiagnosticIT",
+        "durationSeconds": 78.897
+      },
+      {
+        "className": "com.taxonomy.ui.DatabaseSetupBrowserTest",
+        "durationSeconds": 76.292
+      },
+      {
+        "className": "com.taxonomy.TaxonomyLargeResultBudgetIT",
+        "durationSeconds": 50.532
+      },
+      {
+        "className": "com.taxonomy.DiagnosticsContainerIT",
+        "durationSeconds": 49.287
+      },
+      {
+        "className": "com.taxonomy.backup.restore.WorkspaceEditorRestoreRuntimeTest",
+        "durationSeconds": 41.828
+      },
+      {
+        "className": "com.taxonomy.backup.runtime.PortfolioRecordsExportIT",
+        "durationSeconds": 39.33
+      },
+      {
+        "className": "com.taxonomy.composition.persistence.TaxonomySchemaPostgresMigrationIT",
+        "durationSeconds": 38.467
+      },
+      {
+        "className": "com.taxonomy.LlmMockScoringTests",
+        "durationSeconds": 35.542
+      },
+      {
+        "className": "com.taxonomy.backup.restore.WorkspaceRestoreImporterTest",
+        "durationSeconds": 35.073
+      },
+      {
+        "className": "com.taxonomy.DiagnosticsWithApiKeyContainerIT",
+        "durationSeconds": 32.774
+      },
+      {
+        "className": "com.taxonomy.backup.runtime.AnalysisRecordsExportIT",
+        "durationSeconds": 31.424
+      },
+      {
+        "className": "com.taxonomy.backup.runtime.BackupArchiveValidationTest",
+        "durationSeconds": 30.588
+      },
+      {
+        "className": "com.taxonomy.backup.runtime.ProductionCurrentBackupIT",
+        "durationSeconds": 26.907
+      },
+      {
+        "className": "com.taxonomy.BackupExportBrowserIT",
+        "durationSeconds": 13.592
+      },
+      {
+        "className": "com.taxonomy.backup.runtime.ProductionHistoryBackupIT",
+        "durationSeconds": 13.539
+      },
+      {
+        "className": "com.taxonomy.backup.restore.RestoreIdentityImportTest",
+        "durationSeconds": 13.191
+      },
+      {
+        "className": "com.taxonomy.backup.runtime.WorkspaceRecordsExportIT",
+        "durationSeconds": 12.248
+      },
+      {
+        "className": "com.taxonomy.composition.persistence.RelationHypothesisTenantMigrationPostgresIT",
+        "durationSeconds": 10.969
+      },
+      {
+        "className": "com.taxonomy.composition.persistence.RequirementTenantPostgresMigrationIT",
+        "durationSeconds": 3.651
+      }
+    ]
+  }
+}

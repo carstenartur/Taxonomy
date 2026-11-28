@@ -1,0 +1,646 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchitecturePdfRenderer.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-export</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.export</a> &gt; <span class="el_source">ArchitecturePdfRenderer.java</span></div><h1>ArchitecturePdfRenderer.java</h1><pre class="source lang-java linenums">package com.taxonomy.export;
+
+import com.taxonomy.diagram.DiagramCanonicalEvidence;
+import com.taxonomy.diagram.DiagramScene;
+import com.taxonomy.diagram.DiagramSceneEdge;
+import com.taxonomy.diagram.DiagramSceneNode;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDDocumentInformation;
+import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.PDPageContentStream;
+import org.apache.pdfbox.pdmodel.common.PDRectangle;
+import org.apache.pdfbox.pdmodel.font.PDFont;
+import org.apache.pdfbox.pdmodel.interactive.action.PDActionGoTo;
+import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotationLink;
+import org.apache.pdfbox.pdmodel.interactive.annotation.PDBorderStyleDictionary;
+import org.apache.pdfbox.pdmodel.interactive.documentnavigation.destination.PDPageFitDestination;
+
+import java.awt.Color;
+import java.awt.geom.Rectangle2D;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+import java.util.function.Consumer;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+
+/** Draws a vector PDF directly from the same deterministic scene returned to other export adapters. */
+public final class ArchitecturePdfRenderer {
+
+    private final ExportThemeProvider themes;
+
+<span class="fc" id="L37">    public ArchitecturePdfRenderer() { this(ExportThemeProvider.defaults()); }</span>
+
+<span class="fc" id="L39">    public ArchitecturePdfRenderer(ExportThemeProvider themes) {</span>
+<span class="fc" id="L40">        this.themes = java.util.Objects.requireNonNull(themes, &quot;themes&quot;);</span>
+<span class="fc" id="L41">    }</span>
+
+    private static final float PAGE_MARGIN = PdfDiagramPages.PAGE_MARGIN;
+    private static final float HEADER_HEIGHT = PdfDiagramPages.HEADER_HEIGHT;
+    private static final int MAX_PAGE_REFERENCES = 3;
+    private static final float REFERENCE_ROW_HEIGHT = 32;
+
+<span class="fc" id="L48">    private record Fonts(PDFont regular, PDFont bold) { }</span>
+
+<span class="fc" id="L50">    private record Decoration(String title, List&lt;String&gt; header, List&lt;String&gt; footer,</span>
+                              List&lt;String&gt; warnings, DiagramCanonicalEvidence canonical) { }
+
+    /** Neutral metadata required to decorate a persisted architecture snapshot export. */
+    public record SnapshotMetadata(
+            String projectKey,
+            String requirementKey,
+            String snapshotId,
+            String provider,
+            String branchName,
+            String commitSha,
+            List&lt;String&gt; warnings,
+            String analysisStatus) {
+
+        public SnapshotMetadata(String projectKey, String requirementKey, String snapshotId,
+                                String provider, String branchName, String commitSha, List&lt;String&gt; warnings) {
+<span class="fc" id="L66">            this(projectKey, requirementKey, snapshotId, provider, branchName, commitSha, warnings, null);</span>
+<span class="fc" id="L67">        }</span>
+
+<span class="fc" id="L69">        public SnapshotMetadata {</span>
+<span class="pc bpc" id="L70" title="1 of 2 branches missed.">            warnings = warnings == null ? List.of() : List.copyOf(warnings);</span>
+<span class="fc" id="L71">        }</span>
+    }
+
+    public byte[] render(DiagramScene scene, SnapshotMetadata metadata) {
+<span class="fc" id="L75">        return render(scene, metadata, Map.of());</span>
+    }
+
+    public byte[] render(DiagramScene scene, SnapshotMetadata metadata, Map&lt;String, String&gt; nodeReasons) {
+<span class="fc" id="L79">        return render(scene, metadata, nodeReasons, Map.of());</span>
+    }
+
+    public byte[] render(DiagramScene scene, SnapshotMetadata metadata, Map&lt;String, String&gt; nodeReasons,
+                         Map&lt;String, Map&lt;String, String&gt;&gt; relationReasons) {
+<span class="fc" id="L84">        return render(scene, metadata, nodeReasons, relationReasons, Locale.ENGLISH);</span>
+    }
+
+    public byte[] render(DiagramScene scene, SnapshotMetadata metadata, Map&lt;String, String&gt; nodeReasons,
+                         Map&lt;String, Map&lt;String, String&gt;&gt; relationReasons, Locale locale) {
+<span class="fc" id="L89">        requireScene(scene);</span>
+<span class="fc" id="L90">        var language = DiagramLanguage.from(locale);</span>
+<span class="pc bpc" id="L91" title="1 of 2 branches missed.">        if (metadata == null) throw new IllegalArgumentException(&quot;Architecture snapshot metadata is required&quot;);</span>
+<span class="fc" id="L92">        var context = DiagramExportContext.snapshot(metadata, locale);</span>
+<span class="fc" id="L93">        var decoration = new Decoration(DiagramExportContext.title(scene.title(), locale), context.header(), List.of(language.text(</span>
+                &quot;Generated from persisted architecture snapshot; no page screenshot and no LLM re-analysis.&quot;,
+                &quot;Aus dem gespeicherten Architektursnapshot erzeugt. Keine Bildschirmaufnahme und keine erneute KI-Analyse.&quot;)),
+<span class="fc" id="L96">                context.warnings(), null);</span>
+<span class="fc" id="L97">        return renderScene(scene, document -&gt; configureMetadata(document, scene, metadata, language),</span>
+                decoration, nodeReasons, relationReasons, language);
+    }
+
+    /** Renders a supplied scene with external source identification. */
+    public byte[] render(DiagramScene scene, String provenance) {
+<span class="fc" id="L103">        requireScene(scene);</span>
+<span class="fc" id="L104">        return renderScene(scene, document -&gt; configureSource(document, scene, provenance),</span>
+<span class="fc" id="L105">                new Decoration(scene.title(), safe(provenance).lines().limit(3).toList(),</span>
+<span class="fc" id="L106">                        List.of(&quot;Derived server layout · Git-authoritative architecture&quot;), List.of(), null),</span>
+<span class="fc" id="L107">                Map.of(), Map.of(), DiagramLanguage.ENGLISH);</span>
+    }
+
+    /** Canonical editor exports carry checkpoint fields independently of snapshot scores. */
+    public byte[] renderCanonical(DiagramScene scene, String provenance, DiagramCanonicalEvidence evidence) {
+<span class="nc" id="L112">        return renderCanonical(scene, provenance, evidence, Locale.ENGLISH);</span>
+    }
+
+    public byte[] renderCanonical(DiagramScene scene, String provenance, DiagramCanonicalEvidence evidence, Locale locale) {
+<span class="fc" id="L116">        var language = DiagramLanguage.from(locale);</span>
+<span class="fc" id="L117">        requireScene(scene);</span>
+<span class="fc" id="L118">        Objects.requireNonNull(evidence, &quot;canonical evidence&quot;);</span>
+<span class="fc" id="L119">        var context = DiagramExportContext.canonical(provenance, evidence, locale);</span>
+<span class="fc" id="L120">        String title = DiagramExportContext.title(scene.title(), locale);</span>
+<span class="fc" id="L121">        return renderScene(scene, document -&gt; configureSource(document, title, provenance),</span>
+<span class="fc" id="L122">                new Decoration(title, context.header(), List.of(language.text(&quot;Derived server layout · Canonical architecture&quot;, &quot;Serverlayout · Kanonische Architektur&quot;)),</span>
+<span class="fc" id="L123">                        context.warnings(), evidence), Map.of(), Map.of(), language);</span>
+    }
+
+    /** Supplied working data has no verified Git or persisted-snapshot authority. */
+    public byte[] renderWorkingView(DiagramScene scene) {
+<span class="fc" id="L128">        return renderWorkingView(scene, Map.of());</span>
+    }
+
+    public byte[] renderWorkingView(DiagramScene scene, Map&lt;String, String&gt; nodeReasons) {
+<span class="fc" id="L132">        return renderWorkingView(scene, nodeReasons, Map.of());</span>
+    }
+
+    public byte[] renderWorkingView(DiagramScene scene, Map&lt;String, String&gt; nodeReasons,
+                                    Map&lt;String, Map&lt;String, String&gt;&gt; relationReasons) {
+<span class="fc" id="L137">        return renderWorkingView(scene, nodeReasons, relationReasons, Locale.ENGLISH);</span>
+    }
+
+    public byte[] renderWorkingView(DiagramScene scene, Map&lt;String, String&gt; nodeReasons,
+                                    Map&lt;String, Map&lt;String, String&gt;&gt; relationReasons, Locale locale) {
+<span class="fc" id="L142">        requireScene(scene);</span>
+<span class="fc" id="L143">        var language = DiagramLanguage.from(locale);</span>
+<span class="fc" id="L144">        String source = language.text(&quot;Client-provided working view&quot;, &quot;Vom Client übermittelte Arbeitsansicht&quot;);</span>
+<span class="fc" id="L145">        return renderScene(scene, document -&gt; configureSource(document, scene, source),</span>
+<span class="fc" id="L146">                new Decoration(language.text(&quot;Requirement architecture - working view&quot;, &quot;Anforderungsarchitektur - Arbeitsansicht&quot;),</span>
+<span class="fc" id="L147">                        List.of(language.text(&quot;Client-provided working view; source authority has not been verified.&quot;,</span>
+<span class="fc" id="L148">                                &quot;Vom Client übermittelte Arbeitsansicht. Die Herkunft ist ungeprüft.&quot;), scene.title()),</span>
+<span class="fc" id="L149">                        List.of(language.text(&quot;Generated server layout | Client-provided working view | No re-analysis or persistence&quot;,</span>
+                                &quot;Serverlayout | Vom Client übermittelte Arbeitsansicht | Keine erneute Analyse oder Speicherung&quot;)),
+<span class="fc" id="L151">                        List.of(), null), nodeReasons, relationReasons, language);</span>
+    }
+
+    /** A server-run assessment may be exported before it has been adopted as a project snapshot. */
+    public byte[] renderAnalysis(DiagramScene scene, AnalysisDiagramSource source, Map&lt;String, String&gt; reasons, Locale locale) {
+<span class="fc" id="L156">        requireScene(scene);</span>
+<span class="fc" id="L157">        var language = DiagramLanguage.from(locale);</span>
+<span class="fc" id="L158">        String origin = language.text(&quot;Server-side requirement analysis&quot;, &quot;Serverseitige Anforderungsanalyse&quot;);</span>
+<span class="fc" id="L159">        var header = new ArrayList&lt;String&gt;();</span>
+<span class="fc" id="L160">        header.add(language.text(&quot;Analysis status: &quot;, &quot;Analysestatus: &quot;) + safe(source.status()));</span>
+<span class="pc bpc" id="L161" title="1 of 2 branches missed.">        if (source.provider() != null) header.add(language.text(&quot;Provider: &quot;, &quot;Anbieter: &quot;) + source.provider());</span>
+<span class="pc bpc" id="L162" title="1 of 2 branches missed.">        if (source.branch() != null) header.add(&quot;Branch: &quot; + source.branch() + &quot; · Commit: &quot; + abbreviated(source.commit()));</span>
+<span class="fc" id="L163">        return renderScene(scene, document -&gt; configureSource(document, scene, origin),</span>
+<span class="fc" id="L164">                new Decoration(scene.title(), header, List.of(origin), List.of(), null), reasons, Map.of(), language);</span>
+    }
+
+    private static void requireScene(DiagramScene scene) {
+<span class="pc bpc" id="L168" title="1 of 4 branches missed.">        if (scene == null || scene.isEmpty()) throw new IllegalArgumentException(&quot;Architecture scene must not be empty&quot;);</span>
+<span class="fc" id="L169">    }</span>
+
+    private static void configureSource(PDDocument document, DiagramScene scene, String provenance) {
+<span class="fc" id="L172">        configureSource(document, scene.title(), provenance);</span>
+<span class="fc" id="L173">    }</span>
+
+    private static void configureSource(PDDocument document, String title, String provenance) {
+<span class="fc" id="L176">        var information = new PDDocumentInformation();</span>
+<span class="fc" id="L177">        information.setTitle(title);</span>
+<span class="fc" id="L178">        information.setSubject(provenance);</span>
+<span class="fc" id="L179">        information.setCreator(&quot;Taxonomy server-side vector renderer&quot;);</span>
+<span class="fc" id="L180">        document.setDocumentInformation(information);</span>
+<span class="fc" id="L181">    }</span>
+
+    private byte[] renderScene(DiagramScene scene, Consumer&lt;PDDocument&gt; metadata, Decoration decoration,
+                               Map&lt;String, String&gt; nodeReasons, Map&lt;String, Map&lt;String, String&gt;&gt; relationReasons,
+                               DiagramLanguage language) {
+<span class="fc" id="L186">        ExportTheme theme = Objects.requireNonNull(themes.current(), &quot;export theme&quot;);</span>
+<span class="fc" id="L187">        PdfDiagramPages.Plan plan = PdfDiagramPages.plan(scene);</span>
+<span class="fc" id="L188">        try (PDDocument document = new PDDocument();</span>
+<span class="fc" id="L189">             ByteArrayOutputStream output = new ByteArrayOutputStream()) {</span>
+<span class="fc" id="L190">            var fonts = new Fonts(PdfDiagramText.loadFont(document, false), PdfDiagramText.loadFont(document, true));</span>
+<span class="fc" id="L191">            metadata.accept(document);</span>
+<span class="fc" id="L192">            document.getDocumentCatalog().setLanguage(language.tag());</span>
+<span class="fc" id="L193">            float width = PdfDiagramPages.PAGE_WIDTH;</span>
+<span class="fc" id="L194">            float height = PdfDiagramPages.PAGE_HEIGHT;</span>
+<span class="fc" id="L195">            var diagramPages = plan.panels().stream().map(panel -&gt; new PDPage(new PDRectangle(width, height))).toList();</span>
+<span class="fc" id="L196">            diagramPages.forEach(document::addPage);</span>
+<span class="pc bpc" id="L197" title="1 of 2 branches missed.">            PDPage relationInventory = drawInventory(document, scene, plan.nodePages(), nodeReasons == null ? Map.of() : nodeReasons,</span>
+<span class="pc bpc" id="L198" title="1 of 2 branches missed.">                    relationReasons == null ? Map.of() : relationReasons, theme, language, fonts, decoration);</span>
+<span class="fc" id="L199">            var nodes = scene.nodes().stream().collect(Collectors.toMap(DiagramSceneNode::id, Function.identity()));</span>
+<span class="fc bfc" id="L200" title="All 2 branches covered.">            for (int index = 0; index &lt; plan.panels().size(); index++) {</span>
+<span class="fc" id="L201">                var panel = plan.panels().get(index);</span>
+<span class="fc" id="L202">                DiagramScene part = panel.scene();</span>
+<span class="fc" id="L203">                PDPage page = diagramPages.get(index);</span>
+<span class="fc" id="L204">                int referenceCount = panel.crossPageRelationships().size();</span>
+<span class="fc bfc" id="L205" title="All 2 branches covered.">                float referenceHeight = referenceCount == 0 ? 0</span>
+<span class="fc" id="L206">                        : 42 + REFERENCE_ROW_HEIGHT * Math.min(referenceCount, MAX_PAGE_REFERENCES);</span>
+<span class="fc" id="L207">                float scale = (float) Math.min(1.0, Math.min(</span>
+<span class="fc" id="L208">                        (width - 2 * PAGE_MARGIN) / Math.max(1.0, part.width()),</span>
+<span class="fc" id="L209">                        (height - 2 * PAGE_MARGIN - HEADER_HEIGHT - referenceHeight) / Math.max(1.0, part.height())));</span>
+<span class="pc bpc" id="L210" title="1 of 2 branches missed.">                if (scale &lt; 0.8f) throw new IllegalArgumentException(&quot;PDF panel is not readable&quot;);</span>
+<span class="fc" id="L211">                float diagramTop = height - PAGE_MARGIN - HEADER_HEIGHT;</span>
+<span class="fc" id="L212">                try (PDPageContentStream stream = new PDPageContentStream(document, page)) {</span>
+<span class="fc" id="L213">                    background(stream, theme, width, height);</span>
+<span class="fc" id="L214">                    drawHeader(stream, decoration, width, height, theme, fonts);</span>
+<span class="fc" id="L215">                    drawEdges(stream, part, PAGE_MARGIN, diagramTop, scale, theme, language, fonts, decoration.canonical());</span>
+<span class="fc bfc" id="L216" title="All 2 branches covered.">                    drawNodes(stream, part, PAGE_MARGIN, diagramTop, scale, theme, language, fonts, decoration.canonical() != null);</span>
+<span class="fc" id="L217">                    drawPageReferences(stream, page, panel, plan.nodePages(), diagramPages, relationInventory,</span>
+<span class="fc" id="L218">                            nodes, diagramTop - (float) part.height() * scale, width, theme, fonts, language, decoration.canonical());</span>
+<span class="fc" id="L219">                    drawFooter(stream, decoration, width, theme, language, fonts.regular());</span>
+<span class="fc bfc" id="L220" title="All 2 branches covered.">                    if (plan.panels().size() &gt; 1) {</span>
+<span class="fc" id="L221">                        text(stream, theme, fonts.regular(), 8, PAGE_MARGIN, 30,</span>
+<span class="fc" id="L222">                                language.text(&quot;Diagram D&quot;, &quot;Diagramm D&quot;) + (index + 1) + &quot;/&quot; + plan.panels().size()</span>
+<span class="fc" id="L223">                                        + language.text(&quot; | Cross-page relationships: &quot;, &quot; | Seitenübergreifende Beziehungen: &quot;) + panel.crossPageRelationships().size()</span>
+<span class="fc" id="L224">                                        + language.text(&quot; | Complete endpoints and diagram references: see export inventory.&quot;, &quot; | Endpunkte und Diagrammverweise siehe Exportinventar.&quot;));</span>
+                    }
+                }
+            }
+<span class="fc" id="L228">            document.save(output);</span>
+<span class="fc" id="L229">            return output.toByteArray();</span>
+<span class="nc" id="L230">        } catch (IOException error) {</span>
+<span class="nc" id="L231">            throw new IllegalStateException(&quot;Unable to render architecture PDF&quot;, error);</span>
+        }
+    }
+
+    private static void drawPageReferences(PDPageContentStream stream, PDPage page, PdfDiagramPages.Panel panel,
+            Map&lt;String, Integer&gt; nodePages, List&lt;PDPage&gt; pages, PDPage relationInventory,
+            Map&lt;String, DiagramSceneNode&gt; nodes, float diagramBottom, float width, ExportTheme theme, Fonts fonts,
+            DiagramLanguage language, DiagramCanonicalEvidence canonical) throws IOException {
+<span class="fc bfc" id="L239" title="All 2 branches covered.">        if (panel.crossPageRelationships().isEmpty()) return;</span>
+<span class="fc" id="L240">        float y = diagramBottom - 13;</span>
+<span class="fc" id="L241">        text(stream, theme, fonts.bold(), 12, PAGE_MARGIN, y,</span>
+<span class="fc" id="L242">                language.text(&quot;Connections to other pages&quot;, &quot;Verbindungen zu anderen Seiten&quot;));</span>
+<span class="fc" id="L243">        String inventoryLabel = language.text(&quot;Open relationship inventory&quot;, &quot;Beziehungsinventar öffnen&quot;);</span>
+<span class="fc" id="L244">        int overflow = panel.crossPageRelationships().size() - MAX_PAGE_REFERENCES;</span>
+<span class="fc bfc" id="L245" title="All 2 branches covered.">        if (overflow &gt; 0) inventoryLabel += &quot; (+&quot; + overflow + &quot;)&quot;;</span>
+<span class="fc" id="L246">        float inventoryLabelWidth = PdfDiagramText.width(fonts.bold(), 10, inventoryLabel);</span>
+<span class="fc" id="L247">        float inventoryX = width - PAGE_MARGIN - inventoryLabelWidth;</span>
+<span class="fc" id="L248">        drawLinkText(stream, page, relationInventory, List.of(inventoryLabel), theme, fonts.bold(), 10, inventoryX, y);</span>
+
+<span class="fc" id="L250">        float center = width / 2;</span>
+<span class="fc" id="L251">        float arrowHalfWidth = 90;</span>
+<span class="fc" id="L252">        float endpointWidth = center - arrowHalfWidth - PAGE_MARGIN - 14;</span>
+<span class="fc bfc" id="L253" title="All 2 branches covered.">        for (var edge : panel.crossPageRelationships().stream().limit(MAX_PAGE_REFERENCES).toList()) {</span>
+<span class="fc" id="L254">            y -= REFERENCE_ROW_HEIGHT;</span>
+<span class="fc" id="L255">            int source = nodePages.get(edge.sourceId());</span>
+<span class="fc" id="L256">            int target = nodePages.get(edge.targetId());</span>
+<span class="fc" id="L257">            drawEndpointReference(stream, page, pages.get(source - 1), source, nodes.get(edge.sourceId()), theme,</span>
+                    fonts, PAGE_MARGIN, y, endpointWidth);
+<span class="fc" id="L259">            drawEndpointReference(stream, page, pages.get(target - 1), target, nodes.get(edge.targetId()), theme,</span>
+                    fonts, center + arrowHalfWidth + 14, y, endpointWidth);
+<span class="fc bfc" id="L261" title="All 2 branches covered.">            String status = canonical == null ? DiagramPresentation.relationshipStatus(edge.metadata(), language.german())</span>
+<span class="fc" id="L262">                    : DiagramPresentation.canonicalRelationshipStatus(canonical, edge.id(), language);</span>
+<span class="fc" id="L263">            String type = PdfDiagramText.wrap(edge.relationType() + &quot; · &quot; + status,</span>
+<span class="fc" id="L264">                    fonts.bold(), 10, 2 * arrowHalfWidth, 1).getFirst();</span>
+<span class="fc" id="L265">            float typeWidth = PdfDiagramText.width(fonts.bold(), 10, type);</span>
+<span class="fc" id="L266">            text(stream, theme, fonts.bold(), 10, center - typeWidth / 2, y + 4, type);</span>
+<span class="pc bpc" id="L267" title="1 of 6 branches missed.">            boolean proposed = canonical == null ? edge.metadata() != null &amp;&amp; edge.metadata().proposed()</span>
+<span class="fc" id="L268">                    : DiagramPresentation.canonicalRelationshipProposed(canonical, edge.id());</span>
+<span class="fc" id="L269">            stream.setStrokingColor(Color.decode(theme.relationshipStroke(edge.relationType(), proposed)));</span>
+<span class="fc bfc" id="L270" title="All 2 branches covered.">            stream.setLineDashPattern(proposed ? new float[]{5, 3} : new float[]{}, 0);</span>
+<span class="fc" id="L271">            stream.setLineWidth(1);</span>
+<span class="fc" id="L272">            stream.moveTo(center - arrowHalfWidth, y - 4);</span>
+<span class="fc" id="L273">            stream.lineTo(center + arrowHalfWidth, y - 4);</span>
+<span class="fc" id="L274">            stream.stroke();</span>
+<span class="fc" id="L275">            stream.setLineDashPattern(new float[]{}, 0);</span>
+<span class="fc" id="L276">            drawArrow(stream, center - arrowHalfWidth, y - 4, center + arrowHalfWidth, y - 4, 6);</span>
+<span class="fc" id="L277">        }</span>
+<span class="fc" id="L278">    }</span>
+
+    private static void drawEndpointReference(PDPageContentStream stream, PDPage page, PDPage destination, int panel,
+            DiagramSceneNode node, ExportTheme theme, Fonts fonts, float x, float y, float maxWidth) throws IOException {
+<span class="fc" id="L282">        var labels = PdfDiagramText.wrap(node.label(), fonts.bold(), 10, maxWidth, 2);</span>
+<span class="fc" id="L283">        drawLinkText(stream, page, destination, labels, theme, fonts.bold(), 10, x, y);</span>
+<span class="fc" id="L284">        String identity = PdfDiagramText.wrap(&quot;D&quot; + panel + &quot; · &quot; + node.id(), fonts.regular(), 8, maxWidth, 1).getFirst();</span>
+<span class="fc" id="L285">        text(stream, theme, fonts.regular(), 8, x, y - labels.size() * 11, identity);</span>
+<span class="fc" id="L286">    }</span>
+
+    private static void drawLinkText(PDPageContentStream stream, PDPage page, PDPage destination, List&lt;String&gt; lines,
+            ExportTheme theme, PDFont font, float size, float x, float y) throws IOException {
+<span class="fc bfc" id="L290" title="All 2 branches covered.">        boolean linked = page != destination;</span>
+<span class="fc" id="L291">        float width = 0;</span>
+<span class="fc bfc" id="L292" title="All 2 branches covered.">        for (int index = 0; index &lt; lines.size(); index++) {</span>
+<span class="fc" id="L293">            String value = lines.get(index);</span>
+<span class="fc" id="L294">            float baseline = y - index * 11;</span>
+<span class="fc" id="L295">            text(stream, theme, font, size, x, baseline, value);</span>
+<span class="fc bfc" id="L296" title="All 2 branches covered.">            if (linked) {</span>
+<span class="fc" id="L297">                float lineWidth = PdfDiagramText.width(font, size, PdfDiagramText.printable(value, font));</span>
+<span class="fc" id="L298">                width = Math.max(width, lineWidth);</span>
+<span class="fc" id="L299">                stream.setStrokingColor(Color.decode(theme.canvasText(&quot;#394150&quot;)));</span>
+<span class="fc" id="L300">                stream.setLineWidth(.5f);</span>
+<span class="fc" id="L301">                stream.moveTo(x, baseline - 2);</span>
+<span class="fc" id="L302">                stream.lineTo(x + lineWidth, baseline - 2);</span>
+<span class="fc" id="L303">                stream.stroke();</span>
+            }
+        }
+<span class="fc bfc" id="L306" title="All 2 branches covered.">        if (!linked) return;</span>
+<span class="fc" id="L307">        var target = new PDPageFitDestination();</span>
+<span class="fc" id="L308">        target.setPage(destination);</span>
+<span class="fc" id="L309">        var action = new PDActionGoTo();</span>
+<span class="fc" id="L310">        action.setDestination(target);</span>
+<span class="fc" id="L311">        var link = new PDAnnotationLink();</span>
+<span class="fc" id="L312">        var border = new PDBorderStyleDictionary();</span>
+<span class="fc" id="L313">        border.setWidth(0);</span>
+<span class="fc" id="L314">        link.setBorderStyle(border);</span>
+<span class="fc" id="L315">        float extraHeight = (lines.size() - 1) * 11;</span>
+<span class="fc" id="L316">        link.setRectangle(new PDRectangle(x, y - 3 - extraHeight, width, size + 4 + extraHeight));</span>
+<span class="fc" id="L317">        link.setAction(action);</span>
+<span class="fc" id="L318">        page.getAnnotations().add(link);</span>
+<span class="fc" id="L319">    }</span>
+
+    private static void background(PDPageContentStream stream, ExportTheme theme, float width, float height)
+            throws IOException {
+<span class="fc" id="L323">        stream.setNonStrokingColor(Color.decode(theme.canvasBackground()));</span>
+<span class="fc" id="L324">        stream.addRect(0, 0, width, height);</span>
+<span class="fc" id="L325">        stream.fill();</span>
+<span class="fc" id="L326">    }</span>
+
+    private static void configureMetadata(PDDocument document, DiagramScene scene, SnapshotMetadata metadata, DiagramLanguage language) {
+<span class="fc" id="L329">        PDDocumentInformation information = new PDDocumentInformation();</span>
+<span class="fc" id="L330">        information.setTitle(DiagramExportContext.title(scene.title(), Locale.forLanguageTag(language.tag())));</span>
+<span class="fc" id="L331">        information.setSubject(language.text(&quot;Requirement-derived architecture snapshot &quot;, &quot;Anforderungsbezogener Architektursnapshot &quot;) + metadata.snapshotId());</span>
+<span class="fc" id="L332">        information.setAuthor(&quot;Taxonomy Architecture Analyzer&quot;);</span>
+<span class="fc" id="L333">        information.setCreator(&quot;Taxonomy server-side vector renderer&quot;);</span>
+<span class="fc" id="L334">        information.setKeywords(&quot;architecture, taxonomy, requirement, snapshot, &quot; + metadata.snapshotId());</span>
+<span class="fc" id="L335">        document.setDocumentInformation(information);</span>
+<span class="fc" id="L336">    }</span>
+
+    private static void drawHeader(PDPageContentStream stream, Decoration decoration, float pageWidth,
+                                   float pageHeight, ExportTheme theme, Fonts fonts) throws IOException {
+<span class="fc" id="L340">        float y = pageHeight - PAGE_MARGIN - 16;</span>
+<span class="fc" id="L341">        float width = pageWidth - 2 * PAGE_MARGIN;</span>
+<span class="fc" id="L342">        text(stream, theme, fonts.bold(), 16, PAGE_MARGIN, y,</span>
+<span class="fc" id="L343">                PdfDiagramText.wrap(decoration.title(), fonts.bold(), 16, width, 1).getFirst());</span>
+<span class="fc bfc" id="L344" title="All 2 branches covered.">        for (int i = 0; i &lt; decoration.header().size(); i++)</span>
+<span class="fc" id="L345">            text(stream, theme, fonts.regular(), 9, PAGE_MARGIN, y - 17 - i * 12,</span>
+<span class="fc" id="L346">                    PdfDiagramText.wrap(decoration.header().get(i), fonts.regular(), 9, width, 1).getFirst());</span>
+<span class="fc" id="L347">    }</span>
+
+<span class="fc" id="L349">    private record EdgeCaption(Rectangle2D.Float bounds, String text) { }</span>
+
+    private static void drawEdges(PDPageContentStream stream, DiagramScene scene, float diagramX,
+                                  float diagramTop, float scale, ExportTheme theme, DiagramLanguage language,
+                                  Fonts fonts, DiagramCanonicalEvidence canonical) throws IOException {
+<span class="fc" id="L354">        var nodeBounds = scene.nodes().stream().map(node -&gt; new Rectangle2D.Float(</span>
+<span class="fc" id="L355">                diagramX + (float) node.x() * scale,</span>
+<span class="fc" id="L356">                diagramTop - (float) (node.y() + node.height()) * scale,</span>
+<span class="fc" id="L357">                (float) node.width() * scale, (float) node.height() * scale)).toList();</span>
+<span class="fc" id="L358">        var captions = new ArrayList&lt;EdgeCaption&gt;();</span>
+<span class="fc" id="L359">        var routing = new DiagramEdgeRouting(scene);</span>
+<span class="fc" id="L360">        float labelSize = 8;</span>
+<span class="fc bfc" id="L361" title="All 2 branches covered.">        for (DiagramSceneEdge edge : scene.edges()) {</span>
+<span class="fc" id="L362">            float x1 = diagramX + (float) edge.sourceX() * scale;</span>
+<span class="fc" id="L363">            float y1 = diagramTop - (float) edge.sourceY() * scale;</span>
+<span class="fc" id="L364">            float x2 = diagramX + (float) edge.targetX() * scale;</span>
+<span class="fc" id="L365">            float y2 = diagramTop - (float) edge.targetY() * scale;</span>
+<span class="fc bfc" id="L366" title="All 6 branches covered.">            boolean proposed = canonical == null ? edge.metadata() != null &amp;&amp; edge.metadata().proposed()</span>
+<span class="fc" id="L367">                    : DiagramPresentation.canonicalRelationshipProposed(canonical, edge.id());</span>
+<span class="fc" id="L368">            stream.setStrokingColor(Color.decode(theme.relationshipStroke(edge.relationType(), proposed)));</span>
+<span class="fc bfc" id="L369" title="All 2 branches covered.">            stream.setLineDashPattern(proposed ? new float[]{6, 4} : new float[]{}, 0);</span>
+<span class="fc" id="L370">            stream.setLineWidth(Math.max(0.55f, (float) (0.8 + edge.relevance()) * scale));</span>
+<span class="fc" id="L371">            var detour = routing.detourForLine(edge);</span>
+<span class="fc" id="L372">            stream.moveTo(x1, y1);</span>
+<span class="fc" id="L373">            float arrowStartX = x1, arrowStartY = y1;</span>
+<span class="fc bfc" id="L374" title="All 2 branches covered.">            if (detour == null) {</span>
+<span class="fc" id="L375">                stream.lineTo(x2, y2);</span>
+            } else {
+<span class="fc" id="L377">                var points = detour.points();</span>
+<span class="fc bfc" id="L378" title="All 2 branches covered.">                for (int i = 1; i &lt; points.size(); i++) {</span>
+<span class="fc" id="L379">                    var point = points.get(i);</span>
+<span class="fc" id="L380">                    stream.lineTo(diagramX + (float) point.x() * scale, diagramTop - (float) point.y() * scale);</span>
+                }
+<span class="fc" id="L382">                var beforeTarget = points.get(points.size() - 2);</span>
+<span class="fc" id="L383">                arrowStartX = diagramX + (float) beforeTarget.x() * scale;</span>
+<span class="fc" id="L384">                arrowStartY = diagramTop - (float) beforeTarget.y() * scale;</span>
+            }
+<span class="fc" id="L386">            stream.stroke();</span>
+<span class="fc" id="L387">            drawArrow(stream, arrowStartX, arrowStartY, x2, y2, Math.max(4.0f, 7.0f * scale));</span>
+<span class="pc bpc" id="L388" title="2 of 4 branches missed.">            if (edge.relationType() == null || edge.relationType().isBlank()) continue;</span>
+<span class="fc bfc" id="L389" title="All 2 branches covered.">            String state = canonical == null ? DiagramPresentation.relationshipStatus(edge.metadata(), language.german())</span>
+<span class="fc" id="L390">                    : DiagramPresentation.canonicalRelationshipStatus(canonical, edge.id(), language);</span>
+<span class="fc" id="L391">            var anchors = DiagramEdgeRouting.captionAnchors(edge, detour).stream().map(anchor -&gt;</span>
+<span class="fc" id="L392">                    new DiagramEdgeRouting.Point(diagramX + anchor.x() * scale, diagramTop - anchor.y() * scale)).toList();</span>
+<span class="fc" id="L393">            var caption = placeCaption(edge.relationType() + &quot; · &quot; + state, anchors,</span>
+<span class="fc" id="L394">                    diagramTop, nodeBounds, captions, fonts.regular(), labelSize);</span>
+<span class="fc bfc" id="L395" title="All 2 branches covered.">            if (caption == null) caption = placeCaption(edge.relationType(), anchors,</span>
+<span class="fc" id="L396">                    diagramTop, nodeBounds, captions, fonts.regular(), labelSize);</span>
+<span class="fc bfc" id="L397" title="All 2 branches covered.">            if (caption != null) captions.add(caption);</span>
+<span class="fc" id="L398">        }</span>
+<span class="fc" id="L399">        stream.setLineDashPattern(new float[]{}, 0);</span>
+        // Dense diagrams identify additional connectors through the complete inventory.
+<span class="fc bfc" id="L401" title="All 2 branches covered.">        for (var caption : captions) {</span>
+<span class="fc" id="L402">            var rect = caption.bounds();</span>
+<span class="fc" id="L403">            stream.setNonStrokingColor(Color.decode(theme.canvasBackground()));</span>
+<span class="fc" id="L404">            stream.addRect(rect.x, rect.y, rect.width, rect.height);</span>
+<span class="fc" id="L405">            stream.fill();</span>
+<span class="fc" id="L406">            text(stream, theme, fonts.regular(), labelSize, rect.x + 4, rect.y + 3, caption.text());</span>
+<span class="fc" id="L407">        }</span>
+<span class="fc" id="L408">    }</span>
+
+    private static EdgeCaption placeCaption(String label, List&lt;DiagramEdgeRouting.Point&gt; anchors, float diagramTop,
+            List&lt;Rectangle2D.Float&gt; nodeBounds, List&lt;EdgeCaption&gt; captions, PDFont font, float labelSize) throws IOException {
+<span class="fc" id="L412">        String text = PdfDiagramText.wrap(label, font, labelSize, 210, 1).getFirst();</span>
+<span class="fc" id="L413">        float width = PdfDiagramText.width(font, labelSize, text) + 8;</span>
+<span class="fc" id="L414">        int[] offsets = {12, -20, 26, -34};</span>
+<span class="fc bfc" id="L415" title="All 2 branches covered.">        for (var anchor : anchors) {</span>
+<span class="fc bfc" id="L416" title="All 2 branches covered.">            for (int offset : offsets) {</span>
+<span class="fc" id="L417">                var rect = new Rectangle2D.Float((float) anchor.x() - width / 2, (float) anchor.y() + offset, width, 12);</span>
+<span class="pc bpc" id="L418" title="2 of 6 branches missed.">                if (rect.x &lt; PAGE_MARGIN || rect.getMaxX() &gt; PdfDiagramPages.PAGE_WIDTH - PAGE_MARGIN</span>
+<span class="pc bpc" id="L419" title="1 of 2 branches missed.">                        || rect.y &lt; PAGE_MARGIN || rect.getMaxY() &gt; diagramTop</span>
+<span class="fc bfc" id="L420" title="All 2 branches covered.">                        || nodeBounds.stream().anyMatch(rect::intersects)</span>
+<span class="fc bfc" id="L421" title="All 2 branches covered.">                        || captions.stream().anyMatch(other -&gt; rect.intersects(other.bounds()))) continue;</span>
+<span class="fc" id="L422">                return new EdgeCaption(rect, text);</span>
+            }
+<span class="fc" id="L424">        }</span>
+<span class="fc" id="L425">        return null;</span>
+    }
+
+    private static void drawNodes(PDPageContentStream stream,
+                                  DiagramScene scene,
+                                  float diagramX,
+                                  float diagramTop,
+                                  float scale, ExportTheme theme, DiagramLanguage language, Fonts fonts, boolean canonical) throws IOException {
+<span class="fc bfc" id="L433" title="All 2 branches covered.">        for (DiagramSceneNode node : scene.nodes()) {</span>
+<span class="fc" id="L434">            float x = diagramX + (float) node.x() * scale;</span>
+<span class="fc" id="L435">            float top = diagramTop - (float) node.y() * scale;</span>
+<span class="fc" id="L436">            float width = (float) node.width() * scale;</span>
+<span class="fc" id="L437">            float height = (float) node.height() * scale;</span>
+<span class="fc" id="L438">            float y = top - height;</span>
+
+<span class="fc" id="L440">            stream.setNonStrokingColor(Color.decode(theme.nodeFill(node.type())));</span>
+<span class="fc" id="L441">            stream.addRect(x, y, width, height);</span>
+<span class="fc" id="L442">            stream.fill();</span>
+<span class="fc" id="L443">            stream.setStrokingColor(Color.decode(theme.nodeBorder(node.type(), node.anchor())));</span>
+<span class="fc bfc" id="L444" title="All 2 branches covered.">            stream.setLineWidth(node.anchor() ? Math.max(1.4f, 2.2f * scale) : Math.max(0.7f, scale));</span>
+<span class="fc" id="L445">            stream.addRect(x, y, width, height);</span>
+<span class="fc" id="L446">            stream.stroke();</span>
+
+<span class="fc" id="L448">            float inset = 8 * scale;</span>
+<span class="fc" id="L449">            float small = Math.max(7, 8 * scale);</span>
+<span class="fc bfc" id="L450" title="All 2 branches covered.">            String score = canonical ? &quot;&quot; : language.score(node);</span>
+<span class="fc" id="L451">            float scoreWidth = PdfDiagramText.width(fonts.regular(), small, score);</span>
+<span class="fc" id="L452">            String id = PdfDiagramText.wrap(node.id(), fonts.bold(), small,</span>
+<span class="fc" id="L453">                    width - 3 * inset - scoreWidth, 1).getFirst();</span>
+<span class="fc" id="L454">            text(stream, theme.nodeText(node.type(), &quot;#0f172a&quot;), fonts.bold(), small, x + inset, top - 15 * scale, id);</span>
+<span class="fc" id="L455">            text(stream, theme.nodeText(node.type(), &quot;#0f172a&quot;), fonts.regular(), small, x + width - inset - scoreWidth, top - 15 * scale, score);</span>
+<span class="fc" id="L456">            var assignment = node.responsibility();</span>
+<span class="fc bfc" id="L457" title="All 2 branches covered.">            int lines = assignment == null ? 2 : 1;</span>
+<span class="pc bpc" id="L458" title="1 of 4 branches missed.">            if (canonical &amp;&amp; node.height() &gt;= LayeredDiagramLayoutService.NODE_HEIGHT) lines++;</span>
+<span class="fc" id="L459">            List&lt;String&gt; labelLines = PdfDiagramText.wrap(node.label(), fonts.regular(), 10 * scale,</span>
+                    width - 2 * inset, lines);
+<span class="fc bfc" id="L461" title="All 2 branches covered.">            float labelTop = canonical ? 27 : 34;</span>
+<span class="fc bfc" id="L462" title="All 2 branches covered.">            for (int index = 0; index &lt; labelLines.size(); index++) {</span>
+<span class="fc" id="L463">                text(stream, theme.nodeText(node.type(), &quot;#0f172a&quot;), fonts.regular(), 10 * scale, x + inset,</span>
+<span class="fc" id="L464">                        top - (labelTop + index * 13) * scale, labelLines.get(index));</span>
+            }
+<span class="fc bfc" id="L466" title="All 2 branches covered.">            if (assignment != null) {</span>
+<span class="fc" id="L467">                stream.setNonStrokingColor(Color.decode(assignment.color()));</span>
+<span class="fc" id="L468">                stream.addRect(x + inset, y + 32 * scale, 5 * scale, 5 * scale);</span>
+<span class="fc" id="L469">                stream.fill();</span>
+<span class="fc" id="L470">                text(stream, theme.nodeText(node.type(), &quot;#0f172a&quot;), fonts.regular(), small, x + 2 * inset, y + 32 * scale,</span>
+<span class="fc" id="L471">                        PdfDiagramText.wrap(assignment.name(), fonts.regular(), small, width - 3 * inset, 1).getFirst());</span>
+            }
+            // Two separate footer lines leave the complete taxonomy name room to wrap safely.
+<span class="fc" id="L474">            String type = PdfDiagramText.wrap(node.type(), fonts.regular(), small, width - 2 * inset, 1).getFirst();</span>
+<span class="pc bpc" id="L475" title="1 of 6 branches missed.">            float typeBaseline = canonical &amp;&amp; labelLines.size() == 3 &amp;&amp; !node.container() ? 16 : 21;</span>
+<span class="fc" id="L476">            text(stream, theme.nodeText(node.type(), &quot;#0f172a&quot;), fonts.regular(), small, x + inset, y + typeBaseline * scale, type);</span>
+<span class="pc bpc" id="L477" title="1 of 4 branches missed.">            if (!canonical || node.container()) {</span>
+<span class="pc bpc" id="L478" title="1 of 2 branches missed.">                String depth = canonical ? &quot;Container&quot; : language.depth(node)</span>
+<span class="pc bpc" id="L479" title="1 of 2 branches missed.">                        + (node.container() ? &quot; | Container&quot; : &quot;&quot;);</span>
+<span class="fc" id="L480">                text(stream, theme.nodeText(node.type(), &quot;#0f172a&quot;), fonts.regular(), small, x + inset, y + 9 * scale,</span>
+<span class="fc" id="L481">                        PdfDiagramText.wrap(depth, fonts.regular(), small, width - 2 * inset, 1).getFirst());</span>
+            }
+<span class="fc" id="L483">        }</span>
+<span class="fc" id="L484">    }</span>
+
+    private static void drawFooter(PDPageContentStream stream, Decoration decoration, float pageWidth,
+                                   ExportTheme theme, DiagramLanguage language, PDFont font) throws IOException {
+<span class="fc" id="L488">        text(stream, theme, font, 7, PAGE_MARGIN, 17, decoration.footer().getFirst());</span>
+<span class="fc bfc" id="L489" title="All 2 branches covered.">        if (!decoration.warnings().isEmpty()) {</span>
+<span class="fc" id="L490">            String prefix = language.text(&quot;Warnings: &quot;, &quot;Hinweise: &quot;);</span>
+<span class="fc" id="L491">            String caption = PdfDiagramText.printable(prefix + String.join(&quot; | &quot;, decoration.warnings()), font);</span>
+<span class="fc bfc" id="L492" title="All 2 branches covered.">            if (PdfDiagramText.width(font, 7, caption) &gt; pageWidth - 2 * PAGE_MARGIN)</span>
+<span class="fc" id="L493">                caption = prefix + decoration.warnings().size()</span>
+<span class="fc" id="L494">                        + language.text(&quot; | See export inventory.&quot;, &quot; | Siehe Exportinventar.&quot;);</span>
+<span class="fc" id="L495">            text(stream, theme, font, 7, PAGE_MARGIN, 8, caption);</span>
+        }
+<span class="fc" id="L497">    }</span>
+
+    private static void drawArrow(PDPageContentStream stream,
+                                  float x1,
+                                  float y1,
+                                  float x2,
+                                  float y2,
+                                  float size) throws IOException {
+<span class="fc" id="L505">        double angle = Math.atan2(y2 - y1, x2 - x1);</span>
+<span class="fc" id="L506">        float ax1 = (float) (x2 - size * Math.cos(angle - Math.PI / 6.0));</span>
+<span class="fc" id="L507">        float ay1 = (float) (y2 - size * Math.sin(angle - Math.PI / 6.0));</span>
+<span class="fc" id="L508">        float ax2 = (float) (x2 - size * Math.cos(angle + Math.PI / 6.0));</span>
+<span class="fc" id="L509">        float ay2 = (float) (y2 - size * Math.sin(angle + Math.PI / 6.0));</span>
+<span class="fc" id="L510">        stream.moveTo(x2, y2);</span>
+<span class="fc" id="L511">        stream.lineTo(ax1, ay1);</span>
+<span class="fc" id="L512">        stream.moveTo(x2, y2);</span>
+<span class="fc" id="L513">        stream.lineTo(ax2, ay2);</span>
+<span class="fc" id="L514">        stream.stroke();</span>
+<span class="fc" id="L515">    }</span>
+
+    private static void text(PDPageContentStream stream, ExportTheme theme,
+                             PDFont font, float size, float x, float y, String value) throws IOException {
+<span class="fc" id="L519">        text(stream, theme.canvasText(&quot;#0f172a&quot;), font, size, x, y, value);</span>
+<span class="fc" id="L520">    }</span>
+
+    private static void text(PDPageContentStream stream, String color,
+                             PDFont font,
+                             float size,
+                             float x,
+                             float y,
+                             String value) throws IOException {
+<span class="pc bpc" id="L528" title="1 of 4 branches missed.">        if (value == null || value.isBlank()) return;</span>
+<span class="fc" id="L529">        String printable = PdfDiagramText.printable(value, font);</span>
+<span class="fc" id="L530">        stream.beginText();</span>
+<span class="fc" id="L531">        stream.setNonStrokingColor(Color.decode(color));</span>
+<span class="fc" id="L532">        stream.setFont(font, Math.max(5.0f, size));</span>
+<span class="fc" id="L533">        stream.newLineAtOffset(x, y);</span>
+<span class="fc" id="L534">        stream.showText(printable);</span>
+<span class="fc" id="L535">        stream.endText();</span>
+<span class="fc" id="L536">    }</span>
+
+<span class="fc" id="L538">    private record Entry(String identity, List&lt;String&gt; lines) { }</span>
+
+    /** The vector pages are followed by a complete, paginated inventory of the exported evidence. */
+    private static PDPage drawInventory(PDDocument document, DiagramScene scene, Map&lt;String, Integer&gt; nodePages,
+                                      Map&lt;String, String&gt; nodeReasons, Map&lt;String, Map&lt;String, String&gt;&gt; relationReasons,
+                                      ExportTheme theme, DiagramLanguage language, Fonts fonts, Decoration decoration) throws IOException {
+<span class="fc" id="L544">        var canonical = decoration.canonical();</span>
+<span class="fc" id="L545">        var entries = new ArrayList&lt;Entry&gt;();</span>
+<span class="fc" id="L546">        entries.add(new Entry(language.text(&quot;Export summary&quot;, &quot;Exportübersicht&quot;),</span>
+<span class="fc" id="L547">                DiagramPresentation.inventorySummary(scene, language, canonical)));</span>
+<span class="pc bpc" id="L548" title="1 of 2 branches missed.">        if (!decoration.header().isEmpty()) entries.add(new Entry(language.text(&quot;Source context&quot;, &quot;Quellenkontext&quot;), decoration.header()));</span>
+<span class="fc" id="L549">        var warnings = decoration.warnings();</span>
+<span class="fc bfc" id="L550" title="All 2 branches covered.">        for (int i = 0; i &lt; warnings.size(); i++) {</span>
+<span class="fc" id="L551">            String identity = language.text(&quot;Recorded warning &quot;, &quot;Gespeicherter Hinweis &quot;) + (i + 1);</span>
+<span class="fc bfc" id="L552" title="All 2 branches covered.">            entries.add(new Entry(identity, i == 0 ? List.of(identity, warnings.get(i)) : List.of(warnings.get(i))));</span>
+        }
+<span class="fc" id="L554">        var seenNodes = new HashSet&lt;String&gt;();</span>
+<span class="pc bpc" id="L555" title="1 of 4 branches missed.">        for (var node : scene.nodes()) if (seenNodes.add(node.id())) {</span>
+<span class="fc" id="L556">            var lines = new ArrayList&lt;String&gt;();</span>
+<span class="fc bfc" id="L557" title="All 2 branches covered.">            if (seenNodes.size() == 1) lines.add(language.text(&quot;Element inventory&quot;, &quot;Elementinventar&quot;));</span>
+<span class="fc bfc" id="L558" title="All 2 branches covered.">            String metrics = canonical == null ? &quot; | &quot; + language.depth(node) + &quot; | &quot; + language.score(node) : &quot;&quot;;</span>
+<span class="pc bpc" id="L559" title="1 of 2 branches missed.">            lines.add(node.id() + &quot; | D&quot; + nodePages.get(node.id()) + metrics + (node.container() ? &quot; | Container&quot; : &quot;&quot;));</span>
+<span class="fc" id="L560">            lines.add(node.label());</span>
+<span class="fc" id="L561">            lines.add(node.type() + language.text(&quot; | Parent: &quot;, &quot; | Übergeordnet: &quot;)</span>
+<span class="fc bfc" id="L562" title="All 2 branches covered.">                    + (node.parentId() == null ? language.text(&quot;not included&quot;, &quot;nicht enthalten&quot;) : node.parentId()));</span>
+<span class="fc" id="L563">            lines.addAll(DiagramPresentation.responsibilityDetails(node.responsibility(), language));</span>
+<span class="fc" id="L564">            String reason = nodeReasons.get(node.id());</span>
+<span class="pc bpc" id="L565" title="1 of 4 branches missed.">            if (reason != null &amp;&amp; !reason.isBlank()) lines.add(language.text(&quot;Explanation: &quot;, &quot;Begründung: &quot;) + reason);</span>
+<span class="fc" id="L566">            entries.add(new Entry(node.id(), lines));</span>
+        }
+<span class="fc" id="L568">        var seenEdges = new HashSet&lt;String&gt;();</span>
+<span class="pc bpc" id="L569" title="1 of 4 branches missed.">        for (var edge : scene.edges()) if (seenEdges.add(edge.id())) {</span>
+<span class="fc" id="L570">            var lines = new ArrayList&lt;String&gt;();</span>
+<span class="fc bfc" id="L571" title="All 2 branches covered.">            if (seenEdges.size() == 1) lines.add(language.text(&quot;Relationship inventory&quot;, &quot;Beziehungsinventar&quot;));</span>
+<span class="fc bfc" id="L572" title="All 2 branches covered.">            String metrics = canonical == null ? &quot; | &quot; + Objects.toString(edge.relationCategory(), &quot;n/a&quot;)</span>
+<span class="fc" id="L573">                    + &quot; | &quot; + language.percent(edge.relevance()) : &quot;&quot;;</span>
+<span class="fc" id="L574">            lines.add(edge.id() + &quot; | &quot; + edge.sourceId() + &quot; -&gt; &quot; + edge.targetId() + &quot; | &quot; + edge.relationType()</span>
+<span class="fc" id="L575">                    + metrics + &quot; | D&quot; + nodePages.get(edge.sourceId()) + &quot; -&gt; D&quot; + nodePages.get(edge.targetId()));</span>
+<span class="fc bfc" id="L576" title="All 2 branches covered.">            if (canonical == null) {</span>
+<span class="fc" id="L577">                lines.addAll(DiagramPresentation.relationshipDetails(edge.metadata(), language.german()));</span>
+<span class="fc" id="L578">                lines.addAll(DiagramPresentation.relationshipEvidenceDetails(relationReasons.get(edge.id()), language.german()));</span>
+            } else {
+<span class="fc" id="L580">                lines.addAll(DiagramPresentation.canonicalRelationshipDetails(canonical, edge.id(), language));</span>
+            }
+<span class="fc" id="L582">            entries.add(new Entry(edge.id(), lines));</span>
+        }
+<span class="fc bfc" id="L584" title="All 2 branches covered.">        if (scene.edges().isEmpty()) entries.add(new Entry(language.text(&quot;Relationship inventory&quot;, &quot;Beziehungsinventar&quot;),</span>
+<span class="fc" id="L585">                List.of(language.text(&quot;Relationship inventory | No relationships in this export.&quot;, &quot;Beziehungsinventar | Keine Beziehungen in diesem Export.&quot;))));</span>
+<span class="fc" id="L586">        float width = PDRectangle.A4.getWidth() - 2 * PAGE_MARGIN;</span>
+<span class="fc" id="L587">        int capacity = (int) ((PDRectangle.A4.getHeight() - 2 * PAGE_MARGIN - 36) / 13);</span>
+<span class="fc" id="L588">        var pages = inventoryPages(entries, fonts.regular(), width, capacity, language);</span>
+<span class="fc" id="L589">        PDPage relationshipInventory = null;</span>
+<span class="fc bfc" id="L590" title="All 2 branches covered.">        for (int index = 0; index &lt; pages.size(); index++) {</span>
+<span class="fc" id="L591">            var page = new PDPage(PDRectangle.A4);</span>
+<span class="fc" id="L592">            document.addPage(page);</span>
+<span class="fc" id="L593">            try (var stream = new PDPageContentStream(document, page)) {</span>
+<span class="fc" id="L594">                background(stream, theme, page.getMediaBox().getWidth(), page.getMediaBox().getHeight());</span>
+<span class="fc" id="L595">                float top = PDRectangle.A4.getHeight() - PAGE_MARGIN;</span>
+<span class="fc" id="L596">                text(stream, theme, fonts.bold(), 13, PAGE_MARGIN, top - 13,</span>
+<span class="fc" id="L597">                        language.text(&quot;Export inventory - &quot;, &quot;Exportinventar - &quot;) + (index + 1));</span>
+<span class="fc" id="L598">                var lines = pages.get(index);</span>
+<span class="fc bfc" id="L599" title="All 2 branches covered.">                if (lines.contains(language.text(&quot;Relationship inventory&quot;, &quot;Beziehungsinventar&quot;)))</span>
+<span class="fc" id="L600">                    relationshipInventory = page;</span>
+<span class="fc bfc" id="L601" title="All 2 branches covered.">                for (int row = 0; row &lt; lines.size(); row++)</span>
+<span class="fc" id="L602">                    text(stream, theme, fonts.regular(), 9, PAGE_MARGIN, top - 36 - row * 13, lines.get(row));</span>
+            }
+        }
+<span class="fc" id="L605">        return relationshipInventory;</span>
+    }
+
+    /** A short entry moves with its complete evidence. A very long entry repeats its ID on later pages. */
+    private static List&lt;List&lt;String&gt;&gt; inventoryPages(List&lt;Entry&gt; entries, PDFont font, float width,
+                                                     int capacity, DiagramLanguage language) throws IOException {
+<span class="fc" id="L611">        var pages = new ArrayList&lt;List&lt;String&gt;&gt;();</span>
+<span class="fc" id="L612">        List&lt;String&gt; page = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L613">        pages.add(page);</span>
+<span class="fc bfc" id="L614" title="All 2 branches covered.">        for (var entry : entries) {</span>
+<span class="fc" id="L615">            var lines = new ArrayList&lt;String&gt;();</span>
+<span class="fc bfc" id="L616" title="All 2 branches covered.">            for (String line : entry.lines()) lines.addAll(PdfDiagramText.wrapParagraphs(line, font, 9, width));</span>
+<span class="fc" id="L617">            int available = capacity - page.size();</span>
+<span class="fc bfc" id="L618" title="All 8 branches covered.">            if (!page.isEmpty() &amp;&amp; lines.size() &gt; available &amp;&amp; (lines.size() &lt;= capacity / 2 || available &lt; 8)) {</span>
+<span class="fc" id="L619">                page = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L620">                pages.add(page);</span>
+            }
+<span class="fc bfc" id="L622" title="All 2 branches covered.">            for (String line : lines) {</span>
+<span class="fc bfc" id="L623" title="All 2 branches covered.">                if (page.size() == capacity) {</span>
+<span class="fc" id="L624">                    page = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L625">                    pages.add(page);</span>
+<span class="fc" id="L626">                    page.add(PdfDiagramText.wrap(entry.identity() + language.text(&quot; (continued)&quot;, &quot; (Fortsetzung)&quot;),</span>
+<span class="fc" id="L627">                            font, 9, width, 1).getFirst());</span>
+                }
+<span class="fc" id="L629">                page.add(line);</span>
+<span class="fc" id="L630">            }</span>
+<span class="fc bfc" id="L631" title="All 2 branches covered.">            if (page.size() &lt; capacity) page.add(&quot;&quot;);</span>
+<span class="fc" id="L632">        }</span>
+<span class="fc" id="L633">        return pages;</span>
+    }
+
+    private static String abbreviated(String value) {
+<span class="fc" id="L637">        String normalized = safe(value);</span>
+<span class="pc bpc" id="L638" title="1 of 2 branches missed.">        return normalized.length() &gt; 12 ? normalized.substring(0, 12) : normalized;</span>
+    }
+
+    private static String safe(String value) {
+<span class="pc bpc" id="L642" title="2 of 4 branches missed.">        return value == null || value.isBlank() ? &quot;n/a&quot; : value.strip();</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

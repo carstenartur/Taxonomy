@@ -1,0 +1,159 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>VisioConnectionPoints.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-export</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.visio</a> &gt; <span class="el_source">VisioConnectionPoints.java</span></div><h1>VisioConnectionPoints.java</h1><pre class="source lang-java linenums">package com.taxonomy.visio;
+
+import java.awt.geom.Line2D;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.NavigableMap;
+import java.util.TreeMap;
+
+/** Native side ports and their cached page coordinates. Port rows are zero-based in XML. */
+public final class VisioConnectionPoints {
+    private VisioConnectionPoints() { }
+
+<span class="fc" id="L13">    public enum Side {</span>
+<span class="fc" id="L14">        LEFT(1, 0, .5), RIGHT(2, 1, .5), BOTTOM(3, .5, 0), TOP(4, .5, 1);</span>
+        private final int number;
+        private final double xFraction;
+        private final double yFraction;
+<span class="fc" id="L18">        Side(int number, double xFraction, double yFraction) {</span>
+<span class="fc" id="L19">            this.number = number; this.xFraction = xFraction; this.yFraction = yFraction;</span>
+<span class="fc" id="L20">        }</span>
+<span class="fc" id="L21">        public int number() { return number; }</span>
+<span class="fc" id="L22">        public double xFraction() { return xFraction; }</span>
+<span class="fc" id="L23">        public double yFraction() { return yFraction; }</span>
+<span class="fc bfc" id="L24" title="All 4 branches covered.">        public Side opposite() { return switch (this) { case LEFT -&gt; RIGHT; case RIGHT -&gt; LEFT; case BOTTOM -&gt; TOP; case TOP -&gt; BOTTOM; }; }</span>
+    }
+
+<span class="fc" id="L27">    public record Point(Side side, double x, double y) {</span>
+        public String formula(String shapeId) {
+<span class="fc" id="L29">            return &quot;PAR(PNT(Sheet.&quot; + shapeId + &quot;!Connections.X&quot; + side.number()</span>
+<span class="fc" id="L30">                    + &quot;,Sheet.&quot; + shapeId + &quot;!Connections.Y&quot; + side.number() + &quot;))&quot;;</span>
+        }
+    }
+
+<span class="fc" id="L34">    public record Endpoints(Point source, Point target) {</span>
+<span class="fc" id="L35">        public double length() { return Math.hypot(target.x() - source.x(), target.y() - source.y()); }</span>
+    }
+
+    /** A route can bend at a column gutter or run beneath the lower endpoint. */
+<span class="fc" id="L39">    public record Route(Endpoints endpoints, Double gutterFraction, Double lowerClearance) {</span>
+<span class="fc" id="L40">        public Route(Endpoints endpoints, Double gutterFraction) { this(endpoints, gutterFraction, null); }</span>
+        public double lowerLaneY() {
+<span class="fc" id="L42">            return Math.min(endpoints.source().y(), endpoints.target().y()) - lowerClearance;</span>
+        }
+    }
+
+    /** Bounds shared by every shape in a layout column, including wider siblings. */
+    public static final class Columns {
+<span class="fc" id="L48">        private final NavigableMap&lt;Double, Column&gt; columns = new TreeMap&lt;&gt;();</span>
+
+        private final boolean sparse;
+
+<span class="fc" id="L52">        public Columns(List&lt;VisioShape&gt; shapes) {</span>
+<span class="fc" id="L53">            int nodes = 0;</span>
+<span class="fc bfc" id="L54" title="All 2 branches covered.">            for (var shape : shapes) {</span>
+<span class="fc bfc" id="L55" title="All 4 branches covered.">                if (!VisioNativeShape.isPresentationOnly(shape) &amp;&amp; !VisioNativeShape.isContainer(shape)) {</span>
+<span class="fc" id="L56">                    columns.computeIfAbsent(shape.getX(), ignored -&gt; new Column(shape.getX())).add(shape);</span>
+<span class="fc" id="L57">                    nodes++;</span>
+                }
+<span class="fc" id="L59">            }</span>
+<span class="fc bfc" id="L60" title="All 2 branches covered.">            sparse = nodes &lt;= 12;</span>
+<span class="fc" id="L61">        }</span>
+
+        public Route route(VisioConnect link, VisioShape source, VisioShape target) {
+<span class="fc" id="L64">            var direct = new Route(between(source, target), null);</span>
+<span class="fc" id="L65">            double left = Math.min(source.getX(), target.getX());</span>
+<span class="fc" id="L66">            double right = Math.max(source.getX(), target.getX());</span>
+<span class="fc" id="L67">            var leftColumn = columns.get(left);</span>
+<span class="pc bpc" id="L68" title="1 of 8 branches missed.">            if (sparse &amp;&amp; left &lt; right &amp;&amp; source.getY() == target.getY() &amp;&amp; leftColumn != null</span>
+<span class="pc bpc" id="L69" title="3 of 6 branches missed.">                    &amp;&amp; columns.containsKey(right) &amp;&amp; !VisioNativeShape.isContainer(source) &amp;&amp; !VisioNativeShape.isContainer(target)) {</span>
+<span class="fc" id="L70">                var span = columns.subMap(left, true, right, true).values();</span>
+<span class="pc bpc" id="L71" title="2 of 6 branches missed.">                if (span.size() &gt; 2 &amp;&amp; span.stream().allMatch(column -&gt; column.rows.firstKey() &gt;= source.getY())</span>
+<span class="pc bpc" id="L72" title="1 of 2 branches missed.">                        &amp;&amp; span.stream().anyMatch(column -&gt; column.obstructs(direct.endpoints(), source, target))) {</span>
+<span class="fc" id="L73">                    var ends = new Endpoints(point(source, Side.BOTTOM), point(target, Side.BOTTOM));</span>
+<span class="fc" id="L74">                    double lane = span.stream().mapToDouble(column -&gt; column.rows.firstKey() - column.halfHeight)</span>
+<span class="fc" id="L75">                            .min().orElseThrow() - .4;</span>
+<span class="pc bpc" id="L76" title="1 of 2 branches missed.">                    if (lane &gt;= .35)</span>
+<span class="fc" id="L77">                        return new Route(ends, null, Math.min(ends.source().y(), ends.target().y()) - lane);</span>
+                }
+            }
+<span class="pc bpc" id="L80" title="1 of 4 branches missed.">            if (leftColumn == null || !Double.valueOf(right).equals(columns.higherKey(left))</span>
+<span class="pc bpc" id="L81" title="1 of 4 branches missed.">                    || source.getY() == target.getY() || VisioNativeShape.isContainer(source)</span>
+<span class="pc bpc" id="L82" title="1 of 2 branches missed.">                    || VisioNativeShape.isContainer(target)) return direct;</span>
+
+<span class="fc" id="L84">            var rightColumn = columns.get(right);</span>
+<span class="fc" id="L85">            double start = left + leftColumn.halfWidth;</span>
+<span class="fc" id="L86">            double end = right - rightColumn.halfWidth;</span>
+<span class="pc bpc" id="L87" title="1 of 2 branches missed.">            if (start &gt;= end) return direct;</span>
+<span class="fc" id="L88">            boolean hierarchy = VisioProperty.text(&quot;DECISION_HIERARCHY&quot;).equals(link.getProperties().get(&quot;taxonomy.type&quot;));</span>
+<span class="fc bfc" id="L89" title="All 4 branches covered.">            if (!hierarchy &amp;&amp; !leftColumn.obstructs(direct.endpoints(), source, target)</span>
+<span class="pc bpc" id="L90" title="1 of 2 branches missed.">                    &amp;&amp; !rightColumn.obstructs(direct.endpoints(), source, target)) return direct;</span>
+
+<span class="fc bfc" id="L92" title="All 2 branches covered.">            Side side = source.getX() == left ? Side.RIGHT : Side.LEFT;</span>
+<span class="fc" id="L93">            var endpoints = new Endpoints(point(source, side), point(target, side.opposite()));</span>
+<span class="fc" id="L94">            double fraction = ((start + end) / 2 - endpoints.source().x())</span>
+<span class="fc" id="L95">                    / (endpoints.target().x() - endpoints.source().x());</span>
+<span class="fc" id="L96">            return new Route(endpoints, fraction);</span>
+        }
+
+        private static final class Column {
+<span class="fc" id="L100">            private final NavigableMap&lt;Double, List&lt;VisioShape&gt;&gt; rows = new TreeMap&lt;&gt;();</span>
+            private final double x;
+            private double halfWidth;
+            private double halfHeight;
+
+<span class="fc" id="L105">            Column(double x) { this.x = x; }</span>
+
+            void add(VisioShape shape) {
+<span class="fc" id="L108">                halfWidth = Math.max(halfWidth, shape.getWidth() / 2);</span>
+<span class="fc" id="L109">                halfHeight = Math.max(halfHeight, shape.getHeight() / 2);</span>
+<span class="fc" id="L110">                rows.computeIfAbsent(shape.getY(), ignored -&gt; new ArrayList&lt;&gt;()).add(shape);</span>
+<span class="fc" id="L111">            }</span>
+
+            boolean obstructs(Endpoints edge, VisioShape source, VisioShape target) {
+<span class="fc" id="L114">                var begin = edge.source();</span>
+<span class="fc" id="L115">                var end = edge.target();</span>
+                // Search only rows traversed while the direct line is inside this column.
+<span class="fc" id="L117">                double dx = end.x() - begin.x();</span>
+<span class="fc" id="L118">                double a = (x - halfWidth - begin.x()) / dx;</span>
+<span class="fc" id="L119">                double b = (x + halfWidth - begin.x()) / dx;</span>
+<span class="fc" id="L120">                double first = Math.max(0, Math.min(a, b));</span>
+<span class="fc" id="L121">                double last = Math.min(1, Math.max(a, b));</span>
+<span class="fc bfc" id="L122" title="All 2 branches covered.">                if (first &gt;= last) return false;</span>
+<span class="fc" id="L123">                double dy = end.y() - begin.y();</span>
+<span class="fc" id="L124">                double firstY = begin.y() + first * dy;</span>
+<span class="fc" id="L125">                double lastY = begin.y() + last * dy;</span>
+<span class="fc" id="L126">                double bottom = Math.min(firstY, lastY) - halfHeight;</span>
+<span class="fc" id="L127">                double top = Math.max(firstY, lastY) + halfHeight;</span>
+<span class="fc" id="L128">                var line = new Line2D.Double(begin.x(), begin.y(), end.x(), end.y());</span>
+<span class="pc bpc" id="L129" title="1 of 2 branches missed.">                for (var row : rows.subMap(bottom, true, top, true).values()) {</span>
+<span class="fc bfc" id="L130" title="All 2 branches covered.">                    for (var shape : row) {</span>
+<span class="pc bpc" id="L131" title="1 of 6 branches missed.">                        if (shape != source &amp;&amp; shape != target &amp;&amp; line.intersects(</span>
+<span class="fc" id="L132">                                shape.getX() - shape.getWidth() / 2, shape.getY() - shape.getHeight() / 2,</span>
+<span class="fc" id="L133">                                shape.getWidth(), shape.getHeight())) return true;</span>
+<span class="fc" id="L134">                    }</span>
+<span class="fc" id="L135">                }</span>
+<span class="nc" id="L136">                return false;</span>
+            }
+        }
+    }
+
+    public static Endpoints between(VisioShape source, VisioShape target) {
+<span class="fc" id="L142">        double dx = target.getX() - source.getX(), dy = target.getY() - source.getY();</span>
+<span class="fc bfc" id="L143" title="All 6 branches covered.">        Side start = Math.abs(dx) &gt;= Math.abs(dy) ? (dx &gt;= 0 ? Side.RIGHT : Side.LEFT) : (dy &gt;= 0 ? Side.TOP : Side.BOTTOM);</span>
+<span class="fc" id="L144">        Endpoints endpoints = new Endpoints(point(source, start), point(target, start.opposite()));</span>
+<span class="pc bpc" id="L145" title="5 of 6 branches missed.">        if (endpoints.length() == 0 &amp;&amp; (dx != 0 || dy != 0)) {</span>
+            // Touching shapes still need a visible, editable connector. Use the
+            // adjacent sides instead of emitting a collapsed zero-length shape.
+<span class="nc bnc" id="L148" title="All 4 branches missed.">            start = start == Side.LEFT || start == Side.RIGHT ? Side.TOP : Side.RIGHT;</span>
+<span class="nc" id="L149">            endpoints = new Endpoints(point(source, start), point(target, start));</span>
+        }
+<span class="fc" id="L151">        return endpoints;</span>
+    }
+
+    private static Point point(VisioShape shape, Side side) {
+<span class="fc" id="L155">        return new Point(side, shape.getX() + (side.xFraction() - .5) * shape.getWidth(),</span>
+<span class="fc" id="L156">                shape.getY() + (side.yFraction() - .5) * shape.getHeight());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

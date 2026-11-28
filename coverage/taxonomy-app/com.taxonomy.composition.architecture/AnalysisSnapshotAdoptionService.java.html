@@ -1,0 +1,390 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AnalysisSnapshotAdoptionService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.composition.architecture</a> &gt; <span class="el_source">AnalysisSnapshotAdoptionService.java</span></div><h1>AnalysisSnapshotAdoptionService.java</h1><pre class="source lang-java linenums">package com.taxonomy.composition.architecture;
+
+import com.taxonomy.dsl.command.ArchitectureCommand.*;
+import com.taxonomy.dsl.command.ArchitectureDslCommands;
+import com.taxonomy.dsl.command.SnapshotEvidence;
+import com.taxonomy.dto.RelationSearchModel;
+import com.taxonomy.dto.RequirementRelationshipView;
+import com.taxonomy.dsl.command.ArchitectureDslCommands.CommandProblem;
+import com.taxonomy.dsl.model.ArchitectureOrganization;
+import com.taxonomy.dsl.model.CatalogueDefinition;
+import com.taxonomy.dsl.model.CatalogueDefinitionResolver.Node;
+import com.taxonomy.dsl.model.CatalogueReference;
+import com.taxonomy.dsl.model.CatalogueDefinitionResolver;
+import com.taxonomy.editor.ArchitectureCommandPort.*;
+import com.taxonomy.editor.ArchitectureEditorService;
+import com.taxonomy.identity.StableIdentityHash;
+import com.taxonomy.model.WorkspaceOverlayScope;
+import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
+import com.taxonomy.portfolio.service.PortfolioAnalysisPersistenceService;
+import com.taxonomy.portfolio.service.ProjectPortfolioService;
+import com.taxonomy.workspace.model.UserWorkspace;
+import com.taxonomy.workspace.model.WorkspaceProvisioningStatus;
+import com.taxonomy.workspace.repository.UserWorkspaceRepository;
+import com.taxonomy.workspace.service.*;
+import org.springframework.stereotype.Service;
+
+import java.io.*;
+import java.nio.charset.StandardCharsets;
+import java.util.*;
+
+/** Composes retained portfolio evidence into the existing semantic editor boundary. */
+@com.taxonomy.shared.features.ConditionalOnFeature({&quot;portfolio&quot;, &quot;analysis&quot;})
+@Service
+public class AnalysisSnapshotAdoptionService {
+    private final ArchitectureEditorService editor;
+    private final PortfolioAnalysisPersistenceService snapshots;
+    private final ProjectPortfolioService projects;
+    private final UserWorkspaceRepository workspaces;
+    private final SystemRepositoryService repositories;
+    private final RepositoryMembershipService membership;
+<span class="fc" id="L41">    private WorkspaceActorAccess actorAccess = WorkspaceActorAccess.unavailable();</span>
+<span class="fc" id="L42">    private CatalogueDefinitionResolver catalogues = CatalogueDefinitionResolver.standard();</span>
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+<span class="fc" id="L45">    public void setActorAccess(WorkspaceActorAccess actorAccess) { this.actorAccess = Objects.requireNonNull(actorAccess); }</span>
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setCatalogueDefinitionResolver(CatalogueDefinitionResolver catalogues) {
+<span class="fc" id="L49">        this.catalogues = Objects.requireNonNull(catalogues);</span>
+<span class="fc" id="L50">    }</span>
+
+    public AnalysisSnapshotAdoptionService(ArchitectureEditorService editor, PortfolioAnalysisPersistenceService snapshots,
+            ProjectPortfolioService projects, UserWorkspaceRepository workspaces, SystemRepositoryService repositories,
+<span class="fc" id="L54">            RepositoryMembershipService membership) {</span>
+<span class="fc" id="L55">        this.editor = editor; this.snapshots = snapshots; this.projects = projects;</span>
+<span class="fc" id="L56">        this.workspaces = workspaces; this.repositories = repositories; this.membership = membership;</span>
+<span class="fc" id="L57">    }</span>
+
+    public record SourceRef(String repositoryId, String workspaceScopeKey, String branch, Long projectId,
+                            Long requirementId, Long requirementVersionId, String snapshotId,
+                            @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL) String workspaceId) {
+        public SourceRef(String repositoryId, String workspaceScopeKey, String branch, Long projectId,
+                         Long requirementId, Long requirementVersionId, String snapshotId) {
+<span class="fc" id="L64">            this(repositoryId, workspaceScopeKey, branch, projectId, requirementId, requirementVersionId, snapshotId, null);</span>
+<span class="fc" id="L65">        }</span>
+<span class="fc" id="L66">        public SourceRef {</span>
+<span class="fc bfc" id="L67" title="All 2 branches covered.">            for (String value : Arrays.asList(repositoryId,workspaceScopeKey,branch,snapshotId))</span>
+<span class="pc bpc" id="L68" title="4 of 8 branches missed.">                if (value == null || value.isBlank() || value.length() &gt; 255 || value.chars().anyMatch(Character::isISOControl))</span>
+<span class="nc" id="L69">                    throw new IllegalArgumentException(&quot;An explicit bounded source repository, workspace scope, branch and snapshot are required&quot;);</span>
+<span class="fc" id="L70">            WorkspaceOverlayScope.resolveWorkspaceId(workspaceScopeKey, workspaceId);</span>
+<span class="fc bfc" id="L71" title="All 2 branches covered.">            for (Long id : Arrays.asList(projectId,requirementId,requirementVersionId))</span>
+<span class="pc bpc" id="L72" title="2 of 4 branches missed.">                if (id == null || id &lt; 1) throw new IllegalArgumentException(&quot;Exact source project, requirement and version are required&quot;);</span>
+<span class="fc" id="L73">        }</span>
+    }
+    public record Request(Context context, Metadata metadata, SourceRef source, String previewFingerprint,
+                          String checkpointFingerprint) {
+<span class="fc" id="L77">        public Request { Objects.requireNonNull(context); Objects.requireNonNull(metadata); Objects.requireNonNull(source); }</span>
+        public Request(Context context, Metadata metadata, SourceRef source, String previewFingerprint) {
+<span class="fc" id="L79">            this(context, metadata, source, previewFingerprint, null);</span>
+<span class="fc" id="L80">        }</span>
+    }
+<span class="fc" id="L82">    public record Difference(String id, String field, String existingValue, String sourceValue) {}</span>
+<span class="fc" id="L83">    public record Summary(List&lt;String&gt; addedElements, List&lt;String&gt; reusedElements, List&lt;String&gt; addedRelations,</span>
+                          List&lt;String&gt; reusedRelations, List&lt;Difference&gt; differences, List&lt;String&gt; conflicts) {}
+<span class="fc" id="L85">    public record PreviewResult(SourceRef source, String viewId, String fingerprint, Summary summary,</span>
+                                boolean existing, Preview preview, SnapshotCheckpointReview checkpointReview) {}
+<span class="fc" id="L87">    public record Adopted(SourceRef source, String viewId, Summary summary, boolean existing, Accepted accepted,</span>
+                          CheckpointAccepted checkpoint) {}
+<span class="fc" id="L89">    private record Prepared(AdoptAnalysisSnapshot adoption, Summary summary, boolean existing, String fingerprint) {}</span>
+
+    public PreviewResult preview(RepositoryContext target, Request request) throws IOException {
+<span class="fc" id="L92">        Prepared prepared = prepare(target, request, false);</span>
+        SnapshotAdoptionReview review;
+        try {
+<span class="fc" id="L95">            review = editor.previewSnapshotAdoption(target, request.context(), request.metadata(), prepared.adoption(), prepared.fingerprint());</span>
+        }
+<span class="fc" id="L97">        catch (CommandProblem error) {</span>
+<span class="pc bpc" id="L98" title="1 of 2 branches missed.">            if (!Set.of(&quot;SNAPSHOT_TYPE_CONFLICT&quot;, &quot;SNAPSHOT_IDENTITY_CONFLICT&quot;).contains(error.code())) throw error;</span>
+<span class="fc" id="L99">            Summary prior = prepared.summary();</span>
+<span class="fc" id="L100">            var summary = new Summary(prior.addedElements(),prior.reusedElements(),prior.addedRelations(),prior.reusedRelations(),</span>
+<span class="fc" id="L101">                    prior.differences(),List.of(error.getMessage()));</span>
+<span class="fc" id="L102">            return new PreviewResult(request.source(),prepared.adoption().viewId(),prepared.fingerprint(),summary,prepared.existing(),null,null);</span>
+<span class="fc" id="L103">        }</span>
+<span class="fc" id="L104">        return new PreviewResult(request.source(), prepared.adoption().viewId(), prepared.fingerprint(),</span>
+<span class="fc" id="L105">                prepared.summary(), prepared.existing(), review.semanticPreview(), review.checkpointReview());</span>
+    }
+    public Adopted adopt(RepositoryContext target, Request request) throws IOException {
+        // Rebuild from the retained snapshot, never from the browser's preview graph.
+<span class="fc bfc" id="L109" title="All 2 branches covered.">        boolean checkpointRequested = request.checkpointFingerprint() != null;</span>
+<span class="fc" id="L110">        Prepared prepared = prepare(target, request, checkpointRequested);</span>
+<span class="fc bfc" id="L111" title="All 2 branches covered.">        if (!prepared.fingerprint().equals(request.previewFingerprint()))</span>
+<span class="fc" id="L112">            throw problem(&quot;PREVIEW_CHANGED&quot;, &quot;Preview this exact frozen source and target revision again&quot;);</span>
+<span class="fc bfc" id="L113" title="All 2 branches covered.">        if (checkpointRequested) {</span>
+<span class="fc" id="L114">            var checkpoint = editor.acceptSnapshotCheckpoint(target, request.context(), request.metadata(), prepared.adoption(),</span>
+<span class="fc" id="L115">                    prepared.fingerprint(), request.checkpointFingerprint());</span>
+<span class="fc" id="L116">            return new Adopted(request.source(), prepared.adoption().viewId(), prepared.summary(), false, null, checkpoint);</span>
+        }
+        try {
+<span class="fc" id="L119">            Accepted accepted = editor.execute(target, command(request, prepared));</span>
+<span class="fc" id="L120">            return new Adopted(request.source(),prepared.adoption().viewId(),prepared.summary(),false,accepted,null);</span>
+<span class="fc" id="L121">        } catch (CommandProblem error) {</span>
+<span class="pc bpc" id="L122" title="2 of 4 branches missed.">            if (!&quot;NO_CHANGE&quot;.equals(error.code()) || !prepared.existing()) throw error;</span>
+            // A new intent for an already-adopted source opens its canonical view without a duplicate revision.
+<span class="fc" id="L124">            return new Adopted(request.source(),prepared.adoption().viewId(),prepared.summary(),true,null,null);</span>
+        }
+    }
+    private Command command(Request request, Prepared prepared) {
+<span class="fc" id="L128">        return new Command(request.context(),request.metadata(),new SemanticCommand(prepared.adoption()));</span>
+    }
+
+    /** Read access to the exact immutable requirement version used by a frozen snapshot. */
+    String requirementText(Long projectId, Long requirementId, Long versionId, String actor, WorkspaceContext scope) {
+<span class="fc" id="L133">        return projects.listRequirementVersions(projectId, requirementId, actor, scope).stream()</span>
+<span class="fc" id="L134">                .filter(candidate -&gt; versionId.equals(candidate.id())).findFirst()</span>
+<span class="pc" id="L135">                .orElseThrow(() -&gt; problem(&quot;NOT_FOUND&quot;, &quot;The exact retained requirement version is unavailable&quot;)).text();</span>
+    }
+
+    private Prepared prepare(RepositoryContext target, Request request, boolean checkpointRequested) throws IOException {
+<span class="fc" id="L139">        SourceRef source = request.source();</span>
+<span class="pc bpc" id="L140" title="1 of 2 branches missed.">        if (target.scope() != RepositoryScope.WORKSPACE) throw problem(&quot;READ_ONLY&quot;, &quot;Adoption requires an editable working copy&quot;);</span>
+<span class="fc" id="L141">        var targetWorkspace = owned(target.workspaceId(), target.username(), target.repositoryId());</span>
+<span class="fc bfc" id="L142" title="All 2 branches covered.">        if (targetWorkspace.getProvisioningStatus() != WorkspaceProvisioningStatus.READY)</span>
+<span class="fc" id="L143">            throw problem(&quot;READ_ONLY&quot;, &quot;Target workspace is not ready&quot;);</span>
+<span class="pc bpc" id="L144" title="2 of 4 branches missed.">        if (!target.branch().equals(targetWorkspace.getCurrentBranch()) || !source.repositoryId().equals(target.repositoryId()))</span>
+<span class="nc" id="L145">            throw problem(&quot;NOT_FOUND&quot;, &quot;The exact source and target repository are not accessible&quot;);</span>
+<span class="pc bpc" id="L146" title="1 of 2 branches missed.">        if (!Context.of(target,request.context().commit(),request.context().revision()).equals(request.context()))</span>
+<span class="nc" id="L147">            throw problem(&quot;CONTEXT_CHANGED&quot;, &quot;The target context changed&quot;);</span>
+<span class="fc" id="L148">        String sourceWorkspace = WorkspaceOverlayScope.resolveWorkspaceId(source.workspaceScopeKey(), source.workspaceId());</span>
+<span class="fc bfc" id="L149" title="All 2 branches covered.">        if (sourceWorkspace == null) {</span>
+<span class="fc bfc" id="L150" title="All 2 branches covered.">            if (!membership.canRead(repositories.getRepository(source.repositoryId()),target.username()))</span>
+<span class="fc" id="L151">                throw problem(&quot;NOT_FOUND&quot;, &quot;Source repository is not readable&quot;);</span>
+<span class="fc" id="L152">        } else owned(sourceWorkspace,target.username(),source.repositoryId());</span>
+<span class="fc" id="L153">        WorkspaceContext sourceContext = new WorkspaceContext(target.username(),sourceWorkspace,source.branch(),source.repositoryId());</span>
+<span class="fc" id="L154">        var snapshot = snapshots.getSnapshot(source.projectId(),source.snapshotId(),target.username(),sourceContext);</span>
+<span class="fc" id="L155">        var summary = snapshot.summary();</span>
+<span class="pc bpc" id="L156" title="2 of 4 branches missed.">        if (!source.snapshotId().equals(summary.id()) || !source.projectId().equals(summary.projectId())</span>
+<span class="pc bpc" id="L157" title="1 of 4 branches missed.">                || !source.requirementId().equals(summary.requirementId()) || !source.requirementVersionId().equals(summary.requirementVersionId())</span>
+<span class="pc bpc" id="L158" title="1 of 4 branches missed.">                || !source.branch().equals(summary.branchName()) || !Objects.equals(sourceWorkspace,summary.workspaceId()))</span>
+<span class="fc" id="L159">            throw problem(&quot;SOURCE_IDENTITY_MISMATCH&quot;, &quot;Snapshot identity does not match the exact requested source&quot;);</span>
+<span class="pc bpc" id="L160" title="3 of 4 branches missed.">        if (summary.status() != AnalysisStatus.SUCCESS &amp;&amp; summary.status() != AnalysisStatus.PARTIAL)</span>
+<span class="nc" id="L161">            throw problem(&quot;INVALID_SNAPSHOT&quot;, &quot;Only retained successful or partial architecture evidence can be adopted&quot;);</span>
+<span class="fc" id="L162">        String requirementText = requirementText(source.projectId(), source.requirementId(), source.requirementVersionId(),</span>
+<span class="fc" id="L163">                target.username(), sourceContext);</span>
+<span class="fc" id="L164">        SnapshotEvidence.requireUtf8(requirementText);</span>
+<span class="pc bpc" id="L165" title="1 of 2 branches missed.">        var graph = snapshot.analysis() == null ? null : snapshot.analysis().getArchitectureView();</span>
+<span class="pc bpc" id="L166" title="3 of 6 branches missed.">        if (graph == null || graph.getIncludedElements() == null || graph.getIncludedRelationships() == null)</span>
+<span class="nc" id="L167">            throw problem(&quot;INVALID_SNAPSHOT&quot;, &quot;Snapshot contains no retained full architecture graph&quot;);</span>
+<span class="pc bpc" id="L168" title="2 of 6 branches missed.">        if (graph.getIncludedElements().isEmpty() || graph.getIncludedElements().size() &gt; 2000 || graph.getIncludedRelationships().size() &gt; 10000)</span>
+<span class="fc" id="L169">            throw problem(&quot;ITEM_LIMIT&quot;, &quot;Snapshot graph exceeds adoption limits&quot;);</span>
+<span class="fc" id="L170">        var binding = snapshot.analysis().getModelBinding();</span>
+<span class="fc bfc" id="L171" title="All 2 branches covered.">        String catalogueRevision = binding == null ? null : binding.analysisCatalogueRevision();</span>
+<span class="fc" id="L172">        CatalogueDefinition definition = CatalogueDefinition.standard();</span>
+<span class="fc" id="L173">        Map&lt;String, Node&gt; recordedNodes = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L174" title="All 2 branches covered.">        if (catalogueRevision != null) {</span>
+            try {
+<span class="fc" id="L176">                definition = catalogues.forRevision(catalogueRevision);</span>
+<span class="fc" id="L177">                catalogues.analysisNodes(catalogueRevision).forEach(node -&gt; recordedNodes.put(node.code(), node));</span>
+<span class="nc" id="L178">            } catch (IllegalStateException | NoSuchElementException unavailable) {</span>
+<span class="nc" id="L179">                throw problem(&quot;CATALOGUE_UNAVAILABLE&quot;, &quot;The catalogue recorded for the retained analysis is unavailable&quot;);</span>
+<span class="fc" id="L180">            }</span>
+        }
+<span class="fc" id="L182">        CatalogueDefinition recordedDefinition = definition;</span>
+<span class="fc" id="L183">        List&lt;SnapshotElement&gt; elements = graph.getIncludedElements().stream().map(element -&gt; {</span>
+<span class="pc bpc" id="L184" title="1 of 2 branches missed.">            String sheet = element == null ? null : element.getTaxonomySheet();</span>
+<span class="pc bpc" id="L185" title="1 of 2 branches missed.">            String type = sheet == null ? null : recordedDefinition.typeFor(sheet);</span>
+<span class="pc bpc" id="L186" title="1 of 2 branches missed.">            if (type == null)</span>
+<span class="nc" id="L187">                throw problem(&quot;UNKNOWN_TYPE&quot;, &quot;Snapshot has unsupported or missing recorded taxonomy type&quot;);</span>
+            // Recorded root plus recorded code establish identity; do not synthesize nodes from renderer containers.
+<span class="fc" id="L189">            var node = recordedNodes.get(element.getNodeCode());</span>
+<span class="fc bfc" id="L190" title="All 2 branches covered.">            String root = node == null ? recordedDefinition.rootFromId(element.getNodeCode()) : node.root();</span>
+<span class="pc bpc" id="L191" title="1 of 2 branches missed.">            if (!Objects.equals(root, sheet))</span>
+<span class="nc" id="L192">                throw problem(&quot;AMBIGUOUS_SNAPSHOT_IDENTITY&quot;, &quot;Recorded element identity and taxonomy type disagree&quot;);</span>
+<span class="fc" id="L193">            var assigned = element.getResponsibility();</span>
+<span class="fc bfc" id="L194" title="All 2 branches covered.">            var responsibility = assigned == null ? null</span>
+<span class="fc" id="L195">                    : new com.taxonomy.dsl.command.ArchitectureCommand.SnapshotResponsibility(</span>
+<span class="fc" id="L196">                            assigned.unitId(), assigned.name(), assigned.sourceId());</span>
+<span class="fc" id="L197">            return new SnapshotElement(element.getNodeCode(), type,</span>
+<span class="fc" id="L198">                    element.getTitle(),Objects.toString(element.getPresenceReason(), Objects.toString(element.getIncludedBecause(),&quot;&quot;)),</span>
+<span class="fc bfc" id="L199" title="All 2 branches covered.">                    responsibility, node == null ? null : CatalogueReference.from(node.uuid(), node.nameEn(), node.nameDe()));</span>
+<span class="fc" id="L200">        }).sorted(Comparator.comparing(SnapshotElement::id,Comparator.nullsFirst(String::compareTo))).toList();</span>
+<span class="fc" id="L201">        List&lt;RelationKey&gt; relations = graph.getIncludedRelationships().stream().map(relation -&gt; {</span>
+<span class="pc bpc" id="L202" title="4 of 8 branches missed.">            if (relation == null || relation.getSourceCode() == null || relation.getTargetCode() == null || relation.getRelationType() == null)</span>
+<span class="nc" id="L203">                throw problem(&quot;INVALID_SNAPSHOT&quot;, &quot;Snapshot relation identity is incomplete&quot;);</span>
+<span class="fc" id="L204">            return new RelationKey(relation.getSourceCode(),relation.getRelationType(),relation.getTargetCode());</span>
+<span class="fc" id="L205">        }).sorted(Comparator.comparing(RelationKey::id)).toList();</span>
+<span class="fc" id="L206">        List&lt;String&gt; graphParts = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L207">        elements.forEach(e -&gt; {</span>
+<span class="fc" id="L208">            graphParts.addAll(Arrays.asList(&quot;element&quot;,e.id(),e.type(),e.title(),e.description()));</span>
+<span class="fc bfc" id="L209" title="All 2 branches covered.">            if (e.responsibility() != null) graphParts.addAll(List.of(&quot;responsibility&quot;, e.responsibility().unitId(),</span>
+<span class="fc" id="L210">                    e.responsibility().name(), e.responsibility().sourceId()));</span>
+<span class="fc" id="L211">        });</span>
+<span class="fc" id="L212">        relations.forEach(r -&gt; graphParts.addAll(List.of(&quot;relation&quot;,r.sourceId(),r.relationType(),r.targetId())));</span>
+<span class="fc" id="L213">        String graphFingerprint = hash(graphParts);</span>
+<span class="fc" id="L214">        var viewParts = new ArrayList&lt;&gt;(List.of(source.repositoryId(),source.workspaceScopeKey(),source.branch(),</span>
+<span class="fc" id="L215">                source.projectId().toString(),source.requirementId().toString(),source.requirementVersionId().toString(),source.snapshotId()));</span>
+<span class="fc" id="L216">        Map&lt;String,String&gt; provenance = new TreeMap&lt;&gt;();</span>
+<span class="fc bfc" id="L217" title="All 2 branches covered.">        if (WorkspaceOverlayScope.CENTRAL_SCOPE_KEY.equals(sourceWorkspace)) {</span>
+<span class="fc" id="L218">            viewParts.add(sourceWorkspace);</span>
+<span class="fc" id="L219">            provenance.put(&quot;x-analysis-workspace-id&quot;, sourceWorkspace);</span>
+        }
+<span class="fc" id="L221">        String viewId = &quot;analysis-&quot; + hash(viewParts);</span>
+<span class="fc" id="L222">        provenance.put(&quot;x-analysis-repository-id&quot;,source.repositoryId()); provenance.put(&quot;x-analysis-workspace-scope&quot;,source.workspaceScopeKey());</span>
+<span class="fc" id="L223">        provenance.put(&quot;x-analysis-branch&quot;,source.branch()); provenance.put(&quot;x-analysis-project-id&quot;,source.projectId().toString());</span>
+<span class="fc" id="L224">        provenance.put(&quot;x-analysis-requirement-id&quot;,source.requirementId().toString()); provenance.put(&quot;x-analysis-requirement-version-id&quot;,source.requirementVersionId().toString());</span>
+<span class="fc" id="L225">        provenance.put(&quot;x-analysis-snapshot-id&quot;,source.snapshotId()); provenance.put(&quot;x-analysis-requirement-text-hash&quot;,StableIdentityHash.sha256(requirementText));</span>
+<span class="fc" id="L226">        put(provenance,&quot;x-analysis-commit&quot;,summary.commitSha()); put(provenance,&quot;x-analysis-catalogue-fingerprint&quot;,summary.taxonomyFingerprint());</span>
+<span class="fc" id="L227">        put(provenance,&quot;x-analysis-provider&quot;,summary.provider()); put(provenance,&quot;x-analysis-model&quot;,summary.modelName());</span>
+<span class="fc" id="L228">        put(provenance,&quot;x-analysis-status&quot;,summary.status().name()); put(provenance,&quot;x-analysis-created-at&quot;,Objects.toString(summary.createdAt(),null));</span>
+<span class="pc bpc" id="L229" title="1 of 4 branches missed.">        String title = graph.getViewTitle() == null || graph.getViewTitle().isBlank() ? &quot;Analysis &quot; + summary.requirementKey() : graph.getViewTitle();</span>
+<span class="fc bfc" id="L230" title="All 2 branches covered.">        String targetDsl = checkpointRequested ? editor.snapshotCheckpointBaseline(target, request.context(), request.metadata())</span>
+<span class="fc" id="L231">                : editor.read(target, null).dsl();</span>
+<span class="fc" id="L232">        var model = new ArchitectureDslCommands().model(targetDsl);</span>
+<span class="fc" id="L233">        var existingView = model.getViews().stream().filter(v -&gt; v.getId().equals(viewId)).findFirst();</span>
+<span class="pc bpc" id="L234" title="1 of 4 branches missed.">        if (existingView.isEmpty() || existingView.get().getExtensions().containsKey(&quot;x-analysis-catalogue-revision&quot;))</span>
+<span class="fc" id="L235">            put(provenance, &quot;x-analysis-catalogue-revision&quot;, catalogueRevision);</span>
+        // A pre-evidence adoption has only the original graph proof. Reopening uses its original command fingerprint.
+<span class="fc bfc" id="L237" title="All 4 branches covered.">        boolean legacyView = existingView.isPresent() &amp;&amp; !existingView.get().getExtensions().containsKey(SnapshotEvidence.FINGERPRINT);</span>
+        AdoptAnalysisSnapshot adoption;
+<span class="fc bfc" id="L239" title="All 2 branches covered.">        if (legacyView) {</span>
+<span class="fc" id="L240">            adoption = new AdoptAnalysisSnapshot(viewId, title, requirementText, graphFingerprint, elements, relations, provenance);</span>
+        } else {
+<span class="fc" id="L242">            Map&lt;String, String&gt; sheets = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L243">            graph.getIncludedElements().forEach(element -&gt; sheets.put(element.getNodeCode(), element.getTaxonomySheet()));</span>
+<span class="fc" id="L244">            var observations = frozenEvidence(graph.getIncludedRelationships(), requirementText, sheets);</span>
+<span class="fc" id="L245">            adoption = new AdoptAnalysisSnapshot(viewId, title, requirementText, graphFingerprint, elements, relations, provenance, observations);</span>
+        }
+<span class="fc" id="L247">        Map&lt;String, String&gt; organizationNames = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L248">        model.getOrganizations().forEach(unit -&gt; organizationNames.put(unit.id(), unit.title()));</span>
+<span class="fc" id="L249">        List&lt;String&gt; addedElements = new ArrayList&lt;&gt;(), reusedElements = new ArrayList&lt;&gt;(), addedRelations = new ArrayList&lt;&gt;(), reusedRelations = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L250">        List&lt;Difference&gt; differences = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L251">        elements.forEach(e -&gt; {</span>
+<span class="fc" id="L252">            var existing = model.getElements().stream().filter(item -&gt; item.getId().equals(e.id())).findFirst();</span>
+<span class="fc bfc" id="L253" title="All 2 branches covered.">            if (existing.isEmpty()) addedElements.add(e.id());</span>
+            else {
+<span class="fc" id="L255">                reusedElements.add(e.id());</span>
+<span class="fc bfc" id="L256" title="All 2 branches covered.">                if (!Objects.equals(existing.get().getTitle(),e.title())) differences.add(new Difference(e.id(),&quot;title&quot;,existing.get().getTitle(),e.title()));</span>
+<span class="fc bfc" id="L257" title="All 2 branches covered.">                if (!Objects.equals(existing.get().getDescription(),e.description())) differences.add(new Difference(e.id(),&quot;description&quot;,existing.get().getDescription(),e.description()));</span>
+<span class="fc" id="L258">                var currentResponsibility = responsibility(e.id(), existing.get().getExtensions(), organizationNames);</span>
+<span class="pc bpc" id="L259" title="1 of 4 branches missed.">                if (currentResponsibility != null &amp;&amp; !currentResponsibility.equals(e.responsibility())) {</span>
+<span class="fc" id="L260">                    differences.add(new Difference(e.id(), &quot;responsibility&quot;, responsibilityLabel(currentResponsibility),</span>
+<span class="fc" id="L261">                            responsibilityLabel(e.responsibility())));</span>
+                }
+            }
+<span class="fc" id="L264">        });</span>
+<span class="fc" id="L265">        relations.forEach(r -&gt; {</span>
+<span class="pc bpc" id="L266" title="3 of 6 branches missed.">            boolean exists = model.getRelations().stream().anyMatch(e -&gt; r.sourceId().equals(e.getSourceId()) &amp;&amp; r.relationType().equals(e.getRelationType()) &amp;&amp; r.targetId().equals(e.getTargetId()));</span>
+<span class="fc bfc" id="L267" title="All 2 branches covered.">            (exists ? reusedRelations : addedRelations).add(r.id());</span>
+<span class="fc" id="L268">        });</span>
+<span class="fc" id="L269">        boolean existing = existingView.isPresent();</span>
+<span class="fc" id="L270">        List&lt;String&gt; previewParts = new ArrayList&lt;&gt;(Arrays.asList(viewId,title,requirementText,graphFingerprint,</span>
+<span class="fc" id="L271">                request.context().toString(),request.metadata().toString()));</span>
+<span class="fc bfc" id="L272" title="All 2 branches covered.">        for (var element : elements) {</span>
+<span class="fc" id="L273">            var reference = element.catalogueReference();</span>
+<span class="fc bfc" id="L274" title="All 2 branches covered.">            if (reference != null)</span>
+<span class="fc" id="L275">                previewParts.addAll(Arrays.asList(&quot;catalogue-entry&quot;, element.id(), reference.uuid(), reference.titleEn(), reference.titleDe()));</span>
+<span class="fc" id="L276">        }</span>
+<span class="fc" id="L277">        new TreeMap&lt;&gt;(adoption.provenance()).forEach((key,value) -&gt; previewParts.addAll(List.of(key,value)));</span>
+<span class="fc" id="L278">        return new Prepared(adoption,new Summary(List.copyOf(addedElements),List.copyOf(reusedElements),List.copyOf(addedRelations),</span>
+<span class="fc" id="L279">                List.copyOf(reusedRelations),List.copyOf(differences),List.of()),existing,hash(previewParts));</span>
+    }
+
+    private static List&lt;SnapshotEvidence&gt; frozenEvidence(List&lt;RequirementRelationshipView&gt; relations, String requirement,
+                                                       Map&lt;String, String&gt; sheets) {
+<span class="fc" id="L284">        List&lt;SnapshotEvidence&gt; result = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L285" title="All 2 branches covered.">        for (var relation : relations) {</span>
+<span class="fc" id="L286">            var key = new RelationKey(relation.getSourceCode(), relation.getRelationType(), relation.getTargetCode());</span>
+<span class="fc bfc" id="L287" title="All 2 branches covered.">            var origin = relation.getOrigin() == null ? null : relation.getOrigin().name();</span>
+<span class="fc" id="L288">            var confidence = relation.getRecordedConfidence();</span>
+<span class="fc" id="L289">            Map&lt;String, String&gt; fields = new TreeMap&lt;&gt;();</span>
+<span class="fc" id="L290">            put(fields, &quot;x-analysis-derivation&quot;, relation.getDerivationReason());</span>
+<span class="fc" id="L291">            put(fields, &quot;x-analysis-presence&quot;, relation.getPresenceReason());</span>
+<span class="fc" id="L292">            put(fields, &quot;x-analysis-included-because&quot;, relation.getIncludedBecause());</span>
+<span class="fc" id="L293">            put(fields, &quot;x-analysis-seed-type&quot;, Objects.toString(relation.getSeedType(), null));</span>
+<span class="fc" id="L294">            var witnesses = relation.getRequirementEvidence();</span>
+<span class="pc bpc" id="L295" title="1 of 2 branches missed.">            if ((long) result.size() + Math.max(1, witnesses.size()) &gt; SnapshotEvidence.MAX_RECORDS)</span>
+<span class="nc" id="L296">                throw SnapshotEvidence.invalid(&quot;At most 10000 evidence records can be adopted&quot;);</span>
+<span class="fc bfc" id="L297" title="All 2 branches covered.">            if (witnesses.isEmpty()) {</span>
+<span class="pc bpc" id="L298" title="2 of 6 branches missed.">                if (origin != null || confidence != null || !fields.isEmpty()) {</span>
+<span class="fc" id="L299">                    put(fields, &quot;summary&quot;, Optional.ofNullable(relation.getDerivationReason()).orElse(</span>
+<span class="pc bpc" id="L300" title="1 of 2 branches missed.">                            relation.getPresenceReason() != null ? relation.getPresenceReason() : relation.getIncludedBecause()));</span>
+<span class="fc" id="L301">                    result.add(new SnapshotEvidence(key, origin, confidence, fields));</span>
+                }
+                continue;
+            }
+<span class="fc bfc" id="L305" title="All 2 branches covered.">            for (var witness : witnesses) {</span>
+<span class="fc" id="L306">                validateWitness(key, witness, requirement, sheets);</span>
+<span class="fc" id="L307">                var scoped = new TreeMap&lt;&gt;(fields);</span>
+<span class="fc" id="L308">                var assessed = witness.contribution();</span>
+<span class="fc" id="L309">                var decision = witness.evidence();</span>
+<span class="fc" id="L310">                put(scoped, &quot;summary&quot;, decision.rationale());</span>
+<span class="fc" id="L311">                put(scoped, &quot;x-analysis-assessed-id&quot;, assessed.source().id());</span>
+<span class="fc" id="L312">                put(scoped, &quot;x-analysis-assessed-contribution&quot;, assessed.text());</span>
+<span class="fc" id="L313">                put(scoped, &quot;x-analysis-assessed-quote&quot;, assessed.quote());</span>
+<span class="fc" id="L314">                put(scoped, &quot;x-analysis-assessed-condition&quot;, assessed.condition());</span>
+<span class="fc" id="L315">                put(scoped, &quot;x-analysis-candidate-id&quot;, decision.targetId());</span>
+<span class="fc" id="L316">                put(scoped, &quot;x-analysis-candidate-contribution&quot;, decision.contribution());</span>
+<span class="fc" id="L317">                put(scoped, &quot;x-analysis-candidate-quote&quot;, decision.quote());</span>
+<span class="fc" id="L318">                put(scoped, &quot;x-analysis-candidate-condition&quot;, decision.condition());</span>
+<span class="fc" id="L319">                put(scoped, &quot;x-analysis-direction&quot;, witness.direction().name());</span>
+<span class="fc" id="L320">                put(scoped, &quot;x-analysis-outcome&quot;, decision.outcome().name());</span>
+<span class="fc" id="L321">                put(scoped, &quot;x-analysis-necessity&quot;, decision.necessity().name());</span>
+<span class="fc" id="L322">                put(scoped, &quot;x-analysis-alternative-group&quot;, decision.alternativeGroup());</span>
+<span class="fc" id="L323">                put(scoped, &quot;x-analysis-question&quot;, decision.question());</span>
+<span class="fc" id="L324">                result.add(new SnapshotEvidence(key, origin, confidence, scoped));</span>
+<span class="fc" id="L325">            }</span>
+<span class="fc" id="L326">        }</span>
+<span class="fc" id="L327">        return result;</span>
+    }
+
+    private static void validateWitness(RelationKey key, RelationSearchModel.Edge witness, String requirement,
+                                        Map&lt;String, String&gt; sheets) {
+<span class="pc bpc" id="L332" title="4 of 8 branches missed.">        if (witness == null || witness.direction() == null || witness.contribution() == null || witness.target() == null</span>
+<span class="pc bpc" id="L333" title="2 of 4 branches missed.">                || witness.evidence() == null || !key.relationType().equals(witness.type())</span>
+<span class="pc bpc" id="L334" title="1 of 4 branches missed.">                || !key.sourceId().equals(witness.sourceId()) || !key.targetId().equals(witness.targetId()))</span>
+<span class="fc" id="L335">            throw SnapshotEvidence.invalid(&quot;Witness does not identify the same directed snapshot relation&quot;);</span>
+<span class="fc" id="L336">        var assessed = witness.contribution().source();</span>
+<span class="fc" id="L337">        var candidate = witness.target();</span>
+<span class="fc" id="L338">        var decision = witness.evidence();</span>
+<span class="pc bpc" id="L339" title="3 of 6 branches missed.">        if (assessed.container() || candidate.container() || assessed.id().equals(candidate.id())</span>
+<span class="pc bpc" id="L340" title="2 of 4 branches missed.">                || !assessed.root().equals(sheets.get(assessed.id())) || !candidate.root().equals(sheets.get(candidate.id()))</span>
+<span class="pc bpc" id="L341" title="2 of 4 branches missed.">                || !candidate.id().equals(decision.targetId()) || decision.outcome() != RelationSearchModel.Outcome.VERIFIED</span>
+<span class="pc bpc" id="L342" title="3 of 6 branches missed.">                || decision.necessity() == null || decision.contribution() == null || decision.contribution().isBlank()</span>
+<span class="pc bpc" id="L343" title="3 of 6 branches missed.">                || decision.quote() == null || decision.quote().isBlank() || requirement == null</span>
+<span class="pc bpc" id="L344" title="1 of 4 branches missed.">                || !requirement.contains(witness.contribution().quote()) || !requirement.contains(decision.quote()))</span>
+<span class="fc" id="L345">            throw SnapshotEvidence.invalid(&quot;Witness does not match the recorded endpoints, decision and exact requirement quotes&quot;);</span>
+<span class="fc" id="L346">    }</span>
+
+    private static SnapshotResponsibility responsibility(String code, Map&lt;String, String&gt; fields, Map&lt;String, String&gt; names) {
+<span class="fc" id="L349">        String id = fields.get(ArchitectureOrganization.RESPONSIBLE_ID);</span>
+<span class="fc bfc" id="L350" title="All 2 branches covered.">        String name = id == null ? null : names.get(id);</span>
+<span class="fc bfc" id="L351" title="All 2 branches covered.">        if (name != null) return new SnapshotResponsibility(id, name, code);</span>
+<span class="fc" id="L352">        String legacy = fields.get(&quot;x-responsible-organization&quot;);</span>
+<span class="pc bpc" id="L353" title="3 of 4 branches missed.">        if (legacy != null &amp;&amp; !legacy.isBlank()) return new SnapshotResponsibility(&quot;legacy:&quot; + legacy, legacy, code);</span>
+<span class="fc" id="L354">        String captured = fields.get(ArchitectureOrganization.CAPTURED_NAME);</span>
+<span class="fc" id="L355">        String unit = fields.get(ArchitectureOrganization.CAPTURED_UNIT);</span>
+<span class="fc" id="L356">        String source = fields.get(ArchitectureOrganization.CAPTURED_SOURCE);</span>
+<span class="pc bpc" id="L357" title="5 of 6 branches missed.">        return captured == null || unit == null || source == null ? null : new SnapshotResponsibility(unit, captured, source);</span>
+    }
+
+    private static String responsibilityLabel(SnapshotResponsibility responsibility) {
+<span class="pc bpc" id="L361" title="1 of 2 branches missed.">        return responsibility == null ? null : responsibility.name() + &quot; (&quot; + responsibility.unitId() + &quot;) · &quot; + responsibility.sourceId();</span>
+    }
+    private UserWorkspace owned(String workspaceId,String username,String repositoryId) {
+<span class="pc" id="L364">        var workspace = workspaces.findByWorkspaceId(workspaceId).orElseThrow(() -&gt; problem(&quot;NOT_FOUND&quot;,&quot;Workspace is not accessible&quot;));</span>
+<span class="pc bpc" id="L365" title="1 of 6 branches missed.">        if (workspace.isShared() || workspace.isArchived() || !repositoryId.equals(workspace.getSourceRepositoryId())</span>
+<span class="fc bfc" id="L366" title="All 4 branches covered.">                || (!actorAccess.owns(username, workspace) &amp;&amp; !(workspace.isCollaborative()</span>
+<span class="fc bfc" id="L367" title="All 2 branches covered.">                &amp;&amp; membership.canCollaborate(repositories.getRepository(repositoryId), username))))</span>
+<span class="fc" id="L368">            throw problem(&quot;NOT_FOUND&quot;,&quot;Workspace is not accessible&quot;);</span>
+<span class="fc bfc" id="L369" title="All 2 branches covered.">        if (workspace.isCollaborative()) actorAccess.requireActive(username);</span>
+<span class="fc" id="L370">        return workspace;</span>
+    }
+<span class="fc bfc" id="L372" title="All 2 branches covered.">    private static void put(Map&lt;String,String&gt; map,String key,String value) { if (value != null) map.put(key,value); }</span>
+    private static String hash(List&lt;String&gt; parts) {
+        try {
+<span class="fc" id="L375">            var bytes = new ByteArrayOutputStream(); var stream = new DataOutputStream(bytes);</span>
+<span class="fc bfc" id="L376" title="All 2 branches covered.">            for (String value : parts) {</span>
+<span class="pc bpc" id="L377" title="1 of 2 branches missed.">                if (value == null) stream.writeInt(-1);</span>
+                else {
+<span class="fc" id="L379">                    SnapshotEvidence.requireUtf8(value);</span>
+<span class="fc" id="L380">                    byte[] encoded = value.getBytes(StandardCharsets.UTF_8);</span>
+<span class="fc" id="L381">                    stream.writeInt(encoded.length);</span>
+<span class="fc" id="L382">                    stream.write(encoded);</span>
+                }
+<span class="fc" id="L384">            }</span>
+<span class="fc" id="L385">            return HexFormat.of().formatHex(java.security.MessageDigest.getInstance(&quot;SHA-256&quot;).digest(bytes.toByteArray()));</span>
+<span class="nc" id="L386">        } catch (IOException | java.security.NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }</span>
+    }
+<span class="fc" id="L388">    private static CommandProblem problem(String code,String message) { return new CommandProblem(code,&quot;source&quot;,message,List.of()); }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

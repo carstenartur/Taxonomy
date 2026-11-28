@@ -1,0 +1,412 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AnalysisCopilotService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-architecture</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.architecture.service</a> &gt; <span class="el_source">AnalysisCopilotService.java</span></div><h1>AnalysisCopilotService.java</h1><pre class="source lang-java linenums">package com.taxonomy.architecture.service;
+
+import com.taxonomy.dto.AnalysisCopilotResult;
+import com.taxonomy.dto.AnalysisResult;
+import com.taxonomy.dto.AnalysisScope;
+import com.taxonomy.dto.ArchitectureRecommendation;
+import com.taxonomy.dto.DetectedPattern;
+import com.taxonomy.dto.GapAnalysisView;
+import com.taxonomy.dto.PatternDetectionView;
+import com.taxonomy.dto.RecommendedElement;
+import com.taxonomy.dto.RelationSearchReport;
+import com.taxonomy.dto.TaxonomyNodeDto;
+import com.taxonomy.dto.RelationSearchModel.Edge;
+import com.taxonomy.dto.RelationSearchModel.Necessity;
+import com.taxonomy.dto.RelationSearchModel.Outcome;
+import com.taxonomy.model.RelationType;
+import com.taxonomy.relations.service.RelationCompatibilityMatrix;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashSet;
+import java.util.IdentityHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.TreeMap;
+import java.util.TreeSet;
+import java.util.Map.Entry;
+import org.springframework.stereotype.Service;
+
+/**
+ * Computes Copilot reports exclusively from an analysis's retained evidence.
+ *
+ * &lt;p&gt;This service performs no repository, catalogue, embedding or provider reads.
+ * Its output is stored at the analysis completion boundary, so reconnecting
+ * observers receive the same report without starting more work. Missing or
+ * pruned evidence stays unknown; compatibility rules do not prove a gap.
+ */
+@Service
+<span class="fc" id="L42">public class AnalysisCopilotService {</span>
+    private static final int MAX_NODES = 25_000;
+    private static final int MAX_EDGES = 25_000;
+    private static final int MAX_ANCHORS = 200;
+    private static final int MAX_GAPS = 500;
+
+    /** A report's completion state describes this computation, not architecture completeness. */
+    public AnalysisCopilotResult analyze(AnalysisResult analysis, String businessText) {
+<span class="fc" id="L50">        GapAnalysisView gaps = new GapAnalysisView();</span>
+<span class="fc" id="L51">        gaps.setBusinessText(businessText);</span>
+<span class="fc" id="L52">        PatternDetectionView patterns = new PatternDetectionView();</span>
+<span class="fc" id="L53">        ArchitectureRecommendation recommendation = new ArchitectureRecommendation();</span>
+<span class="fc" id="L54">        recommendation.setBusinessText(businessText);</span>
+<span class="fc" id="L55">        ArrayList&lt;String&gt; notes = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L56" title="All 2 branches covered.">        if (analysis != null</span>
+<span class="fc bfc" id="L57" title="All 2 branches covered.">            &amp;&amp; &quot;SUCCESS&quot;.equals(analysis.getStatus())</span>
+<span class="fc bfc" id="L58" title="All 4 branches covered.">            &amp;&amp; (analysis.getAnalysisCoverage() == null || !analysis.getAnalysisCoverage().hasOpenEvaluations())) {</span>
+<span class="fc bfc" id="L59" title="All 2 branches covered.">            if (!AnalysisScope.orDefault(analysis.getAnalysisScope()).legacyFull()) {</span>
+<span class="fc" id="L60">                notes.add(&quot;Copilot reports were skipped because the analysis scope excludes taxonomy or relation work.&quot;);</span>
+<span class="fc" id="L61">                return result(&quot;SKIPPED_SCOPE&quot;, gaps, patterns, recommendation, notes);</span>
+            }
+
+<span class="fc" id="L64">            notes.add(&quot;Reports describe retained evidence only; search exhaustion under a pruning policy does not prove architectural completeness.&quot;);</span>
+<span class="fc" id="L65">            Bounds bounds = new Bounds();</span>
+<span class="fc" id="L66">            Map&lt;String, TaxonomyNodeDto&gt; nodes = index(analysis.getTree(), bounds);</span>
+<span class="fc" id="L67">            Set&lt;String&gt; navigationContext = new HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L68" title="All 2 branches covered.">            for (TaxonomyNodeDto node : nodes.values()) {</span>
+<span class="fc" id="L69">                String parentCode = node.getParentCode();</span>
+<span class="fc bfc" id="L70" title="All 4 branches covered.">                if (node.architectureNavigationOnly(parentCode == null ? null : nodes.get(parentCode))) {</span>
+<span class="fc" id="L71">                    navigationContext.add(node.getCode());</span>
+                }
+<span class="fc" id="L73">            }</span>
+<span class="fc" id="L74">            Map&lt;String, Double&gt; scores = analysis.getScores();</span>
+<span class="fc" id="L75">            List&lt;Entry&lt;String, Double&gt;&gt; anchors = scores.entrySet()</span>
+<span class="fc" id="L76">                .stream()</span>
+<span class="fc bfc" id="L77" title="All 2 branches covered.">                .filter(e -&gt; e.getValue() &gt;= 50)</span>
+<span class="fc bfc" id="L78" title="All 4 branches covered.">                .filter(e -&gt; nodes.containsKey(e.getKey()) &amp;&amp; !navigationContext.contains(e.getKey()))</span>
+<span class="fc" id="L79">                .sorted(Entry.&lt;String, Double&gt;comparingByValue().reversed().thenComparing(Entry.comparingByKey()))</span>
+<span class="fc" id="L80">                .toList();</span>
+<span class="fc bfc" id="L81" title="All 2 branches covered.">            if (anchors.size() &gt; MAX_ANCHORS) {</span>
+<span class="fc" id="L82">                bounds.truncated = true;</span>
+<span class="fc" id="L83">                anchors = anchors.subList(0, MAX_ANCHORS);</span>
+            }
+
+<span class="fc bfc" id="L86" title="All 4 branches covered.">            if (scores.keySet().stream().anyMatch(code -&gt; !nodes.containsKey(code))) {</span>
+<span class="fc" id="L87">                bounds.incomplete = true;</span>
+<span class="fc" id="L88">                notes.add(&quot;Some scored identities have no retained catalogue metadata and were excluded from recommendations.&quot;);</span>
+            }
+
+<span class="fc bfc" id="L91" title="All 4 branches covered.">            if (nodes.isEmpty() || scores.isEmpty()) {</span>
+<span class="fc" id="L92">                bounds.incomplete = true;</span>
+<span class="fc" id="L93">                notes.add(&quot;Retained catalogue or scoring evidence is unavailable.&quot;);</span>
+            }
+
+<span class="fc" id="L96">            RelationSearchReport report = analysis.getRelationSearchReport();</span>
+<span class="pc bpc" id="L97" title="1 of 4 branches missed.">            if (report == null || !report.isSearchExhausted()) {</span>
+<span class="fc" id="L98">                bounds.incomplete = true;</span>
+<span class="fc" id="L99">                notes.add(&quot;Relation search evidence is absent or unfinished; unevidenced relations remain unknown.&quot;);</span>
+            }
+
+<span class="fc" id="L102">            Map&lt;String, List&lt;RetainedRelation&gt;&gt; outgoing = verifiedRelations(report, nodes, navigationContext, bounds);</span>
+<span class="fc" id="L103">            this.analyzeGaps(anchors, nodes, outgoing, gaps, bounds);</span>
+<span class="fc" id="L104">            analyzePatterns(anchors, nodes, outgoing, patterns);</span>
+<span class="fc" id="L105">            recommend(analysis, anchors, nodes, recommendation);</span>
+<span class="fc bfc" id="L106" title="All 2 branches covered.">            if (bounds.truncated) {</span>
+<span class="fc" id="L107">                notes.add(&quot;A retained-evidence processing or report size limit was reached; the displayed report is partial.&quot;);</span>
+            }
+
+<span class="fc bfc" id="L110" title="All 2 branches covered.">            if (bounds.invalidEdges) {</span>
+<span class="fc" id="L111">                notes.add(&quot;Unverified relations or relations inconsistent with retained catalogue identities were excluded from positive evidence.&quot;);</span>
+            }
+<span class="fc bfc" id="L113" title="All 2 branches covered.">            if (bounds.genericEdges) {</span>
+<span class="fc" id="L114">                notes.add(&quot;Automatic relations to taxonomy containers remain contextual evidence. Concrete counterpart coverage is open.&quot;);</span>
+            }
+
+<span class="fc bfc" id="L117" title="All 4 branches covered.">            return result(!bounds.incomplete &amp;&amp; !bounds.truncated ? &quot;COMPLETED&quot; : &quot;PARTIAL&quot;, gaps, patterns, recommendation, notes);</span>
+        } else {
+<span class="fc" id="L119">            notes.add(&quot;Copilot reports were skipped because the retained analysis is partial or unavailable.&quot;);</span>
+<span class="fc" id="L120">            return result(&quot;SKIPPED_PARTIAL&quot;, gaps, patterns, recommendation, notes);</span>
+        }
+    }
+
+    private static AnalysisCopilotResult result(
+        String state, GapAnalysisView gaps, PatternDetectionView patterns, ArchitectureRecommendation recommendation, List&lt;String&gt; notes
+    ) {
+<span class="fc bfc" id="L127" title="All 2 branches covered.">        if (state.startsWith(&quot;SKIPPED_&quot;)) {</span>
+<span class="fc" id="L128">            gaps.getNotes().addAll(notes);</span>
+<span class="fc" id="L129">            patterns.getNotes().addAll(notes);</span>
+<span class="fc" id="L130">            recommendation.getNotes().addAll(notes);</span>
+        }
+
+<span class="fc" id="L133">        return new AnalysisCopilotResult(2, state, gaps, patterns, recommendation, notes);</span>
+    }
+
+    private static Map&lt;String, TaxonomyNodeDto&gt; index(List&lt;TaxonomyNodeDto&gt; tree, Bounds bounds) {
+<span class="fc" id="L137">        TreeMap&lt;String, TaxonomyNodeDto&gt; nodes = new TreeMap&lt;&gt;();</span>
+<span class="fc" id="L138">        Set&lt;TaxonomyNodeDto&gt; seen = Collections.newSetFromMap(new IdentityHashMap&lt;&gt;());</span>
+<span class="fc" id="L139">        ArrayDeque&lt;TaxonomyNodeDto&gt; pending = new ArrayDeque&lt;&gt;();</span>
+<span class="fc bfc" id="L140" title="All 2 branches covered.">        if (tree != null) {</span>
+<span class="fc" id="L141">            tree.stream().filter(Objects::nonNull).forEach(pending::addLast);</span>
+        }
+
+<span class="fc" id="L144">        int visited = 0;</span>
+
+<span class="pc bpc" id="L146" title="1 of 4 branches missed.">        while (!pending.isEmpty() &amp;&amp; visited &lt; MAX_NODES) {</span>
+<span class="fc" id="L147">            TaxonomyNodeDto node = pending.removeFirst();</span>
+<span class="pc bpc" id="L148" title="1 of 2 branches missed.">            if (seen.add(node)) {</span>
+<span class="fc" id="L149">                visited++;</span>
+<span class="pc bpc" id="L150" title="1 of 4 branches missed.">                if (node.getCode() != null &amp;&amp; node.getTaxonomyRoot() != null) {</span>
+<span class="fc" id="L151">                    nodes.putIfAbsent(node.getCode(), node);</span>
+                }
+
+<span class="pc bpc" id="L154" title="1 of 2 branches missed.">                if (node.getChildren() != null) {</span>
+<span class="fc" id="L155">                    node.getChildren().stream().filter(Objects::nonNull).forEach(pending::addLast);</span>
+                }
+            }
+<span class="fc" id="L158">        }</span>
+
+<span class="pc bpc" id="L160" title="1 of 2 branches missed.">        bounds.truncated |= !pending.isEmpty();</span>
+<span class="fc" id="L161">        return nodes;</span>
+    }
+
+    /** Normalizes direction only after checking both retained endpoint identities. */
+    private static Map&lt;String, List&lt;RetainedRelation&gt;&gt; verifiedRelations(
+        RelationSearchReport report, Map&lt;String, TaxonomyNodeDto&gt; nodes, Set&lt;String&gt; navigationContext, Bounds bounds
+    ) {
+<span class="fc" id="L168">        TreeMap&lt;String, List&lt;RetainedRelation&gt;&gt; outgoing = new TreeMap&lt;&gt;();</span>
+<span class="fc bfc" id="L169" title="All 2 branches covered.">        if (report == null) {</span>
+<span class="fc" id="L170">            return outgoing;</span>
+        }
+
+<span class="fc" id="L173">        TreeSet&lt;RetainedRelation&gt; retained = new TreeSet&lt;&gt;(</span>
+<span class="fc" id="L174">            Comparator.comparing(RetainedRelation::source)</span>
+<span class="fc" id="L175">                .thenComparing(RetainedRelation::type)</span>
+<span class="fc" id="L176">                .thenComparing(RetainedRelation::target)</span>
+<span class="fc bfc" id="L177" title="All 2 branches covered.">                .thenComparing(edge -&gt; !edge.unconditional())</span>
+<span class="fc" id="L178">                .thenComparing(RetainedRelation::qualifications)</span>
+        );
+<span class="fc" id="L180">        int inspected = 0;</span>
+
+<span class="fc bfc" id="L182" title="All 2 branches covered.">        for (Edge edge : report.result().edges()) {</span>
+<span class="pc bpc" id="L183" title="1 of 2 branches missed.">            if (inspected++ &gt;= MAX_EDGES) {</span>
+<span class="nc" id="L184">                bounds.truncated = true;</span>
+<span class="nc" id="L185">                break;</span>
+            }
+
+<span class="pc bpc" id="L188" title="1 of 2 branches missed.">            if (edge.contribution() != null</span>
+<span class="pc bpc" id="L189" title="1 of 2 branches missed.">                &amp;&amp; edge.target() != null</span>
+<span class="pc bpc" id="L190" title="1 of 2 branches missed.">                &amp;&amp; edge.direction() != null</span>
+<span class="pc bpc" id="L191" title="1 of 2 branches missed.">                &amp;&amp; edge.evidence() != null</span>
+<span class="fc bfc" id="L192" title="All 2 branches covered.">                &amp;&amp; edge.evidence().outcome() == Outcome.VERIFIED</span>
+<span class="fc bfc" id="L193" title="All 2 branches covered.">                &amp;&amp; Objects.equals(edge.target().id(), edge.evidence().targetId())) {</span>
+<span class="fc" id="L194">                TaxonomyNodeDto assessed = nodes.get(edge.contribution().source().id());</span>
+<span class="fc" id="L195">                TaxonomyNodeDto counterpart = nodes.get(edge.target().id());</span>
+<span class="fc bfc" id="L196" title="All 6 branches covered.">                if (assessed != null &amp;&amp; counterpart != null &amp;&amp; (navigationContext.contains(assessed.getCode())</span>
+<span class="fc bfc" id="L197" title="All 2 branches covered.">                        || navigationContext.contains(counterpart.getCode()))) {</span>
+<span class="fc" id="L198">                    bounds.genericEdges = true;</span>
+<span class="fc" id="L199">                    bounds.incomplete = true;</span>
+<span class="fc" id="L200">                    continue;</span>
+                }
+<span class="fc bfc" id="L202" title="All 4 branches covered.">                if (assessed != null</span>
+                    &amp;&amp; counterpart != null
+<span class="pc bpc" id="L204" title="1 of 2 branches missed.">                    &amp;&amp; edge.type() != null</span>
+<span class="pc bpc" id="L205" title="1 of 2 branches missed.">                    &amp;&amp; Objects.equals(assessed.getTaxonomyRoot(), edge.contribution().source().root())</span>
+<span class="fc bfc" id="L206" title="All 2 branches covered.">                    &amp;&amp; Objects.equals(counterpart.getTaxonomyRoot(), edge.target().root())) {</span>
+<span class="fc" id="L207">                    retained.add(</span>
+                        new RetainedRelation(
+<span class="fc" id="L209">                            edge.sourceId(),</span>
+<span class="fc" id="L210">                            edge.targetId(),</span>
+<span class="fc" id="L211">                            edge.type(),</span>
+<span class="fc" id="L212">                            nodes.get(edge.sourceId()).getTaxonomyRoot(),</span>
+<span class="fc" id="L213">                            nodes.get(edge.targetId()).getTaxonomyRoot(),</span>
+<span class="fc" id="L214">                            edge.evidence().necessity(),</span>
+<span class="fc" id="L215">                            text(edge.contribution().condition()),</span>
+<span class="fc" id="L216">                            text(edge.evidence().condition()),</span>
+<span class="fc" id="L217">                            text(edge.evidence().alternativeGroup())</span>
+                        )
+                    );
+                } else {
+<span class="fc" id="L221">                    bounds.invalidEdges = true;</span>
+<span class="fc" id="L222">                    bounds.incomplete = true;</span>
+                }
+<span class="fc" id="L224">            } else {</span>
+<span class="fc" id="L225">                bounds.invalidEdges = true;</span>
+            }
+<span class="fc" id="L227">        }</span>
+
+<span class="fc bfc" id="L229" title="All 2 branches covered.">        for (RetainedRelation relation : retained) {</span>
+<span class="fc" id="L230">            outgoing.computeIfAbsent(relation.source(), key -&gt; new ArrayList&lt;&gt;()).add(relation);</span>
+<span class="fc" id="L231">        }</span>
+
+<span class="fc" id="L233">        return outgoing;</span>
+    }
+
+    private void analyzeGaps(
+        List&lt;Entry&lt;String, Double&gt;&gt; anchors,
+        Map&lt;String, TaxonomyNodeDto&gt; nodes,
+        Map&lt;String, List&lt;RetainedRelation&gt;&gt; outgoing,
+        GapAnalysisView gaps,
+        Bounds bounds
+    ) {
+<span class="fc" id="L243">        var baseline = ArchitectureGapService.compatibilityAssessment(gaps.getBusinessText());</span>
+<span class="fc" id="L244">        gaps.setProfileId(baseline.getProfileId()); gaps.setProfileVersion(baseline.getProfileVersion());</span>
+<span class="fc" id="L245">        gaps.setMetamodelVersion(baseline.getMetamodelVersion()); gaps.setEvidenceCompleteness(baseline.getEvidenceCompleteness());</span>
+<span class="fc" id="L246">        gaps.setEvidenceAuthority(baseline.getEvidenceAuthority()); gaps.getNotes().addAll(baseline.getNotes());</span>
+<span class="fc" id="L247">        gaps.setTotalAnchors(0);</span>
+<span class="fc" id="L248">    }</span>
+
+    /** Each frontier entry retains one connected path to the actual endpoint. */
+    private static void analyzePatterns(
+        List&lt;Entry&lt;String, Double&gt;&gt; anchors,
+        Map&lt;String, TaxonomyNodeDto&gt; nodes,
+        Map&lt;String, List&lt;RetainedRelation&gt;&gt; outgoing,
+        PatternDetectionView patterns
+    ) {
+<span class="fc" id="L257">        int applicable = 0;</span>
+
+<span class="fc bfc" id="L259" title="All 2 branches covered.">        for (Entry&lt;String, Double&gt; anchor : anchors) {</span>
+<span class="fc bfc" id="L260" title="All 2 branches covered.">            for (ArchitecturePatternService.PatternTemplate template : ArchitecturePatternService.patternTemplates()) {</span>
+<span class="fc bfc" id="L261" title="All 2 branches covered.">                if (template.steps().getFirst().sourceRoot().equals(nodes.get(anchor.getKey()).getTaxonomyRoot())) {</span>
+<span class="fc" id="L262">                    applicable++;</span>
+<span class="fc" id="L263">                    Map&lt;String, List&lt;RetainedRelation&gt;&gt; frontier = new TreeMap&lt;&gt;();</span>
+<span class="fc" id="L264">                    frontier.put(anchor.getKey(), List.of());</span>
+<span class="fc" id="L265">                    List&lt;RetainedRelation&gt; longest = List.of();</span>
+
+<span class="fc bfc" id="L267" title="All 2 branches covered.">                    for (ArchitecturePatternService.PatternStep step : template.steps()) {</span>
+<span class="fc" id="L268">                        Map&lt;String, List&lt;RetainedRelation&gt;&gt; next = new TreeMap&lt;&gt;();</span>
+
+<span class="fc bfc" id="L270" title="All 2 branches covered.">                        for (Entry&lt;String, List&lt;RetainedRelation&gt;&gt; current : frontier.entrySet()) {</span>
+<span class="fc bfc" id="L271" title="All 2 branches covered.">                            for (RetainedRelation edge : outgoing.getOrDefault(current.getKey(), List.of())) {</span>
+<span class="pc bpc" id="L272" title="1 of 2 branches missed.">                                if (step.sourceRoot().equals(edge.sourceRoot())</span>
+<span class="fc bfc" id="L273" title="All 2 branches covered.">                                    &amp;&amp; step.targetRoot().equals(edge.targetRoot())</span>
+<span class="pc bpc" id="L274" title="1 of 2 branches missed.">                                    &amp;&amp; step.relationType().equals(edge.type())) {</span>
+<span class="fc" id="L275">                                    ArrayList&lt;RetainedRelation&gt; path = new ArrayList&lt;&gt;(current.getValue());</span>
+<span class="fc" id="L276">                                    path.add(edge);</span>
+<span class="fc" id="L277">                                    next.merge(</span>
+<span class="pc bpc" id="L278" title="1 of 2 branches missed.">                                        edge.target(), path, (existing, candidate) -&gt; unconditionalSteps(candidate) &gt; unconditionalSteps(existing) ? candidate : existing</span>
+                                    );
+                                }
+<span class="fc" id="L281">                            }</span>
+<span class="fc" id="L282">                        }</span>
+
+<span class="fc bfc" id="L284" title="All 2 branches covered.">                        if (next.isEmpty()) {</span>
+<span class="fc" id="L285">                            break;</span>
+                        }
+
+<span class="fc" id="L288">                        frontier = next;</span>
+<span class="fc" id="L289">                        longest = next.values().stream().max(Comparator.comparingLong(AnalysisCopilotService::unconditionalSteps)).orElseThrow();</span>
+<span class="fc" id="L290">                    }</span>
+
+<span class="fc bfc" id="L292" title="All 2 branches covered.">                    if (!longest.isEmpty()) {</span>
+<span class="fc" id="L293">                        List&lt;String&gt; expected = template.steps().stream().map(Object::toString).toList();</span>
+<span class="fc" id="L294">                        List&lt;String&gt; present = longest.stream().map(RetainedRelation::description).toList();</span>
+<span class="fc" id="L295">                        ArrayList&lt;String&gt; unknown = new ArrayList&lt;&gt;(</span>
+<span class="fc" id="L296">                            expected.subList(present.size(), expected.size()).stream().map(step -&gt; step + &quot; — not evidenced; needs checking&quot;).toList()</span>
+                        );
+<span class="fc" id="L298">                        longest.stream()</span>
+<span class="fc bfc" id="L299" title="All 2 branches covered.">                            .filter(edge -&gt; !edge.unconditional())</span>
+<span class="fc" id="L300">                            .forEach(edge -&gt; unknown.add(edge.description() + &quot; — unconditional applicability remains unverified; needs checking.&quot;));</span>
+<span class="fc" id="L301">                        DetectedPattern detected = new DetectedPattern(</span>
+<span class="fc" id="L302">                            template.name(), expected, present, unknown, unconditionalSteps(longest) * 100.0 / expected.size()</span>
+                        );
+<span class="fc bfc" id="L304" title="All 2 branches covered.">                        if (unknown.isEmpty()) {</span>
+<span class="fc" id="L305">                            patterns.getMatchedPatterns().add(detected);</span>
+                        } else {
+<span class="fc" id="L307">                            patterns.getIncompletePatterns().add(detected);</span>
+                        }
+                    }
+                }
+<span class="fc" id="L311">            }</span>
+<span class="fc" id="L312">        }</span>
+
+<span class="fc bfc" id="L314" title="All 2 branches covered.">        patterns.setPatternCoverage(applicable == 0 ? null : patterns.getMatchedPatterns().size() * 100.0 / applicable);</span>
+<span class="fc" id="L315">        patterns.getNotes()</span>
+<span class="fc" id="L316">            .add(</span>
+                &quot;Pattern coverage is the fraction of applicable retained anchor checks with a connected, unconditional REQUIRED verified chain; it is not global architecture completeness.&quot;
+            );
+<span class="fc" id="L319">        patterns.getNotes()</span>
+<span class="fc" id="L320">            .add(</span>
+                &quot;Pattern completeness counts unconditional REQUIRED steps in the displayed chain. Conditional, optional and alternative steps retain their qualifiers and require applicability review.&quot;
+            );
+<span class="fc" id="L323">        patterns.getNotes().add(&quot;Unevidenced steps remain unknown; provisional relation hypotheses never prove a pattern.&quot;);</span>
+<span class="fc" id="L324">    }</span>
+
+    private static long unconditionalSteps(List&lt;RetainedRelation&gt; path) {
+<span class="fc" id="L327">        return path.stream().filter(RetainedRelation::unconditional).count();</span>
+    }
+
+    private static void recommend(
+        AnalysisResult analysis, List&lt;Entry&lt;String, Double&gt;&gt; anchors, Map&lt;String, TaxonomyNodeDto&gt; nodes, ArchitectureRecommendation recommendation
+    ) {
+<span class="fc bfc" id="L333" title="All 2 branches covered.">        for (Entry&lt;String, Double&gt; anchor : anchors) {</span>
+<span class="fc" id="L334">            TaxonomyNodeDto node = nodes.get(anchor.getKey());</span>
+<span class="fc" id="L335">            String reason = analysis.getReasons().get(anchor.getKey());</span>
+<span class="fc" id="L336">            RecommendedElement element = new RecommendedElement(</span>
+<span class="fc" id="L337">                anchor.getKey(),</span>
+<span class="fc" id="L338">                node.getNameEn(),</span>
+<span class="fc" id="L339">                node.getTaxonomyRoot(),</span>
+<span class="fc" id="L340">                anchor.getValue(),</span>
+<span class="pc bpc" id="L341" title="1 of 4 branches missed.">                reason != null &amp;&amp; !reason.isBlank()</span>
+<span class="fc" id="L342">                    ? &quot;Retained assessment reason: &quot; + reason</span>
+<span class="fc" id="L343">                    : &quot;Retained assessment relevance: &quot; + anchor.getValue() + &quot;%. No assessment reason was retained.&quot;</span>
+            );
+<span class="fc bfc" id="L345" title="All 2 branches covered.">            if (anchor.getValue() &gt;= ArchitectureRecommendationService.HIGH_SCORE_THRESHOLD) {</span>
+<span class="fc" id="L346">                recommendation.getMatchedElements().add(element);</span>
+            } else {
+<span class="fc" id="L348">                recommendation.getProposedElements().add(element);</span>
+            }
+<span class="fc" id="L350">        }</span>
+
+<span class="fc bfc" id="L352" title="All 2 branches covered.">        recommendation.setMeanRelevance(anchors.isEmpty() ? null : anchors.stream().mapToDouble(Entry::getValue).average().orElseThrow());</span>
+<span class="fc" id="L353">        recommendation.getReasoning().add(&quot;Candidate ranking and mean relevance use only retained effective relevance scores.&quot;);</span>
+<span class="fc" id="L354">        recommendation.getNotes()</span>
+<span class="fc" id="L355">            .add(&quot;Matched elements are relevance candidates; scores do not establish accepted model membership. Proposed elements are retained candidates for review.&quot;);</span>
+<span class="fc" id="L356">        recommendation.getNotes()</span>
+<span class="fc" id="L357">            .add(&quot;Mean relevance is the average retained relevance of displayed candidates, not a probability of architectural correctness or completeness.&quot;);</span>
+<span class="fc" id="L358">        recommendation.getNotes().add(&quot;No new catalogue candidates, embedding scores or relation hypotheses were generated.&quot;);</span>
+<span class="fc" id="L359">    }</span>
+
+    private static String text(String value) {
+<span class="pc bpc" id="L362" title="1 of 2 branches missed.">        return value == null ? &quot;&quot; : value;</span>
+    }
+
+    private static final class Bounds {
+        boolean truncated;
+        boolean incomplete;
+        boolean invalidEdges;
+        boolean genericEdges;
+    }
+
+    /** Conditions and alternatives qualify positive evidence throughout all report views. */
+<span class="fc" id="L373">    private record RetainedRelation(</span>
+        String source,
+        String target,
+        String type,
+        String sourceRoot,
+        String targetRoot,
+        Necessity necessity,
+        String sourceCondition,
+        String condition,
+        String alternativeGroup
+    ) {
+        boolean unconditional() {
+<span class="pc bpc" id="L385" title="2 of 8 branches missed.">            return necessity == Necessity.REQUIRED &amp;&amp; sourceCondition.isBlank() &amp;&amp; condition.isBlank() &amp;&amp; alternativeGroup.isBlank();</span>
+        }
+
+        String qualifications() {
+<span class="fc" id="L389">            ArrayList&lt;String&gt; details = new ArrayList&lt;&gt;();</span>
+<span class="pc bpc" id="L390" title="1 of 2 branches missed.">            details.add(necessity == null ? &quot;necessity not retained&quot; : necessity.name());</span>
+<span class="fc bfc" id="L391" title="All 2 branches covered.">            if (!sourceCondition.isBlank()) {</span>
+<span class="fc" id="L392">                details.add(&quot;source condition: &quot; + sourceCondition);</span>
+            }
+
+<span class="fc bfc" id="L395" title="All 2 branches covered.">            if (!condition.isBlank()) {</span>
+<span class="fc" id="L396">                details.add(&quot;condition: &quot; + condition);</span>
+            }
+
+<span class="fc bfc" id="L399" title="All 2 branches covered.">            if (!alternativeGroup.isBlank()) {</span>
+<span class="fc" id="L400">                details.add(&quot;alternative group: &quot; + alternativeGroup);</span>
+            }
+
+<span class="fc" id="L403">            return String.join(&quot;; &quot;, details);</span>
+        }
+
+        String description() {
+<span class="fc" id="L407">            String step = source + &quot; → &quot; + type + &quot; → &quot; + target;</span>
+<span class="fc bfc" id="L408" title="All 2 branches covered.">            return unconditional() ? step : step + &quot; [&quot; + qualifications() + &quot;]&quot;;</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

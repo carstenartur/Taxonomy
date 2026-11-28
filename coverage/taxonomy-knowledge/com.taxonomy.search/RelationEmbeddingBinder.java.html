@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RelationEmbeddingBinder.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-knowledge</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.search</a> &gt; <span class="el_source">RelationEmbeddingBinder.java</span></div><h1>RelationEmbeddingBinder.java</h1><pre class="source lang-java linenums">package com.taxonomy.search;
+
+import com.taxonomy.catalog.model.TaxonomyRelation;
+import com.taxonomy.catalog.service.RelationEmbeddingText;
+import org.hibernate.search.engine.backend.document.DocumentElement;
+import org.hibernate.search.engine.backend.document.IndexFieldReference;
+import org.hibernate.search.engine.backend.types.Projectable;
+import org.hibernate.search.mapper.pojo.bridge.TypeBridge;
+import org.hibernate.search.mapper.pojo.bridge.binding.TypeBindingContext;
+import org.hibernate.search.mapper.pojo.bridge.mapping.programmatic.TypeBinder;
+import org.hibernate.search.mapper.pojo.bridge.runtime.TypeBridgeWriteContext;
+
+/**
+ * Hibernate Search {@link TypeBinder} that computes a DJL/ONNX embedding vector for
+ * a {@link TaxonomyRelation} and writes it to an {@code &quot;embedding&quot;} {@code @VectorField}.
+ *
+ * &lt;p&gt;The enriched text is formed as:
+ * {@code &quot;{sourceName} {relationType} {targetName}. {description}&quot;}
+ *
+ * &lt;p&gt;Graceful degradation: when the DJL model is unavailable the bridge writes nothing.
+ */
+<span class="fc" id="L22">public class RelationEmbeddingBinder implements TypeBinder {</span>
+
+    @Override
+    public void bind(TypeBindingContext context) {
+<span class="fc" id="L26">        context.dependencies()</span>
+<span class="fc" id="L27">                .use(&quot;id&quot;).use(&quot;repositoryId&quot;).use(&quot;workspaceId&quot;).use(&quot;workspaceScopeKey&quot;)</span>
+<span class="fc" id="L28">                .use(&quot;ownerUsername&quot;).use(&quot;hasEmbedding&quot;)</span>
+<span class="fc" id="L29">                .use(&quot;relationType&quot;)</span>
+<span class="fc" id="L30">                .use(&quot;description&quot;)</span>
+<span class="fc" id="L31">                .use(&quot;sourceNode.code&quot;).use(&quot;targetNode.code&quot;)</span>
+<span class="fc" id="L32">                .use(&quot;sourceNode.nameEn&quot;)</span>
+<span class="fc" id="L33">                .use(&quot;targetNode.nameEn&quot;);</span>
+
+<span class="fc" id="L35">        IndexFieldReference&lt;float[]&gt; embeddingField =</span>
+<span class="fc" id="L36">                EmbeddingBridgeSupport.createEmbeddingField(context);</span>
+
+<span class="fc" id="L38">        context.bridge(TaxonomyRelation.class, new Bridge(embeddingField, EmbeddingBridgeSupport.createEmbeddingModelField(context),</span>
+<span class="fc" id="L39">                context.indexSchemaElement().field(CatalogueIndexFingerprint.FIELD,</span>
+<span class="fc" id="L40">                        f -&gt; f.asString().projectable(Projectable.YES)).toReference()));</span>
+<span class="fc" id="L41">    }</span>
+
+    public static final class Bridge implements TypeBridge&lt;TaxonomyRelation&gt; {
+
+        private final IndexFieldReference&lt;float[]&gt; embeddingField;
+        private final IndexFieldReference&lt;String&gt; modelField;
+        private final IndexFieldReference&lt;String&gt; contentField;
+
+        Bridge(IndexFieldReference&lt;float[]&gt; embeddingField, IndexFieldReference&lt;String&gt; modelField,
+<span class="fc" id="L50">                IndexFieldReference&lt;String&gt; contentField) {</span>
+<span class="fc" id="L51">            this.embeddingField = embeddingField;</span>
+<span class="fc" id="L52">            this.modelField = modelField;</span>
+<span class="fc" id="L53">            this.contentField = contentField;</span>
+<span class="fc" id="L54">        }</span>
+
+        @Override
+        public void write(DocumentElement target, TaxonomyRelation relation,
+                TypeBridgeWriteContext context) {
+<span class="fc" id="L59">            target.addValue(contentField, CatalogueIndexFingerprint.relation(relation));</span>
+<span class="fc" id="L60">            EmbeddingBridgeSupport.writeEmbedding(target, embeddingField, modelField, relation,</span>
+                    Bridge::buildEnrichedText);
+<span class="fc" id="L62">        }</span>
+
+        public static String buildEnrichedText(TaxonomyRelation relation) {
+<span class="fc" id="L65">            return RelationEmbeddingText.build(</span>
+<span class="pc bpc" id="L66" title="1 of 2 branches missed.">                    relation.getSourceNode() == null ? null : relation.getSourceNode().getNameEn(),</span>
+<span class="fc" id="L67">                    relation.getRelationType(),</span>
+<span class="pc bpc" id="L68" title="1 of 2 branches missed.">                    relation.getTargetNode() == null ? null : relation.getTargetNode().getNameEn(),</span>
+<span class="fc" id="L69">                    relation.getDescription(), java.util.Locale.getDefault());</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

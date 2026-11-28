@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>MailAnalysisRenderers.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.mail</a> &gt; <span class="el_source">MailAnalysisRenderers.java</span></div><h1>MailAnalysisRenderers.java</h1><pre class="source lang-java linenums">package com.taxonomy.mail;
+
+import com.taxonomy.export.service.ExportFormatExtensionRegistry;
+import com.taxonomy.export.spi.ExportFormatDescriptor;
+import com.taxonomy.export.spi.ExportFormatExtension;
+import com.taxonomy.extension.api.report.ReportFormatDescriptor;
+import com.taxonomy.extension.api.report.ReportRendererExtension;
+import com.taxonomy.reporting.api.decision.DecisionRationaleReportPlugin;
+import com.taxonomy.reporting.render.document.ReportRendererRegistry;
+import com.taxonomy.shared.features.ConditionalOnFeature;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.stereotype.Component;
+
+import java.util.EnumSet;
+import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+import static com.taxonomy.mail.MailAnalysisCommand.Format;
+import static com.taxonomy.mail.MailAnalysisCommand.Mode;
+
+/** Uses the application's live renderer catalogue for both command admission and export. */
+@Component
+@ConditionalOnProperty(name = &quot;taxonomy.mail.enabled&quot;, havingValue = &quot;true&quot;)
+@ConditionalOnFeature({&quot;analysis&quot;, &quot;architecture&quot;, &quot;reporting&quot;})
+final class MailAnalysisRenderers {
+    private final ExportFormatExtensionRegistry diagrams;
+    private final ReportRendererRegistry reports;
+
+<span class="fc" id="L30">    MailAnalysisRenderers(ExportFormatExtensionRegistry diagrams, ReportRendererRegistry reports) {</span>
+<span class="fc" id="L31">        this.diagrams = diagrams;</span>
+<span class="fc" id="L32">        this.reports = reports;</span>
+<span class="fc" id="L33">    }</span>
+
+    Optional&lt;ExportFormatExtension&gt; diagram(Format format) {
+<span class="fc" id="L36">        return diagrams.findByFormatId(format.architectureId());</span>
+    }
+
+    Optional&lt;ReportRendererExtension&gt; report(Mode mode, Format format) {
+<span class="fc bfc" id="L40" title="All 2 branches covered.">        return mode == Mode.ARCHITECTURE ? reports.findByFormatId(format.architectureId())</span>
+<span class="fc" id="L41">                : reports.findByFormatId(DecisionRationaleReportPlugin.REPORT_TYPE_ID, format.decisionId());</span>
+    }
+
+    record AvailableFormats(Set&lt;Format&gt; architecture, Set&lt;Format&gt; decision) {
+<span class="fc" id="L45">        AvailableFormats {</span>
+<span class="fc" id="L46">            architecture = Set.copyOf(architecture);</span>
+<span class="fc" id="L47">            decision = Set.copyOf(decision);</span>
+<span class="fc" id="L48">        }</span>
+
+<span class="fc bfc" id="L50" title="All 2 branches covered.">        Set&lt;Format&gt; forMode(Mode mode) { return mode == Mode.ARCHITECTURE ? architecture : decision; }</span>
+
+        String decisionDefault() {
+<span class="pc bpc" id="L53" title="1 of 2 branches missed.">            if (decision.contains(Format.HTML)) return Format.HTML.name();</span>
+<span class="nc" id="L54">            return decision.stream().sorted().findFirst().map(Format::name).orElse(&quot;UNSUPPORTED&quot;);</span>
+        }
+    }
+
+    AvailableFormats available() {
+<span class="fc" id="L59">        Set&lt;String&gt; diagramIds = diagrams.listDescriptors().stream()</span>
+<span class="fc" id="L60">                .map(ExportFormatDescriptor::id).collect(Collectors.toSet());</span>
+<span class="fc" id="L61">        Set&lt;String&gt; reportIds = reports.listDescriptors().stream()</span>
+<span class="fc" id="L62">                .map(ReportFormatDescriptor::id).collect(Collectors.toSet());</span>
+<span class="fc" id="L63">        Set&lt;String&gt; decisionIds = reports.listDescriptors(DecisionRationaleReportPlugin.REPORT_TYPE_ID).stream()</span>
+<span class="fc" id="L64">                .map(ReportFormatDescriptor::id).collect(Collectors.toSet());</span>
+<span class="fc" id="L65">        var architecture = EnumSet.noneOf(Format.class);</span>
+<span class="fc" id="L66">        var decision = EnumSet.noneOf(Format.class);</span>
+<span class="fc bfc" id="L67" title="All 2 branches covered.">        for (Format format : Format.values()) {</span>
+<span class="fc bfc" id="L68" title="All 3 branches covered.">            boolean available = switch (format.architectureRoute()) {</span>
+<span class="fc" id="L69">                case ARCHITECTURE_PDF -&gt; true;</span>
+<span class="fc" id="L70">                case DIAGRAM -&gt; diagramIds.contains(format.architectureId());</span>
+<span class="fc" id="L71">                case REPORT -&gt; reportIds.contains(format.architectureId());</span>
+            };
+<span class="fc bfc" id="L73" title="All 2 branches covered.">            if (available) architecture.add(format);</span>
+<span class="fc bfc" id="L74" title="All 4 branches covered.">            if (format.decisionId() != null &amp;&amp; decisionIds.contains(format.decisionId())) decision.add(format);</span>
+        }
+<span class="fc" id="L76">        return new AvailableFormats(architecture, decision);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

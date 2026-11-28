@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>HistoryIndexOperationRow.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.versioning.service</a> &gt; <span class="el_source">HistoryIndexOperationRow.java</span></div><h1>HistoryIndexOperationRow.java</h1><pre class="source lang-java linenums">package com.taxonomy.versioning.service;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.Index;
+import jakarta.persistence.Table;
+
+/** Maps the JDBC journal for Hibernate-managed dialects and validated restore schemas. */
+@Entity
+@Table(name = &quot;history_index_operation&quot;, indexes = {
+        @Index(name = &quot;ix_hist_index_due&quot;, columnList = &quot;phase,due_at&quot;),
+        @Index(name = &quot;ix_hist_index_scope&quot;, columnList = &quot;repository_id,workspace_id&quot;)})
+<span class="fc" id="L14">public class HistoryIndexOperationRow {</span>
+    @Id
+    @Column(name = &quot;operation_id&quot;, length = 64, nullable = false)
+    String operationId;
+
+    @Column(name = &quot;command_kind&quot;, length = 12, nullable = false)
+    String commandKind;
+
+    @Column(name = &quot;cause_id&quot;, length = 64, nullable = false)
+    String causeId;
+
+    @Column(name = &quot;actor_id&quot;, length = 64, nullable = false)
+    String actorId;
+
+    @Column(name = &quot;actor_scope&quot;, length = 255, nullable = false)
+    String actorScope;
+
+    @Column(name = &quot;login_kind&quot;, length = 12, nullable = false)
+    String loginKind;
+
+    @Column(name = &quot;binding_key&quot;, length = 64, nullable = false)
+    String bindingKey;
+
+    @Column(name = &quot;repository_id&quot;, length = 255, nullable = false)
+    String repositoryId;
+
+    @Column(name = &quot;workspace_id&quot;, length = 255)
+    String workspaceId;
+
+    @Column(name = &quot;workspace_owner&quot;, length = 255)
+    String workspaceOwner;
+
+    @Column(name = &quot;repository_scope&quot;, length = 24, nullable = false)
+    String repositoryScope;
+
+    @Column(name = &quot;collaborative&quot;, nullable = false)
+    boolean collaborative;
+
+    @Column(name = &quot;branch_name&quot;, length = 255, nullable = false)
+    String branchName;
+
+    @Column(name = &quot;captured_commit&quot;, length = 40)
+    String capturedCommit;
+
+    @Column(name = &quot;projection_source_key&quot;, length = 64)
+    String projectionSourceKey;
+
+    @Column(name = &quot;captured_generation&quot;, length = 36)
+    String capturedGeneration;
+
+    @Column(name = &quot;projection_result&quot;, length = 2048)
+    String projectionResult;
+
+    @Column(name = &quot;phase&quot;, length = 24, nullable = false)
+    String phase;
+
+    @Column(name = &quot;attempts&quot;, nullable = false)
+    int attempts;
+
+    @Column(name = &quot;result_count&quot;)
+    Integer resultCount;
+
+    @Column(name = &quot;executor_id&quot;, length = 64)
+    String executorId;
+
+    @Column(name = &quot;lease_id&quot;, length = 36)
+    String leaseId;
+
+    @Column(name = &quot;created_at&quot;, nullable = false)
+    long createdAt;
+
+    @Column(name = &quot;attempted_at&quot;)
+    Long attemptedAt;
+
+    @Column(name = &quot;due_at&quot;)
+    Long dueAt;
+
+    @Column(name = &quot;completed_at&quot;)
+    Long completedAt;
+
+    @Column(name = &quot;archived_at&quot;)
+    Long archivedAt;
+
+    @Column(name = &quot;reason_code&quot;, length = 40)
+    String reasonCode;
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

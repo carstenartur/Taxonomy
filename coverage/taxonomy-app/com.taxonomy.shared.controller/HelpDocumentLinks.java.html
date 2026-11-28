@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>HelpDocumentLinks.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.shared.controller</a> &gt; <span class="el_source">HelpDocumentLinks.java</span></div><h1>HelpDocumentLinks.java</h1><pre class="source lang-java linenums">package com.taxonomy.shared.controller;
+
+import java.net.URI;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.regex.Pattern;
+import org.jsoup.Jsoup;
+
+/** Resolves rendered documentation links relative to their packaged Markdown resource.
+ *
+ * &lt;p&gt;Rewriting HTML attributes after Markdown rendering leaves fenced examples and
+ * inline code untouched and also covers reference links and authored HTML. Known
+ * same-language documents remain in the help reader; supplementary files retain
+ * their repository path. Application context prefixes belong to the client so
+ * cached documents cannot leak the mount point of a previous request.
+ */
+final class HelpDocumentLinks {
+    private static final String REPOSITORY = &quot;https://github.com/carstenartur/Taxonomy/blob/main/&quot;;
+    private static final String RAW_REPOSITORY = &quot;https://raw.githubusercontent.com/carstenartur/Taxonomy/main/&quot;;
+<span class="fc" id="L21">    private static final Pattern DOCUMENT = Pattern.compile(&quot;docs/(en|de)/([A-Za-z0-9_-]+)\\.md&quot;);</span>
+<span class="fc" id="L22">    private static final Pattern BUNDLED_IMAGE = Pattern.compile(&quot;docs/images/([A-Za-z0-9_.-]+)&quot;);</span>
+
+    private HelpDocumentLinks() { }
+
+    static String rewrite(String html, String resourcePath, List&lt;String&gt; knownDocuments) {
+<span class="fc" id="L27">        var document = Jsoup.parseBodyFragment(html);</span>
+<span class="fc" id="L28">        document.outputSettings().prettyPrint(false);</span>
+<span class="fc" id="L29">        URI base = URI.create(REPOSITORY + resourcePath);</span>
+<span class="fc bfc" id="L30" title="All 2 branches covered.">        for (var element : document.select(&quot;a[href],img[src],source[src]&quot;)) {</span>
+<span class="fc bfc" id="L31" title="All 2 branches covered.">            String attribute = element.hasAttr(&quot;href&quot;) ? &quot;href&quot; : &quot;src&quot;;</span>
+<span class="fc" id="L32">            String authored = element.attr(attribute);</span>
+<span class="fc" id="L33">            element.attr(attribute, resolve(authored, base, resourcePath, knownDocuments, attribute.equals(&quot;src&quot;)));</span>
+<span class="fc" id="L34">        }</span>
+<span class="fc" id="L35">        return document.body().html();</span>
+    }
+
+    private static String resolve(String authored, URI base, String resourcePath,
+            List&lt;String&gt; knownDocuments, boolean image) {
+<span class="pc bpc" id="L40" title="1 of 6 branches missed.">        if (authored.isBlank() || authored.startsWith(&quot;#&quot;) || authored.startsWith(&quot;/&quot;)) return authored;</span>
+        try {
+<span class="fc" id="L42">            URI reference = URI.create(authored);</span>
+<span class="fc bfc" id="L43" title="All 2 branches covered.">            if (reference.isAbsolute()) return authored;</span>
+            // URI.resolve treats a query-only reference as the containing directory;
+            // such links must retain the current document, as browser navigation does.
+<span class="pc bpc" id="L46" title="1 of 4 branches missed.">            URI destination = reference.getRawPath().isEmpty() &amp;&amp; reference.getRawQuery() != null</span>
+<span class="fc" id="L47">                    ? URI.create(base.toASCIIString() + authored).normalize()</span>
+<span class="fc" id="L48">                    : base.resolve(reference).normalize();</span>
+<span class="fc" id="L49">            String resolved = destination.toASCIIString();</span>
+<span class="pc bpc" id="L50" title="1 of 2 branches missed.">            if (!resolved.startsWith(REPOSITORY)) return authored;</span>
+<span class="fc" id="L51">            String path = destination.getRawPath().substring(URI.create(REPOSITORY).getRawPath().length());</span>
+<span class="fc bfc" id="L52" title="All 2 branches covered.">            String suffix = (destination.getRawQuery() == null ? &quot;&quot; : &quot;?&quot; + destination.getRawQuery())</span>
+<span class="fc bfc" id="L53" title="All 2 branches covered.">                    + (destination.getRawFragment() == null ? &quot;&quot; : &quot;#&quot; + destination.getRawFragment());</span>
+<span class="fc" id="L54">            var asset = BUNDLED_IMAGE.matcher(path);</span>
+<span class="fc bfc" id="L55" title="All 2 branches covered.">            if (asset.matches()) return &quot;/help/images/&quot; + asset.group(1) + suffix;</span>
+<span class="fc" id="L56">            var help = DOCUMENT.matcher(path);</span>
+<span class="pc bpc" id="L57" title="1 of 6 branches missed.">            if (!image &amp;&amp; help.matches() &amp;&amp; knownDocuments.contains(help.group(2))) {</span>
+<span class="fc" id="L58">                String language = help.group(1);</span>
+<span class="fc" id="L59">                String name = help.group(2);</span>
+<span class="fc bfc" id="L60" title="All 4 branches covered.">                if (resourcePath.startsWith(&quot;docs/&quot; + language + &quot;/&quot;) &amp;&amp; destination.getRawQuery() == null) {</span>
+<span class="fc" id="L61">                    return name + &quot;.md&quot; + suffix;</span>
+                }
+<span class="fc" id="L63">                String query = destination.getRawQuery();</span>
+<span class="pc bpc" id="L64" title="1 of 4 branches missed.">                if (query == null || query.isEmpty()) query = &quot;lang=&quot; + language;</span>
+<span class="fc bfc" id="L65" title="All 2 branches covered.">                else if (!Pattern.compile(&quot;(?:^|&amp;)lang=&quot;).matcher(query).find()) query += &quot;&amp;lang=&quot; + language;</span>
+<span class="fc" id="L66">                String fragment = destination.getFragment();</span>
+<span class="pc bpc" id="L67" title="1 of 4 branches missed.">                String section = fragment == null || fragment.isEmpty() ? &quot;&quot;</span>
+<span class="fc" id="L68">                        : &quot;/&quot; + URLEncoder.encode(fragment, StandardCharsets.UTF_8).replace(&quot;+&quot;, &quot;%20&quot;);</span>
+<span class="fc" id="L69">                return &quot;/?&quot; + query + &quot;#help/&quot; + name + section;</span>
+            }
+<span class="pc bpc" id="L71" title="1 of 2 branches missed.">            return image ? RAW_REPOSITORY + path + suffix : resolved;</span>
+<span class="nc" id="L72">        } catch (IllegalArgumentException invalidReference) {</span>
+            // A malformed authored URI is not a license to invent another destination.
+<span class="nc" id="L74">            return authored;</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

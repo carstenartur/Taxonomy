@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ProjectProductGapReviewService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-portfolio</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.service</a> &gt; <span class="el_source">ProjectProductGapReviewService.java</span></div><h1>ProjectProductGapReviewService.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.service;
+
+import com.taxonomy.portfolio.model.ProductGapReview;
+import com.taxonomy.portfolio.model.ProductGapReview.Classification;
+import com.taxonomy.portfolio.repository.ProductGapReviewRepository;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import java.time.Instant;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
+@Service
+public class ProjectProductGapReviewService {
+<span class="fc" id="L16">    public record ReviewRequest(Integer expectedRevision, String evidenceFingerprint, Classification classification, String rationale) { }</span>
+<span class="fc" id="L17">    public record Decision(int revision, Classification classification, String rationale, String reviewer, Instant reviewedAt, String evidenceFingerprint) {</span>
+        static Decision from(ProductGapReview row) {
+<span class="fc" id="L19">            return new Decision(row.getRevision(), row.getClassification(), row.getRationale(), row.getReviewer(), row.getReviewedAt(), row.getEvidenceFingerprint());</span>
+        }
+    }
+<span class="fc" id="L22">    public record ReviewedFamily(String reviewKey, String familyCode, String familyName, String catalogueFingerprint,</span>
+                                String evidenceFingerprint, int revision, Classification classification, Boolean currentReviewEvidence,
+                                List&lt;ProjectProductGaps.Observation&gt; observations, List&lt;Decision&gt; history) { }
+
+    private final ProjectPortfolioService projects;
+    private final ProjectGapEvidenceReader evidence;
+    private final ProductGapReviewRepository reviews;
+
+<span class="fc" id="L30">    public ProjectProductGapReviewService(ProjectPortfolioService projects, ProjectGapEvidenceReader evidence, ProductGapReviewRepository reviews) {</span>
+<span class="fc" id="L31">        this.projects = projects;</span>
+<span class="fc" id="L32">        this.evidence = evidence;</span>
+<span class="fc" id="L33">        this.reviews = reviews;</span>
+<span class="fc" id="L34">    }</span>
+
+    @Transactional(readOnly = true)
+    public List&lt;ReviewedFamily&gt; list(Long project, String actor, WorkspaceContext context) {
+<span class="fc" id="L38">        return forReport(project, null, projects.requireProject(project, actor, context).getScopeKey());</span>
+    }
+
+    List&lt;ReviewedFamily&gt; forReport(Long project, Long requirementId, String scope) {
+<span class="fc" id="L42">        var families = evidence.read(project, requirementId, scope);</span>
+<span class="fc bfc" id="L43" title="All 2 branches covered.">        if (families.isEmpty()) return List.of();</span>
+<span class="fc" id="L44">        Map&lt;String, List&lt;ProductGapReview&gt;&gt; history = reviews.findByProjectIdAndScopeKeyOrderByGapKeyAscRevisionAsc(project, scope)</span>
+<span class="fc" id="L45">                .stream().collect(Collectors.groupingBy(ProductGapReview::getGapKey));</span>
+<span class="fc bfc" id="L46" title="All 2 branches covered.">        return families.stream().map(family -&gt; view(family, history.getOrDefault(family.reviewKey(), List.of()), requirementId == null)).toList();</span>
+    }
+
+    @Transactional
+    public ReviewedFamily review(Long project, String key, ReviewRequest request, String actor, WorkspaceContext context) {
+<span class="fc" id="L51">        String scope = projects.requireProjectForUpdate(project, actor, context).getScopeKey();</span>
+<span class="pc bpc" id="L52" title="4 of 8 branches missed.">        if (request == null || request.expectedRevision() == null || request.expectedRevision() &lt; 0 || request.classification() == null</span>
+<span class="pc bpc" id="L53" title="3 of 6 branches missed.">                || request.rationale() == null || request.rationale().isBlank() || request.rationale().strip().length() &gt; 2000) {</span>
+<span class="nc" id="L54">            throw PortfolioException.validation(&quot;Provide the expected revision, classification and a rationale of up to 2000 characters&quot;);</span>
+        }
+<span class="fc" id="L56">        var family = evidence.read(project, null, scope).stream().filter(item -&gt; item.reviewKey().equals(key))</span>
+<span class="pc" id="L57">                .findFirst().orElseThrow(() -&gt; PortfolioException.notFound(&quot;Product coverage gap not found&quot;));</span>
+<span class="fc" id="L58">        var history = reviews.findByProjectIdAndScopeKeyAndGapKeyOrderByRevisionAsc(project, scope, key);</span>
+<span class="fc bfc" id="L59" title="All 2 branches covered.">        int revision = history.isEmpty() ? 0 : history.getLast().getRevision();</span>
+<span class="fc bfc" id="L60" title="All 4 branches covered.">        if (request.expectedRevision() != revision || !family.evidenceFingerprint().equals(request.evidenceFingerprint()))</span>
+<span class="fc" id="L61">            throw PortfolioException.conflict(&quot;The project evidence or its review changed; reload the gap before reviewing&quot;);</span>
+<span class="fc" id="L62">        var decision = new ProductGapReview(project, scope, key, revision + 1, family.evidenceFingerprint(),</span>
+<span class="fc" id="L63">                request.classification(), request.rationale().strip(), actor, Instant.now());</span>
+<span class="fc" id="L64">        reviews.saveAndFlush(decision);</span>
+<span class="fc" id="L65">        var updated = new java.util.ArrayList&lt;&gt;(history);</span>
+<span class="fc" id="L66">        updated.add(decision);</span>
+<span class="fc" id="L67">        return view(family, updated, true);</span>
+    }
+
+    private static ReviewedFamily view(ProjectProductGaps.Family family, List&lt;ProductGapReview&gt; history, boolean fullProject) {
+<span class="fc bfc" id="L71" title="All 2 branches covered.">        var last = history.isEmpty() ? null : history.getLast();</span>
+<span class="fc" id="L72">        return new ReviewedFamily(family.reviewKey(), family.familyCode(), family.familyName(), family.catalogueFingerprint(),</span>
+<span class="fc bfc" id="L73" title="All 2 branches covered.">                family.evidenceFingerprint(), last == null ? 0 : last.getRevision(),</span>
+<span class="fc bfc" id="L74" title="All 2 branches covered.">                last == null ? Classification.UNDECIDED : last.getClassification(),</span>
+<span class="fc bfc" id="L75" title="All 4 branches covered.">                last == null || !fullProject ? null : family.evidenceFingerprint().equals(last.getEvidenceFingerprint()), family.observations(),</span>
+<span class="fc" id="L76">                history.stream().map(Decision::from).toList());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

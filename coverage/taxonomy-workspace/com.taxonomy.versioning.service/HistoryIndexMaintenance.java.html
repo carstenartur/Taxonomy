@@ -1,0 +1,313 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>HistoryIndexMaintenance.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.versioning.service</a> &gt; <span class="el_source">HistoryIndexMaintenance.java</span></div><h1>HistoryIndexMaintenance.java</h1><pre class="source lang-java linenums">package com.taxonomy.versioning.service;
+
+import com.taxonomy.workspace.model.UserWorkspace;
+import com.taxonomy.workspace.model.WorkspaceProvisioningStatus;
+import com.taxonomy.workspace.repository.SystemRepositoryRepository;
+import com.taxonomy.workspace.service.BranchHeadConflictException;
+import com.taxonomy.workspace.service.DerivedProjection;
+import com.taxonomy.workspace.service.HistoryIndexGrant;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.RepositoryMembershipService;
+import com.taxonomy.workspace.service.WorkspaceFetchAuthority;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
+import jakarta.persistence.EntityManager;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.NestedExceptionUtils;
+import org.springframework.dao.TransientDataAccessException;
+import org.springframework.http.HttpStatus;
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
+
+import java.io.IOException;
+import java.util.Objects;
+
+import static com.taxonomy.versioning.service.HistoryIndexJournal.Kind;
+import static com.taxonomy.versioning.service.HistoryIndexJournal.Receipt;
+
+@Service
+public class HistoryIndexMaintenance {
+    private DerivedProjection derived;
+
+<span class="fc" id="L34">    @Value(&quot;${taxonomy.analysis.runtime-role:all}&quot;)</span>
+    private String runtimeRole = &quot;all&quot;;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+<span class="fc" id="L38">    void configureDerivedProjection(DerivedProjection derived) { this.derived = derived; }</span>
+
+<span class="fc" id="L40">    public record ProjectionOutcome(Receipt receipt, DerivedProjection.Result result) {}</span>
+
+    private static final String WORKER = &quot;system:history-index&quot;;
+
+    private final HistoryIndexJournal journal;
+    private final HistoryIndexGrant actors;
+    private final WorkspaceResolver selected;
+    private final DslGitRepositoryFactory repositories;
+    private final SystemRepositoryRepository catalogue;
+    private final RepositoryMembershipService membership;
+    private final EntityManager entities;
+    private final CommitIndexService projections;
+
+    public HistoryIndexMaintenance(HistoryIndexJournal journal, HistoryIndexGrant actors, WorkspaceResolver selected,
+                                   DslGitRepositoryFactory repositories, SystemRepositoryRepository catalogue,
+<span class="fc" id="L55">                                   RepositoryMembershipService membership, EntityManager entities, CommitIndexService projections) {</span>
+<span class="fc" id="L56">        this.journal = journal;</span>
+<span class="fc" id="L57">        this.actors = actors;</span>
+<span class="fc" id="L58">        this.selected = selected;</span>
+<span class="fc" id="L59">        this.repositories = repositories;</span>
+<span class="fc" id="L60">        this.catalogue = catalogue;</span>
+<span class="fc" id="L61">        this.membership = membership;</span>
+<span class="fc" id="L62">        this.entities = entities;</span>
+<span class="fc" id="L63">        this.projections = projections;</span>
+<span class="fc" id="L64">    }</span>
+
+    public Receipt submit(Kind kind, String requestedBranch, String key, String cause) {
+<span class="pc bpc" id="L67" title="1 of 2 branches missed.">        if (kind.relationProjection()) throw new IllegalArgumentException(&quot;Use the selected relation projection endpoint&quot;);</span>
+<span class="fc" id="L68">        var context = selected.resolveCurrentRepositoryContext();</span>
+<span class="fc" id="L69">        var grant = actors.authorizeHistoryIndex(context.username(), kind.destructive());</span>
+<span class="fc bfc" id="L70" title="All 2 branches covered.">        String branch = kind == Kind.PURGE ? context.branch() : checkedBranch(requestedBranch);</span>
+<span class="fc" id="L71">        var row = journal.admit(context, branch, kind, grant, key, cause, () -&gt; {</span>
+<span class="fc" id="L72">            String owner = authorizeTarget(context, false, false, grant.principalId());</span>
+<span class="fc bfc" id="L73" title="All 2 branches covered.">            if (kind == Kind.PURGE) return new HistoryIndexJournal.Capture(null, owner);</span>
+            try {
+<span class="fc" id="L75">                String head = repositories.resolveRepository(context).getHeadCommit(branch);</span>
+<span class="fc bfc" id="L76" title="All 2 branches covered.">                if (head == null) throw new ResponseStatusException(HttpStatus.CONFLICT, &quot;History branch is unavailable&quot;);</span>
+<span class="fc" id="L77">                return new HistoryIndexJournal.Capture(head, owner);</span>
+<span class="nc" id="L78">            } catch (IOException failure) {</span>
+<span class="nc" id="L79">                throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, &quot;History source is unavailable&quot;, failure);</span>
+            }
+        });
+<span class="fc" id="L82">        return resume(row, context, grant.principalId(), false);</span>
+    }
+
+    /** The caller has already applied the public writable-scope selection and HTTP precondition grammar. */
+    public ProjectionOutcome submitProjection(RepositoryContext context, DerivedProjection.Kind command,
+                                             String expectedCommit, String key, String cause) {
+<span class="fc" id="L88">        Kind kind = Kind.valueOf(command.name());</span>
+<span class="fc" id="L89">        var grant = actors.authorizeHistoryIndex(context.username(), kind.destructive());</span>
+<span class="pc bpc" id="L90" title="2 of 4 branches missed.">        if (expectedCommit == null || !expectedCommit.matches(&quot;[a-fA-F0-9]{40}&quot;)) {</span>
+<span class="nc" id="L91">            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, &quot;An existing Git commit is required&quot;);</span>
+        }
+<span class="fc" id="L93">        var row = journal.admit(context, context.branch(), kind, grant, key, cause, () -&gt; {</span>
+<span class="fc" id="L94">            String owner = authorizeProjectionTarget(context, grant, false);</span>
+<span class="fc" id="L95">            var source = derived.capture(context, command, expectedCommit);</span>
+<span class="fc" id="L96">            return new HistoryIndexJournal.Capture(expectedCommit, owner, source.key(), source.generation());</span>
+        });
+<span class="fc bfc" id="L98" title="All 2 branches covered.">        if (!expectedCommit.equals(row.receipt().sourceCommit())) {</span>
+<span class="fc" id="L99">            throw new ResponseStatusException(HttpStatus.CONFLICT, &quot;Idempotency key belongs to a different Git precondition&quot;);</span>
+        }
+<span class="fc" id="L101">        var receipt = resume(row, context, grant.principalId(), false);</span>
+<span class="fc bfc" id="L102" title="All 2 branches covered.">        if (!&quot;COMPLETED&quot;.equals(receipt.phase())) {</span>
+<span class="pc bpc" id="L103" title="2 of 4 branches missed.">            if (&quot;GIT_HEAD_ADVANCED&quot;.equals(receipt.reason()) || &quot;GIT_HISTORY_CHANGED&quot;.equals(receipt.reason())) {</span>
+<span class="nc" id="L104">                derived.verifyHead(context, expectedCommit);</span>
+            }
+<span class="fc" id="L106">            var stored = journal.inspectOperation(context, grant.principalId(), receipt.operationId(), this::verifyTarget);</span>
+<span class="fc bfc" id="L107" title="All 2 branches covered.">            return new ProjectionOutcome(stored.receipt(), stored.result() == null ? null : derived.readResult(stored.result()));</span>
+        }
+        // Retained receipts carry only the original bounded response; Git HEAD and resource policy remain current.
+<span class="fc" id="L110">        var completed = journal.inspectOperation(context, grant.principalId(), receipt.operationId(), this::verifyTarget);</span>
+<span class="fc" id="L111">        derived.verifyHead(context, expectedCommit);</span>
+<span class="fc" id="L112">        return new ProjectionOutcome(completed.receipt(), derived.readResult(completed.result()));</span>
+    }
+
+    public Receipt get(String id) {
+<span class="fc" id="L116">        var context = selected.resolveCurrentRepositoryContextForRead();</span>
+<span class="fc" id="L117">        return journal.inspect(context, actors.currentActor(context.username()), id, this::verifyReadableTarget);</span>
+    }
+
+    public Receipt retry(String id) {
+<span class="fc" id="L121">        var context = selected.resolveCurrentRepositoryContext();</span>
+<span class="fc" id="L122">        var row = journal.get(context, actors.currentActor(context.username()), id);</span>
+<span class="fc" id="L123">        var grant = actors.authorizeHistoryIndex(context.username(), row.receipt().kind().destructive());</span>
+<span class="fc bfc" id="L124" title="All 2 branches covered.">        if (!row.grant().equals(grant)) throw denied();</span>
+<span class="fc" id="L125">        return resume(row, context, grant.principalId(), true);</span>
+    }
+
+    public Receipt archive(String id) {
+<span class="fc" id="L129">        var context = selected.resolveCurrentRepositoryContextForRead();</span>
+<span class="fc" id="L130">        var grant = actors.authorizeHistoryIndex(context.username(), true);</span>
+<span class="fc" id="L131">        return journal.archive(context, grant.principalId(), id, this::verifyTarget);</span>
+    }
+
+    public Receipt projectionStatus(RepositoryContext context, String operationId) {
+<span class="fc" id="L135">        return projectionRecord(context, operationId).receipt();</span>
+    }
+
+    public Receipt retryProjection(RepositoryContext context, String operationId) {
+<span class="fc" id="L139">        var row = projectionRecord(context, operationId);</span>
+<span class="fc" id="L140">        return resume(row, context, row.receipt().actor(), true);</span>
+    }
+
+    public Receipt archiveProjection(RepositoryContext context, String operationId) {
+<span class="fc" id="L144">        var row = projectionRecord(context, operationId);</span>
+<span class="fc" id="L145">        var grant = actors.authorizeHistoryIndex(context.username(), true);</span>
+<span class="fc" id="L146">        return journal.archive(context, grant.principalId(), row.receipt().operationId(), this::verifyReadableTarget);</span>
+    }
+
+    private HistoryIndexJournal.Operation projectionRecord(RepositoryContext context, String operationId) {
+<span class="fc" id="L150">        return journal.inspectOperation(context, actors.currentActor(context.username()), operationId, row -&gt; {</span>
+<span class="pc bpc" id="L151" title="1 of 2 branches missed.">            if (!row.receipt().kind().relationProjection()) throw new ResponseStatusException(HttpStatus.NOT_FOUND);</span>
+<span class="fc" id="L152">            verifyReadableTarget(row);</span>
+<span class="fc" id="L153">        });</span>
+    }
+
+    private Receipt resume(HistoryIndexJournal.Operation row, RepositoryContext context, String actor, boolean explicit) {
+<span class="fc" id="L157">        var operationId = row.receipt().operationId();</span>
+<span class="fc bfc" id="L158" title="All 4 branches covered.">        if (!row.receipt().kind().relationProjection() &amp;&amp; !ownsHistoryIndex()) {</span>
+<span class="fc" id="L159">            return journal.inspect(context, actor, operationId, this::verifyTarget);</span>
+        }
+<span class="fc" id="L161">        var token = journal.claim(operationId, actor, explicit);</span>
+<span class="fc bfc" id="L162" title="All 2 branches covered.">        return token == null</span>
+<span class="fc" id="L163">                ? journal.inspect(context, actor, operationId, this::verifyTarget)</span>
+<span class="fc" id="L164">                : run(token, false);</span>
+    }
+
+    @Scheduled(fixedDelayString = &quot;${taxonomy.history-index.recovery-delay-ms:60000}&quot;)
+    public void recover() {
+        // Only a runtime that maintains a history index may claim a history command.
+        // Leave its original due time and attempt budget intact while startup verifies it.
+<span class="fc bfc" id="L171" title="All 4 branches covered.">        boolean recoverHistory = ownsHistoryIndex() &amp;&amp; projections.canRecoverHistory();</span>
+<span class="fc bfc" id="L172" title="All 2 branches covered.">        for (String id : journal.due(recoverHistory)) {</span>
+<span class="fc" id="L173">            var token = journal.claim(id, WORKER, false);</span>
+<span class="pc bpc" id="L174" title="1 of 2 branches missed.">            if (token != null) {</span>
+                try {
+<span class="fc" id="L176">                    run(token, true);</span>
+<span class="nc" id="L177">                } catch (ResponseStatusException failure) {</span>
+<span class="nc bnc" id="L178" title="All 2 branches missed.">                    if (failure.getStatusCode() != HttpStatus.CONFLICT) throw failure;</span>
+<span class="fc" id="L179">                }</span>
+            }
+<span class="fc" id="L181">        }</span>
+<span class="fc" id="L182">        journal.expire();</span>
+<span class="fc" id="L183">    }</span>
+
+    private boolean ownsHistoryIndex() {
+<span class="fc bfc" id="L186" title="All 2 branches covered.">        return !&quot;worker&quot;.equalsIgnoreCase(runtimeRole.trim());</span>
+    }
+
+    private Receipt run(HistoryIndexJournal.Claim token, boolean background) {
+        try {
+<span class="fc" id="L191">            return journal.execute(token, row -&gt; {</span>
+<span class="fc" id="L192">                var receipt = row.receipt();</span>
+<span class="fc" id="L193">                boolean purge = receipt.kind().destructive();</span>
+<span class="fc" id="L194">                actors.checkHistoryIndex(row.grant(), row.username(), purge, background);</span>
+<span class="fc" id="L195">                return com.taxonomy.workspace.service.RepositoryMembershipIdentity.RecordedActor.during(row.username(),</span>
+<span class="fc" id="L196">                        row.grant(), () -&gt; applyVerified(row, purge, background));</span>
+            });
+<span class="fc" id="L198">        } catch (WorkspaceFetchAuthority.FreshLoginRequired failure) {</span>
+<span class="fc" id="L199">            return journal.failed(token, &quot;AWAITING_AUTHORIZATION&quot;, &quot;FRESH_LOGIN_REQUIRED&quot;);</span>
+<span class="fc" id="L200">        } catch (AccessDeniedException | org.springframework.security.core.AuthenticationException failure) {</span>
+<span class="fc" id="L201">            return journal.failed(token, &quot;DENIED&quot;, &quot;AUTHORIZATION_CHANGED&quot;);</span>
+<span class="fc" id="L202">        } catch (DerivedProjection.DecisionRequired decision) {</span>
+<span class="pc bpc" id="L203" title="1 of 2 branches missed.">            return journal.failed(token, decision.retryable() ? &quot;RETRYABLE&quot; : &quot;MANUAL_REVIEW&quot;, decision.code(),</span>
+<span class="fc" id="L204">                    derived.describe(decision.result()));</span>
+<span class="nc" id="L205">        } catch (DerivedProjection.HeadChanged changed) {</span>
+<span class="nc" id="L206">            return movedHead(token, changed.actual());</span>
+<span class="fc" id="L207">        } catch (DerivedProjection.SourceChanged changed) {</span>
+<span class="fc" id="L208">            return journal.failed(token, &quot;MANUAL_REVIEW&quot;, &quot;PROJECTION_SOURCE_CHANGED&quot;);</span>
+<span class="fc" id="L209">        } catch (DerivedProjection.SourceUnavailable | TransientDataAccessException failure) {</span>
+<span class="fc" id="L210">            return journal.failed(token, &quot;RETRYABLE&quot;, &quot;PROJECTION_INTERRUPTED&quot;);</span>
+<span class="fc" id="L211">        } catch (IllegalStateException failure) {</span>
+<span class="fc" id="L212">            var original = NestedExceptionUtils.getMostSpecificCause(failure);</span>
+<span class="fc bfc" id="L213" title="All 2 branches covered.">            if (original instanceof BranchHeadConflictException changed) {</span>
+<span class="fc" id="L214">                return movedHead(token, changed.getActualHeadCommit());</span>
+            }
+<span class="pc bpc" id="L216" title="1 of 2 branches missed.">            if (original instanceof IOException) {</span>
+<span class="nc" id="L217">                return journal.failed(token, &quot;RETRYABLE&quot;, &quot;GIT_READ_INTERRUPTED&quot;);</span>
+            }
+<span class="pc bpc" id="L219" title="1 of 2 branches missed.">            if (journal.claimed(token).receipt().kind().relationProjection()) {</span>
+<span class="fc" id="L220">                return journal.failed(token, &quot;RETRYABLE&quot;, &quot;PROJECTION_INTERRUPTED&quot;);</span>
+            }
+<span class="nc" id="L222">            throw failure;</span>
+        }
+    }
+
+    private Receipt movedHead(HistoryIndexJournal.Claim token, String actual) {
+<span class="fc" id="L227">        var row = journal.claimed(token);</span>
+        try {
+<span class="pc bpc" id="L229" title="1 of 4 branches missed.">            if (actual != null &amp;&amp; repositories.resolveRepository(row.context()).isAncestor(row.receipt().sourceCommit(), actual)) {</span>
+<span class="fc" id="L230">                return journal.failed(token, &quot;SUPERSEDED&quot;, &quot;GIT_HEAD_ADVANCED&quot;);</span>
+            }
+<span class="nc" id="L232">        } catch (IOException failure) {</span>
+<span class="nc" id="L233">            return journal.failed(token, &quot;MANUAL_REVIEW&quot;, &quot;GIT_ANCESTRY_UNAVAILABLE&quot;);</span>
+<span class="fc" id="L234">        }</span>
+<span class="fc" id="L235">        return journal.failed(token, &quot;MANUAL_REVIEW&quot;, &quot;GIT_HISTORY_CHANGED&quot;);</span>
+    }
+
+    private int applyVerified(HistoryIndexJournal.Operation row, boolean purge, boolean background) {
+<span class="fc" id="L239">        var receipt = row.receipt();</span>
+<span class="fc" id="L240">        var context = row.context();</span>
+<span class="fc bfc" id="L241" title="All 2 branches covered.">        if (receipt.kind().relationProjection()) {</span>
+<span class="fc" id="L242">            verifyProjectionTarget(row, background);</span>
+<span class="fc" id="L243">            String operationId = receipt.operationId();</span>
+<span class="fc" id="L244">            var result = derived.apply(context, DerivedProjection.Kind.valueOf(receipt.kind().name()),</span>
+<span class="fc" id="L245">                    receipt.sourceCommit(), new DerivedProjection.Source(row.sourceKey(), row.generation()),</span>
+<span class="fc" id="L246">                    operationId, () -&gt; actors.checkHistoryIndex(row.grant(), row.username(), purge, background));</span>
+<span class="fc" id="L247">            actors.checkHistoryIndex(row.grant(), row.username(), purge, background);</span>
+<span class="fc" id="L248">            verifyProjectionTarget(row, background);</span>
+<span class="fc" id="L249">            journal.saveProjectionResult(operationId, derived.describe(result));</span>
+<span class="fc" id="L250">            return result.relations();</span>
+        }
+<span class="fc" id="L252">        verifyTarget(row);</span>
+<span class="fc bfc" id="L253" title="All 2 branches covered.">        int result = purge ? projections.purgeCaptured(context, receipt.operationId())</span>
+<span class="fc bfc" id="L254" title="All 2 branches covered.">                : projections.applyCapturedBranch(receipt.branch(), context, receipt.sourceCommit(), receipt.kind() == Kind.REBUILD);</span>
+<span class="fc" id="L255">        actors.checkHistoryIndex(row.grant(), row.username(), purge, background);</span>
+<span class="fc" id="L256">        verifyTarget(row);</span>
+<span class="fc" id="L257">        return result;</span>
+    }
+
+    private void verifyReadableTarget(HistoryIndexJournal.Operation row) {
+<span class="fc bfc" id="L261" title="All 2 branches covered.">        if (row.receipt().kind().relationProjection()) {</span>
+<span class="fc" id="L262">            actors.checkHistoryIndex(row.grant(), row.username(), row.receipt().kind().destructive(), false);</span>
+        }
+<span class="fc" id="L264">        verifyTarget(row);</span>
+<span class="fc" id="L265">    }</span>
+
+    private void verifyTarget(HistoryIndexJournal.Operation row) {
+<span class="fc bfc" id="L268" title="All 2 branches covered.">        if (row.receipt().kind().relationProjection()) {</span>
+<span class="fc" id="L269">            verifyProjectionTarget(row, false);</span>
+<span class="fc bfc" id="L270" title="All 2 branches covered.">        } else if (!Objects.equals(row.owner(), authorizeTarget(row.context(), false, false, row.grant().principalId()))) throw denied();</span>
+<span class="fc" id="L271">    }</span>
+
+    private void verifyProjectionTarget(HistoryIndexJournal.Operation row, boolean background) {
+<span class="pc bpc" id="L274" title="1 of 2 branches missed.">        if (!Objects.equals(row.owner(), authorizeProjectionTarget(row.context(), row.grant(), background))) throw denied();</span>
+<span class="fc" id="L275">    }</span>
+
+    private String authorizeProjectionTarget(RepositoryContext context, WorkspaceFetchAuthority.Grant grant, boolean background) {
+<span class="fc" id="L278">        return authorizeTarget(context, true, actors.isCurrentAdministrator(grant, context.username(), background), grant.principalId());</span>
+    }
+
+    /** Use physical row writes for HSQL MVCC as well as PostgreSQL before testing target policy. */
+    private String authorizeTarget(RepositoryContext context, boolean projection, boolean administrator, String verifiedActor) {
+<span class="pc bpc" id="L283" title="1 of 2 branches missed.">        if (catalogue.lockForMutation(context.repositoryId()) != 1) throw denied();</span>
+        // Role updates and revocations mutate these same membership rows. A physical write
+        // also holds the fence on HSQL MVCC, where SELECT FOR UPDATE alone is insufficient.
+<span class="fc" id="L286">        entities.createQuery(&quot;update RepositoryMembership m set m.version=m.version where m.repositoryId=:repository and m.username=:actor&quot;)</span>
+<span class="fc" id="L287">                .setParameter(&quot;repository&quot;, context.repositoryId()).setParameter(&quot;actor&quot;, context.username()).executeUpdate();</span>
+<span class="fc" id="L288">        var repo = catalogue.findByRepositoryId(context.repositoryId()).orElseThrow(HistoryIndexMaintenance::denied);</span>
+<span class="fc bfc" id="L289" title="All 2 branches covered.">        if (context.workspaceId() == null) {</span>
+<span class="fc bfc" id="L290" title="All 6 branches covered.">            if (projection ? !administrator &amp;&amp; !membership.canMaintain(repo, context.username())</span>
+<span class="fc bfc" id="L291" title="All 2 branches covered.">                    : !membership.canContribute(repo, context.username())) throw denied();</span>
+<span class="fc" id="L292">            return null;</span>
+        }
+<span class="fc" id="L294">        if (entities.createQuery(&quot;update UserWorkspace w set w.archived=w.archived where w.workspaceId=:id&quot;)</span>
+<span class="pc bpc" id="L295" title="1 of 2 branches missed.">                .setParameter(&quot;id&quot;, context.workspaceId()).executeUpdate() != 1) throw denied();</span>
+<span class="fc" id="L296">        var work = entities.createQuery(&quot;select w from UserWorkspace w where w.workspaceId=:id&quot;, UserWorkspace.class)</span>
+<span class="fc" id="L297">                .setParameter(&quot;id&quot;, context.workspaceId()).getSingleResult();</span>
+<span class="pc bpc" id="L298" title="2 of 4 branches missed.">        if (!membership.canUseWorkspace(repo, work, context.username(), verifiedActor) || work.getProvisioningStatus() != WorkspaceProvisioningStatus.READY) throw denied();</span>
+<span class="pc bpc" id="L299" title="2 of 6 branches missed.">        if (!work.getUsername().equals(context.username()) &amp;&amp; (!context.collaborative() || !work.isCollaborative())) throw denied();</span>
+<span class="fc" id="L300">        return work.getUsername();</span>
+    }
+
+    private static String checkedBranch(String branch) {
+<span class="fc bfc" id="L304" title="All 6 branches covered.">        if (branch == null || branch.isBlank() || branch.strip().length() &gt; 255</span>
+<span class="fc bfc" id="L305" title="All 2 branches covered.">                || !org.eclipse.jgit.lib.Repository.isValidRefName(&quot;refs/heads/&quot; + branch.strip())) {</span>
+<span class="fc" id="L306">            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, &quot;Invalid history branch&quot;);</span>
+        }
+<span class="fc" id="L308">        return branch.strip();</span>
+    }
+
+<span class="fc" id="L311">    private static AccessDeniedException denied() { return new AccessDeniedException(&quot;History maintenance permission is unavailable&quot;); }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

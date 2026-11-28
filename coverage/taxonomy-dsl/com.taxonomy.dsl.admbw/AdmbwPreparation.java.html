@@ -1,0 +1,449 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AdmbwPreparation.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-dsl</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dsl.admbw</a> &gt; <span class="el_source">AdmbwPreparation.java</span></div><h1>AdmbwPreparation.java</h1><pre class="source lang-java linenums">package com.taxonomy.dsl.admbw;
+
+import com.taxonomy.dsl.ast.BlockAst;
+import com.taxonomy.dsl.command.ArchitectureCommand;
+import com.taxonomy.dsl.command.ArchitectureCommand.CreateArchitectureElement;
+import com.taxonomy.dsl.command.ArchitectureCommand.CreateArchitectureRelation;
+import com.taxonomy.dsl.command.ArchitectureCommand.RelationKey;
+import com.taxonomy.dsl.command.ArchitectureCommand.SetExchangeProperties;
+import com.taxonomy.dsl.command.ArchitectureCommand.SetRequirementPlanning;
+import com.taxonomy.dsl.command.ArchitectureCommand.UpdateArchitectureElement;
+import com.taxonomy.dsl.command.ArchitectureCommand.UpdateArchitectureRelation;
+import com.taxonomy.dsl.command.ArchitectureCommand.UpsertArchitectureView;
+import com.taxonomy.dsl.command.ArchitectureCommand.UpsertRequirementMapping;
+import com.taxonomy.dsl.command.ArchitectureDslCommands;
+import com.taxonomy.dsl.command.ArchitectureSemanticPatch;
+import com.taxonomy.dsl.planning.PlanningEntry;
+import com.taxonomy.dsl.planning.PlanningInformation;
+import com.taxonomy.dsl.requirements.RequirementRealization;
+
+import com.taxonomy.sparx.mapping.AdmbwRequirementField;
+
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.regex.Pattern;
+import java.util.stream.Stream;
+
+import static com.taxonomy.dsl.admbw.AdmbwFffmlvProfile.CATALOGUE_GUID;
+import static com.taxonomy.dsl.admbw.AdmbwFffmlvProfile.CATALOGUE_REFERENCE;
+import static com.taxonomy.dsl.admbw.AdmbwFffmlvProfile.TYPE;
+
+/** Pure projection of the canonical state that explicit guided ADMBw review would approve. */
+public final class AdmbwPreparation {
+    static final String VIEW_PROFILE = &quot;x-exchange-admbw-profile&quot;;
+    static final String VIEW_RELATIONS = &quot;x-exchange-admbw-relation-members&quot;;
+    private static final String BASIS_HASH = &quot;x-exchange-admbw-basis-sha256&quot;;
+    private static final String OPERATION = &quot;x-exchange-admbw-operation&quot;;
+    private static final String VIEW_PROJECT = &quot;x-exchange-admbw-project-code&quot;;
+    private static final String NATIVE_PROJECT = &quot;x-exchange-admbw-native-project&quot;;
+    private static final String NATIVE_ROOT = &quot;x-exchange-admbw-native-root&quot;;
+    private static final String NATIVE_OWNER = &quot;x-exchange-admbw-native-owner&quot;;
+<span class="fc" id="L49">    private static final Set&lt;String&gt; NATIVE_IDENTITY_PINS = Set.of(NATIVE_PROJECT, NATIVE_ROOT, NATIVE_OWNER);</span>
+    private static final String CAPABILITY = &quot;Capability&quot;;
+    private static final String SERVICE = &quot;ServiceSpecification&quot;;
+    private static final String CONSTRAINT = &quot;OperationalConstraint&quot;;
+    private static final String PLAN_ID = &quot;admbw-r7&quot;;
+<span class="fc" id="L54">    private static final Set&lt;String&gt; SERVICE_TYPES = Set.of(&quot;CoreService&quot;, &quot;COIService&quot;);</span>
+<span class="fc" id="L55">    private static final Set&lt;String&gt; SUBJECT_TYPES = Set.of(&quot;OperationalArchitecture&quot;, &quot;OperationalRole&quot;);</span>
+<span class="fc" id="L56">    private static final Set&lt;String&gt; PART_TYPES = Set.of(&quot;OperationalRole&quot;, &quot;ResourceRole&quot;);</span>
+<span class="fc" id="L57">    private static final Pattern PROJECT_CODE = Pattern.compile(&quot;[A-Za-z0-9][A-Za-z0-9_-]{0,31}&quot;);</span>
+<span class="fc" id="L58">    private static final Pattern TOKEN = Pattern.compile(&quot;[A-Za-z0-9][A-Za-z0-9_.-]{0,127}&quot;);</span>
+<span class="fc" id="L59">    private static final Pattern FULFILMENT = Pattern.compile(TOKEN.pattern() + &quot; FULFILLS &quot; + TOKEN.pattern());</span>
+<span class="fc" id="L60">    private static final Pattern GUID = Pattern.compile(&quot;\\{[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}}&quot;);</span>
+<span class="fc" id="L61">    private static final Pattern SHA256 = Pattern.compile(&quot;[0-9a-f]{64}&quot;);</span>
+    private static final String ZERO_GUID = &quot;{00000000-0000-0000-0000-000000000000}&quot;;
+
+    public record Reference(String guid, String stereotype, String name, String notes, List&lt;String&gt; packagePath,
+                            String rootGuid, String ownerGuid) {
+<span class="fc" id="L66">        public Reference { packagePath = List.copyOf(packagePath); }</span>
+    }
+
+    public record Basis(String sha256, String projectGuid, List&lt;Reference&gt; references) {
+<span class="fc" id="L70">        public Basis { references = List.copyOf(references); }</span>
+    }
+
+<span class="fc" id="L73">    public record Selection(String projectCode, String rootPackageGuid, String serviceId, String capabilityGuid,</span>
+                            String requirementId, String requirementType, String subjectGuid, String constraintText,
+                            String evidenceQuote) {}
+
+    public record Prepared(String dsl, String viewId, String requirementId, int requirementVersion,
+                           String requirementContentHash, String basisSha256, List&lt;String&gt; notes,
+                           AdmbwFffmlvProfile.Report assessment) {
+<span class="fc" id="L80">        public Prepared { notes = List.copyOf(notes); }</span>
+    }
+
+    private final com.taxonomy.dsl.model.CatalogueDefinitionResolver catalogues;
+
+<span class="fc" id="L85">    public AdmbwPreparation() { this(com.taxonomy.dsl.model.CatalogueDefinitionResolver.standard()); }</span>
+<span class="fc" id="L86">    public AdmbwPreparation(com.taxonomy.dsl.model.CatalogueDefinitionResolver catalogues) {</span>
+<span class="fc" id="L87">        this.catalogues = Objects.requireNonNull(catalogues);</span>
+<span class="fc" id="L88">    }</span>
+
+<span class="fc" id="L90">    public record DeliveryIdentity(String viewId, String projectCode, String rootPackageGuid, String basisSha256) {}</span>
+
+    public static DeliveryIdentity deliveryForOperation(String source, String operationId) {
+<span class="fc" id="L93">        var matches = ArchitectureSemanticPatch.index(source).values().stream()</span>
+<span class="pc bpc" id="L94" title="1 of 4 branches missed.">                .filter(block -&gt; &quot;view&quot;.equals(block.getKind()) &amp;&amp; operationId.equals(unique(block, OPERATION))</span>
+<span class="pc bpc" id="L95" title="1 of 2 branches missed.">                        &amp;&amp; AdmbwFffmlvProfile.ID.equals(unique(block, VIEW_PROFILE))).toList();</span>
+<span class="pc bpc" id="L96" title="1 of 2 branches missed.">        if (matches.size() != 1) return null;</span>
+<span class="fc" id="L97">        var view = matches.getFirst();</span>
+<span class="fc" id="L98">        return new DeliveryIdentity(view.getHeaderTokens().getFirst(), unique(view, VIEW_PROJECT),</span>
+<span class="fc" id="L99">                guid(unique(view, NATIVE_ROOT), &quot;model root&quot;), require(SHA256, unique(view, BASIS_HASH), &quot;basis SHA-256&quot;));</span>
+    }
+
+    public Prepared prepare(String source, Selection selection, Basis basis) {
+<span class="fc" id="L103">        return prepare(source, selection, basis, null);</span>
+    }
+
+    public Prepared prepare(String source, Selection selection, Basis basis, String operationId) {
+<span class="fc" id="L107">        Objects.requireNonNull(source, &quot;source&quot;);</span>
+<span class="fc" id="L108">        Objects.requireNonNull(selection, &quot;selection&quot;);</span>
+<span class="fc" id="L109">        Objects.requireNonNull(basis, &quot;basis&quot;);</span>
+<span class="fc" id="L110">        String projectCode = require(PROJECT_CODE, selection.projectCode(), &quot;project code&quot;);</span>
+<span class="fc" id="L111">        String root = guid(selection.rootPackageGuid(), &quot;model root&quot;);</span>
+<span class="fc" id="L112">        String projectGuid = guid(basis.projectGuid(), &quot;EA project&quot;);</span>
+<span class="fc" id="L113">        String basisHash = require(SHA256, basis.sha256(), &quot;basis SHA-256&quot;);</span>
+<span class="fc" id="L114">        String service = require(TOKEN, selection.serviceId(), &quot;service identity&quot;);</span>
+<span class="fc" id="L115">        String requirementId = require(TOKEN, selection.requirementId(), &quot;requirement identity&quot;);</span>
+<span class="fc" id="L116">        var inventory = indexReferences(basis);</span>
+<span class="fc" id="L117">        Reference capability = reference(inventory, root, selection.capabilityGuid(), Set.of(CAPABILITY));</span>
+<span class="fc" id="L118">        Reference subject = reference(inventory, root, selection.subjectGuid(), SUBJECT_TYPES);</span>
+<span class="fc" id="L119">        requireReferenceText(capability);</span>
+<span class="fc" id="L120">        requireReferenceText(subject);</span>
+<span class="fc" id="L121">        String driver = text(selection.constraintText(), &quot;operational constraint&quot;);</span>
+<span class="fc" id="L122">        String quote = text(selection.evidenceQuote(), &quot;evidence quote&quot;);</span>
+
+<span class="fc" id="L124">        var blocks = ArchitectureSemanticPatch.index(source);</span>
+<span class="fc" id="L125">        BlockAst requirement = blocks.get(&quot;requirement:&quot; + requirementId);</span>
+<span class="fc" id="L126">        String requirementText = unique(requirement, &quot;text&quot;);</span>
+<span class="fc" id="L127">        String versionText = unique(requirement, &quot;x-version&quot;);</span>
+<span class="fc" id="L128">        String contentHash = unique(requirement, &quot;x-content-hash&quot;);</span>
+<span class="fc" id="L129">        Integer version = AdmbwFffmlvProfile.version(versionText);</span>
+<span class="pc bpc" id="L130" title="3 of 6 branches missed.">        if (version == null || blank(requirementText) || !isUtf8(requirementText)</span>
+<span class="fc bfc" id="L131" title="All 2 branches covered.">                || !RequirementRealization.textHash(requirementText).equals(contentHash)) {</span>
+<span class="fc" id="L132">            throw invalid(&quot;A canonical requirement with its exact version and text hash is required&quot;);</span>
+        }
+<span class="fc bfc" id="L134" title="All 2 branches covered.">        if (!requirementText.contains(quote)) throw invalid(&quot;The evidence quote must occur verbatim in the current requirement&quot;);</span>
+
+<span class="fc" id="L136">        List&lt;ArchitectureCommand&gt; changes = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L137">        declareService(blocks.get(&quot;element:&quot; + service), service, changes);</span>
+<span class="fc" id="L138">        String capabilityId = bind(capability, blocks, basisHash, projectGuid, root, changes);</span>
+<span class="fc" id="L139">        String subjectId = bind(subject, blocks, basisHash, projectGuid, root, changes);</span>
+<span class="fc" id="L140">        var relation = new RelationKey(service, &quot;FULFILLS&quot;, capabilityId);</span>
+<span class="fc" id="L141">        reviewFulfilment(blocks.get(&quot;relation:&quot; + relation.id()), relation, changes);</span>
+<span class="fc" id="L142">        String constraintId = constraint(blocks, requirementId, versionText, contentHash, driver, quote, changes);</span>
+<span class="fc" id="L143">        planRequirement(requirement, requirementId, selection.requirementType(), constraintId, subjectId,</span>
+                versionText, contentHash, changes);
+<span class="fc bfc" id="L145" title="All 2 branches covered.">        if (!blocks.containsKey(&quot;mapping:&quot; + requirementId + &quot; -&gt; &quot; + service)) {</span>
+<span class="fc" id="L146">            changes.add(new UpsertRequirementMapping(requirementId, service,</span>
+                    &quot;Guided ADMBw preparation links the selected requirement to its reviewed service.&quot;,
+<span class="fc" id="L148">                    Map.of()));</span>
+        }
+
+<span class="fc" id="L151">        String viewId = &quot;admbw-delivery-&quot; + projectCode + &quot;-&quot; + bare(root);</span>
+<span class="fc" id="L152">        deliveryView(blocks.get(&quot;view:&quot; + viewId), viewId, projectCode, projectGuid, root,</span>
+                basisHash, operationId, relation, subjectId, constraintId, changes);
+<span class="fc" id="L154">        var model = new ArchitectureDslCommands().model(source);</span>
+<span class="pc" id="L155">        var commands = new ArchitectureDslCommands(catalogues.forModel(model), code -&gt; catalogues.assignmentTarget(model, code));</span>
+<span class="fc" id="L156">        String prepared = commands.applyAll(source, changes).dsl();</span>
+<span class="fc" id="L157">        var assessment = new AdmbwFffmlvProfile().assess(prepared, projectCode, viewId);</span>
+<span class="fc" id="L158">        var missingPins = verifyDeliveryReferences(inventory, root, projectGuid, assessment, ArchitectureSemanticPatch.index(prepared));</span>
+<span class="fc" id="L159">        prepared = commands.applyAll(prepared, missingPins).dsl();</span>
+<span class="fc" id="L160">        var notes = new ArrayList&lt;&gt;(List.of(</span>
+                &quot;This preview represents the changes after explicit review of service fulfilment and requirement derivation.&quot;,
+                &quot;The operational constraint is a proposed restatement grounded in the quoted requirement; independent upstream evidence was not supplied.&quot;,
+                &quot;The selected QEA reference identities apply to the inspected basis; independent architecture review remains required.&quot;
+        ));
+<span class="fc bfc" id="L165" title="All 2 branches covered.">        if (!quote.equals(requirementText)) {</span>
+<span class="fc" id="L166">            notes.add(&quot;The quote is an excerpt from the requirement. Review whether the operational constraint supports the entire requirement. &quot;</span>
+                    + &quot;If it supports a narrower scope, select a separately versioned requirement for that scope.&quot;);
+        }
+<span class="fc" id="L169">        return new Prepared(prepared, viewId, requirementId, version, contentHash, basisHash, notes, assessment);</span>
+    }
+
+    private static void declareService(BlockAst block, String service, List&lt;ArchitectureCommand&gt; changes) {
+<span class="fc" id="L173">        String type = elementType(block);</span>
+<span class="pc bpc" id="L174" title="1 of 4 branches missed.">        if (type == null || !SERVICE_TYPES.contains(type)) throw invalid(&quot;Select an existing CoreService or COIService&quot;);</span>
+<span class="fc" id="L175">        String previous = unique(block, TYPE);</span>
+<span class="pc bpc" id="L176" title="1 of 4 branches missed.">        if (!blank(previous) &amp;&amp; !SERVICE.equals(previous)) throw invalid(&quot;The service already has a different ADMBw stereotype&quot;);</span>
+<span class="fc bfc" id="L177" title="All 2 branches covered.">        if (!SERVICE.equals(previous)) changes.add(new UpdateArchitectureElement(service, type, Map.of(TYPE, SERVICE)));</span>
+<span class="fc" id="L178">    }</span>
+
+    private static Map&lt;String, List&lt;Reference&gt;&gt; indexReferences(Basis basis) {
+<span class="fc" id="L181">        Map&lt;String, List&lt;Reference&gt;&gt; index = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L182" title="All 2 branches covered.">        for (Reference reference : basis.references()) {</span>
+<span class="pc bpc" id="L183" title="1 of 2 branches missed.">            if (reference.guid() != null) index.computeIfAbsent(reference.guid().toUpperCase(Locale.ROOT),</span>
+<span class="fc" id="L184">                    ignored -&gt; new ArrayList&lt;&gt;()).add(reference);</span>
+<span class="fc" id="L185">        }</span>
+<span class="fc" id="L186">        return index;</span>
+    }
+
+    private static Reference reference(Map&lt;String, List&lt;Reference&gt;&gt; inventory, String root, String selected, Set&lt;String&gt; stereotypes) {
+<span class="fc" id="L190">        String requested = guid(selected, &quot;reference&quot;);</span>
+<span class="fc" id="L191">        var matches = inventory.getOrDefault(requested, List.of());</span>
+<span class="fc bfc" id="L192" title="All 2 branches covered.">        if (matches.size() != 1) throw invalid(&quot;Select one unambiguous native QEA reference&quot;);</span>
+<span class="fc" id="L193">        Reference entry = matches.getFirst();</span>
+<span class="fc bfc" id="L194" title="All 2 branches covered.">        if (!root.equals(guid(entry.rootGuid(), &quot;reference root&quot;))) throw invalid(&quot;The native reference belongs to a different model root&quot;);</span>
+<span class="pc bpc" id="L195" title="1 of 4 branches missed.">        if (entry.stereotype() == null || !stereotypes.contains(entry.stereotype())) {</span>
+<span class="fc" id="L196">            throw invalid(&quot;Select a native QEA reference with the required ADMBw stereotype&quot;);</span>
+        }
+<span class="fc bfc" id="L198" title="All 2 branches covered.">        if (!blank(entry.ownerGuid())) {</span>
+<span class="pc bpc" id="L199" title="1 of 2 branches missed.">            if (requested.equals(guid(entry.ownerGuid(), &quot;reference owner&quot;))) throw invalid(&quot;A native reference cannot own itself&quot;);</span>
+<span class="pc bpc" id="L200" title="1 of 2 branches missed.">        } else if (PART_TYPES.contains(entry.stereotype())) {</span>
+<span class="nc" id="L201">            throw invalid(&quot;The selected native &quot; + entry.stereotype() + &quot; needs its EA Part owner&quot;);</span>
+        }
+<span class="fc" id="L203">        return entry;</span>
+    }
+
+    private static void requireReferenceText(Reference entry) {
+<span class="fc" id="L207">        text(entry.name(), &quot;native reference name&quot;);</span>
+<span class="pc bpc" id="L208" title="1 of 2 branches missed.">        if (entry.notes() != null) checkText(entry.notes(), &quot;native reference notes&quot;);</span>
+<span class="pc bpc" id="L209" title="1 of 2 branches missed.">        if (entry.packagePath().isEmpty()) throw invalid(&quot;The native reference needs its inspected package path&quot;);</span>
+<span class="fc" id="L210">        entry.packagePath().forEach(name -&gt; text(name, &quot;native package name&quot;));</span>
+<span class="fc" id="L211">    }</span>
+
+    /** A guided selection remains authoritative when the same checkpoint uses the ordinary export route. */
+    public static boolean requiresBasisInspection(String source, AdmbwFffmlvProfile.Report assessment) {
+<span class="fc" id="L215">        var blocks = ArchitectureSemanticPatch.index(source);</span>
+<span class="fc" id="L216">        var view = blocks.get(&quot;view:&quot; + assessment.sourceViewId());</span>
+<span class="pc bpc" id="L217" title="1 of 4 branches missed.">        return view != null &amp;&amp; view.property(VIEW_PROFILE) != null</span>
+<span class="fc" id="L218">                || Stream.concat(assessment.capabilityToService().elements().stream(), assessment.requirementDerivation().elements().stream())</span>
+<span class="fc" id="L219">                    .map(element -&gt; blocks.get(element.ref())).filter(Objects::nonNull)</span>
+<span class="pc bpc" id="L220" title="2 of 4 branches missed.">                    .anyMatch(block -&gt; NATIVE_IDENTITY_PINS.stream().anyMatch(key -&gt; block.property(key) != null));</span>
+    }
+
+    public static void validateDeliveryBasis(String source, AdmbwFffmlvProfile.Report assessment,
+                                             String rootPackageGuid, Basis basis) {
+<span class="fc" id="L225">        var blocks = ArchitectureSemanticPatch.index(source);</span>
+<span class="fc" id="L226">        String root = guid(rootPackageGuid, &quot;model root&quot;), project = guid(basis.projectGuid(), &quot;EA project&quot;);</span>
+<span class="fc" id="L227">        var view = blocks.get(&quot;view:&quot; + assessment.sourceViewId());</span>
+<span class="pc bpc" id="L228" title="2 of 4 branches missed.">        if (view != null &amp;&amp; view.property(VIEW_PROFILE) != null</span>
+<span class="pc bpc" id="L229" title="1 of 2 branches missed.">                &amp;&amp; (!AdmbwFffmlvProfile.ID.equals(unique(view, VIEW_PROFILE))</span>
+<span class="fc bfc" id="L230" title="All 2 branches covered.">                    || !assessment.projectCode().equals(unique(view, VIEW_PROJECT))</span>
+<span class="pc bpc" id="L231" title="1 of 4 branches missed.">                    || !root.equals(unique(view, NATIVE_ROOT)) || !project.equals(unique(view, NATIVE_PROJECT)))) {</span>
+<span class="fc" id="L232">            throw invalid(&quot;The delivery project and native model root must match the reviewed guided view&quot;);</span>
+        }
+<span class="fc" id="L234">        verifyDeliveryReferences(indexReferences(basis), root, project, assessment, blocks);</span>
+<span class="pc bpc" id="L235" title="2 of 6 branches missed.">        if (view != null &amp;&amp; unique(view, BASIS_HASH) != null &amp;&amp; !basis.sha256().equals(unique(view, BASIS_HASH)))</span>
+<span class="fc" id="L236">            throw invalid(&quot;The supplied QEA basis SHA-256 differs from the reviewed delivery&quot;);</span>
+<span class="fc" id="L237">    }</span>
+
+    /** Verifies delivered native identities and returns commands to retain newly observed pins on acceptance. */
+    private static List&lt;ArchitectureCommand&gt; verifyDeliveryReferences(Map&lt;String, List&lt;Reference&gt;&gt; inventory,
+            String root, String project, AdmbwFffmlvProfile.Report assessment, Map&lt;String, BlockAst&gt; blocks) {
+<span class="fc" id="L242">        Map&lt;String, ArchitectureCommand&gt; missingPins = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L243">        Stream.concat(assessment.capabilityToService().elements().stream(), assessment.requirementDerivation().elements().stream())</span>
+<span class="fc bfc" id="L244" title="All 2 branches covered.">                .filter(element -&gt; element.catalogueGuid() != null)</span>
+<span class="fc" id="L245">                .forEach(element -&gt; {</span>
+                    try {
+<span class="fc" id="L247">                        var inspected = reference(inventory, root, element.catalogueGuid(), Set.of(element.stereotype()));</span>
+<span class="fc" id="L248">                        var recorded = blocks.get(element.ref());</span>
+<span class="pc bpc" id="L249" title="1 of 2 branches missed.">                        if (recorded == null) throw invalid(&quot;The canonical element is missing&quot;);</span>
+<span class="fc" id="L250">                        var observed = Map.of(NATIVE_PROJECT, project, NATIVE_ROOT, root,</span>
+<span class="fc bfc" id="L251" title="All 2 branches covered.">                                NATIVE_OWNER, blank(inspected.ownerGuid()) ? &quot;&quot; : guid(inspected.ownerGuid(), &quot;reference owner&quot;));</span>
+<span class="fc" id="L252">                        Map&lt;String, String&gt; absent = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L253" title="All 2 branches covered.">                        for (var pin : observed.entrySet()) {</span>
+<span class="fc" id="L254">                            String prior = unique(recorded, pin.getKey());</span>
+<span class="fc bfc" id="L255" title="All 2 branches covered.">                            if (prior == null) absent.put(pin.getKey(), pin.getValue());</span>
+<span class="fc bfc" id="L256" title="All 2 branches covered.">                            else if (!prior.equalsIgnoreCase(pin.getValue())) {</span>
+<span class="fc" id="L257">                                throw invalid(&quot;The native reference changed its reviewed model or Part owner&quot;);</span>
+                            }
+<span class="fc" id="L259">                        }</span>
+<span class="fc bfc" id="L260" title="All 2 branches covered.">                        if (!absent.isEmpty()) missingPins.put(element.ref(),</span>
+<span class="fc" id="L261">                                new SetExchangeProperties(&quot;element&quot;, recorded.getHeaderTokens().getFirst(), absent));</span>
+<span class="fc" id="L262">                    } catch (IllegalArgumentException failure) {</span>
+<span class="fc" id="L263">                        throw new IllegalArgumentException(&quot;Delivery reference &quot; + element.ref() + &quot; (&quot;</span>
+<span class="fc" id="L264">                                + element.stereotype() + &quot;, &quot; + element.catalogueGuid()</span>
+<span class="fc" id="L265">                                + &quot;) is unavailable in the inspected model root: &quot; + failure.getMessage(), failure);</span>
+<span class="fc" id="L266">                    }</span>
+<span class="fc" id="L267">                });</span>
+<span class="fc" id="L268">        return List.copyOf(missingPins.values());</span>
+    }
+
+    private static String bind(Reference reference, Map&lt;String, BlockAst&gt; blocks, String basisHash,
+                               String projectGuid, String root, List&lt;ArchitectureCommand&gt; changes) {
+<span class="fc" id="L273">        String guid = guid(reference.guid(), &quot;reference&quot;);</span>
+<span class="fc" id="L274">        String stableId = &quot;admbw-native-&quot; + bare(guid);</span>
+<span class="fc" id="L275">        var matches = blocks.values().stream().filter(block -&gt; &quot;element&quot;.equals(block.getKind()))</span>
+<span class="fc" id="L276">                .filter(block -&gt; block.propertyValues(CATALOGUE_GUID).stream().anyMatch(guid::equalsIgnoreCase)).toList();</span>
+<span class="fc bfc" id="L277" title="All 2 branches covered.">        if (matches.size() &gt; 1) throw invalid(&quot;The native GUID is bound to more than one canonical element&quot;);</span>
+<span class="fc" id="L278">        BlockAst occupied = blocks.get(&quot;element:&quot; + stableId);</span>
+<span class="fc bfc" id="L279" title="All 2 branches covered.">        String type = CAPABILITY.equals(reference.stereotype()) ? CAPABILITY : &quot;Component&quot;;</span>
+<span class="fc bfc" id="L280" title="All 2 branches covered.">        String stereotype = CAPABILITY.equals(type) ? &quot;&quot; : reference.stereotype();</span>
+<span class="fc bfc" id="L281" title="All 2 branches covered.">        if (!matches.isEmpty()) {</span>
+<span class="fc" id="L282">            BlockAst existing = matches.getFirst();</span>
+<span class="fc" id="L283">            String existingType = elementType(existing);</span>
+<span class="fc" id="L284">            String existingStereotype = unique(existing, TYPE);</span>
+<span class="fc bfc" id="L285" title="All 2 branches covered.">            boolean compatible = CAPABILITY.equals(type)</span>
+<span class="pc bpc" id="L286" title="1 of 4 branches missed.">                    ? CAPABILITY.equals(existingType) &amp;&amp; blank(existingStereotype)</span>
+<span class="pc bpc" id="L287" title="2 of 4 branches missed.">                    : existingType != null &amp;&amp; !CAPABILITY.equals(existingType) &amp;&amp; !SERVICE_TYPES.contains(existingType)</span>
+<span class="pc bpc" id="L288" title="3 of 6 branches missed.">                            &amp;&amp; !&quot;CommunicationsService&quot;.equals(existingType) &amp;&amp; stereotype.equals(existingStereotype);</span>
+<span class="pc bpc" id="L289" title="2 of 8 branches missed.">            if (occupied != null &amp;&amp; occupied != existing || !compatible || unique(existing, CATALOGUE_GUID) == null</span>
+<span class="pc bpc" id="L290" title="1 of 2 branches missed.">                    || blank(unique(existing, CATALOGUE_REFERENCE))) {</span>
+<span class="fc" id="L291">                throw invalid(&quot;The native GUID conflicts with an existing canonical binding&quot;);</span>
+            }
+<span class="fc" id="L293">            return existing.getHeaderTokens().getFirst();</span>
+        }
+<span class="pc bpc" id="L295" title="1 of 2 branches missed.">        if (occupied != null) throw invalid(&quot;The native reference identity collides with an existing canonical element&quot;);</span>
+
+<span class="fc" id="L297">        var properties = new LinkedHashMap&lt;String, String&gt;();</span>
+<span class="fc" id="L298">        properties.put(&quot;title&quot;, reference.name());</span>
+<span class="pc bpc" id="L299" title="1 of 2 branches missed.">        if (!blank(reference.notes())) properties.put(&quot;description&quot;, reference.notes());</span>
+<span class="fc bfc" id="L300" title="All 2 branches covered.">        if (!stereotype.isEmpty()) properties.put(TYPE, stereotype);</span>
+<span class="fc" id="L301">        properties.put(CATALOGUE_GUID, guid);</span>
+<span class="fc" id="L302">        properties.put(CATALOGUE_REFERENCE, &quot;Inspected QEA basis SHA-256 &quot; + basisHash + &quot;; project &quot; + projectGuid</span>
+<span class="fc" id="L303">                + &quot;; model root &quot; + root + &quot;; package &quot; + String.join(&quot; / &quot;, reference.packagePath()));</span>
+<span class="fc" id="L304">        changes.add(new CreateArchitectureElement(stableId, type, properties));</span>
+<span class="fc" id="L305">        return stableId;</span>
+    }
+
+    private static void reviewFulfilment(BlockAst existing, RelationKey relation, List&lt;ArchitectureCommand&gt; changes) {
+<span class="fc bfc" id="L309" title="All 2 branches covered.">        if (existing == null) {</span>
+<span class="fc" id="L310">            changes.add(new CreateArchitectureRelation(relation, &quot;accepted&quot;));</span>
+<span class="fc" id="L311">            return;</span>
+        }
+<span class="fc" id="L313">        String status = unique(existing, &quot;status&quot;);</span>
+<span class="fc bfc" id="L314" title="All 2 branches covered.">        if (&quot;proposed&quot;.equals(status)) changes.add(new UpdateArchitectureRelation(relation, &quot;accepted&quot;));</span>
+<span class="fc bfc" id="L315" title="All 2 branches covered.">        else if (!&quot;accepted&quot;.equals(status)) throw invalid(&quot;The existing FULFILLS relation cannot be accepted without a separate change&quot;);</span>
+<span class="fc" id="L316">    }</span>
+
+    private static String constraint(Map&lt;String, BlockAst&gt; blocks, String requirement, String version, String hash,
+                                     String driver, String quote, List&lt;ArchitectureCommand&gt; changes) {
+<span class="fc" id="L320">        String id = &quot;admbw-constraint-&quot; + RequirementRealization.textHash(requirement + &quot;\n&quot; + version + &quot;\n&quot; + hash);</span>
+<span class="fc" id="L321">        String description = driver + &quot;\n\nCanonical requirement &quot; + requirement + &quot;, version &quot; + version</span>
+                + &quot;, SHA-256 &quot; + hash + &quot;.\nExact requirement quote:\n&quot; + quote;
+<span class="fc" id="L323">        BlockAst existing = blocks.get(&quot;element:&quot; + id);</span>
+<span class="fc bfc" id="L324" title="All 2 branches covered.">        if (existing == null) {</span>
+<span class="fc" id="L325">            changes.add(new CreateArchitectureElement(id, &quot;Component&quot;, Map.of(</span>
+                    &quot;title&quot;, &quot;Operational constraint for &quot; + requirement, &quot;description&quot;, description, TYPE, CONSTRAINT)));
+<span class="pc bpc" id="L327" title="2 of 4 branches missed.">        } else if (!&quot;Component&quot;.equals(elementType(existing)) || !CONSTRAINT.equals(unique(existing, TYPE))</span>
+<span class="fc bfc" id="L328" title="All 2 branches covered.">                || !description.equals(unique(existing, &quot;description&quot;))) {</span>
+<span class="fc" id="L329">            throw invalid(&quot;The current requirement revision already has a conflicting operational constraint&quot;);</span>
+        }
+<span class="fc" id="L331">        return id;</span>
+    }
+
+    private static void planRequirement(BlockAst requirement, String requirementId, String kind, String constraint,
+                                        String subject, String version, String hash, List&lt;ArchitectureCommand&gt; changes) {
+<span class="pc bpc" id="L336" title="1 of 2 branches missed.">        if (kind == null) throw invalid(&quot;Select a functional or nonfunctional requirement type&quot;);</span>
+<span class="fc" id="L337">        var values = Map.of(AdmbwRequirementProfile.KIND, kind, AdmbwRequirementProfile.DERIVED_FROM, constraint,</span>
+                AdmbwRequirementProfile.SUBJECT, subject, AdmbwRequirementProfile.BOUND_VERSION, version,
+                AdmbwRequirementProfile.BOUND_HASH, hash);
+<span class="fc" id="L340">        new AdmbwRequirementProfile().validate(values);</span>
+<span class="fc" id="L341">        var entries = PlanningInformation.decode(requirement.getExtensions());</span>
+<span class="fc" id="L342">        var existing = entries.stream().filter(entry -&gt; AdmbwRequirementProfile.ID.equals(entry.profile())).toList();</span>
+<span class="pc bpc" id="L343" title="1 of 2 branches missed.">        if (existing.size() &gt; 1) throw invalid(&quot;The requirement contains ambiguous ADMBw R7 assignments&quot;);</span>
+<span class="fc bfc" id="L344" title="All 2 branches covered.">        if (existing.isEmpty()) {</span>
+<span class="pc bpc" id="L345" title="1 of 2 branches missed.">            if (entries.stream().anyMatch(entry -&gt; PLAN_ID.equals(entry.id()))) throw invalid(&quot;The ADMBw R7 planning identity is already occupied&quot;);</span>
+<span class="fc" id="L346">            changes.add(new SetRequirementPlanning(requirementId,</span>
+                    new PlanningEntry(PLAN_ID, AdmbwRequirementProfile.ID, AdmbwRequirementProfile.VERSION, &quot;MANUAL&quot;, values)));
+<span class="fc" id="L348">            return;</span>
+        }
+<span class="fc" id="L350">        PlanningEntry entry = existing.getFirst();</span>
+<span class="fc" id="L351">        new AdmbwRequirementProfile().validate(entry.values());</span>
+<span class="fc" id="L352">        var previous = new HashMap&lt;&gt;(entry.values());</span>
+<span class="fc" id="L353">        boolean imported = &quot;true&quot;.equals(previous.remove(AdmbwRequirementProfile.IMPORTED));</span>
+<span class="pc bpc" id="L354" title="1 of 2 branches missed.">        if (!imported) {</span>
+<span class="fc bfc" id="L355" title="All 2 branches covered.">            for (var field : AdmbwRequirementField.values()) previous.remove(field.planningKey());</span>
+        }
+<span class="pc bpc" id="L357" title="1 of 4 branches missed.">        if (!AdmbwRequirementProfile.VERSION.equals(entry.version()) || !values.equals(previous)) {</span>
+<span class="fc" id="L358">            throw invalid(&quot;An existing ADMBw R7 assignment conflicts with the selected requirement revision or derivation&quot;);</span>
+        }
+<span class="pc bpc" id="L360" title="1 of 2 branches missed.">        if (imported) changes.add(new SetRequirementPlanning(requirementId,</span>
+<span class="nc" id="L361">                new PlanningEntry(entry.id(), entry.profile(), entry.version(), &quot;MANUAL&quot;, values)));</span>
+<span class="fc" id="L362">    }</span>
+
+    private static void deliveryView(BlockAst existing, String viewId, String projectCode, String projectGuid, String root,
+                                     String basisHash, String operationId, RelationKey relation, String subject, String constraint, List&lt;ArchitectureCommand&gt; changes) {
+<span class="fc" id="L366">        String title = &quot;ADMBw delivery | &quot; + projectCode;</span>
+<span class="fc" id="L367">        String description = &quot;Reviewed selection for the supported ADMBw C1–S1 and R7 delivery views.&quot;;</span>
+<span class="fc" id="L368">        var members = new LinkedHashSet&lt;String&gt;();</span>
+<span class="fc" id="L369">        var reviewed = new LinkedHashSet&lt;String&gt;();</span>
+<span class="fc bfc" id="L370" title="All 2 branches covered.">        if (existing != null) {</span>
+<span class="pc bpc" id="L371" title="1 of 4 branches missed.">            if (!AdmbwFffmlvProfile.ID.equals(unique(existing, VIEW_PROFILE)) || !projectCode.equals(unique(existing, VIEW_PROJECT))</span>
+<span class="pc bpc" id="L372" title="2 of 4 branches missed.">                    || !root.equals(unique(existing, NATIVE_ROOT)) || !projectGuid.equals(unique(existing, NATIVE_PROJECT))</span>
+<span class="pc bpc" id="L373" title="1 of 2 branches missed.">                    || existing.getProperties().stream().anyMatch(property -&gt; property.key().startsWith(&quot;x-analysis-&quot;))) {</span>
+<span class="fc" id="L374">                throw invalid(&quot;The dedicated delivery view identity belongs to another view&quot;);</span>
+            }
+<span class="fc" id="L376">            String recorded = unique(existing, VIEW_RELATIONS);</span>
+<span class="pc bpc" id="L377" title="1 of 2 branches missed.">            if (recorded == null) throw invalid(&quot;The delivery view is missing its reviewed relation selection&quot;);</span>
+<span class="pc bpc" id="L378" title="1 of 2 branches missed.">            if (!recorded.isEmpty()) {</span>
+<span class="fc bfc" id="L379" title="All 2 branches covered.">                for (String key : recorded.split(&quot;\\n&quot;, -1)) {</span>
+<span class="pc bpc" id="L380" title="2 of 4 branches missed.">                    if (!FULFILMENT.matcher(key).matches() || !reviewed.add(key)) {</span>
+<span class="nc" id="L381">                        throw invalid(&quot;The delivery view has ambiguous reviewed relation identities&quot;);</span>
+                    }
+                }
+            }
+<span class="fc" id="L385">            title = unique(existing, &quot;title&quot;);</span>
+<span class="fc" id="L386">            description = Objects.toString(unique(existing, &quot;description&quot;), &quot;&quot;);</span>
+<span class="fc" id="L387">            members.addAll(existing.propertyValues(&quot;include&quot;));</span>
+        }
+<span class="fc" id="L389">        members.addAll(List.of(relation.sourceId(), relation.targetId(), subject, constraint));</span>
+<span class="fc" id="L390">        reviewed.add(relation.id());</span>
+<span class="fc" id="L391">        var metadata = new LinkedHashMap&lt;&gt;(Map.of(VIEW_PROFILE, AdmbwFffmlvProfile.ID, VIEW_PROJECT, projectCode,</span>
+<span class="fc" id="L392">                NATIVE_ROOT, root, NATIVE_PROJECT, projectGuid, VIEW_RELATIONS, String.join(&quot;\n&quot;, reviewed), BASIS_HASH, basisHash));</span>
+<span class="fc bfc" id="L393" title="All 2 branches covered.">        if (operationId != null) metadata.put(OPERATION, java.util.UUID.fromString(operationId).toString());</span>
+<span class="fc" id="L394">        changes.add(new UpsertArchitectureView(viewId, title, description, List.copyOf(members), metadata));</span>
+<span class="fc" id="L395">    }</span>
+
+    private static String elementType(BlockAst block) {
+<span class="pc bpc" id="L398" title="3 of 6 branches missed.">        if (block == null || block.getHeaderTokens().size() != 3 || !&quot;type&quot;.equals(block.getHeaderTokens().get(1))) return null;</span>
+<span class="fc" id="L399">        return block.getHeaderTokens().get(2);</span>
+    }
+
+    private static String unique(BlockAst block, String property) {
+<span class="pc bpc" id="L403" title="1 of 2 branches missed.">        if (block == null) return null;</span>
+<span class="fc" id="L404">        var values = block.propertyValues(property);</span>
+<span class="pc bpc" id="L405" title="1 of 2 branches missed.">        if (values.size() &gt; 1) throw invalid(&quot;Ambiguous canonical property: &quot; + property);</span>
+<span class="fc bfc" id="L406" title="All 2 branches covered.">        return values.isEmpty() ? null : values.getFirst();</span>
+    }
+
+    private static String bare(String guid) {
+<span class="fc" id="L410">        return guid.substring(1, guid.length() - 1).toLowerCase(Locale.ROOT);</span>
+    }
+
+    private static String guid(String value, String field) {
+<span class="fc" id="L414">        String normalized = require(GUID, value, field + &quot; GUID&quot;).toUpperCase(Locale.ROOT);</span>
+<span class="pc bpc" id="L415" title="1 of 2 branches missed.">        if (ZERO_GUID.equals(normalized)) throw invalid(&quot;Invalid &quot; + field + &quot; GUID&quot;);</span>
+<span class="fc" id="L416">        return normalized;</span>
+    }
+
+    private static String require(Pattern pattern, String value, String field) {
+<span class="pc bpc" id="L420" title="1 of 4 branches missed.">        if (value == null || !pattern.matcher(value).matches()) throw invalid(&quot;Invalid &quot; + field);</span>
+<span class="fc" id="L421">        return value;</span>
+    }
+
+    private static String text(String value, String field) {
+<span class="fc bfc" id="L425" title="All 2 branches covered.">        if (blank(value)) throw invalid(&quot;Provide a nonblank &quot; + field);</span>
+<span class="fc" id="L426">        checkText(value, field);</span>
+<span class="fc" id="L427">        return value;</span>
+    }
+
+    private static void checkText(String value, String field) {
+<span class="pc bpc" id="L431" title="3 of 6 branches missed.">        if (!isUtf8(value) || value.length() &gt; 8000 || value.chars().anyMatch(ch -&gt;</span>
+<span class="pc bpc" id="L432" title="9 of 12 branches missed.">                Character.isISOControl(ch) &amp;&amp; ch != '\n' &amp;&amp; ch != '\r' &amp;&amp; ch != '\t' || ch == 0xfffe || ch == 0xffff)) {</span>
+<span class="nc" id="L433">            throw invalid(&quot;Invalid or oversized &quot; + field);</span>
+        }
+<span class="fc" id="L435">    }</span>
+
+    private static boolean isUtf8(String value) {
+<span class="fc" id="L438">        return StandardCharsets.UTF_8.newEncoder().canEncode(value);</span>
+    }
+
+    private static boolean blank(String value) {
+<span class="fc bfc" id="L442" title="All 4 branches covered.">        return value == null || value.isBlank();</span>
+    }
+
+    private static IllegalArgumentException invalid(String message) {
+<span class="fc" id="L446">        return new IllegalArgumentException(message);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

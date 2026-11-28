@@ -1,0 +1,157 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RequirementAnalysisSnapshotRepository.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-portfolio</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.repository</a> &gt; <span class="el_source">RequirementAnalysisSnapshotRepository.java</span></div><h1>RequirementAnalysisSnapshotRepository.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.repository;
+
+import com.taxonomy.portfolio.dto.PortfolioDtos.SnapshotSummary;
+import com.taxonomy.portfolio.model.RequirementAnalysisSnapshot;
+import com.taxonomy.portfolio.model.SnapshotReference;
+import com.taxonomy.portfolio.payload.PortfolioAnalysisPayloads;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Stream;
+
+import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
+import jakarta.persistence.LockModeType;
+import jakarta.persistence.QueryHint;
+import org.hibernate.jpa.HibernateHints;
+import org.springframework.data.jpa.repository.QueryHints;
+
+public interface RequirementAnalysisSnapshotRepository
+        extends JpaRepository&lt;RequirementAnalysisSnapshot, String&gt; {
+
+    @Query(&quot;&quot;&quot;
+            select new com.taxonomy.portfolio.repository.AnalysisSnapshotReadRow(
+                snapshot.id, snapshot.projectId, snapshot.requirementId, requirement.requirementKey,
+                snapshot.requirementVersionId, analyzedVersion.versionNumber, snapshot.jobId,
+                snapshot.status, snapshot.provider, snapshot.modelName, snapshot.taxonomyFingerprint,
+                snapshot.promptFingerprint, snapshot.workspaceId, snapshot.branchName, snapshot.commitSha,
+                snapshot.createdAt, snapshot.durationMs, snapshot.warningCount, snapshot.errorMessage,
+                snapshot.analysisPayload, snapshot.gapAnalysisPayload, snapshot.patternDetectionPayload,
+                snapshot.recommendationPayload)
+              from RequirementAnalysisSnapshot snapshot
+              join snapshot.requirement requirement
+              join snapshot.requirementVersion analyzedVersion
+             where snapshot.id = :id and snapshot.projectId = :projectId and snapshot.scopeKey = :scopeKey
+            &quot;&quot;&quot;)
+    Optional&lt;AnalysisSnapshotReadRow&gt; findReadRowByIdAndProjectIdAndScopeKey(
+            @Param(&quot;id&quot;) String id, @Param(&quot;projectId&quot;) Long projectId, @Param(&quot;scopeKey&quot;) String scopeKey);
+
+    @Query(&quot;&quot;&quot;
+            select new com.taxonomy.portfolio.dto.PortfolioDtos$SnapshotSummary(
+                snapshot.id, snapshot.projectId, snapshot.requirementId, requirement.requirementKey,
+                snapshot.requirementVersionId, analyzedVersion.versionNumber, snapshot.jobId,
+                snapshot.status, snapshot.provider, snapshot.modelName, snapshot.taxonomyFingerprint,
+                snapshot.promptFingerprint, snapshot.workspaceId, snapshot.branchName, snapshot.commitSha,
+                snapshot.createdAt, snapshot.durationMs, snapshot.warningCount, snapshot.errorMessage)
+              from RequirementAnalysisSnapshot snapshot
+              join snapshot.requirement requirement
+              join snapshot.requirementVersion analyzedVersion
+             where snapshot.id = :id and snapshot.projectId = :projectId and snapshot.scopeKey = :scopeKey
+            &quot;&quot;&quot;)
+    Optional&lt;SnapshotSummary&gt; findSummaryByIdAndProjectIdAndScopeKey(
+            @Param(&quot;id&quot;) String id, @Param(&quot;projectId&quot;) Long projectId, @Param(&quot;scopeKey&quot;) String scopeKey);
+
+    @Query(&quot;&quot;&quot;
+            select reference from SnapshotReference reference
+             where reference.id = :id and reference.projectId = :projectId and reference.scopeKey = :scopeKey
+            &quot;&quot;&quot;)
+    Optional&lt;SnapshotReference&gt; findReferenceByIdAndProjectIdAndScopeKey(
+            @Param(&quot;id&quot;) String id, @Param(&quot;projectId&quot;) Long projectId, @Param(&quot;scopeKey&quot;) String scopeKey);
+
+    @Query(&quot;&quot;&quot;
+            select new com.taxonomy.portfolio.repository.AnalysisSnapshotIdentityRow(
+                snapshot.id, snapshot.requirementId, snapshot.requirementVersionId)
+              from RequirementAnalysisSnapshot snapshot
+             where snapshot.id = :id and snapshot.projectId = :projectId and snapshot.scopeKey = :scopeKey
+            &quot;&quot;&quot;)
+    Optional&lt;AnalysisSnapshotIdentityRow&gt; findIdentityByIdAndProjectIdAndScopeKey(
+            @Param(&quot;id&quot;) String id, @Param(&quot;projectId&quot;) Long projectId, @Param(&quot;scopeKey&quot;) String scopeKey);
+
+    /** The immutable analysis JSON, bound to the complete work identity checked by continuation eligibility. */
+    default List&lt;String&gt; findAnalysisPayloadForContinuation(String snapshotId, String jobId, Long requirementId,
+            Long requirementVersionId, Long projectId, String scopeKey) {
+<span class="fc" id="L78">        List&lt;String&gt; stored = findStoredAnalysisPayloadForContinuation(</span>
+                snapshotId, jobId, requirementId, requirementVersionId, projectId, scopeKey);
+<span class="fc" id="L80">        List&lt;String&gt; plain = new ArrayList&lt;&gt;(stored.size());</span>
+<span class="fc bfc" id="L81" title="All 2 branches covered.">        for (String payload : stored) plain.add(PortfolioAnalysisPayloads.plain(payload));</span>
+<span class="fc" id="L82">        return plain;</span>
+    }
+
+    /** Storage-only projection. Its values may contain encoded frames. */
+    @Query(&quot;&quot;&quot;
+            select snapshot.analysisPayload
+              from RequirementAnalysisSnapshot snapshot
+             where snapshot.id = :snapshotId and snapshot.jobId = :jobId
+               and snapshot.requirementId = :requirementId and snapshot.requirementVersionId = :requirementVersionId
+               and snapshot.projectId = :projectId and snapshot.scopeKey = :scopeKey
+            &quot;&quot;&quot;)
+    List&lt;String&gt; findStoredAnalysisPayloadForContinuation(
+            @Param(&quot;snapshotId&quot;) String snapshotId, @Param(&quot;jobId&quot;) String jobId,
+            @Param(&quot;requirementId&quot;) Long requirementId, @Param(&quot;requirementVersionId&quot;) Long requirementVersionId,
+            @Param(&quot;projectId&quot;) Long projectId, @Param(&quot;scopeKey&quot;) String scopeKey);
+
+    /** A history entry needs provenance and status, without loading any of the four result payloads. */
+    @Query(&quot;&quot;&quot;
+            select new com.taxonomy.portfolio.dto.PortfolioDtos$SnapshotSummary(
+                snapshot.id, snapshot.projectId, snapshot.requirementId, requirement.requirementKey,
+                snapshot.requirementVersionId, analyzedVersion.versionNumber, snapshot.jobId,
+                snapshot.status, snapshot.provider, snapshot.modelName, snapshot.taxonomyFingerprint,
+                snapshot.promptFingerprint, snapshot.workspaceId, snapshot.branchName, snapshot.commitSha,
+                snapshot.createdAt, snapshot.durationMs, snapshot.warningCount, snapshot.errorMessage)
+              from RequirementAnalysisSnapshot snapshot
+              join snapshot.requirement requirement
+              join snapshot.requirementVersion analyzedVersion
+             where snapshot.requirementId = :requirementId
+               and snapshot.projectId = :projectId and snapshot.scopeKey = :scopeKey
+             order by snapshot.createdAt desc
+            &quot;&quot;&quot;)
+    List&lt;SnapshotSummary&gt; findSummariesByRequirementIdAndProjectIdAndScopeKey(
+            @Param(&quot;requirementId&quot;) Long requirementId, @Param(&quot;projectId&quot;) Long projectId,
+            @Param(&quot;scopeKey&quot;) String scopeKey);
+
+    /** Serializes the first opening of the shared clarification form for this exact snapshot. */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query(&quot;select s from RequirementAnalysisSnapshot s where s.id = :id and s.projectId = :projectId and s.scopeKey = :scopeKey&quot;)
+    Optional&lt;RequirementAnalysisSnapshot&gt; lockForClarifications(
+            @Param(&quot;id&quot;) String id, @Param(&quot;projectId&quot;) Long projectId, @Param(&quot;scopeKey&quot;) String scopeKey);
+
+    Optional&lt;RequirementAnalysisSnapshot&gt; findByIdAndProjectIdAndScopeKey(
+            String id, Long projectId, String scopeKey);
+
+    List&lt;RequirementAnalysisSnapshot&gt;
+            findByRequirementIdAndProjectIdAndScopeKeyOrderByCreatedAtDesc(
+                    Long requirementId, Long projectId, String scopeKey);
+
+    List&lt;RequirementAnalysisSnapshot&gt; findByProjectIdAndScopeKeyOrderByCreatedAtDesc(
+            Long projectId, String scopeKey);
+
+    @Query(&quot;&quot;&quot;
+            select new com.taxonomy.portfolio.repository.ProductGapSnapshotRow(s.id, s.requirementId,
+                   r.requirementKey, s.requirementVersionId, v.versionNumber, s.taxonomyFingerprint, s.analysisPayload)
+              from RequirementAnalysisSnapshot s join s.requirement r join s.requirementVersion v
+             where s.projectId=:projectId and s.scopeKey=:scopeKey
+               and s.requirementId=coalesce(:requirementId,s.requirementId) and s.status in :statuses
+             order by r.requirementKey, v.versionNumber, s.createdAt, s.id
+            &quot;&quot;&quot;)
+    @QueryHints(@QueryHint(name = HibernateHints.HINT_FETCH_SIZE, value = &quot;16&quot;))
+    Stream&lt;ProductGapSnapshotRow&gt; streamProductGapEvidence(
+            @Param(&quot;projectId&quot;) Long projectId, @Param(&quot;scopeKey&quot;) String scopeKey,
+            @Param(&quot;requirementId&quot;) Long requirementId,
+            @Param(&quot;statuses&quot;) Set&lt;AnalysisStatus&gt; statuses);
+
+    /** Compatibility signatures retained while all callers migrate. */
+    @Deprecated(forRemoval = false)
+    Optional&lt;RequirementAnalysisSnapshot&gt; findByIdAndProjectId(String id, Long projectId);
+
+    @Deprecated(forRemoval = false)
+    List&lt;RequirementAnalysisSnapshot&gt; findByRequirementIdOrderByCreatedAtDesc(Long requirementId);
+
+    @Deprecated(forRemoval = false)
+    List&lt;RequirementAnalysisSnapshot&gt; findByProjectIdOrderByCreatedAtDesc(Long projectId);
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

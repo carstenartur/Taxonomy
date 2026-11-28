@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AdmbwRequirementField.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-sparx-mapping</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.sparx.mapping</a> &gt; <span class="el_source">AdmbwRequirementField.java</span></div><h1>AdmbwRequirementField.java</h1><pre class="source lang-java linenums">package com.taxonomy.sparx.mapping;
+
+/** Optional human assessments from the BWRequirement stereotype in the ADMBw 2026.05 MDG. */
+<span class="fc" id="L4">public enum AdmbwRequirementField {</span>
+<span class="fc" id="L5">    CATEGORY(&quot;requirementCategory&quot;, &quot;Anforderungsart&quot;),</span>
+<span class="fc" id="L6">    CRITICALITY(&quot;criticality&quot;, &quot;Kritikalität&quot;),</span>
+<span class="fc" id="L7">    ASSESSMENT(&quot;operationalAssessment&quot;, &quot;Operative Bewertung&quot;),</span>
+<span class="fc" id="L8">    PRIORITY(&quot;procurementPriority&quot;, &quot;Priorität Vergabe&quot;),</span>
+<span class="fc" id="L9">    QUALITY_STATUS(&quot;qualityStatus&quot;, &quot;QS_Status&quot;);</span>
+
+    private final String planningKey;
+    private final String nativeTag;
+
+<span class="fc" id="L14">    AdmbwRequirementField(String planningKey, String nativeTag) {</span>
+<span class="fc" id="L15">        this.planningKey = planningKey;</span>
+<span class="fc" id="L16">        this.nativeTag = nativeTag;</span>
+<span class="fc" id="L17">    }</span>
+
+<span class="fc" id="L19">    public String planningKey() { return planningKey; }</span>
+<span class="fc" id="L20">    public String nativeTag() { return nativeTag; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

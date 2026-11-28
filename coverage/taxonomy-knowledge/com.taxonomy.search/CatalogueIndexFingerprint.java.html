@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>CatalogueIndexFingerprint.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-knowledge</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.search</a> &gt; <span class="el_source">CatalogueIndexFingerprint.java</span></div><h1>CatalogueIndexFingerprint.java</h1><pre class="source lang-java linenums">package com.taxonomy.search;
+
+import com.taxonomy.catalog.model.TaxonomyNode;
+import com.taxonomy.catalog.model.TaxonomyRelation;
+
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
+import java.util.Locale;
+
+/**
+ * Versioned identity of the complete searchable projection of one database row.
+ * Stored inside the same Lucene document as its text/vector fields, so partial
+ * indexing, equal row counts, and restored indexes from another database cannot
+ * masquerade as a complete current projection. No private text is retained here.
+ */
+final class CatalogueIndexFingerprint {
+    static final String FIELD = &quot;catalogueContentKey&quot;;
+    // Bump when analyzers, indexed fields or the document-text contract change.
+    private static final String SCHEMA = &quot;catalogue-search-v1-lucene-9.12.3&quot;;
+
+    static final String NODE_ROWS = &quot;&quot;&quot;
+            select n.id, n.code, n.uuid, n.nameEn, n.nameDe, n.descriptionEn, n.descriptionDe,
+                   n.parentCode, n.taxonomyRoot, n.level, n.externalId, n.hasEmbedding,
+                   n.incomingRelationCount, n.outgoingRelationCount, n.requirementCoverageCount, n.graphRole
+            from TaxonomyNode n
+            where n.id &gt; :after order by n.id
+            &quot;&quot;&quot;;
+    static final String RELATION_ROWS = &quot;&quot;&quot;
+            select r.id, r.repositoryId, r.sourceNode.code, r.sourceNode.nameEn,
+                   r.targetNode.code, r.targetNode.nameEn, r.relationType, r.workspaceId,
+                   r.workspaceScopeKey, r.ownerUsername, r.description, r.hasEmbedding
+            from TaxonomyRelation r
+            where r.id &gt; :after order by r.id
+            &quot;&quot;&quot;;
+
+    private CatalogueIndexFingerprint() { }
+
+    static String node(TaxonomyNode node) {
+<span class="fc" id="L42">        return nodeRow(new Object[] { node.getId(), node.getCode(), node.getUuid(), node.getNameEn(), node.getNameDe(),</span>
+<span class="fc" id="L43">                node.getDescriptionEn(), node.getDescriptionDe(), node.getParentCode(), node.getTaxonomyRoot(),</span>
+<span class="fc" id="L44">                node.getLevel(), node.getExternalId(), node.isHasEmbedding(), node.getIncomingRelationCount(),</span>
+<span class="fc" id="L45">                node.getOutgoingRelationCount(), node.getRequirementCoverageCount(), node.getGraphRole() });</span>
+    }
+
+    static String relation(TaxonomyRelation relation) {
+<span class="fc" id="L49">        return relationRow(new Object[] { relation.getId(), relation.getRepositoryId(),</span>
+<span class="fc" id="L50">                relation.getSourceNode().getCode(), relation.getSourceNode().getNameEn(),</span>
+<span class="fc" id="L51">                relation.getTargetNode().getCode(), relation.getTargetNode().getNameEn(),</span>
+<span class="fc" id="L52">                relation.getRelationType(), relation.getWorkspaceId(), relation.getWorkspaceScopeKey(),</span>
+<span class="fc" id="L53">                relation.getOwnerUsername(), relation.getDescription(), relation.isHasEmbedding() });</span>
+    }
+
+<span class="fc" id="L56">    static String nodeRow(Object[] row) { return fingerprint(&quot;node&quot;, row); }</span>
+
+    static String relationRow(Object[] row) {
+        // RelationEmbeddingText currently uses the default locale for relation labels.
+<span class="fc" id="L60">        return fingerprint(&quot;relation:&quot; + Locale.getDefault().toLanguageTag(), row);</span>
+    }
+
+    private static String fingerprint(String kind, Object[] row) {
+        try {
+<span class="fc" id="L65">            MessageDigest digest = MessageDigest.getInstance(&quot;SHA-256&quot;);</span>
+<span class="fc" id="L66">            add(digest, SCHEMA);</span>
+<span class="fc" id="L67">            add(digest, kind);</span>
+<span class="fc bfc" id="L68" title="All 4 branches covered.">            for (Object value : row) add(digest, value == null ? null : value.toString());</span>
+<span class="fc" id="L69">            return HexFormat.of().formatHex(digest.digest());</span>
+<span class="nc" id="L70">        } catch (NoSuchAlgorithmException impossible) {</span>
+<span class="nc" id="L71">            throw new IllegalStateException(&quot;SHA-256 is unavailable&quot;, impossible);</span>
+        }
+    }
+
+    private static void add(MessageDigest digest, String value) {
+<span class="fc bfc" id="L76" title="All 2 branches covered.">        byte[] bytes = value == null ? null : value.getBytes(StandardCharsets.UTF_8);</span>
+<span class="fc bfc" id="L77" title="All 2 branches covered.">        digest.update(ByteBuffer.allocate(Integer.BYTES).putInt(bytes == null ? -1 : bytes.length).array());</span>
+<span class="fc bfc" id="L78" title="All 2 branches covered.">        if (bytes != null) digest.update(bytes);</span>
+<span class="fc" id="L79">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

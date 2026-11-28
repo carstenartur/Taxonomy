@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>BranchAdoptionRule.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.service</a> &gt; <span class="el_source">BranchAdoptionRule.java</span></div><h1>BranchAdoptionRule.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.service;
+
+import com.taxonomy.identity.StableIdentityHash;
+import jakarta.persistence.*;
+import java.util.Set;
+
+/** Durable opt-in and cursor for exactly one repository/workspace/branch. */
+@Entity
+@Table(name = &quot;branch_adoption_rule&quot;, indexes = @Index(name = &quot;ix_branch_adoption_due&quot;, columnList = &quot;enabled,next_check&quot;))
+public class BranchAdoptionRule {
+    @Id
+    @Column(length = 64)
+    String id;
+    @Column(name = &quot;repository_id&quot;, nullable = false)
+    String repositoryId;
+    @Column(name = &quot;workspace_id&quot;)
+    String workspaceId;
+    @Column(name = &quot;target_branch&quot;, nullable = false)
+    String branch;
+    @Column(name = &quot;source_branch&quot;, nullable = false)
+    String sourceBranch;
+    @Column(name = &quot;actor_scope&quot;, nullable = false)
+    String username;
+    @Column(name = &quot;principal_id&quot;, length = 64, nullable = false)
+    String principalId;
+    @Column(name = &quot;login_kind&quot;, length = 12, nullable = false)
+    String loginKind;
+    @Column(name = &quot;binding_key&quot;, length = 64, nullable = false)
+    String bindingKey;
+    @Column(nullable = false)
+    boolean enabled;
+    @Column(nullable = false)
+    long revision;
+    @Column(name = &quot;next_check&quot;, nullable = false)
+    long nextCheck;
+    @Column(nullable = false, length = 24)
+    String status;
+    @Column(length = 255)
+    String detail;
+    @Column(name = &quot;source_cursor&quot;, length = 40)
+    String cursor;
+    @Column(name = &quot;source_commit&quot;, length = 40)
+    String sourceCommit;
+    @Column(name = &quot;source_tip&quot;, length = 40)
+    String sourceTip;
+    @Column(name = &quot;target_before&quot;, length = 40)
+    String targetBefore;
+    @Column(name = &quot;target_after&quot;, length = 40)
+    String targetAfter;
+    @Column(name = &quot;prepared_commit&quot;, length = 40)
+    String prepared;
+
+<span class="fc" id="L53">    protected BranchAdoptionRule() {</span>
+<span class="fc" id="L54">    }</span>
+
+<span class="fc" id="L56">    BranchAdoptionRule(RepositoryContext selected, String sourceBranch) {</span>
+<span class="fc" id="L57">        id = key(selected);</span>
+<span class="fc" id="L58">        repositoryId = selected.repositoryId();</span>
+<span class="fc" id="L59">        workspaceId = selected.workspaceId();</span>
+<span class="fc" id="L60">        branch = selected.branch();</span>
+<span class="fc" id="L61">        this.sourceBranch = sourceBranch;</span>
+<span class="fc" id="L62">        status = &quot;DISABLED&quot;;</span>
+<span class="fc" id="L63">    }</span>
+
+    public static String key(RepositoryContext c) {
+<span class="fc" id="L66">        return StableIdentityHash.sha256(c.repositoryId().length() + &quot;:&quot; + c.repositoryId()</span>
+<span class="fc bfc" id="L67" title="All 2 branches covered.">                + (c.workspaceId() == null ? &quot;-:&quot; : c.workspaceId().length() + &quot;:&quot; + c.workspaceId()) + c.branch());</span>
+    }
+
+    WorkspaceFetchAuthority.Grant grant() {
+<span class="fc" id="L71">        return new WorkspaceFetchAuthority.Grant(principalId, loginKind, bindingKey);</span>
+    }
+
+    void bind(String actor, WorkspaceFetchAuthority.Grant grant) {
+<span class="fc" id="L75">        username = actor;</span>
+<span class="fc" id="L76">        principalId = grant.principalId();</span>
+<span class="fc" id="L77">        loginKind = grant.loginKind();</span>
+<span class="fc" id="L78">        bindingKey = grant.bindingKey();</span>
+<span class="fc" id="L79">    }</span>
+
+    RepositoryContext context() {
+<span class="fc bfc" id="L82" title="All 2 branches covered.">        return workspaceId == null ? RepositoryContext.centralWrite(repositoryId, branch, username)</span>
+<span class="fc" id="L83">                : RepositoryContext.workspace(repositoryId, workspaceId, branch, username);</span>
+    }
+
+<span class="fc" id="L86">    public record View(String repositoryId, String workspaceId, String branch, String sourceRepositoryId,</span>
+            String sourceBranch,
+            boolean enabled, long revision, String status, String sourceCommit, String targetBefore,
+            String targetAfter, String detail) {
+    }
+
+    View view() {
+<span class="fc" id="L93">        return new View(repositoryId, workspaceId, branch, repositoryId, sourceBranch, enabled, revision, status,</span>
+                sourceCommit, targetBefore, targetAfter, detail);
+    }
+
+    boolean stopped() {
+<span class="fc" id="L98">        return Set.of(&quot;CONFLICT&quot;, &quot;PREREQUISITE&quot;, &quot;AUTHORIZATION&quot;).contains(status);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

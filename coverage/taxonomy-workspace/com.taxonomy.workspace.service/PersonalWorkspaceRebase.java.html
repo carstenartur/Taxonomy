@@ -1,0 +1,149 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PersonalWorkspaceRebase.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.service</a> &gt; <span class="el_source">PersonalWorkspaceRebase.java</span></div><h1>PersonalWorkspaceRebase.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.service;
+
+import com.taxonomy.workspace.storage.DslGitRepository;
+import com.taxonomy.workspace.storage.PersonalRebaseReceipt;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+
+import java.io.IOException;
+import java.util.Objects;
+
+@Service
+public class PersonalWorkspaceRebase {
+    private final WorkspaceUpstreamService upstream;
+    private final WorkspaceArchitectureVersionPort editor;
+    private final WorkspacePortfolioGitPort portfolio;
+
+    public PersonalWorkspaceRebase(WorkspaceUpstreamService upstream, WorkspaceArchitectureVersionPort editor,
+<span class="fc" id="L21">                                   WorkspacePortfolioGitPort portfolio) {</span>
+<span class="fc" id="L22">        this.upstream = upstream;</span>
+<span class="fc" id="L23">        this.editor = editor;</span>
+<span class="fc" id="L24">        this.portfolio = portfolio;</span>
+<span class="fc" id="L25">    }</span>
+
+    @Transactional(rollbackFor = IOException.class)
+    public DslGitRepository.RebaseReplay apply(RepositoryContext context, UpstreamRebasePlan.ApplyRequest request)
+            throws IOException {
+<span class="fc" id="L30">        var copy = upstream.lockForRebase(context);</span>
+<span class="fc" id="L31">        var transfer = copy.transfer();</span>
+<span class="fc" id="L32">        String scope = context.repositoryWorkspaceScopeKey();</span>
+<span class="fc" id="L33">        var pending = PersonalRebaseReceipt.read(transfer.target(), scope);</span>
+<span class="fc" id="L34">        var row = copy.workspace();</span>
+<span class="pc bpc" id="L35" title="1 of 4 branches missed.">        if (pending != null &amp;&amp; !pending.replay().originalHead().equals(transfer.target().getHeadCommit(context.branch()))</span>
+<span class="fc bfc" id="L36" title="All 2 branches covered.">                &amp;&amp; !pending.acknowledgedBy(transfer.target(), row.getCurrentCommit(), row.getLastIntegratedCommit()))</span>
+<span class="fc" id="L37">            throw changed(context);</span>
+<span class="fc" id="L38">        var replay = UpstreamRebasePlan.replay(transfer, context.repositoryId(), context.workspaceId(),</span>
+<span class="fc" id="L39">                context.branch(), request, false);</span>
+<span class="fc bfc" id="L40" title="All 2 branches covered.">        if (!replay.completed()) return replay;</span>
+<span class="fc" id="L41">        var local = transfer.target();</span>
+<span class="fc" id="L42">        var workspace = WorkspaceResolver.workspaceContext(context);</span>
+<span class="fc" id="L43">        portfolio.requireAvailable();</span>
+<span class="fc" id="L44">        var oldDsl = local.getDslAtCommit(replay.originalHead());</span>
+<span class="fc" id="L45">        var candidate = local.getDslAtCommit(replay.newHead());</span>
+<span class="fc" id="L46">        String digest = portfolio.lockedPublicationDigest(context.username(), workspace);</span>
+<span class="fc" id="L47">        requireCheckpointedPortfolio(oldDsl, workspace);</span>
+<span class="fc" id="L48">        portfolio.validatePortfolio(oldDsl, candidate, context.username(), workspace);</span>
+<span class="fc" id="L49">        var receipt = new PersonalRebaseReceipt(context.repositoryId(), context.workspaceId(), context.branch(),</span>
+<span class="fc" id="L50">                transfer.upstream().branch(), transfer.forkPoint(), context.username(), row.getOwnerPrincipalId(),</span>
+<span class="fc" id="L51">                request.expectedTrackedCommit(), digest, row.getCurrentCommit(), row.getLastIntegratedCommit(), replay);</span>
+<span class="fc" id="L52">        editor.applyPreparedWorkspaceRebase(context, replay.originalHead(), replay.newHead(), &quot;Rebase personal working copy&quot;, () -&gt; {</span>
+<span class="fc" id="L53">            String current = UpstreamRebasePlan.readRefTag(transfer, context.repositoryId(), context.workspaceId(), context.branch());</span>
+<span class="fc bfc" id="L54" title="All 2 branches covered.">            if (!request.expectedRefTag().equals(current)) throw changed(context);</span>
+            // The original head is still present or both SQL pointers already cover the retained replay.
+<span class="fc bfc" id="L56" title="All 2 branches covered.">            if (pending != null) pending.release(local, scope);</span>
+<span class="fc" id="L57">            receipt.retain(local, scope);</span>
+            try {
+<span class="pc bpc" id="L59" title="1 of 2 branches missed.">                if (!request.expectedRefTag().equals(UpstreamRebasePlan.readRefTag(transfer, context.repositoryId(),</span>
+<span class="pc" id="L60">                        context.workspaceId(), context.branch()))) throw changed(context);</span>
+<span class="fc" id="L61">                receipt.publish(local);</span>
+<span class="nc" id="L62">            } catch (IOException | RuntimeException failure) {</span>
+                // A storage error may have occurred after its CAS. Keep a visible or uncertain candidate recoverable.
+<span class="nc bnc" id="L64" title="All 4 branches missed.">                if (failure instanceof BranchHeadConflictException || replay.originalHead().equals(local.getHeadCommit(context.branch())))</span>
+<span class="nc" id="L65">                    receipt.release(local, scope);</span>
+<span class="nc" id="L66">                throw failure;</span>
+<span class="fc" id="L67">            }</span>
+<span class="fc" id="L68">            return null;</span>
+        });
+<span class="fc" id="L70">        return finish(copy, context, receipt, candidate, replay.newHead(), receipt.tracked());</span>
+    }
+
+    @Transactional(rollbackFor = IOException.class)
+    public DslGitRepository.RebaseReplay resume(RepositoryContext context, String candidate, String expectedHead) throws IOException {
+<span class="fc" id="L75">        var copy = upstream.lockForRebase(context);</span>
+<span class="fc" id="L76">        var transfer = copy.transfer();</span>
+<span class="fc" id="L77">        var local = transfer.target();</span>
+<span class="fc" id="L78">        var row = copy.workspace();</span>
+<span class="fc" id="L79">        var receipt = PersonalRebaseReceipt.read(local, context.repositoryWorkspaceScopeKey());</span>
+<span class="pc bpc" id="L80" title="1 of 4 branches missed.">        if (receipt == null || !receipt.replay().newHead().equals(candidate)</span>
+<span class="pc bpc" id="L81" title="2 of 4 branches missed.">                || !context.branch().equals(receipt.branch()) || !context.repositoryId().equals(receipt.repository())</span>
+<span class="pc bpc" id="L82" title="2 of 4 branches missed.">                || !context.workspaceId().equals(receipt.workspace()) || !context.username().equals(receipt.owner())</span>
+<span class="pc bpc" id="L83" title="1 of 2 branches missed.">                || !Objects.equals(row.getOwnerPrincipalId(), receipt.ownerPrincipal())</span>
+<span class="pc bpc" id="L84" title="1 of 2 branches missed.">                || !Objects.equals(transfer.forkPoint(), receipt.forkPoint())</span>
+<span class="pc bpc" id="L85" title="1 of 2 branches missed.">                || !transfer.upstream().branch().equals(receipt.sourceBranch())) throw changed(context);</span>
+<span class="pc bpc" id="L86" title="2 of 4 branches missed.">        if (expectedHead == null || !org.eclipse.jgit.lib.ObjectId.isId(expectedHead)) throw changed(context);</span>
+<span class="fc" id="L87">        local.verifyExpectedHead(context.branch(), expectedHead);</span>
+<span class="fc bfc" id="L88" title="All 2 branches covered.">        if (receipt.acknowledgedBy(local, row.getCurrentCommit(), row.getLastIntegratedCommit())) {</span>
+            // SQL acknowledgement alone cannot justify dropping the last recovery receipt.
+            // A later Git ref reset can leave both SQL pointers unchanged but lose the replay.
+<span class="pc bpc" id="L91" title="2 of 4 branches missed.">            if (!candidate.equals(expectedHead) &amp;&amp; !local.isAncestor(candidate, expectedHead))</span>
+<span class="fc" id="L92">                throw changed(context);</span>
+<span class="nc" id="L93">            releaseAfterCommit(local, context.repositoryWorkspaceScopeKey(), receipt);</span>
+<span class="nc" id="L94">            return outcome(receipt, expectedHead);</span>
+        }
+<span class="pc bpc" id="L96" title="3 of 4 branches missed.">        if ((!Objects.equals(receipt.previousCurrent(), row.getCurrentCommit()) &amp;&amp; !expectedHead.equals(row.getCurrentCommit()))</span>
+<span class="pc bpc" id="L97" title="1 of 2 branches missed.">                || !Objects.equals(receipt.previousIntegrated(), row.getLastIntegratedCommit())) throw changed(context);</span>
+<span class="fc" id="L98">        var workspace = WorkspaceResolver.workspaceContext(context);</span>
+<span class="fc" id="L99">        var dsl = local.getDslAtCommit(expectedHead);</span>
+<span class="fc bfc" id="L100" title="All 2 branches covered.">        if (!receipt.portfolioDigest().equals(portfolio.lockedPublicationDigest(context.username(), workspace)))</span>
+<span class="nc" id="L101">            requireCheckpointedPortfolio(dsl, workspace);</span>
+<span class="fc" id="L102">        portfolio.validatePortfolio(local.getDslAtCommit(receipt.replay().originalHead()), dsl, context.username(), workspace);</span>
+<span class="fc" id="L103">        editor.applyPreparedWorkspaceRebase(context, receipt.replay().originalHead(), expectedHead, &quot;Adopt reviewed personal branch&quot;,</span>
+<span class="fc" id="L104">                () -&gt; local.verifyExpectedHead(context.branch(), expectedHead));</span>
+        // Only a branch that actually includes the replay incorporates its upstream.
+<span class="fc bfc" id="L106" title="All 4 branches covered.">        String integrated = candidate.equals(expectedHead) || local.isAncestor(candidate, expectedHead)</span>
+<span class="fc" id="L107">                ? receipt.tracked() : row.getLastIntegratedCommit();</span>
+<span class="fc" id="L108">        return finish(copy, context, receipt, dsl, expectedHead, integrated);</span>
+    }
+
+    private DslGitRepository.RebaseReplay finish(WorkspaceUpstreamService.WorkingCopy copy, RepositoryContext context,
+            PersonalRebaseReceipt receipt, String candidateDsl, String head, String integrated) throws IOException {
+<span class="fc" id="L113">        copy.transfer().reauthorize().run();</span>
+<span class="fc" id="L114">        copy.transfer().target().verifyExpectedHead(context.branch(), head);</span>
+<span class="fc" id="L115">        portfolio.materializePortfolio(candidateDsl, context.username(), WorkspaceResolver.workspaceContext(context));</span>
+<span class="fc" id="L116">        copy.workspace().setCurrentCommit(head);</span>
+<span class="fc" id="L117">        copy.workspace().setLastIntegratedCommit(integrated);</span>
+<span class="fc" id="L118">        releaseAfterCommit(copy.transfer().target(), context.repositoryWorkspaceScopeKey(), receipt);</span>
+<span class="fc" id="L119">        return outcome(receipt, head);</span>
+    }
+
+    private static DslGitRepository.RebaseReplay outcome(PersonalRebaseReceipt receipt, String head) {
+<span class="fc" id="L123">        var replay = receipt.replay();</span>
+<span class="fc bfc" id="L124" title="All 2 branches covered.">        if (head.equals(replay.newHead())) return replay;</span>
+<span class="fc" id="L125">        return new DslGitRepository.RebaseReplay(replay.originalHead(), head, null, java.util.List.of(), java.util.List.of(), null);</span>
+    }
+
+    private static void releaseAfterCommit(DslGitRepository local, String scope, PersonalRebaseReceipt receipt) {
+<span class="fc bfc" id="L129" title="All 2 branches covered.">        if (!TransactionSynchronizationManager.isSynchronizationActive()) return;</span>
+<span class="fc" id="L130">        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {</span>
+            @Override public void afterCommit() {
+<span class="fc" id="L132">                try { receipt.release(local, scope); }</span>
+<span class="pc" id="L133">                catch (IOException e) { LoggerFactory.getLogger(PersonalWorkspaceRebase.class).warn(&quot;Retained completed personal rebase&quot;, e); }</span>
+<span class="fc" id="L134">            }</span>
+        });
+<span class="fc" id="L136">    }</span>
+
+
+    private void requireCheckpointedPortfolio(String dsl, WorkspaceContext workspace) throws BranchHeadConflictException {
+<span class="fc bfc" id="L140" title="All 2 branches covered.">        if (!portfolio.matchesCheckpoint(dsl, workspace.username(), workspace))</span>
+<span class="fc" id="L141">            throw new BranchHeadConflictException(workspace.currentBranch(), null, null,</span>
+                    &quot;Commit the current portfolio changes and review the rebase again&quot;);
+<span class="fc" id="L143">    }</span>
+
+    private static BranchHeadConflictException changed(RepositoryContext context) {
+<span class="fc" id="L146">        return new BranchHeadConflictException(context.branch(), null, null, &quot;Refresh the personal rebase plan and review its current state&quot;);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

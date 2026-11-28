@@ -1,0 +1,340 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>VisioDiagramService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-export</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.export</a> &gt; <span class="el_source">VisioDiagramService.java</span></div><h1>VisioDiagramService.java</h1><pre class="source lang-java linenums">package com.taxonomy.export;
+
+import com.taxonomy.diagram.DiagramEdge;
+import com.taxonomy.diagram.DiagramModel;
+import com.taxonomy.diagram.DiagramNode;
+import com.taxonomy.diagram.VisioDrawingOptions;
+import com.taxonomy.visio.VisioConnect;
+import com.taxonomy.visio.VisioExportMetadata;
+import com.taxonomy.visio.VisioProperty;
+import com.taxonomy.visio.VisioLoss;
+import com.taxonomy.visio.VisioDocument;
+import com.taxonomy.visio.VisioPage;
+import com.taxonomy.visio.VisioShape;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Converts a neutral {@link DiagramModel} into a {@link VisioDocument} by laying
+ * out shapes by layer, with an optional second anchor/impact selection page.
+ */
+<span class="fc" id="L26">public class VisioDiagramService {</span>
+
+<span class="fc" id="L28">    private static final Logger log = LoggerFactory.getLogger(VisioDiagramService.class);</span>
+
+    private static final double SHAPE_WIDTH = 2.0;
+    private static final double SHAPE_HEIGHT = 0.9;
+    private static final double H_GAP = 3.0;
+    private static final double V_GAP = 1.2;
+    private static final double MARGIN_X = 1.5;
+    private static final double MARGIN_Y = 1.5;
+
+    /**
+     * Converts a {@link DiagramModel} without snapshot authority metadata.
+     */
+    public VisioDocument convert(DiagramModel model) {
+<span class="fc" id="L41">        return convert(model, VisioExportMetadata.unbound());</span>
+    }
+
+    public VisioDocument convert(DiagramModel model, VisioExportMetadata metadata) {
+<span class="fc" id="L45">        return convert(model, metadata, null);</span>
+    }
+
+    public VisioDocument convert(DiagramModel model, VisioExportMetadata metadata, VisioDecisionTree decisionTree) {
+<span class="fc" id="L49">        return convert(model, metadata, decisionTree, null);</span>
+    }
+
+    public VisioDocument convert(DiagramModel model, VisioExportMetadata metadata, VisioDecisionTree decisionTree,
+                                 VisioDrawingOptions options) {
+<span class="fc" id="L54">        validateGraph(model);</span>
+<span class="fc" id="L55">        VisioDocument doc = new VisioDocument();</span>
+<span class="fc" id="L56">        doc.setDrawingOptions(options);</span>
+<span class="fc" id="L57">        doc.setGerman(metadata.german());</span>
+<span class="fc" id="L58">        boolean german = doc.isGerman();</span>
+<span class="fc" id="L59">        doc.getProperties().putAll(metadata.document());</span>
+<span class="fc" id="L60">        doc.getProperties().put(&quot;taxonomy.exportProfile&quot;, VisioProperty.text(VisioHandoffProfile.ID));</span>
+<span class="fc" id="L61">        doc.getProperties().put(&quot;taxonomy.scoreSemantics&quot;, VisioProperty.text(&quot;relevance is a normalized selection score in [0,1], not a probability&quot;));</span>
+<span class="fc" id="L62">        doc.getLosses().addAll(metadata.losses());</span>
+<span class="pc bpc" id="L63" title="1 of 6 branches missed.">        if (model.nodes().isEmpty() &amp;&amp; decisionTree != null &amp;&amp; !decisionTree.nodes().isEmpty()) {</span>
+<span class="fc" id="L64">            decisionTree.appendTo(doc, options);</span>
+<span class="fc bfc" id="L65" title="All 4 branches covered.">            if (options == null || options.appendix()) VisioContextPages.append(doc, false);</span>
+<span class="fc bfc" id="L66" title="All 2 branches covered.">            if (options != null) VisioContextPages.addRequirementShape(doc, options.german());</span>
+<span class="fc" id="L67">            return doc;</span>
+        }
+<span class="fc" id="L69">        doc.getLosses().add(new VisioLoss(&quot;document&quot;, &quot;&quot;, &quot;layout&quot;, &quot;MAPPED&quot;,</span>
+                &quot;Generated layer layout in inches; browser geometry, routing and typography are not copied.&quot;));
+<span class="pc bpc" id="L71" title="1 of 2 branches missed.">        VisioPage page = new VisioPage(&quot;0&quot;, model.title() != null ? model.title()</span>
+<span class="pc bnc" id="L72" title="All 2 branches missed.">                : german ? &quot;Architektursicht&quot; : &quot;Architecture View&quot;);</span>
+<span class="fc" id="L73">        doc.getPages().add(page);</span>
+
+        // Group nodes by layer for layout
+<span class="fc" id="L76">        List&lt;DiagramNode&gt; sortedNodes = model.nodes().stream().sorted(Comparator.comparing(DiagramNode::id)).toList();</span>
+<span class="fc" id="L77">        Map&lt;Integer, List&lt;DiagramNode&gt;&gt; layerGroups = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L78" title="All 2 branches covered.">        for (DiagramNode node : sortedNodes) {</span>
+<span class="fc" id="L79">            layerGroups.computeIfAbsent(node.layer(), k -&gt; new java.util.ArrayList&lt;&gt;()).add(node);</span>
+<span class="fc" id="L80">        }</span>
+
+        // Assign positions: layers left-to-right, nodes top-to-bottom within a layer
+<span class="fc" id="L83">        Map&lt;String, String&gt; nodeIdToShapeId = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L84">        int shapeIdx = 0;</span>
+<span class="fc bfc" id="L85" title="All 2 branches covered.">        for (DiagramNode node : sortedNodes) {</span>
+<span class="fc" id="L86">            nodeIdToShapeId.put(node.id(), Integer.toString(++shapeIdx));</span>
+<span class="fc" id="L87">        }</span>
+<span class="fc" id="L88">        var decisionsByCode = new java.util.HashMap&lt;String, VisioDecisionTree.Node&gt;();</span>
+<span class="pc bpc" id="L89" title="1 of 4 branches missed.">        if (options != null &amp;&amp; decisionTree != null) {</span>
+<span class="fc" id="L90">            decisionTree.nodes().forEach(node -&gt; decisionsByCode.put(node.code(), node));</span>
+        }
+<span class="fc bfc" id="L92" title="All 4 branches covered.">        boolean wall = options != null &amp;&amp; options.mode() == VisioDrawingOptions.Mode.WALL;</span>
+<span class="fc bfc" id="L93" title="All 6 branches covered.">        boolean screenWithResponsibilities = options != null &amp;&amp; !wall &amp;&amp; sortedNodes.stream().anyMatch(node -&gt;</span>
+<span class="fc bfc" id="L94" title="All 4 branches covered.">                node.responsibility() != null || (decisionsByCode.containsKey(node.id())</span>
+<span class="pc bpc" id="L95" title="1 of 2 branches missed.">                        &amp;&amp; decisionsByCode.get(node.id()).responsibility() != null));</span>
+<span class="fc bfc" id="L96" title="All 2 branches covered.">        double width = options == null ? SHAPE_WIDTH : 3.3;</span>
+<span class="fc bfc" id="L97" title="All 2 branches covered.">        double height = options == null ? SHAPE_HEIGHT : VisioPresentation.screenCardHeight(screenWithResponsibilities);</span>
+<span class="fc bfc" id="L98" title="All 4 branches covered.">        if (wall) height = options.showsShortReasons() ? 1.7 : 1.32;</span>
+<span class="fc bfc" id="L99" title="All 2 branches covered.">        int rowsPerColumn = options == null ? Math.max(10, (int) Math.ceil(Math.sqrt(sortedNodes.size()))) : Integer.MAX_VALUE;</span>
+        // Full relationship captions need two inches between cards, plus collision padding.
+<span class="fc bfc" id="L101" title="All 4 branches covered.">        double columnSpacing = !model.edges().isEmpty() &amp;&amp; !VisioPresentation.usesCompactKeys(sortedNodes.size(), model.edges().size())</span>
+<span class="fc" id="L102">                ? SHAPE_WIDTH + 2.3 : H_GAP;</span>
+<span class="fc" id="L103">        int layerIdx = 0;</span>
+<span class="fc bfc" id="L104" title="All 2 branches covered.">        for (var entry : layerGroups.entrySet().stream()</span>
+<span class="fc" id="L105">                .sorted(Comparator.comparingInt(Map.Entry::getKey)).toList()) {</span>
+<span class="fc" id="L106">            List&lt;DiagramNode&gt; layerNodes = entry.getValue();</span>
+<span class="fc bfc" id="L107" title="All 2 branches covered.">            for (int i = 0; i &lt; layerNodes.size(); i++) {</span>
+<span class="fc" id="L108">                DiagramNode node = layerNodes.get(i);</span>
+<span class="fc" id="L109">                String shapeId = nodeIdToShapeId.get(node.id());</span>
+
+<span class="fc" id="L111">                var decision = decisionsByCode.get(node.id());</span>
+<span class="fc" id="L112">                var assignment = node.responsibility();</span>
+<span class="fc bfc" id="L113" title="All 4 branches covered.">                var displayAssignment = assignment != null || decision == null ? assignment : decision.responsibility();</span>
+<span class="fc bfc" id="L114" title="All 2 branches covered.">                String owner = displayAssignment == null ? null : displayAssignment.name();</span>
+<span class="fc" id="L115">                var elementProperties = metadata.elements().getOrDefault(node.id(), Map.of());</span>
+<span class="fc" id="L116">                var presenceReason = elementProperties.get(&quot;taxonomy.presenceReason&quot;);</span>
+<span class="fc bfc" id="L117" title="All 2 branches covered.">                String reason = presenceReason == null ? null : presenceReason.value();</span>
+<span class="pc bpc" id="L118" title="1 of 6 branches missed.">                if ((reason == null || reason.isBlank()) &amp;&amp; decision != null) reason = decision.reason();</span>
+<span class="fc bfc" id="L119" title="All 2 branches covered.">                String displayedLabel = VisioPresentation.display(node.label(), options == null ? 24 : 46, 3);</span>
+<span class="fc bfc" id="L120" title="All 2 branches covered.">                String caption = options == null</span>
+<span class="fc" id="L121">                        ? VisioPresentation.display(&quot;N&quot; + shapeId + &quot; | &quot; + node.id(), 24, 1) + &quot;\n&quot;</span>
+<span class="fc" id="L122">                            + displayedLabel + &quot;\n&quot; + VisioPresentation.nodeFooter(Integer.toString(node.depth()), owner, 24, german)</span>
+<span class="fc" id="L123">                        : VisioPresentation.drawingNodeCaption(node.id(),</span>
+<span class="fc" id="L124">                            java.math.BigDecimal.valueOf(node.relevance()).movePointRight(2).stripTrailingZeros().toPlainString() + &quot;%&quot;,</span>
+                            displayedLabel, owner, reason, options);
+<span class="fc bfc" id="L126" title="All 2 branches covered.">                double x = options == null ? MARGIN_X + (layerIdx + i / rowsPerColumn) * columnSpacing : 2.2 + layerIdx * 5.1;</span>
+<span class="fc bfc" id="L127" title="All 2 branches covered.">                double y = options == null ? MARGIN_Y + (i % rowsPerColumn) * V_GAP : 1.25 + i * (height + .35);</span>
+<span class="fc" id="L128">                var shape = new VisioShape(shapeId, caption, x, y, width, height, node.type(), node.anchor());</span>
+<span class="fc" id="L129">                shape.getProperties().putAll(elementProperties);</span>
+<span class="fc" id="L130">                var values = shape.getProperties();</span>
+<span class="fc" id="L131">                values.put(&quot;taxonomy.label&quot;, VisioProperty.text(node.label()));</span>
+<span class="fc" id="L132">                values.put(&quot;taxonomy.displayKey&quot;, VisioProperty.text(&quot;N&quot; + shapeId));</span>
+<span class="fc" id="L133">                VisioPresentation.labelLoss(doc, node.id(), node.label(), displayedLabel);</span>
+<span class="fc" id="L134">                values.put(&quot;taxonomy.id&quot;, VisioProperty.text(node.id()));</span>
+<span class="fc" id="L135">                values.put(&quot;taxonomy.type&quot;, VisioProperty.text(node.type()));</span>
+<span class="fc" id="L136">                values.put(&quot;taxonomy.relevance&quot;, VisioProperty.number(node.relevance()));</span>
+<span class="fc" id="L137">                values.put(&quot;taxonomy.anchor&quot;, VisioProperty.bool(node.anchor()));</span>
+<span class="fc" id="L138">                values.put(&quot;taxonomy.selectedForImpact&quot;, VisioProperty.bool(node.selectedForImpact()));</span>
+<span class="fc" id="L139">                values.put(&quot;taxonomy.container&quot;, VisioProperty.bool(node.container()));</span>
+<span class="fc" id="L140">                values.put(&quot;taxonomy.depth&quot;, VisioProperty.number(node.depth()));</span>
+<span class="fc" id="L141">                values.put(&quot;taxonomy.layer&quot;, VisioProperty.number(node.layer()));</span>
+<span class="fc bfc" id="L142" title="All 2 branches covered.">                if (node.parentId() != null) values.put(&quot;taxonomy.parentId&quot;, VisioProperty.text(node.parentId()));</span>
+<span class="fc bfc" id="L143" title="All 2 branches covered.">                if (assignment != null) {</span>
+<span class="fc" id="L144">                    putResponsibility(values, assignment);</span>
+                }
+<span class="fc" id="L146">                page.getShapes().add(shape);</span>
+<span class="fc bfc" id="L147" title="All 2 branches covered.">                if (node.container()) doc.getLosses().add(new VisioLoss(&quot;element&quot;, node.id(), &quot;container&quot;, &quot;MAPPED&quot;,</span>
+                        &quot;Explicit visual container rendered with native membership for present descendants; it remains non-semantic and retains original parent identity in shape data.&quot;));
+            }
+<span class="fc" id="L150">            layerIdx += 1 + (layerNodes.size() - 1) / rowsPerColumn;</span>
+<span class="fc" id="L151">        }</span>
+
+        // Create connectors
+<span class="fc bfc" id="L154" title="All 2 branches covered.">        for (DiagramEdge edge : model.edges().stream().sorted(Comparator.comparing(DiagramEdge::id)).toList()) {</span>
+<span class="fc" id="L155">            String fromShape = nodeIdToShapeId.get(edge.sourceId());</span>
+<span class="fc" id="L156">            String toShape = nodeIdToShapeId.get(edge.targetId());</span>
+<span class="pc bpc" id="L157" title="2 of 4 branches missed.">            if (fromShape != null &amp;&amp; toShape != null) {</span>
+<span class="fc" id="L158">                VisioConnect connector = new VisioConnect(fromShape, toShape, edge.relationType());</span>
+<span class="fc" id="L159">                connector.getProperties().putAll(metadata.relationships().getOrDefault(edge.id(), Map.of()));</span>
+<span class="fc" id="L160">                var values = connector.getProperties();</span>
+<span class="fc" id="L161">                values.put(&quot;taxonomy.id&quot;, VisioProperty.text(edge.id()));</span>
+<span class="fc" id="L162">                values.put(&quot;taxonomy.type&quot;, VisioProperty.text(edge.relationType()));</span>
+<span class="fc" id="L163">                values.put(&quot;taxonomy.sourceId&quot;, VisioProperty.text(edge.sourceId()));</span>
+<span class="fc" id="L164">                values.put(&quot;taxonomy.targetId&quot;, VisioProperty.text(edge.targetId()));</span>
+<span class="fc" id="L165">                values.put(&quot;taxonomy.relevance&quot;, VisioProperty.number(edge.relevance()));</span>
+<span class="fc bfc" id="L166" title="All 2 branches covered.">                if (edge.relationCategory() != null) values.put(&quot;taxonomy.relationCategory&quot;, VisioProperty.text(edge.relationCategory()));</span>
+<span class="fc" id="L167">                addProvenance(values, edge.metadata());</span>
+<span class="fc" id="L168">                page.getConnects().add(connector);</span>
+            }
+<span class="fc" id="L170">        }</span>
+
+<span class="fc" id="L172">        log.info(&quot;VisioDiagram: {} shapes, {} connectors on page '{}'&quot;,</span>
+<span class="fc" id="L173">                page.getShapes().size(), page.getConnects().size(), page.getName());</span>
+
+<span class="fc bfc" id="L175" title="All 4 branches covered.">        java.util.Set&lt;String&gt; selected = model.nodes().stream().filter(n -&gt; n.anchor() || n.selectedForImpact())</span>
+<span class="fc" id="L176">                .map(n -&gt; nodeIdToShapeId.get(n.id())).collect(java.util.stream.Collectors.toSet());</span>
+<span class="fc bfc" id="L177" title="All 6 branches covered.">        if (options == null &amp;&amp; !selected.isEmpty() &amp;&amp; selected.size() &lt; page.getShapes().size()) {</span>
+<span class="pc bpc" id="L178" title="1 of 2 branches missed.">            VisioPage impact = new VisioPage(&quot;1&quot;, german ? &quot;Anker- und Auswirkungsauswahl&quot; : &quot;Anchor and impact selection&quot;);</span>
+<span class="fc" id="L179">            page.getShapes().stream().filter(s -&gt; selected.contains(s.getId())).map(VisioDiagramService::copyShape)</span>
+<span class="fc" id="L180">                    .forEach(impact.getShapes()::add);</span>
+<span class="fc bfc" id="L181" title="All 4 branches covered.">            page.getConnects().stream().filter(c -&gt; selected.contains(c.getFromShape()) &amp;&amp; selected.contains(c.getToShape()))</span>
+<span class="fc" id="L182">                    .map(VisioDiagramService::copyConnect).forEach(impact.getConnects()::add);</span>
+<span class="fc" id="L183">            doc.getPages().add(impact);</span>
+        }
+<span class="fc" id="L185">        var statusCounts = new java.util.TreeMap&lt;String, Integer&gt;();</span>
+<span class="fc" id="L186">        model.edges().forEach(edge -&gt; statusCounts.merge(DiagramPresentation.relationshipStatus(edge.metadata()), 1, Integer::sum));</span>
+<span class="fc bfc" id="L187" title="All 4 branches covered.">        if (model.edges().stream().anyMatch(edge -&gt; edge.metadata() != null)) {</span>
+<span class="fc" id="L188">            statusCounts.forEach((status, count) -&gt; doc.getProperties().put(&quot;taxonomy.relationships&quot; + status.replaceAll(&quot;[^A-Za-z0-9]&quot;, &quot;&quot;), VisioProperty.number(count)));</span>
+<span class="fc" id="L189">            String legend = &quot;Relationships: &quot; + model.edges().size() + &quot; | &quot; + statusCounts.entrySet().stream()</span>
+<span class="fc" id="L190">                    .map(e -&gt; e.getKey() + &quot;: &quot; + e.getValue()).collect(java.util.stream.Collectors.joining(&quot; | &quot;))</span>
+                    + &quot;\nDashed = AI-proposed. Solid = other/unrecorded origin.\nAI support is not human approval; supplied review metadata remains authoritative.&quot;;
+<span class="fc bfc" id="L192" title="All 2 branches covered.">            if (german) {</span>
+<span class="fc" id="L193">                legend = &quot;Beziehungen: &quot; + model.edges().size() + &quot; | &quot; + statusCounts.entrySet().stream()</span>
+<span class="fc" id="L194">                        .map(e -&gt; VisioPresentation.statusLabel(e.getKey(), true) + &quot;: &quot; + e.getValue())</span>
+<span class="fc" id="L195">                        .collect(java.util.stream.Collectors.joining(&quot; | &quot;))</span>
+                        + &quot;\nGestrichelt: KI-Vorschlag. Durchgezogen: sonstige oder unbekannte Herkunft.&quot;
+                        + &quot;\nMaßgeblich ist der gespeicherte Prüfstatus.&quot;;
+            }
+<span class="pc bpc" id="L199" title="1 of 2 branches missed.">            if (options != null) {</span>
+<span class="nc bnc" id="L200" title="All 2 branches missed.">                legend = options.german() ? &quot;Gestrichelt: KI-Vorschlag · Durchgezogen: sonstige / nicht erfasste Herkunft&quot;</span>
+<span class="nc" id="L201">                        : &quot;Dashed: AI-proposed · Solid: other or unrecorded origin&quot;;</span>
+            }
+<span class="fc" id="L203">            double top = page.getShapes().stream().mapToDouble(shape -&gt; shape.getY() + shape.getHeight() / 2).max().orElse(0);</span>
+<span class="fc" id="L204">            page.setLegend(new com.taxonomy.visio.VisioTextBox(legend, 5.5, top + 1.3, 10, 1.5));</span>
+        }
+<span class="fc" id="L206">        VisioPresentation.apply(doc, decisionTree, options);</span>
+<span class="fc bfc" id="L207" title="All 2 branches covered.">        if (options != null) {</span>
+<span class="fc" id="L208">            attachDrawingData(doc, model, decisionsByCode);</span>
+<span class="fc" id="L209">            VisioContextPages.addRequirementShape(doc, options.german());</span>
+        }
+<span class="fc" id="L211">        return doc;</span>
+    }
+
+    /** Add redundant details after page links, IDs and recorded properties have taken their reserved slots. */
+    private static void attachDrawingData(VisioDocument document, DiagramModel model,
+                                          Map&lt;String, VisioDecisionTree.Node&gt; decisions) {
+<span class="fc" id="L217">        var nodes = new java.util.HashMap&lt;String, DiagramNode&gt;();</span>
+<span class="fc" id="L218">        model.nodes().forEach(node -&gt; nodes.put(node.id(), node));</span>
+<span class="fc bfc" id="L219" title="All 2 branches covered.">        for (var page : document.getPages()) {</span>
+<span class="fc bfc" id="L220" title="All 2 branches covered.">            if (page.isEvidencePage()) continue;</span>
+<span class="fc bfc" id="L221" title="All 2 branches covered.">            for (var shape : page.getShapes()) {</span>
+<span class="fc" id="L222">                var values = shape.getProperties();</span>
+<span class="fc bfc" id="L223" title="All 2 branches covered.">                if (!values.containsKey(&quot;taxonomy.displayKey&quot;)) continue;</span>
+<span class="fc" id="L224">                String id = values.get(&quot;taxonomy.id&quot;).value();</span>
+<span class="fc" id="L225">                var decision = decisions.get(id);</span>
+<span class="fc bfc" id="L226" title="All 2 branches covered.">                if (decision == null) continue;</span>
+<span class="fc" id="L227">                var reason = decision.reason();</span>
+<span class="pc bpc" id="L228" title="3 of 6 branches missed.">                if (reason != null &amp;&amp; !reason.isBlank() &amp;&amp; values.size() &lt; VisioPackageValidator.MAX_PROPERTIES) {</span>
+<span class="fc" id="L229">                    var existing = values.get(&quot;taxonomy.presenceReason&quot;);</span>
+<span class="pc bpc" id="L230" title="3 of 4 branches missed.">                    if (existing == null || existing.value().isBlank()) values.put(&quot;taxonomy.presenceReason&quot;, VisioProperty.text(reason));</span>
+<span class="nc bnc" id="L231" title="All 2 branches missed.">                    else if (!existing.value().equals(reason)) values.put(&quot;taxonomy.decisionReason&quot;, VisioProperty.text(reason));</span>
+                }
+<span class="pc bpc" id="L233" title="2 of 4 branches missed.">                if (nodes.get(id).responsibility() == null &amp;&amp; decision.responsibility() != null</span>
+<span class="fc bfc" id="L234" title="All 2 branches covered.">                        &amp;&amp; values.size() + 4 &lt;= VisioPackageValidator.MAX_PROPERTIES) {</span>
+<span class="fc" id="L235">                    putResponsibility(values, decision.responsibility());</span>
+                }
+<span class="fc" id="L237">            }</span>
+<span class="fc bfc" id="L238" title="All 2 branches covered.">            for (var link : page.getConnects()) {</span>
+<span class="fc" id="L239">                var values = link.getProperties();</span>
+<span class="fc bfc" id="L240" title="All 4 branches covered.">                if (!values.containsKey(&quot;taxonomy.id&quot;) || values.size() + 2 &gt; VisioPackageValidator.MAX_PROPERTIES) continue;</span>
+<span class="fc" id="L241">                values.put(&quot;taxonomy.sourceLabel&quot;, VisioProperty.text(nodes.get(values.get(&quot;taxonomy.sourceId&quot;).value()).label()));</span>
+<span class="fc" id="L242">                values.put(&quot;taxonomy.targetLabel&quot;, VisioProperty.text(nodes.get(values.get(&quot;taxonomy.targetId&quot;).value()).label()));</span>
+<span class="fc" id="L243">            }</span>
+<span class="fc" id="L244">        }</span>
+<span class="fc" id="L245">    }</span>
+
+    private static void putResponsibility(Map&lt;String, VisioProperty&gt; values, com.taxonomy.dto.TaxonomyResponsibilityLookup.Assignment assignment) {
+<span class="fc" id="L248">        values.put(&quot;taxonomy.responsibilityUnitId&quot;, VisioProperty.text(assignment.unitId()));</span>
+<span class="fc" id="L249">        values.put(&quot;taxonomy.responsibilityName&quot;, VisioProperty.text(assignment.name()));</span>
+<span class="fc" id="L250">        values.put(&quot;taxonomy.responsibilitySourceId&quot;, VisioProperty.text(assignment.sourceId()));</span>
+<span class="fc" id="L251">        values.put(&quot;taxonomy.responsibilityColor&quot;, VisioProperty.text(assignment.color()));</span>
+<span class="fc" id="L252">    }</span>
+
+    private static void addProvenance(Map&lt;String, VisioProperty&gt; values, com.taxonomy.diagram.DiagramRelationMetadata m) {
+        // Snapshot-origin/review attribution remains authoritative if supplied by the historical path.
+<span class="fc bfc" id="L256" title="All 2 branches covered.">        if (m == null) return;</span>
+<span class="fc" id="L257">        values.put(&quot;taxonomy.provenanceStatus&quot;, VisioProperty.text(DiagramPresentation.relationshipStatus(m)));</span>
+<span class="fc" id="L258">        values.put(&quot;taxonomy.proposed&quot;, VisioProperty.bool(m.proposed()));</span>
+<span class="fc bfc" id="L259" title="All 2 branches covered.">        if (m.relationId() != null) values.put(&quot;taxonomy.relationId&quot;, VisioProperty.text(m.relationId().toString()));</span>
+<span class="fc bfc" id="L260" title="All 2 branches covered.">        if (m.origin() != null) values.putIfAbsent(&quot;taxonomy.origin&quot;, VisioProperty.text(m.origin().name()));</span>
+<span class="fc bfc" id="L261" title="All 2 branches covered.">        if (m.confidence() != null) {</span>
+<span class="fc" id="L262">            values.putIfAbsent(&quot;taxonomy.confidence&quot;, VisioProperty.number(m.confidence()));</span>
+<span class="fc" id="L263">            values.put(&quot;taxonomy.provenanceConfidence&quot;, VisioProperty.number(m.confidence()));</span>
+        }
+<span class="fc bfc" id="L265" title="All 2 branches covered.">        if (m.includedBecause() != null) values.put(&quot;taxonomy.includedBecause&quot;, VisioProperty.text(m.includedBecause()));</span>
+<span class="fc bfc" id="L266" title="All 2 branches covered.">        if (m.derivationReason() != null) values.put(&quot;taxonomy.derivationReason&quot;, VisioProperty.text(m.derivationReason()));</span>
+<span class="fc bfc" id="L267" title="All 2 branches covered.">        if (m.presenceReason() != null) values.put(&quot;taxonomy.presenceReason&quot;, VisioProperty.text(m.presenceReason()));</span>
+<span class="pc bpc" id="L268" title="1 of 2 branches missed.">        if (m.seedType() != null) values.put(&quot;taxonomy.seedType&quot;, VisioProperty.text(m.seedType().name()));</span>
+<span class="fc" id="L269">        int index = 0;</span>
+<span class="fc bfc" id="L270" title="All 2 branches covered.">        for (var evidence : m.requirementEvidence()) {</span>
+<span class="fc" id="L271">            String prefix = &quot;taxonomy.evidence&quot; + (++index);</span>
+<span class="fc" id="L272">            values.put(prefix + &quot;sourceId&quot;, VisioProperty.text(evidence.sourceId()));</span>
+<span class="fc" id="L273">            values.put(prefix + &quot;targetId&quot;, VisioProperty.text(evidence.targetId()));</span>
+<span class="fc" id="L274">            values.put(prefix + &quot;type&quot;, VisioProperty.text(evidence.type()));</span>
+<span class="fc" id="L275">            values.put(prefix + &quot;direction&quot;, VisioProperty.text(evidence.direction().name()));</span>
+<span class="fc" id="L276">            values.put(prefix + &quot;contribution&quot;, VisioProperty.text(evidence.contribution().text()));</span>
+<span class="fc" id="L277">            values.put(prefix + &quot;quote&quot;, VisioProperty.text(evidence.contribution().quote()));</span>
+<span class="fc" id="L278">            values.put(prefix + &quot;condition&quot;, VisioProperty.text(evidence.contribution().condition()));</span>
+<span class="fc" id="L279">            var d = evidence.evidence();</span>
+<span class="pc bpc" id="L280" title="1 of 2 branches missed.">            if (d != null) {</span>
+<span class="fc" id="L281">                values.put(prefix + &quot;outcome&quot;, VisioProperty.text(String.valueOf(d.outcome())));</span>
+<span class="fc" id="L282">                values.put(prefix + &quot;necessity&quot;, VisioProperty.text(String.valueOf(d.necessity())));</span>
+<span class="pc bpc" id="L283" title="1 of 2 branches missed.">                if (d.contribution() != null) values.put(prefix + &quot;decisionContribution&quot;, VisioProperty.text(d.contribution()));</span>
+<span class="pc bpc" id="L284" title="1 of 2 branches missed.">                if (d.quote() != null) values.put(prefix + &quot;decisionQuote&quot;, VisioProperty.text(d.quote()));</span>
+<span class="pc bpc" id="L285" title="1 of 2 branches missed.">                if (d.condition() != null) values.put(prefix + &quot;decisionCondition&quot;, VisioProperty.text(d.condition()));</span>
+<span class="pc bpc" id="L286" title="1 of 2 branches missed.">                if (d.alternativeGroup() != null) values.put(prefix + &quot;alternativeGroup&quot;, VisioProperty.text(d.alternativeGroup()));</span>
+<span class="pc bpc" id="L287" title="1 of 2 branches missed.">                if (d.rationale() != null) values.put(prefix + &quot;rationale&quot;, VisioProperty.text(d.rationale()));</span>
+<span class="pc bpc" id="L288" title="1 of 2 branches missed.">                if (d.question() != null) values.put(prefix + &quot;question&quot;, VisioProperty.text(d.question()));</span>
+            }
+<span class="fc" id="L290">        }</span>
+<span class="fc" id="L291">    }</span>
+
+    private static VisioShape copyShape(VisioShape source) {
+<span class="fc" id="L294">        VisioShape copy = new VisioShape(source.getId(), source.getText(), source.getX(), source.getY(),</span>
+<span class="fc" id="L295">                source.getWidth(), source.getHeight(), source.getType(), source.isAnchor());</span>
+<span class="fc" id="L296">        copy.getProperties().putAll(source.getProperties());</span>
+<span class="fc" id="L297">        return copy;</span>
+    }
+
+    private static VisioConnect copyConnect(VisioConnect source) {
+<span class="fc" id="L301">        VisioConnect copy = new VisioConnect(source.getFromShape(), source.getToShape(), source.getRelationType());</span>
+<span class="fc" id="L302">        copy.getProperties().putAll(source.getProperties());</span>
+<span class="fc" id="L303">        return copy;</span>
+    }
+
+    private static void validateGraph(DiagramModel model) {
+<span class="pc bpc" id="L307" title="4 of 8 branches missed.">        if (model == null || model.nodes() == null || model.edges() == null || model.layout() == null) {</span>
+<span class="nc" id="L308">            throw new IllegalArgumentException(&quot;Complete canonical graph required&quot;);</span>
+        }
+<span class="pc bpc" id="L310" title="1 of 4 branches missed.">        if (model.nodes().size() &gt; 10_000 || model.edges().size() &gt; 30_000) {</span>
+<span class="fc" id="L311">            throw new IllegalArgumentException(&quot;Visio profile limit: 10,000 elements and 30,000 relationships&quot;);</span>
+        }
+<span class="fc" id="L313">        java.util.Set&lt;String&gt; ids = new java.util.HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L314" title="All 2 branches covered.">        for (var node : model.nodes()) {</span>
+<span class="pc bpc" id="L315" title="4 of 8 branches missed.">            if (node == null || node.id() == null || node.id().isBlank() || !ids.add(node.id())</span>
+<span class="pc bpc" id="L316" title="2 of 4 branches missed.">                    || node.type() == null || node.type().isBlank()) throw new IllegalArgumentException(&quot;Invalid or duplicate canonical element identity/type&quot;);</span>
+<span class="fc" id="L317">            score(node.relevance());</span>
+<span class="fc" id="L318">        }</span>
+<span class="fc bfc" id="L319" title="All 2 branches covered.">        for (var node : model.nodes()) {</span>
+<span class="pc bpc" id="L320" title="2 of 6 branches missed.">            if (node.parentId() != null &amp;&amp; (!ids.contains(node.parentId()) || node.id().equals(node.parentId()))) {</span>
+<span class="nc" id="L321">                throw new IllegalArgumentException(&quot;Invalid canonical parent reference&quot;);</span>
+            }
+<span class="fc" id="L323">        }</span>
+<span class="fc" id="L324">        java.util.Set&lt;String&gt; edgeIds = new java.util.HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L325" title="All 2 branches covered.">        for (var edge : model.edges()) {</span>
+<span class="pc bpc" id="L326" title="4 of 8 branches missed.">            if (edge == null || edge.id() == null || edge.id().isBlank() || !edgeIds.add(edge.id())</span>
+<span class="pc bpc" id="L327" title="1 of 4 branches missed.">                    || !ids.contains(edge.sourceId()) || !ids.contains(edge.targetId())</span>
+<span class="pc bpc" id="L328" title="2 of 4 branches missed.">                    || edge.relationType() == null || edge.relationType().isBlank()) {</span>
+<span class="fc" id="L329">                throw new IllegalArgumentException(&quot;Invalid or duplicate canonical relationship identity/reference/type&quot;);</span>
+            }
+<span class="fc bfc" id="L331" title="All 2 branches covered.">            if (edge.sourceId().equals(edge.targetId())) throw new IllegalArgumentException(&quot;Visio profile does not support self-loop connector geometry: &quot; + edge.id());</span>
+<span class="fc" id="L332">            score(edge.relevance());</span>
+<span class="fc" id="L333">        }</span>
+<span class="fc" id="L334">    }</span>
+
+    private static void score(double value) {
+<span class="pc bpc" id="L337" title="3 of 6 branches missed.">        if (!Double.isFinite(value) || value &lt; 0 || value &gt; 1) throw new IllegalArgumentException(&quot;Relevance must be finite and in [0,1]&quot;);</span>
+<span class="fc" id="L338">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

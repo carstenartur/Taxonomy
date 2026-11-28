@@ -1,0 +1,340 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>VisioPackageBuilder.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-export</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.export</a> &gt; <span class="el_source">VisioPackageBuilder.java</span></div><h1>VisioPackageBuilder.java</h1><pre class="source lang-java linenums">package com.taxonomy.export;
+
+import com.taxonomy.visio.VisioDocument;
+import com.taxonomy.visio.VisioPage;
+import com.taxonomy.visio.VisioPageLayout;
+import com.taxonomy.visio.VisioNativeShape;
+import com.taxonomy.visio.converter.VisioDocumentConverter;
+import com.taxonomy.visio.converter.VisioPageContentsConverter;
+import com.taxonomy.visio.converter.VisioPagesConverter;
+import com.thoughtworks.xstream.XStream;
+import com.thoughtworks.xstream.io.xml.XppDriver;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.zip.Deflater;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
+
+/**
+ * Builds the currently supported, deliberately bounded Visio {@code .vsdx}
+ * package profile from a {@link VisioDocument}.
+ * &lt;p&gt;
+ * The package uses the Open Packaging Convention and Visio 2012 XML namespace.
+ * Structural and independent-reader verification belong to this builder's test
+ * contract; compatibility with a particular Microsoft Visio release requires
+ * separate product evidence.
+ */
+public class VisioPackageBuilder {
+    private final ExportThemeProvider themes;
+
+<span class="fc" id="L37">    public VisioPackageBuilder() { this(ExportThemeProvider.defaults()); }</span>
+
+<span class="fc" id="L39">    public VisioPackageBuilder(ExportThemeProvider themes) {</span>
+<span class="fc" id="L40">        this.themes = java.util.Objects.requireNonNull(themes, &quot;themes&quot;);</span>
+<span class="fc" id="L41">    }</span>
+
+<span class="fc" id="L43">    private static final Logger log = LoggerFactory.getLogger(VisioPackageBuilder.class);</span>
+    private static final String XML_DECLARATION =
+            &quot;&lt;?xml version=\&quot;1.0\&quot; encoding=\&quot;UTF-8\&quot; standalone=\&quot;yes\&quot;?&gt;\n&quot;;
+    // The DOS minimum (Jan 1) is also ZipEntry's sentinel for an extended
+    // timestamp, whose conversion uses the default timezone. Jan 2 stays in
+    // the DOS range and emits no timezone-dependent extended timestamp.
+<span class="fc" id="L49">    private static final LocalDateTime ZIP_EPOCH = LocalDateTime.of(1980, 1, 2, 0, 0);</span>
+
+    /**
+     * Builds a deterministic {@code .vsdx} byte array from a validated document.
+     *
+     * @param doc the Visio document model
+     * @return the package bytes
+     * @throws IOException if ZIP creation fails
+     * @throws IllegalArgumentException if the document violates the supported package profile
+     */
+    public byte[] build(VisioDocument doc) throws IOException {
+<span class="fc" id="L60">        VisioPackageValidator.validate(doc);</span>
+<span class="fc" id="L61">        ExportTheme theme = java.util.Objects.requireNonNull(themes.current(), &quot;export theme&quot;);</span>
+        // Stable sorting retains page IDs and all native page-name hyperlinks.
+        // Reserve evidence capacity during conversion, but do not put dozens of
+        // text pages between the overview and its editable relationship drawings.
+<span class="fc" id="L65">        doc.getPages().sort(java.util.Comparator.comparing(VisioPage::isEvidencePage));</span>
+<span class="fc" id="L66">        var layouts = VisioPageLayout.documentLayouts(doc);</span>
+<span class="fc" id="L67">        Map&lt;String, String&gt; parts = buildParts(doc, Map.of(), theme, layouts);</span>
+<span class="fc" id="L68">        long bytes = partBytes(parts);</span>
+<span class="fc" id="L69">        boolean trimmed = false;</span>
+        // Appendices now follow drawings. Optional relationship pages may be
+        // in the middle, so prune them explicitly, never the mandatory text.
+        // Cache by stable page ID: positional part names change after removal.
+<span class="fc" id="L73">        Map&lt;String, String&gt; pageContents = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L74" title="All 2 branches covered.">        for (int index = 0; index &lt; doc.getPages().size(); index++) {</span>
+<span class="fc" id="L75">            pageContents.put(doc.getPages().get(index).getId(), parts.get(&quot;visio/pages/page&quot; + (index + 1) + &quot;.xml&quot;));</span>
+        }
+<span class="fc bfc" id="L77" title="All 4 branches covered.">        for (int index = doc.getPages().size() - 1; bytes &gt; VisioHandoffProfile.MAX_XML_BYTES &amp;&amp; index &gt; 0; index--) {</span>
+<span class="fc" id="L78">            VisioPage page = doc.getPages().get(index);</span>
+<span class="fc bfc" id="L79" title="All 2 branches covered.">            if (!page.isRelationshipDetail()) continue;</span>
+<span class="fc" id="L80">            bytes -= pageContents.get(page.getId()).getBytes(StandardCharsets.UTF_8).length;</span>
+<span class="fc" id="L81">            doc.getPages().remove(index);</span>
+<span class="fc" id="L82">            trimmed = true;</span>
+        }
+<span class="fc bfc" id="L84" title="All 2 branches covered.">        if (trimmed) {</span>
+<span class="fc" id="L85">            VisioPresentation.updateDetailCoverage(doc, &quot;byte capacity&quot;);</span>
+<span class="fc" id="L86">            parts = buildParts(doc, pageContents, theme, layouts);</span>
+        }
+<span class="fc" id="L88">        VisioOpcValidator.validate(parts);</span>
+
+<span class="fc" id="L90">        ByteArrayOutputStream output = new ByteArrayOutputStream();</span>
+<span class="fc" id="L91">        try (ZipOutputStream zip = new ZipOutputStream(output, StandardCharsets.UTF_8)) {</span>
+<span class="fc" id="L92">            zip.setLevel(Deflater.BEST_COMPRESSION);</span>
+<span class="fc bfc" id="L93" title="All 2 branches covered.">            for (Map.Entry&lt;String, String&gt; part : parts.entrySet()) {</span>
+<span class="fc" id="L94">                writeEntry(zip, part.getKey(), part.getValue());</span>
+<span class="fc" id="L95">            }</span>
+        }
+
+<span class="fc" id="L98">        log.info(&quot;Built bounded .vsdx package: {} bytes, {} parts&quot;, output.size(), parts.size());</span>
+<span class="fc" id="L99">        return output.toByteArray();</span>
+    }
+
+    /** VSDX plus a directly readable, checksum-bound handoff manifest and mapping profile. */
+    public byte[] buildBundle(VisioDocument doc) throws IOException {
+<span class="fc" id="L104">        byte[] vsdx = build(doc);</span>
+<span class="fc" id="L105">        ByteArrayOutputStream output = new ByteArrayOutputStream();</span>
+<span class="fc" id="L106">        try (ZipOutputStream zip = new ZipOutputStream(output, StandardCharsets.UTF_8)) {</span>
+<span class="fc" id="L107">            zip.setLevel(Deflater.BEST_COMPRESSION);</span>
+<span class="fc" id="L108">            ZipEntry entry = new ZipEntry(&quot;diagram.vsdx&quot;);</span>
+<span class="fc" id="L109">            entry.setTimeLocal(ZIP_EPOCH);</span>
+<span class="fc" id="L110">            zip.putNextEntry(entry); zip.write(vsdx); zip.closeEntry();</span>
+<span class="fc" id="L111">            writeEntry(zip, &quot;mapping-profile.json&quot;, VisioHandoffProfile.profileJson());</span>
+<span class="fc" id="L112">            writeEntry(zip, &quot;manifest.json&quot;, VisioHandoffProfile.bundleManifest(vsdx, VisioHandoffProfile.manifest(doc)));</span>
+        }
+<span class="fc" id="L114">        return output.toByteArray();</span>
+    }
+
+    private static long partBytes(Map&lt;String, String&gt; parts) {
+<span class="fc" id="L118">        return parts.values().stream().mapToLong(value -&gt; value.getBytes(StandardCharsets.UTF_8).length).sum();</span>
+    }
+
+    private Map&lt;String, String&gt; buildParts(VisioDocument doc, Map&lt;String, String&gt; previousParts, ExportTheme theme,
+                                           Map&lt;String, VisioPageLayout&gt; layouts) {
+<span class="fc" id="L123">        Map&lt;String, String&gt; parts = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L124">        parts.put(&quot;[Content_Types].xml&quot;, buildContentTypes(doc));</span>
+<span class="fc" id="L125">        parts.put(&quot;_rels/.rels&quot;, buildRootRelationships());</span>
+<span class="fc" id="L126">        parts.put(&quot;docProps/core.xml&quot;, buildCoreProperties(doc));</span>
+<span class="fc" id="L127">        parts.put(&quot;docProps/app.xml&quot;, buildExtendedProperties(doc));</span>
+<span class="fc" id="L128">        parts.put(&quot;docProps/custom.xml&quot;, buildCustomProperties(doc));</span>
+<span class="fc" id="L129">        parts.put(&quot;taxonomy/manifest.json&quot;, VisioHandoffProfile.manifest(doc));</span>
+<span class="fc" id="L130">        parts.put(&quot;taxonomy/mapping-profile.json&quot;, VisioHandoffProfile.profileJson());</span>
+<span class="fc" id="L131">        parts.put(&quot;visio/document.xml&quot;, buildDocumentXml(doc));</span>
+<span class="fc" id="L132">        parts.put(&quot;visio/windows.xml&quot;, VisioDrawingView.windowsXml(doc));</span>
+<span class="fc" id="L133">        parts.put(&quot;visio/_rels/document.xml.rels&quot;, buildDocumentRelationships());</span>
+<span class="fc" id="L134">        parts.put(&quot;visio/pages/pages.xml&quot;, buildPagesXml(doc, layouts));</span>
+<span class="fc" id="L135">        parts.put(&quot;visio/pages/_rels/pages.xml.rels&quot;, buildPagesRelationships(doc));</span>
+<span class="fc" id="L136">        parts.put(&quot;visio/masters/masters.xml&quot;, buildMastersXml());</span>
+<span class="fc" id="L137">        parts.put(&quot;visio/masters/_rels/masters.xml.rels&quot;, buildMastersRelationships());</span>
+<span class="fc bfc" id="L138" title="All 2 branches covered.">        for (VisioNativeShape master : VisioNativeShape.values())</span>
+<span class="fc" id="L139">            parts.put(&quot;visio/masters/master&quot; + master.id() + &quot;.xml&quot;, buildMasterXml(master));</span>
+
+<span class="fc bfc" id="L141" title="All 2 branches covered.">        for (int index = 0; index &lt; doc.getPages().size(); index++) {</span>
+<span class="fc" id="L142">            VisioPage page = doc.getPages().get(index);</span>
+<span class="fc" id="L143">            String name = &quot;visio/pages/page&quot; + (index + 1) + &quot;.xml&quot;;</span>
+<span class="fc bfc" id="L144" title="All 2 branches covered.">            parts.put(name, previousParts.containsKey(page.getId()) ? previousParts.get(page.getId())</span>
+<span class="fc" id="L145">                    : buildPageXml(page, theme, layouts.get(page.getId()), doc));</span>
+<span class="fc bfc" id="L146" title="All 2 branches covered.">            if (!VisioNativeShape.usedOn(page).isEmpty())</span>
+<span class="fc" id="L147">                parts.put(&quot;visio/pages/_rels/page&quot; + (index + 1) + &quot;.xml.rels&quot;, buildPageMasterRelationships(page));</span>
+        }
+<span class="fc" id="L149">        return parts;</span>
+    }
+
+    private void writeEntry(ZipOutputStream zip, String name, String content) throws IOException {
+<span class="fc" id="L153">        ZipEntry entry = new ZipEntry(name);</span>
+<span class="fc" id="L154">        entry.setTimeLocal(ZIP_EPOCH);</span>
+<span class="fc" id="L155">        zip.putNextEntry(entry);</span>
+<span class="fc" id="L156">        zip.write(content.getBytes(StandardCharsets.UTF_8));</span>
+<span class="fc" id="L157">        zip.closeEntry();</span>
+<span class="fc" id="L158">    }</span>
+
+    private String buildContentTypes(VisioDocument doc) {
+<span class="fc" id="L161">        StringBuilder xml = new StringBuilder(XML_DECLARATION);</span>
+<span class="fc" id="L162">        xml.append(&quot;&lt;Types xmlns=\&quot;http://schemas.openxmlformats.org/package/2006/content-types\&quot;&gt;\n&quot;);</span>
+<span class="fc" id="L163">        xml.append(&quot;  &lt;Default Extension=\&quot;rels\&quot; &quot;)</span>
+<span class="fc" id="L164">                .append(&quot;ContentType=\&quot;application/vnd.openxmlformats-package.relationships+xml\&quot;/&gt;\n&quot;);</span>
+<span class="fc" id="L165">        xml.append(&quot;  &lt;Default Extension=\&quot;xml\&quot; ContentType=\&quot;application/xml\&quot;/&gt;\n&quot;);</span>
+<span class="fc" id="L166">        xml.append(&quot;  &lt;Override PartName=\&quot;/docProps/core.xml\&quot; &quot;)</span>
+<span class="fc" id="L167">                .append(&quot;ContentType=\&quot;application/vnd.openxmlformats-package.core-properties+xml\&quot;/&gt;\n&quot;);</span>
+<span class="fc" id="L168">        xml.append(&quot;  &lt;Override PartName=\&quot;/docProps/app.xml\&quot; ContentType=\&quot;application/vnd.openxmlformats-officedocument.extended-properties+xml\&quot;/&gt;\n&quot;);</span>
+<span class="fc" id="L169">        xml.append(&quot;  &lt;Override PartName=\&quot;/docProps/custom.xml\&quot; ContentType=\&quot;application/vnd.openxmlformats-officedocument.custom-properties+xml\&quot;/&gt;\n&quot;);</span>
+<span class="fc" id="L170">        xml.append(&quot;  &lt;Override PartName=\&quot;/taxonomy/manifest.json\&quot; ContentType=\&quot;application/json\&quot;/&gt;\n&quot;);</span>
+<span class="fc" id="L171">        xml.append(&quot;  &lt;Override PartName=\&quot;/taxonomy/mapping-profile.json\&quot; ContentType=\&quot;application/json\&quot;/&gt;\n&quot;);</span>
+<span class="fc" id="L172">        xml.append(&quot;  &lt;Override PartName=\&quot;/visio/document.xml\&quot; &quot;)</span>
+<span class="fc" id="L173">                .append(&quot;ContentType=\&quot;application/vnd.ms-visio.drawing.main+xml\&quot;/&gt;\n&quot;);</span>
+<span class="fc" id="L174">        xml.append(&quot;  &lt;Override PartName=\&quot;/visio/windows.xml\&quot; &quot;)</span>
+<span class="fc" id="L175">                .append(&quot;ContentType=\&quot;application/vnd.ms-visio.windows+xml\&quot;/&gt;\n&quot;);</span>
+<span class="fc" id="L176">        xml.append(&quot;  &lt;Override PartName=\&quot;/visio/pages/pages.xml\&quot; &quot;)</span>
+<span class="fc" id="L177">                .append(&quot;ContentType=\&quot;application/vnd.ms-visio.pages+xml\&quot;/&gt;\n&quot;);</span>
+<span class="fc" id="L178">        xml.append(&quot;  &lt;Override PartName=\&quot;/visio/masters/masters.xml\&quot; ContentType=\&quot;application/vnd.ms-visio.masters+xml\&quot;/&gt;\n&quot;);</span>
+<span class="fc bfc" id="L179" title="All 2 branches covered.">        for (VisioNativeShape master : VisioNativeShape.values())</span>
+<span class="fc" id="L180">            xml.append(&quot;  &lt;Override PartName=\&quot;/visio/masters/master&quot;).append(master.id())</span>
+<span class="fc" id="L181">                    .append(&quot;.xml\&quot; ContentType=\&quot;application/vnd.ms-visio.master+xml\&quot;/&gt;\n&quot;);</span>
+<span class="fc bfc" id="L182" title="All 2 branches covered.">        for (int index = 0; index &lt; doc.getPages().size(); index++) {</span>
+<span class="fc" id="L183">            xml.append(&quot;  &lt;Override PartName=\&quot;/visio/pages/page&quot;)</span>
+<span class="fc" id="L184">                    .append(index + 1)</span>
+<span class="fc" id="L185">                    .append(&quot;.xml\&quot; ContentType=\&quot;application/vnd.ms-visio.page+xml\&quot;/&gt;\n&quot;);</span>
+        }
+<span class="fc" id="L187">        xml.append(&quot;&lt;/Types&gt;&quot;);</span>
+<span class="fc" id="L188">        return xml.toString();</span>
+    }
+
+    private String buildRootRelationships() {
+<span class="fc" id="L192">        return &quot;&quot;&quot;</span>
+                &lt;?xml version=&quot;1.0&quot; encoding=&quot;UTF-8&quot; standalone=&quot;yes&quot;?&gt;
+                &lt;Relationships xmlns=&quot;http://schemas.openxmlformats.org/package/2006/relationships&quot;&gt;
+                  &lt;Relationship Id=&quot;rId1&quot; Type=&quot;http://schemas.microsoft.com/visio/2010/relationships/document&quot; Target=&quot;visio/document.xml&quot;/&gt;
+                  &lt;Relationship Id=&quot;rId2&quot; Type=&quot;http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties&quot; Target=&quot;docProps/core.xml&quot;/&gt;
+                  &lt;Relationship Id=&quot;rId3&quot; Type=&quot;http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties&quot; Target=&quot;docProps/app.xml&quot;/&gt;
+                  &lt;Relationship Id=&quot;rId4&quot; Type=&quot;http://schemas.openxmlformats.org/officeDocument/2006/relationships/custom-properties&quot; Target=&quot;docProps/custom.xml&quot;/&gt;
+                  &lt;Relationship Id=&quot;rId5&quot; Type=&quot;https://github.com/carstenartur/Taxonomy/relationships/export-manifest&quot; Target=&quot;taxonomy/manifest.json&quot;/&gt;
+                  &lt;Relationship Id=&quot;rId6&quot; Type=&quot;https://github.com/carstenartur/Taxonomy/relationships/mapping-profile&quot; Target=&quot;taxonomy/mapping-profile.json&quot;/&gt;
+                &lt;/Relationships&gt;&quot;&quot;&quot;;
+    }
+
+    private String buildCoreProperties(VisioDocument doc) {
+<span class="fc" id="L205">        String title = doc.getPages().stream()</span>
+<span class="fc" id="L206">                .map(VisioPage::getName)</span>
+<span class="pc bpc" id="L207" title="2 of 4 branches missed.">                .filter(name -&gt; name != null &amp;&amp; !name.isBlank())</span>
+<span class="fc" id="L208">                .findFirst()</span>
+<span class="fc" id="L209">                .orElse(&quot;Taxonomy architecture&quot;);</span>
+
+<span class="fc" id="L211">        return XML_DECLARATION</span>
+                + &quot;&lt;cp:coreProperties&quot;
+                + &quot; xmlns:cp=\&quot;http://schemas.openxmlformats.org/package/2006/metadata/core-properties\&quot;&quot;
+                + &quot; xmlns:dc=\&quot;http://purl.org/dc/elements/1.1/\&quot;&gt;\n&quot;
+<span class="fc" id="L215">                + &quot;  &lt;dc:title&gt;&quot; + escapeXml(title) + &quot;&lt;/dc:title&gt;\n&quot;</span>
+                + &quot;  &lt;dc:creator&gt;Taxonomy Architecture Analyzer&lt;/dc:creator&gt;\n&quot;
+                + &quot;  &lt;dc:description&gt;Experimental visual architecture projection; Microsoft Visio compatibility is not certified.&lt;/dc:description&gt;\n&quot;
+                + &quot;&lt;/cp:coreProperties&gt;&quot;;
+    }
+
+    private String buildExtendedProperties(VisioDocument doc) {
+<span class="fc" id="L222">        return XML_DECLARATION + &quot;&lt;Properties xmlns=\&quot;http://schemas.openxmlformats.org/officeDocument/2006/extended-properties\&quot;&gt;&quot;</span>
+<span class="fc" id="L223">                + &quot;&lt;Application&gt;Taxonomy Architecture Analyzer&lt;/Application&gt;&lt;Pages&gt;&quot; + doc.getPages().size() + &quot;&lt;/Pages&gt;&lt;/Properties&gt;&quot;;</span>
+    }
+
+    private String buildCustomProperties(VisioDocument doc) {
+<span class="fc" id="L227">        var properties = new java.util.TreeMap&lt;&gt;(doc.getProperties());</span>
+<span class="fc" id="L228">        properties.put(&quot;taxonomy.exportProfile&quot;, com.taxonomy.visio.VisioProperty.text(VisioHandoffProfile.ID));</span>
+<span class="fc" id="L229">        properties.put(&quot;taxonomy.profileSha256&quot;, com.taxonomy.visio.VisioProperty.text(VisioHandoffProfile.sha256(</span>
+<span class="fc" id="L230">                VisioHandoffProfile.profileJson().getBytes(StandardCharsets.UTF_8))));</span>
+<span class="fc" id="L231">        VisioPackageValidator.validateProperties(properties);</span>
+<span class="fc" id="L232">        StringBuilder xml = new StringBuilder(XML_DECLARATION).append(&quot;&lt;Properties xmlns=\&quot;http://schemas.openxmlformats.org/officeDocument/2006/custom-properties\&quot; xmlns:vt=\&quot;http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes\&quot;&gt;&quot;);</span>
+<span class="fc" id="L233">        int pid = 2;</span>
+<span class="fc bfc" id="L234" title="All 2 branches covered.">        for (var entry : properties.entrySet()) {</span>
+<span class="pc bpc" id="L235" title="1 of 3 branches missed.">            String type = switch (entry.getValue().kind()) { case STRING -&gt; &quot;lpwstr&quot;; case NUMBER -&gt; &quot;r8&quot;; case BOOLEAN -&gt; &quot;bool&quot;; };</span>
+<span class="fc" id="L236">            xml.append(&quot;&lt;property fmtid=\&quot;{D5CDD505-2E9C-101B-9397-08002B2CF9AE}\&quot; pid=\&quot;&quot;).append(pid++)</span>
+<span class="fc" id="L237">                    .append(&quot;\&quot; name=\&quot;&quot;).append(escapeXml(entry.getKey())).append(&quot;\&quot;&gt;&lt;vt:&quot;).append(type).append(&quot;&gt;&quot;)</span>
+<span class="fc" id="L238">                    .append(escapeXml(entry.getValue().value())).append(&quot;&lt;/vt:&quot;).append(type).append(&quot;&gt;&lt;/property&gt;&quot;);</span>
+<span class="fc" id="L239">        }</span>
+<span class="fc" id="L240">        return xml.append(&quot;&lt;/Properties&gt;&quot;).toString();</span>
+    }
+
+    private String buildDocumentXml(VisioDocument doc) {
+<span class="fc" id="L244">        XStream xstream = new XStream(new XppDriver());</span>
+<span class="fc" id="L245">        xstream.setMode(XStream.NO_REFERENCES);</span>
+<span class="fc" id="L246">        xstream.alias(&quot;VisioDocument&quot;, VisioDocument.class);</span>
+<span class="fc" id="L247">        xstream.registerConverter(new VisioDocumentConverter());</span>
+<span class="fc" id="L248">        return XML_DECLARATION + xstream.toXML(doc);</span>
+    }
+
+    private String buildDocumentRelationships() {
+<span class="fc" id="L252">        return &quot;&quot;&quot;</span>
+                &lt;?xml version=&quot;1.0&quot; encoding=&quot;UTF-8&quot; standalone=&quot;yes&quot;?&gt;
+                &lt;Relationships xmlns=&quot;http://schemas.openxmlformats.org/package/2006/relationships&quot;&gt;
+                  &lt;Relationship Id=&quot;rId1&quot; Type=&quot;http://schemas.microsoft.com/visio/2010/relationships/pages&quot; Target=&quot;pages/pages.xml&quot;/&gt;
+                  &lt;Relationship Id=&quot;rId2&quot; Type=&quot;http://schemas.microsoft.com/visio/2010/relationships/windows&quot; Target=&quot;windows.xml&quot;/&gt;
+                  &lt;Relationship Id=&quot;rId3&quot; Type=&quot;http://schemas.microsoft.com/visio/2010/relationships/masters&quot; Target=&quot;masters/masters.xml&quot;/&gt;
+                &lt;/Relationships&gt;&quot;&quot;&quot;;
+    }
+
+    private String buildMastersXml() {
+<span class="fc" id="L262">        StringBuilder xml = new StringBuilder(XML_DECLARATION)</span>
+<span class="fc" id="L263">                .append(&quot;&lt;Masters xmlns=\&quot;http://schemas.microsoft.com/office/visio/2012/main\&quot; xmlns:r=\&quot;http://schemas.openxmlformats.org/officeDocument/2006/relationships\&quot;&gt;&quot;);</span>
+<span class="fc bfc" id="L264" title="All 2 branches covered.">        for (VisioNativeShape master : VisioNativeShape.values()) {</span>
+<span class="fc" id="L265">            xml.append(&quot;&lt;Master ID=\&quot;&quot;).append(master.id()).append(&quot;\&quot; Name=\&quot;&quot;).append(master.label())</span>
+<span class="fc" id="L266">                    .append(&quot;\&quot; NameU=\&quot;&quot;).append(master.label()).append(&quot;\&quot; IsCustomName=\&quot;1\&quot; IsCustomNameU=\&quot;1\&quot; MatchByName=\&quot;1\&quot;&gt;&quot;)</span>
+<span class="fc" id="L267">                    .append(&quot;&lt;PageSheet&gt;&lt;Cell N=\&quot;PageWidth\&quot; V=\&quot;4\&quot;/&gt;&lt;Cell N=\&quot;PageHeight\&quot; V=\&quot;3\&quot;/&gt;&lt;/PageSheet&gt;&quot;)</span>
+<span class="fc" id="L268">                    .append(&quot;&lt;Rel r:id=\&quot;rId&quot;).append(master.id()).append(&quot;\&quot;/&gt;&lt;/Master&gt;&quot;);</span>
+        }
+<span class="fc" id="L270">        return xml.append(&quot;&lt;/Masters&gt;&quot;).toString();</span>
+    }
+
+    private String buildMastersRelationships() {
+<span class="fc" id="L274">        StringBuilder xml = new StringBuilder(XML_DECLARATION)</span>
+<span class="fc" id="L275">                .append(&quot;&lt;Relationships xmlns=\&quot;http://schemas.openxmlformats.org/package/2006/relationships\&quot;&gt;&quot;);</span>
+<span class="fc bfc" id="L276" title="All 2 branches covered.">        for (VisioNativeShape master : VisioNativeShape.values())</span>
+<span class="fc" id="L277">            xml.append(&quot;&lt;Relationship Id=\&quot;rId&quot;).append(master.id())</span>
+<span class="fc" id="L278">                    .append(&quot;\&quot; Type=\&quot;http://schemas.microsoft.com/visio/2010/relationships/master\&quot; Target=\&quot;master&quot;)</span>
+<span class="fc" id="L279">                    .append(master.id()).append(&quot;.xml\&quot;/&gt;&quot;);</span>
+<span class="fc" id="L280">        return xml.append(&quot;&lt;/Relationships&gt;&quot;).toString();</span>
+    }
+
+    private String buildMasterXml(VisioNativeShape master) {
+<span class="fc" id="L284">        XStream xstream = new XStream(new XppDriver());</span>
+<span class="fc" id="L285">        xstream.setMode(XStream.NO_REFERENCES);</span>
+<span class="fc" id="L286">        xstream.alias(&quot;MasterContents&quot;, VisioPage.class);</span>
+<span class="fc" id="L287">        xstream.registerConverter(new VisioPageContentsConverter(master));</span>
+<span class="fc" id="L288">        return XML_DECLARATION + xstream.toXML(new VisioPage(&quot;0&quot;, master.label()));</span>
+    }
+
+    private String buildPageMasterRelationships(VisioPage page) {
+<span class="fc" id="L292">        StringBuilder xml = new StringBuilder(XML_DECLARATION)</span>
+<span class="fc" id="L293">                .append(&quot;&lt;Relationships xmlns=\&quot;http://schemas.openxmlformats.org/package/2006/relationships\&quot;&gt;&quot;);</span>
+<span class="fc bfc" id="L294" title="All 2 branches covered.">        for (int id : VisioNativeShape.usedOn(page))</span>
+<span class="fc" id="L295">            xml.append(&quot;&lt;Relationship Id=\&quot;rId&quot;).append(id)</span>
+<span class="fc" id="L296">                    .append(&quot;\&quot; Type=\&quot;http://schemas.microsoft.com/visio/2010/relationships/master\&quot; Target=\&quot;../masters/master&quot;)</span>
+<span class="fc" id="L297">                    .append(id).append(&quot;.xml\&quot;/&gt;&quot;);</span>
+<span class="fc" id="L298">        return xml.append(&quot;&lt;/Relationships&gt;&quot;).toString();</span>
+    }
+
+    private String buildPagesXml(VisioDocument doc, Map&lt;String, VisioPageLayout&gt; layouts) {
+<span class="fc" id="L302">        XStream xstream = new XStream(new XppDriver());</span>
+<span class="fc" id="L303">        xstream.setMode(XStream.NO_REFERENCES);</span>
+<span class="fc" id="L304">        xstream.alias(&quot;Pages&quot;, VisioDocument.class);</span>
+<span class="fc" id="L305">        xstream.registerConverter(new VisioPagesConverter(layouts));</span>
+<span class="fc" id="L306">        return XML_DECLARATION + xstream.toXML(doc);</span>
+    }
+
+    private String buildPagesRelationships(VisioDocument doc) {
+<span class="fc" id="L310">        StringBuilder xml = new StringBuilder(XML_DECLARATION);</span>
+<span class="fc" id="L311">        xml.append(&quot;&lt;Relationships xmlns=\&quot;http://schemas.openxmlformats.org/package/2006/relationships\&quot;&gt;\n&quot;);</span>
+<span class="fc bfc" id="L312" title="All 2 branches covered.">        for (int index = 0; index &lt; doc.getPages().size(); index++) {</span>
+<span class="fc" id="L313">            xml.append(&quot;  &lt;Relationship Id=\&quot;rId&quot;)</span>
+<span class="fc" id="L314">                    .append(index + 1)</span>
+<span class="fc" id="L315">                    .append(&quot;\&quot; Type=\&quot;http://schemas.microsoft.com/visio/2010/relationships/page\&quot;&quot;)</span>
+<span class="fc" id="L316">                    .append(&quot; Target=\&quot;page&quot;)</span>
+<span class="fc" id="L317">                    .append(index + 1)</span>
+<span class="fc" id="L318">                    .append(&quot;.xml\&quot;/&gt;\n&quot;);</span>
+        }
+<span class="fc" id="L320">        xml.append(&quot;&lt;/Relationships&gt;&quot;);</span>
+<span class="fc" id="L321">        return xml.toString();</span>
+    }
+
+    private String buildPageXml(VisioPage page, ExportTheme theme, VisioPageLayout layout, VisioDocument document) {
+<span class="fc" id="L325">        XStream xstream = new XStream(new XppDriver());</span>
+<span class="fc" id="L326">        xstream.setMode(XStream.NO_REFERENCES);</span>
+<span class="fc" id="L327">        xstream.alias(&quot;PageContents&quot;, VisioPage.class);</span>
+<span class="fc" id="L328">        xstream.registerConverter(new VisioPageContentsConverter(theme, layout, document.getDrawingOptions(), document.isGerman()));</span>
+<span class="fc" id="L329">        return XML_DECLARATION + xstream.toXML(page);</span>
+    }
+
+    private static String escapeXml(String value) {
+<span class="fc" id="L333">        return value.replace(&quot;&amp;&quot;, &quot;&amp;amp;&quot;)</span>
+<span class="fc" id="L334">                .replace(&quot;&lt;&quot;, &quot;&amp;lt;&quot;)</span>
+<span class="fc" id="L335">                .replace(&quot;&gt;&quot;, &quot;&amp;gt;&quot;)</span>
+<span class="fc" id="L336">                .replace(&quot;\&quot;&quot;, &quot;&amp;quot;&quot;)</span>
+<span class="fc" id="L337">                .replace(&quot;'&quot;, &quot;&amp;apos;&quot;);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

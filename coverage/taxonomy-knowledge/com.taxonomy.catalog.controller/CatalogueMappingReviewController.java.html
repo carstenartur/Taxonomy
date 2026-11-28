@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>CatalogueMappingReviewController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-knowledge</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.catalog.controller</a> &gt; <span class="el_source">CatalogueMappingReviewController.java</span></div><h1>CatalogueMappingReviewController.java</h1><pre class="source lang-java linenums">package com.taxonomy.catalog.controller;
+
+import com.taxonomy.catalog.service.CatalogueMappingReviewHistory;
+import com.taxonomy.catalog.service.CatalogueMappingReviewService;
+import io.swagger.v3.oas.annotations.Operation;
+import org.springframework.http.*;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
+import java.io.IOException;
+import java.security.Principal;
+
+@RestController
+@RequestMapping(&quot;/api/admin/catalogue/provisional-information-products/{product}&quot;)
+public class CatalogueMappingReviewController {
+    private final CatalogueMappingReviewService reviews;
+    private final CatalogueMappingReviewHistory history;
+<span class="fc" id="L17">    public CatalogueMappingReviewController(CatalogueMappingReviewService reviews, CatalogueMappingReviewHistory history) {</span>
+<span class="fc" id="L18">        this.reviews = reviews;</span>
+<span class="fc" id="L19">        this.history = history;</span>
+<span class="fc" id="L20">    }</span>
+    @GetMapping(&quot;/reviews&quot;)
+    @Operation(summary = &quot;Read a product's versioned mapping review history&quot;,
+            description = &quot;Administrators can follow the commit cursor through prior decisions, including obsolete overlay versions.&quot;)
+    public ResponseEntity&lt;CatalogueMappingReviewHistory.Page&gt; history(@PathVariable String product,
+            @RequestParam(required = false) String after) throws IOException {
+<span class="nc" id="L26">        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(history.page(product, after));</span>
+    }
+    @PostMapping(&quot;/reviews&quot;)
+    @Operation(summary = &quot;Record an internal mapping review and prepare an overlay proposal&quot;,
+            description = &quot;Requires the expected review head, applied mapping version and rationale. A proposal is validated against the original workbook; promotion requires a reviewed Git change.&quot;)
+    public ResponseEntity&lt;CatalogueMappingReviewHistory.Entry&gt; review(@PathVariable String product,
+            @RequestBody CatalogueMappingReviewService.Command command, Principal principal) throws IOException {
+<span class="nc bnc" id="L33" title="All 2 branches missed.">        if (principal == null) throw new ResponseStatusException(HttpStatus.FORBIDDEN);</span>
+<span class="nc" id="L34">        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(reviews.review(product, command, principal.getName()));</span>
+    }
+    @GetMapping(&quot;/reviews/{commit}/overlay&quot;)
+    @Operation(summary = &quot;Download the validated candidate overlay for a reviewed Git change&quot;,
+            description = &quot;The returned JSON is the immutable candidate from the selected product review. A rejected decision has no candidate.&quot;)
+    public ResponseEntity&lt;byte[]&gt; overlay(@PathVariable String product, @PathVariable String commit) throws IOException {
+<span class="nc" id="L40">        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).contentType(MediaType.APPLICATION_JSON)</span>
+<span class="nc" id="L41">                .header(HttpHeaders.CONTENT_DISPOSITION, &quot;attachment; filename=\&quot;catalogue-overlay-proposal.json\&quot;&quot;)</span>
+<span class="nc" id="L42">                .body(history.proposal(product, commit));</span>
+    }
+    @ExceptionHandler(IOException.class)
+    ResponseEntity&lt;Void&gt; unavailable() {
+<span class="nc" id="L46">        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).cacheControl(CacheControl.noStore()).build();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

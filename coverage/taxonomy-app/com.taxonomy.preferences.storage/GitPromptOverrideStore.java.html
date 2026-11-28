@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>GitPromptOverrideStore.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.preferences.storage</a> &gt; <span class="el_source">GitPromptOverrideStore.java</span></div><h1>GitPromptOverrideStore.java</h1><pre class="source lang-java linenums">package com.taxonomy.preferences.storage;
+
+import com.taxonomy.analysis.service.PromptTemplateOverrideStore;
+import io.github.carstenartur.jgit.storage.hibernate.HibernateRepositoryFactory;
+import org.eclipse.jgit.lib.ObjectId;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.ObjectMapper;
+
+import java.io.IOException;
+import java.util.Map;
+import java.util.Objects;
+import java.util.TreeMap;
+
+/** Shared prompt overrides in a repository separate from the public preferences API. */
+public final class GitPromptOverrideStore implements PromptTemplateOverrideStore, AutoCloseable {
+    private static final String REPOSITORY_NAME = &quot;taxonomy-prompt-overrides&quot;;
+    private static final int MAX_UPDATE_ATTEMPTS = 8;
+<span class="fc" id="L18">    private static final TypeReference&lt;Map&lt;String, String&gt;&gt; OVERRIDES = new TypeReference&lt;&gt;() { };</span>
+
+    private final PreferencesGitRepository repository;
+    private final ObjectMapper json;
+<span class="fc" id="L22">    private volatile Snapshot cached = new Snapshot(null, Map.of());</span>
+
+    public GitPromptOverrideStore(HibernateRepositoryFactory factory, ObjectMapper json) {
+<span class="fc" id="L25">        this(new PreferencesGitRepository(factory, REPOSITORY_NAME), json);</span>
+<span class="fc" id="L26">    }</span>
+
+<span class="fc" id="L28">    GitPromptOverrideStore(PreferencesGitRepository repository, ObjectMapper json) {</span>
+<span class="fc" id="L29">        this.repository = repository;</span>
+<span class="fc" id="L30">        this.json = json;</span>
+<span class="fc" id="L31">    }</span>
+
+    @Override
+    public Map&lt;String, String&gt; snapshot() {
+        try {
+<span class="fc" id="L36">            return load().values();</span>
+<span class="nc" id="L37">        } catch (IOException | RuntimeException failure) {</span>
+<span class="nc" id="L38">            throw new UnavailableException(failure);</span>
+        }
+    }
+
+    @Override
+    public void save(String code, String template) {
+<span class="fc" id="L44">        update(code, Objects.requireNonNull(template));</span>
+<span class="fc" id="L45">    }</span>
+
+    @Override
+    public void reset(String code) {
+<span class="fc" id="L49">        update(code, null);</span>
+<span class="fc" id="L50">    }</span>
+
+    private Snapshot load() throws IOException {
+<span class="fc" id="L53">        ObjectId revision = repository.sharedRevision();</span>
+<span class="fc" id="L54">        Snapshot current = cached;</span>
+<span class="fc bfc" id="L55" title="All 2 branches covered.">        if (Objects.equals(revision, current.revision())) return current;</span>
+<span class="pc bpc" id="L56" title="1 of 2 branches missed.">        Map&lt;String, String&gt; values = revision == null ? Map.of()</span>
+<span class="fc" id="L57">                : Map.copyOf(json.readValue(repository.readRevision(revision), OVERRIDES));</span>
+<span class="fc" id="L58">        Snapshot loaded = new Snapshot(revision, values);</span>
+<span class="fc" id="L59">        cached = loaded;</span>
+<span class="fc" id="L60">        return loaded;</span>
+    }
+
+    private void update(String code, String template) {
+        try {
+<span class="pc bpc" id="L65" title="1 of 2 branches missed.">            for (int attempt = 0; attempt &lt; MAX_UPDATE_ATTEMPTS; attempt++) {</span>
+<span class="fc" id="L66">                Snapshot current = load();</span>
+<span class="pc bpc" id="L67" title="1 of 2 branches missed.">                if (Objects.equals(current.values().get(code), template)) return;</span>
+<span class="fc" id="L68">                var updated = new TreeMap&lt;&gt;(current.values());</span>
+<span class="fc bfc" id="L69" title="All 2 branches covered.">                if (template == null) updated.remove(code);</span>
+<span class="fc" id="L70">                else updated.put(code, template);</span>
+<span class="fc" id="L71">                String committed = repository.commitIfUnchanged(json.writeValueAsString(updated), current.revision(),</span>
+<span class="fc bfc" id="L72" title="All 2 branches covered.">                        &quot;taxonomy&quot;, template == null ? &quot;Reset prompt template override&quot; : &quot;Save prompt template override&quot;);</span>
+<span class="fc bfc" id="L73" title="All 2 branches covered.">                if (committed != null) {</span>
+<span class="fc" id="L74">                    cached = new Snapshot(ObjectId.fromString(committed), Map.copyOf(updated));</span>
+<span class="fc" id="L75">                    return;</span>
+                }
+            }
+<span class="nc" id="L78">            throw new IOException(&quot;The prompt overrides branch changed during each update attempt&quot;);</span>
+<span class="fc" id="L79">        } catch (IOException | RuntimeException failure) {</span>
+<span class="fc" id="L80">            throw new UnavailableException(failure);</span>
+        }
+    }
+
+    @Override
+    public void close() {
+<span class="fc" id="L86">        repository.close();</span>
+<span class="fc" id="L87">    }</span>
+
+<span class="fc" id="L89">    private record Snapshot(ObjectId revision, Map&lt;String, String&gt; values) { }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

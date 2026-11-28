@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>MailTransportProperties.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.mail</a> &gt; <span class="el_source">MailTransportProperties.java</span></div><h1>MailTransportProperties.java</h1><pre class="source lang-java linenums">package com.taxonomy.mail;
+
+import java.net.URI;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.List;
+
+import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.bind.DefaultValue;
+
+@ConfigurationProperties(&quot;taxonomy.mail&quot;)
+record MailTransportProperties(
+        URI publicBaseUrl,
+        URI statusPortalUrl,
+        List&lt;String&gt; allowedSenders,
+        @DefaultValue(&quot;10485760&quot;) int maxMessageBytes,
+        @DefaultValue(&quot;8&quot;) int maxAttachments,
+        @DefaultValue(&quot;5000&quot;) int maxRequirementCharacters,
+        @DefaultValue Imap imap,
+        @DefaultValue Smtp smtp) {
+
+<span class="fc" id="L23">    MailTransportProperties {</span>
+<span class="pc bpc" id="L24" title="3 of 6 branches missed.">        if (publicBaseUrl == null || publicBaseUrl.getHost() == null || publicBaseUrl.getUserInfo() != null</span>
+<span class="pc bpc" id="L25" title="2 of 4 branches missed.">                || publicBaseUrl.getQuery() != null || publicBaseUrl.getFragment() != null</span>
+<span class="fc bfc" id="L26" title="All 2 branches covered.">                || !(&quot;https&quot;.equalsIgnoreCase(publicBaseUrl.getScheme())</span>
+<span class="pc bpc" id="L27" title="1 of 2 branches missed.">                    || &quot;http&quot;.equalsIgnoreCase(publicBaseUrl.getScheme())</span>
+<span class="pc bpc" id="L28" title="1 of 2 branches missed.">                        &amp;&amp; List.of(&quot;localhost&quot;, &quot;127.0.0.1&quot;, &quot;[::1]&quot;).contains(publicBaseUrl.getHost()))) {</span>
+<span class="nc" id="L29">            throw new IllegalArgumentException(&quot;Taxonomy mail requires a public application base URL using HTTPS&quot;);</span>
+        }
+        // Spring converts an empty property placeholder to the empty URI.
+<span class="fc bfc" id="L32" title="All 4 branches covered.">        if (statusPortalUrl != null &amp;&amp; statusPortalUrl.toString().isEmpty()) statusPortalUrl = null;</span>
+<span class="fc bfc" id="L33" title="All 4 branches covered.">        if (statusPortalUrl != null &amp;&amp; (!&quot;https&quot;.equalsIgnoreCase(statusPortalUrl.getScheme())</span>
+<span class="pc bpc" id="L34" title="1 of 4 branches missed.">                || statusPortalUrl.getHost() == null || statusPortalUrl.getUserInfo() != null</span>
+<span class="fc bfc" id="L35" title="All 4 branches covered.">                || statusPortalUrl.getQuery() != null || statusPortalUrl.getFragment() != null</span>
+<span class="pc bpc" id="L36" title="2 of 4 branches missed.">                || statusPortalUrl.getPort() &gt; 65535 || statusPortalUrl.getPort() == 0</span>
+<span class="pc bpc" id="L37" title="1 of 2 branches missed.">                || !&quot;https&quot;.equalsIgnoreCase(publicBaseUrl.getScheme()))) {</span>
+<span class="fc" id="L38">            throw new IllegalArgumentException(&quot;The external mail status portal and backend require HTTPS URLs&quot;);</span>
+        }
+<span class="pc bpc" id="L40" title="1 of 2 branches missed.">        allowedSenders = allowedSenders == null ? List.of() : List.copyOf(allowedSenders);</span>
+<span class="pc bpc" id="L41" title="1 of 2 branches missed.">        if (allowedSenders.isEmpty()) {</span>
+<span class="nc" id="L42">            throw new IllegalArgumentException(&quot;Taxonomy mail requires an explicit sender allowlist&quot;);</span>
+        }
+<span class="pc bpc" id="L44" title="6 of 12 branches missed.">        if (maxMessageBytes &lt; 1024 || maxMessageBytes &gt; 32 * 1024 * 1024</span>
+                || maxAttachments &lt; 1 || maxAttachments &gt; 32
+                || maxRequirementCharacters &lt; 100 || maxRequirementCharacters &gt; 100_000) {
+<span class="nc" id="L47">            throw new IllegalArgumentException(&quot;Taxonomy mail input limits are outside the supported range&quot;);</span>
+        }
+<span class="fc" id="L49">    }</span>
+
+    String statusLink(String jobToken) {
+<span class="fc" id="L52">        String page = publicBaseUrl.toASCIIString().replaceAll(&quot;/+$&quot;, &quot;&quot;) + &quot;/mail-analysis/jobs/&quot; + jobToken;</span>
+<span class="fc bfc" id="L53" title="All 2 branches covered.">        if (statusPortalUrl == null) return page;</span>
+<span class="fc" id="L54">        return statusPortalUrl.toASCIIString() + &quot;#status=&quot; + URLEncoder.encode(page + &quot;/status&quot;, StandardCharsets.UTF_8);</span>
+    }
+
+    record Imap(String host, @DefaultValue(&quot;993&quot;) int port, String username, String password,
+                @DefaultValue(&quot;INBOX&quot;) String folder, @DefaultValue(&quot;PT30S&quot;) Duration pollInterval,
+                @DefaultValue(&quot;20&quot;) int batchSize, @DefaultValue(&quot;true&quot;) boolean pollEnabled) {
+<span class="fc" id="L60">        Imap {</span>
+<span class="pc bpc" id="L61" title="6 of 14 branches missed.">            if (pollEnabled &amp;&amp; (missing(host) || missing(username) || missing(password) || missing(folder)</span>
+<span class="pc bpc" id="L62" title="3 of 6 branches missed.">                    || port &lt; 1 || port &gt; 65535 || pollInterval.compareTo(Duration.ofSeconds(1)) &lt; 0</span>
+                    || batchSize &lt; 1 || batchSize &gt; 100)) {
+<span class="nc" id="L64">                throw new IllegalArgumentException(&quot;Taxonomy mail IMAP configuration is incomplete or invalid&quot;);</span>
+            }
+<span class="fc" id="L66">        }</span>
+
+        @Override
+        public String toString() {
+<span class="nc" id="L70">            return &quot;IMAP configuration&quot;;</span>
+        }
+    }
+
+    record Smtp(String host, @DefaultValue(&quot;587&quot;) int port, String username, String password, String from,
+                @DefaultValue(&quot;false&quot;) boolean implicitTls) {
+<span class="fc" id="L76">        Smtp {</span>
+<span class="pc bpc" id="L77" title="6 of 12 branches missed.">            if (missing(host) || missing(username) || missing(password) || missing(from) || port &lt; 1 || port &gt; 65535) {</span>
+<span class="nc" id="L78">                throw new IllegalArgumentException(&quot;Taxonomy mail SMTP configuration is incomplete or invalid&quot;);</span>
+            }
+<span class="fc" id="L80">        }</span>
+
+        @Override
+        public String toString() {
+<span class="nc" id="L84">            return &quot;SMTP configuration&quot;;</span>
+        }
+    }
+
+    private static boolean missing(String value) {
+<span class="pc bpc" id="L89" title="2 of 4 branches missed.">        return value == null || value.isBlank();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

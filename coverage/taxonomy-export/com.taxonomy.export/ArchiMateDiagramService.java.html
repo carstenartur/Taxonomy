@@ -1,0 +1,352 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchiMateDiagramService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-export</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.export</a> &gt; <span class="el_source">ArchiMateDiagramService.java</span></div><h1>ArchiMateDiagramService.java</h1><pre class="source lang-java linenums">package com.taxonomy.export;
+
+import com.taxonomy.archimate.exchange.ArchiMateExchangeProfile;
+import com.taxonomy.archimate.exchange.ArchiMateIds;
+import com.taxonomy.archimate.exchange.ArchiMateSchema;
+
+import com.taxonomy.archimate.ArchiMateElement;
+import com.taxonomy.archimate.ArchiMateProperty;
+import com.taxonomy.archimate.ArchiMateLoss;
+import com.taxonomy.archimate.ArchiMateModel;
+import com.taxonomy.archimate.ArchiMateRelationship;
+import com.taxonomy.archimate.ArchiMateView;
+import com.taxonomy.archimate.ArchiMateViewConnection;
+import com.taxonomy.archimate.ArchiMateViewNode;
+import com.taxonomy.diagram.DiagramEdge;
+import com.taxonomy.diagram.DiagramModel;
+import com.taxonomy.diagram.DiagramNode;
+import com.taxonomy.diagram.DiagramScene;
+import com.taxonomy.diagram.DiagramSceneEdge;
+import com.taxonomy.diagram.DiagramSceneNode;
+
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.TreeMap;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+
+/**
+ * Converts a neutral {@link DiagramModel} into an {@link ArchiMateModel} by mapping
+ * taxonomy types to ArchiMate element types, relationship types to ArchiMate relationship
+ * types, and computing pixel-based layout positions for the diagram view.
+ */
+<span class="fc" id="L39">public class ArchiMateDiagramService {</span>
+
+    private static final int MIN_NODE_WIDTH = 220;
+    private static final int MAX_NODE_WIDTH = 340;
+    private static final int MIN_NODE_HEIGHT = 52;
+    private static final int LABEL_HORIZONTAL_INSET = 54;
+    private static final int LABEL_VERTICAL_INSET = 22;
+    private static final int LABEL_CHARACTER_WIDTH = 9;
+    private static final int LABEL_LINE_HEIGHT = 17;
+    private static final int LAYER_GAP = 144;
+    private static final int ROW_GAP = 48;
+    private static final int MARGIN = 40;
+    private static final int MAX_ROUTING_NODE_EDGE_PAIRS = 20_000;
+<span class="fc" id="L52">    private static final Pattern LABEL_WORD = Pattern.compile(&quot;\\S+&quot;);</span>
+
+    /**
+     * Converts a {@link DiagramModel} to an {@link ArchiMateModel}.
+     */
+    public ArchiMateModel convert(DiagramModel model) {
+<span class="pc bpc" id="L58" title="1 of 4 branches missed.">        if (model.nodes().size() &gt; ArchiMateSchema.MAX_ELEMENTS || model.edges().size() &gt; ArchiMateSchema.MAX_RELATIONSHIPS) {</span>
+<span class="fc" id="L59">            throw new IllegalArgumentException(&quot;Model exceeds bounded exchange profile&quot;);</span>
+        }
+<span class="fc" id="L61">        Set&lt;String&gt; allIds = model.nodes().stream().map(DiagramNode::id).collect(Collectors.toSet());</span>
+<span class="fc bfc" id="L62" title="All 2 branches covered.">        for (DiagramEdge edge : model.edges()) {</span>
+<span class="pc bpc" id="L63" title="2 of 4 branches missed.">            if (!allIds.contains(edge.sourceId()) || !allIds.contains(edge.targetId())) {</span>
+<span class="nc" id="L64">                throw new IllegalArgumentException(&quot;Unresolved relationship endpoint: &quot; + edge.id());</span>
+            }
+<span class="fc" id="L66">        }</span>
+<span class="fc bfc" id="L67" title="All 2 branches covered.">        for (DiagramNode node : model.nodes()) {</span>
+<span class="pc bpc" id="L68" title="2 of 6 branches missed.">            if (node.parentId() != null &amp;&amp; (!allIds.contains(node.parentId()) || node.id().equals(node.parentId()))) {</span>
+<span class="nc" id="L69">                throw new IllegalArgumentException(&quot;Invalid node parent: &quot; + node.id());</span>
+            }
+<span class="fc" id="L71">        }</span>
+        // Collect non-container node IDs — container-only nodes are visual grouping
+        // constructs and must not appear as ArchiMate elements or relationship endpoints.
+<span class="fc" id="L74">        Set&lt;String&gt; elementIds = model.nodes().stream()</span>
+<span class="fc bfc" id="L75" title="All 2 branches covered.">                .filter(n -&gt; !n.container())</span>
+<span class="fc" id="L76">                .map(DiagramNode::id)</span>
+<span class="fc" id="L77">                .collect(Collectors.toSet());</span>
+
+<span class="fc" id="L79">        List&lt;ArchiMateLoss&gt; losses = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L80">        List&lt;ArchiMateElement&gt; elements = buildElements(model.nodes(), losses);</span>
+<span class="fc" id="L81">        List&lt;ArchiMateRelationship&gt; relationships = buildRelationships(model.edges(), elementIds, losses);</span>
+<span class="fc" id="L82">        Map&lt;String, List&lt;String&gt;&gt; organizations = buildOrganizations(model.nodes());</span>
+<span class="fc" id="L83">        ArchiMateView view = buildView(model, elementIds);</span>
+<span class="fc" id="L84">        Map&lt;String, ArchiMateProperty&gt; properties = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L85">        properties.put(&quot;taxonomy.mappingProfile&quot;, ArchiMateProperty.text(ArchiMateExchangeProfile.VERSION));</span>
+<span class="fc" id="L86">        properties.put(&quot;taxonomy.exporterVersion&quot;, ArchiMateProperty.text(&quot;archimate-writer-v2&quot;));</span>
+<span class="fc" id="L87">        properties.put(&quot;taxonomy.idProfile&quot;, ArchiMateProperty.text(&quot;length-prefixed-utf8-hex-v1&quot;));</span>
+<span class="fc" id="L88">        properties.put(&quot;taxonomy.scoreSemantics&quot;, ArchiMateProperty.text(&quot;relevance in [0,1]; anchor and impact are separate selection flags&quot;));</span>
+<span class="fc bfc" id="L89" title="All 2 branches covered.">        if (model.layout() != null) {</span>
+<span class="fc" id="L90">            properties.put(&quot;taxonomy.layoutDirection&quot;, ArchiMateProperty.text(model.layout().direction()));</span>
+<span class="fc" id="L91">            properties.put(&quot;taxonomy.groupByLayer&quot;, ArchiMateProperty.flag(model.layout().groupByLayer()));</span>
+        }
+<span class="fc" id="L93">        List&lt;ArchiMateView&gt; views = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L94">        views.add(view);</span>
+<span class="fc bfc" id="L95" title="All 4 branches covered.">        Set&lt;String&gt; impact = model.nodes().stream().filter(n -&gt; n.anchor() || n.selectedForImpact())</span>
+<span class="fc" id="L96">                .map(DiagramNode::id).filter(elementIds::contains).collect(Collectors.toSet());</span>
+<span class="fc bfc" id="L97" title="All 4 branches covered.">        if (!impact.isEmpty() &amp;&amp; impact.size() &lt; elementIds.size()) {</span>
+<span class="fc" id="L98">            views.add(new ArchiMateView(&quot;impact&quot;, &quot;Anchor and impact selection&quot;,</span>
+<span class="fc" id="L99">                    view.nodes().stream().filter(n -&gt; impact.contains(n.elementId())).toList(),</span>
+<span class="fc bfc" id="L100" title="All 2 branches covered.">                    view.connections().stream().filter(c -&gt; impact.contains(c.sourceNodeId())</span>
+<span class="fc bfc" id="L101" title="All 2 branches covered.">                            &amp;&amp; impact.contains(c.targetNodeId())).toList()));</span>
+        }
+        // Unbound model identity describes typed membership and relationship topology,
+        // independent of display text, scores, ordering and generated layout.
+        String identity;
+        try {
+<span class="fc" id="L107">            var digest = java.security.MessageDigest.getInstance(&quot;SHA-256&quot;);</span>
+<span class="fc" id="L108">            elements.stream().sorted(Comparator.comparing(ArchiMateElement::id)).forEach(element -&gt; digest.update(</span>
+<span class="fc" id="L109">                    ArchiMateIds.id(&quot;element&quot;, element.id(), element.properties().get(&quot;taxonomy.type&quot;).value())</span>
+<span class="fc" id="L110">                            .getBytes(java.nio.charset.StandardCharsets.UTF_8)));</span>
+<span class="fc" id="L111">            relationships.stream().sorted(Comparator.comparing(ArchiMateRelationship::id)).forEach(relation -&gt; digest.update(</span>
+<span class="fc" id="L112">                    ArchiMateIds.id(&quot;relationship&quot;, relation.id(), relation.sourceId(), relation.targetId(),</span>
+<span class="fc" id="L113">                            relation.properties().get(&quot;taxonomy.type&quot;).value()).getBytes(java.nio.charset.StandardCharsets.UTF_8)));</span>
+<span class="fc" id="L114">            identity = &quot;graph-&quot; + java.util.HexFormat.of().formatHex(digest.digest());</span>
+<span class="nc" id="L115">        } catch (java.security.NoSuchAlgorithmException exception) {</span>
+<span class="nc" id="L116">            throw new IllegalStateException(exception);</span>
+<span class="fc" id="L117">        }</span>
+<span class="fc" id="L118">        return new ArchiMateModel(identity,</span>
+<span class="fc bfc" id="L119" title="All 2 branches covered.">                model.title() != null ? model.title() : &quot;Architecture View&quot;, elements,</span>
+                relationships, organizations, views, properties, losses);
+    }
+
+    private List&lt;ArchiMateElement&gt; buildElements(List&lt;DiagramNode&gt; nodes, List&lt;ArchiMateLoss&gt; losses) {
+<span class="fc" id="L124">        List&lt;ArchiMateElement&gt; elements = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L125">        Set&lt;String&gt; identities = new java.util.HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L126" title="All 2 branches covered.">        for (DiagramNode node : nodes) {</span>
+<span class="fc" id="L127">            ArchiMateIds.requireIdentity(node.id());</span>
+<span class="pc bpc" id="L128" title="1 of 2 branches missed.">            if (!identities.add(node.id())) throw new IllegalArgumentException(&quot;Duplicate node identity: &quot; + node.id());</span>
+<span class="fc bfc" id="L129" title="All 2 branches covered.">            if (node.container()) {</span>
+<span class="fc" id="L130">                losses.add(new ArchiMateLoss(&quot;element&quot;, node.id(), &quot;container&quot;, &quot;OMITTED&quot;,</span>
+                        &quot;Visual-only container is not an architecture element; grouping geometry is omitted.&quot;));
+<span class="fc" id="L132">                continue;</span>
+            }
+<span class="fc" id="L134">            var mapping = ArchiMateExchangeProfile.element(node.type());</span>
+<span class="fc" id="L135">            Map&lt;String, ArchiMateProperty&gt; properties = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L136">            properties.put(&quot;taxonomy.type&quot;, ArchiMateProperty.text(node.type()));</span>
+<span class="fc bfc" id="L137" title="All 2 branches covered.">            if (node.catalogueUuid() != null) properties.put(&quot;taxonomy.catalogueUuid&quot;, ArchiMateProperty.text(node.catalogueUuid()));</span>
+<span class="fc bfc" id="L138" title="All 2 branches covered.">            if (node.responsibility() != null) {</span>
+<span class="fc" id="L139">                var owner = node.responsibility();</span>
+<span class="fc" id="L140">                properties.put(&quot;taxonomy.responsibilityUnitId&quot;, ArchiMateProperty.text(owner.unitId()));</span>
+<span class="fc" id="L141">                properties.put(&quot;taxonomy.responsibilityName&quot;, ArchiMateProperty.text(owner.name()));</span>
+<span class="fc" id="L142">                properties.put(&quot;taxonomy.responsibilitySourceId&quot;, ArchiMateProperty.text(owner.sourceId()));</span>
+            }
+<span class="fc" id="L144">            properties.put(&quot;taxonomy.relevance&quot;, score(node.relevance()));</span>
+<span class="fc" id="L145">            properties.put(&quot;taxonomy.anchor&quot;, ArchiMateProperty.flag(node.anchor()));</span>
+<span class="fc" id="L146">            properties.put(&quot;taxonomy.selectedForImpact&quot;, ArchiMateProperty.flag(node.selectedForImpact()));</span>
+<span class="fc" id="L147">            properties.put(&quot;taxonomy.layer&quot;, ArchiMateProperty.number(node.layer()));</span>
+<span class="fc" id="L148">            properties.put(&quot;taxonomy.depth&quot;, ArchiMateProperty.number(node.depth()));</span>
+<span class="fc bfc" id="L149" title="All 2 branches covered.">            if (node.parentId() != null) properties.put(&quot;taxonomy.parentId&quot;, ArchiMateProperty.text(node.parentId()));</span>
+<span class="fc" id="L150">            losses.add(new ArchiMateLoss(&quot;element&quot;, node.id(), &quot;type&quot;, mapping.kind(), mapping.rationale()));</span>
+<span class="fc" id="L151">            elements.add(new ArchiMateElement(node.id(), node.label(), mapping.targetType(),</span>
+                    null, properties));
+<span class="fc" id="L153">        }</span>
+<span class="fc" id="L154">        return elements;</span>
+    }
+
+    private List&lt;ArchiMateRelationship&gt; buildRelationships(List&lt;DiagramEdge&gt; edges,
+                                                           Set&lt;String&gt; elementIds, List&lt;ArchiMateLoss&gt; losses) {
+<span class="fc" id="L159">        List&lt;ArchiMateRelationship&gt; relationships = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L160">        Set&lt;String&gt; identities = new java.util.HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L161" title="All 2 branches covered.">        for (DiagramEdge edge : edges) {</span>
+<span class="fc" id="L162">            ArchiMateIds.requireIdentity(edge.id());</span>
+<span class="pc bpc" id="L163" title="1 of 2 branches missed.">            if (!identities.add(edge.id())) throw new IllegalArgumentException(&quot;Duplicate relationship identity: &quot; + edge.id());</span>
+<span class="pc bpc" id="L164" title="1 of 4 branches missed.">            if (!elementIds.contains(edge.sourceId()) || !elementIds.contains(edge.targetId())) {</span>
+<span class="fc" id="L165">                losses.add(new ArchiMateLoss(&quot;relationship&quot;, edge.id(), &quot;endpoints&quot;, &quot;OMITTED&quot;,</span>
+                        &quot;Relationship touches an omitted visual container.&quot;));
+<span class="fc" id="L167">                continue;</span>
+            }
+<span class="fc" id="L169">            var mapping = ArchiMateExchangeProfile.relationship(edge.relationType());</span>
+<span class="fc" id="L170">            Map&lt;String, ArchiMateProperty&gt; properties = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L171">            properties.put(&quot;taxonomy.type&quot;, ArchiMateProperty.text(edge.relationType()));</span>
+<span class="fc" id="L172">            properties.put(&quot;taxonomy.relevance&quot;, score(edge.relevance()));</span>
+<span class="pc bpc" id="L173" title="1 of 2 branches missed.">            if (edge.relationCategory() != null) properties.put(&quot;taxonomy.relationCategory&quot;, ArchiMateProperty.text(edge.relationCategory()));</span>
+<span class="fc" id="L174">            properties.putAll(com.taxonomy.archimate.exchange.ArchiMateRelationProvenance.write(edge.metadata()));</span>
+<span class="fc" id="L175">            losses.add(new ArchiMateLoss(&quot;relationship&quot;, edge.id(), &quot;type&quot;, mapping.kind(), mapping.rationale()));</span>
+<span class="fc" id="L176">            relationships.add(new ArchiMateRelationship(edge.id(), edge.sourceId(), edge.targetId(),</span>
+<span class="fc" id="L177">                    mapping.targetType(), mapping.accessType(), edge.relationType(), properties));</span>
+<span class="fc" id="L178">        }</span>
+<span class="fc" id="L179">        return relationships;</span>
+    }
+
+    private static ArchiMateProperty score(double value) {
+<span class="pc bpc" id="L183" title="3 of 6 branches missed.">        if (!Double.isFinite(value) || value &lt; 0 || value &gt; 1) throw new IllegalArgumentException(&quot;Relevance must be in [0,1]&quot;);</span>
+<span class="fc" id="L184">        return ArchiMateProperty.number(value);</span>
+    }
+
+    private Map&lt;String, List&lt;String&gt;&gt; buildOrganizations(List&lt;DiagramNode&gt; nodes) {
+<span class="fc" id="L188">        Map&lt;String, List&lt;String&gt;&gt; organizations = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L189" title="All 2 branches covered.">        for (DiagramNode node : nodes) {</span>
+<span class="fc bfc" id="L190" title="All 2 branches covered.">            if (node.container()) continue; // grouping-only nodes are not architecture elements</span>
+<span class="pc bpc" id="L191" title="1 of 2 branches missed.">            String type = node.type() != null ? node.type() : &quot;Unknown&quot;;</span>
+<span class="fc" id="L192">            organizations.computeIfAbsent(type, k -&gt; new ArrayList&lt;&gt;()).add(node.id());</span>
+<span class="fc" id="L193">        }</span>
+<span class="fc" id="L194">        return organizations;</span>
+    }
+
+    private ArchiMateView buildView(DiagramModel model, Set&lt;String&gt; elementIds) {
+<span class="fc" id="L198">        Map&lt;Integer, List&lt;DiagramNode&gt;&gt; layerGroups = new TreeMap&lt;&gt;();</span>
+<span class="fc bfc" id="L199" title="All 2 branches covered.">        for (DiagramNode node : model.nodes()) {</span>
+<span class="fc bfc" id="L200" title="All 2 branches covered.">            if (node.container()) continue;</span>
+<span class="fc" id="L201">            layerGroups.computeIfAbsent(node.layer(), k -&gt; new ArrayList&lt;&gt;()).add(node);</span>
+<span class="fc" id="L202">        }</span>
+
+<span class="fc" id="L204">        List&lt;ArchiMateViewNode&gt; viewNodes = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L205">        Map&lt;String, Integer&gt; nodeOrder = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L206">        int x = MARGIN;</span>
+<span class="fc bfc" id="L207" title="All 2 branches covered.">        for (List&lt;DiagramNode&gt; layerNodes : layerGroups.values()) {</span>
+<span class="fc" id="L208">            int y = MARGIN;</span>
+<span class="fc" id="L209">            int layerWidth = 0;</span>
+<span class="fc bfc" id="L210" title="All 2 branches covered.">            for (DiagramNode node : layerNodes) {</span>
+<span class="fc" id="L211">                String sizingLabel = Objects.requireNonNullElse(node.label(), node.id());</span>
+<span class="fc" id="L212">                int width = nodeWidth(sizingLabel);</span>
+<span class="fc" id="L213">                int height = nodeHeight(sizingLabel, width);</span>
+<span class="fc" id="L214">                int[] color = toColor(node.type());</span>
+<span class="fc bfc" id="L215" title="All 2 branches covered.">                int lineWidth = node.anchor() ? 3 : 1;</span>
+<span class="fc" id="L216">                nodeOrder.put(node.id(), viewNodes.size());</span>
+<span class="fc" id="L217">                viewNodes.add(new ArchiMateViewNode(</span>
+<span class="fc" id="L218">                        node.id(),</span>
+<span class="fc" id="L219">                        node.id(),</span>
+                        x, y,
+                        width, height,
+<span class="fc" id="L222">                        node.label(),</span>
+                        color[0], color[1], color[2],
+                        lineWidth));
+<span class="fc" id="L225">                y += height + ROW_GAP;</span>
+<span class="fc" id="L226">                layerWidth = Math.max(layerWidth, width);</span>
+<span class="fc" id="L227">            }</span>
+<span class="fc" id="L228">            x += layerWidth + LAYER_GAP;</span>
+<span class="fc" id="L229">        }</span>
+
+<span class="fc" id="L231">        List&lt;ArchiMateViewConnection&gt; viewConnections = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L232" title="All 2 branches covered.">        for (DiagramEdge edge : model.edges()) {</span>
+<span class="pc bpc" id="L233" title="1 of 4 branches missed.">            if (elementIds.contains(edge.sourceId()) &amp;&amp; elementIds.contains(edge.targetId())) {</span>
+<span class="fc" id="L234">                viewConnections.add(new ArchiMateViewConnection(</span>
+<span class="fc" id="L235">                        edge.id(),</span>
+<span class="fc" id="L236">                        edge.id(),</span>
+<span class="fc" id="L237">                        edge.sourceId(),</span>
+<span class="fc" id="L238">                        edge.targetId()));</span>
+            }
+<span class="fc" id="L240">        }</span>
+        // Archi serializes outgoing connections in view-node order. Match that
+        // order while retaining the sequence of connections from each source.
+<span class="fc" id="L243">        viewConnections.sort(Comparator.comparingInt(connection -&gt; nodeOrder.get(connection.sourceNodeId())));</span>
+
+<span class="fc bfc" id="L245" title="All 2 branches covered.">        String viewName = model.title() != null ? model.title() : &quot;Architecture View&quot;;</span>
+<span class="fc" id="L246">        return new ArchiMateView(&quot;layered&quot;, viewName, viewNodes, routeConnections(viewNodes, viewConnections));</span>
+    }
+
+    private static List&lt;ArchiMateViewConnection&gt; routeConnections(List&lt;ArchiMateViewNode&gt; viewNodes,
+                                                                  List&lt;ArchiMateViewConnection&gt; connections) {
+        // Testing candidate paths against every card is useful on ordinary views.
+        // Keep conversion bounded for the largest permitted exchange graphs.
+<span class="pc bpc" id="L253" title="1 of 4 branches missed.">        if (connections.isEmpty() || (long) viewNodes.size() * connections.size() &gt; MAX_ROUTING_NODE_EDGE_PAIRS) {</span>
+<span class="fc" id="L254">            return connections;</span>
+        }
+<span class="fc" id="L256">        var cards = viewNodes.stream().map(node -&gt; new DiagramSceneNode(node.id(), node.label(), null, 0,</span>
+<span class="fc" id="L257">                false, 0, 0, false, null, false, node.x(), node.y(), node.w(), node.h())).toList();</span>
+<span class="fc" id="L258">        var byId = cards.stream().collect(Collectors.toMap(DiagramSceneNode::id, node -&gt; node));</span>
+<span class="fc" id="L259">        var edges = connections.stream().map(connection -&gt; {</span>
+<span class="fc" id="L260">            var source = byId.get(connection.sourceNodeId());</span>
+<span class="fc" id="L261">            var target = byId.get(connection.targetNodeId());</span>
+<span class="fc bfc" id="L262" title="All 2 branches covered.">            var sourceX = source.x() &lt;= target.x() ? source.x() + source.width() : source.x();</span>
+<span class="fc bfc" id="L263" title="All 2 branches covered.">            var targetX = source.x() &gt;= target.x() ? target.x() + target.width() : target.x();</span>
+<span class="fc" id="L264">            return new DiagramSceneEdge(connection.id(), source.id(), target.id(), null, 0, null,</span>
+<span class="fc" id="L265">                    sourceX, source.y() + source.height() / 2, targetX, target.y() + target.height() / 2);</span>
+<span class="fc" id="L266">        }).toList();</span>
+<span class="fc" id="L267">        double width = cards.stream().mapToDouble(card -&gt; card.x() + card.width()).max().orElseThrow() + MARGIN;</span>
+<span class="fc" id="L268">        double height = cards.stream().mapToDouble(card -&gt; card.y() + card.height()).max().orElseThrow() + MARGIN;</span>
+<span class="fc" id="L269">        var routing = new DiagramEdgeRouting(new DiagramScene(null, width, height, &quot;LR&quot;, cards, edges));</span>
+<span class="fc" id="L270">        var result = new ArrayList&lt;ArchiMateViewConnection&gt;(connections.size());</span>
+<span class="fc bfc" id="L271" title="All 2 branches covered.">        for (int i = 0; i &lt; connections.size(); i++) {</span>
+<span class="fc" id="L272">            var connection = connections.get(i);</span>
+<span class="fc" id="L273">            var detour = routing.detourForLine(edges.get(i));</span>
+<span class="fc bfc" id="L274" title="All 2 branches covered.">            if (detour == null) {</span>
+<span class="fc" id="L275">                result.add(connection);</span>
+<span class="fc" id="L276">                continue;</span>
+            }
+<span class="fc" id="L278">            var points = detour.points();</span>
+<span class="fc" id="L279">            var bends = points.subList(1, points.size() - 1).stream()</span>
+<span class="fc" id="L280">                    .map(point -&gt; new ArchiMateViewConnection.Bendpoint(</span>
+<span class="fc" id="L281">                            Math.toIntExact(Math.round(point.x())), Math.toIntExact(Math.round(point.y())))).toList();</span>
+<span class="fc" id="L282">            result.add(new ArchiMateViewConnection(connection.id(), connection.relationshipId(), connection.sourceNodeId(),</span>
+<span class="fc" id="L283">                    connection.targetNodeId(), bends));</span>
+        }
+<span class="fc" id="L285">        return result;</span>
+    }
+
+    private static int nodeWidth(String label) {
+<span class="fc" id="L289">        int maximumCharacters = (MAX_NODE_WIDTH - LABEL_HORIZONTAL_INSET) / LABEL_CHARACTER_WIDTH + 1;</span>
+<span class="fc" id="L290">        return Math.clamp(LABEL_HORIZONTAL_INSET + Math.min(label.length(), maximumCharacters) * LABEL_CHARACTER_WIDTH,</span>
+                MIN_NODE_WIDTH, MAX_NODE_WIDTH);
+    }
+
+    private static int nodeHeight(String label, int width) {
+        // Allow for the native ArchiMate symbol and conservatively budget glyph widths
+        // so geometry is the same on exporter hosts with different system fonts.
+<span class="fc" id="L297">        int columns = (width - LABEL_HORIZONTAL_INSET) / LABEL_CHARACTER_WIDTH;</span>
+<span class="fc" id="L298">        int lines = 1;</span>
+<span class="fc" id="L299">        int usedColumns = 0;</span>
+<span class="fc" id="L300">        var words = LABEL_WORD.matcher(label);</span>
+<span class="fc bfc" id="L301" title="All 2 branches covered.">        while (words.find()) {</span>
+<span class="fc" id="L302">            int wordLength = words.end() - words.start();</span>
+<span class="fc bfc" id="L303" title="All 4 branches covered.">            if (usedColumns &gt; 0 &amp;&amp; usedColumns + 1 + wordLength &gt; columns) {</span>
+<span class="fc" id="L304">                lines++;</span>
+<span class="fc" id="L305">                usedColumns = 0;</span>
+            }
+<span class="fc bfc" id="L307" title="All 2 branches covered.">            if (usedColumns == 0) {</span>
+<span class="fc" id="L308">                lines += (wordLength - 1) / columns;</span>
+<span class="fc" id="L309">                usedColumns = (wordLength - 1) % columns + 1;</span>
+            } else {
+<span class="fc" id="L311">                usedColumns += 1 + wordLength;</span>
+            }
+<span class="fc" id="L313">        }</span>
+<span class="fc" id="L314">        return Math.max(MIN_NODE_HEIGHT, LABEL_VERTICAL_INSET + lines * LABEL_LINE_HEIGHT);</span>
+    }
+
+    // ── Type mappings ─────────────────────────────────────────────────────────
+
+    public static String toArchiMateType(String taxonomyType) {
+<span class="fc" id="L320">        return ArchiMateExchangeProfile.element(taxonomyType).targetType();</span>
+    }
+
+    public static String toArchiMateRelType(String relationType) {
+<span class="fc" id="L324">        return ArchiMateExchangeProfile.relationship(relationType).targetType();</span>
+    }
+
+    public static String toAccessType(String relationType) {
+<span class="fc" id="L328">        return ArchiMateExchangeProfile.relationship(relationType).accessType();</span>
+    }
+
+    public static int[] toColor(String taxonomyType) {
+<span class="pc bpc" id="L332" title="1 of 2 branches missed.">        if (taxonomyType == null) return new int[]{224, 224, 224};</span>
+<span class="fc bfc" id="L333" title="All 15 branches covered.">        return switch (taxonomyType) {</span>
+<span class="fc" id="L334">            case &quot;Capabilities&quot;           -&gt; new int[]{255, 255, 181};</span>
+<span class="fc" id="L335">            case &quot;Business Processes&quot;     -&gt; new int[]{255, 255, 181};</span>
+<span class="fc" id="L336">            case &quot;Business Roles&quot;         -&gt; new int[]{255, 224, 181};</span>
+<span class="fc" id="L337">            case &quot;Services&quot;               -&gt; new int[]{181, 255, 255};</span>
+<span class="fc" id="L338">            case &quot;COI Services&quot;           -&gt; new int[]{181, 255, 255};</span>
+<span class="fc" id="L339">            case &quot;Core Services&quot;          -&gt; new int[]{181, 255, 255};</span>
+<span class="fc" id="L340">            case &quot;Communications Services&quot;-&gt; new int[]{204, 224, 255};</span>
+<span class="fc" id="L341">            case &quot;Applications&quot;           -&gt; new int[]{181, 255, 255};</span>
+<span class="fc" id="L342">            case &quot;User Applications&quot;      -&gt; new int[]{181, 255, 255};</span>
+<span class="fc" id="L343">            case &quot;Information Products&quot;   -&gt; new int[]{204, 255, 204};</span>
+<span class="fc" id="L344">            case &quot;Systems&quot;                -&gt; new int[]{181, 204, 255};</span>
+<span class="fc" id="L345">            case &quot;Components&quot;             -&gt; new int[]{204, 181, 255};</span>
+<span class="fc" id="L346">            case &quot;System&quot;                 -&gt; new int[]{204, 204, 255};</span>
+<span class="fc" id="L347">            case &quot;Component&quot;              -&gt; new int[]{224, 204, 255};</span>
+<span class="fc" id="L348">            default                       -&gt; new int[]{224, 224, 224};</span>
+        };
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

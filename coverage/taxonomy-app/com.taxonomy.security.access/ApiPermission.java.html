@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ApiPermission.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.security.access</a> &gt; <span class="el_source">ApiPermission.java</span></div><h1>ApiPermission.java</h1><pre class="source lang-java linenums">package com.taxonomy.security.access;
+
+import java.util.Arrays;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+/** Named capabilities shared by request authorization and the OpenAPI description. */
+<span class="fc" id="L9">public enum ApiPermission {</span>
+<span class="fc" id="L10">    ARCHITECTURE_READ(&quot;architecture:read&quot;, &quot;Read architecture and taxonomy data&quot;, Effect.READ,</span>
+            &quot;READER&quot;, &quot;USER&quot;, &quot;ARCHITECT&quot;, &quot;ADMIN&quot;),
+<span class="fc" id="L12">    ARCHITECTURE_WRITE(&quot;architecture:write&quot;, &quot;Create or change business data&quot;, Effect.WRITE, &quot;ARCHITECT&quot;),</span>
+<span class="fc" id="L13">    ARCHITECTURE_DELETE(&quot;architecture:delete&quot;, &quot;Call dedicated DELETE endpoints; command and DSL edits use architecture:write&quot;, Effect.DELETE, &quot;ARCHITECT&quot;),</span>
+<span class="fc" id="L14">    ARCHITECTURE_PUBLISH(&quot;architecture:publish&quot;, &quot;Publish or synchronize architecture changes&quot;, Effect.WRITE, &quot;ARCHITECT&quot;),</span>
+<span class="fc" id="L15">    ANALYSIS_READ(&quot;analysis:read&quot;, &quot;Read existing analysis results&quot;, Effect.READ,</span>
+            &quot;READER&quot;, &quot;USER&quot;, &quot;ARCHITECT&quot;, &quot;ADMIN&quot;),
+<span class="fc" id="L17">    ANALYSIS_RUN(&quot;analysis:run&quot;, &quot;Execute analyses and manage personal analysis drafts&quot;, Effect.ANALYSIS,</span>
+            &quot;USER&quot;, &quot;ARCHITECT&quot;),
+<span class="fc" id="L19">    INTEGRATION_IMPORT(&quot;integration:import&quot;, &quot;Import or apply integration changes&quot;, Effect.WRITE, &quot;ARCHITECT&quot;),</span>
+<span class="fc" id="L20">    INTEGRATION_EXPORT(&quot;integration:export&quot;, &quot;Generate or download permitted exports&quot;, Effect.EXPORT,</span>
+            &quot;READER&quot;, &quot;USER&quot;, &quot;ARCHITECT&quot;, &quot;ADMIN&quot;),
+<span class="fc" id="L22">    REPOSITORY_MANAGE(&quot;repository:manage&quot;, &quot;Manage repository memberships as an authorized owner&quot;, Effect.ADMINISTRATION,</span>
+            &quot;ARCHITECT&quot;, &quot;ADMIN&quot;),
+<span class="fc" id="L24">    BACKUP_READ(&quot;backup:read&quot;, &quot;Read or download an authorized backup&quot;, Effect.READ,</span>
+            &quot;READER&quot;, &quot;USER&quot;, &quot;ARCHITECT&quot;, &quot;ADMIN&quot;),
+<span class="fc" id="L26">    BACKUP_CREATE(&quot;backup:create&quot;, &quot;Create or cancel an authorized backup job&quot;, Effect.ADMINISTRATION,</span>
+            &quot;USER&quot;, &quot;ARCHITECT&quot;, &quot;ADMIN&quot;),
+<span class="fc" id="L28">    ADMIN_USERS(&quot;admin:users&quot;, &quot;Manage users, access and browser sessions&quot;, Effect.ADMINISTRATION, &quot;ADMIN&quot;),</span>
+<span class="fc" id="L29">    ADMIN_CONFIGURATION(&quot;admin:configuration&quot;, &quot;Manage technical configuration&quot;, Effect.ADMINISTRATION, &quot;ADMIN&quot;),</span>
+<span class="fc" id="L30">    ADMIN_DIAGNOSTICS(&quot;admin:diagnostics&quot;, &quot;Read administrative diagnostics&quot;, Effect.ADMINISTRATION, &quot;ADMIN&quot;);</span>
+
+<span class="fc" id="L32">    public enum Effect { READ, WRITE, DELETE, ANALYSIS, EXPORT, ADMINISTRATION }</span>
+
+    private final String scope;
+    private final String description;
+    private final Effect effect;
+    private final List&lt;String&gt; roles;
+
+<span class="fc" id="L39">    ApiPermission(String scope, String description, Effect effect, String... roles) {</span>
+<span class="fc" id="L40">        this.scope = scope;</span>
+<span class="fc" id="L41">        this.description = description;</span>
+<span class="fc" id="L42">        this.effect = effect;</span>
+<span class="fc" id="L43">        this.roles = List.of(roles);</span>
+<span class="fc" id="L44">    }</span>
+
+<span class="fc" id="L46">    public String scope() { return scope; }</span>
+<span class="nc" id="L47">    public String description() { return description; }</span>
+<span class="fc" id="L48">    public Effect effect() { return effect; }</span>
+<span class="fc" id="L49">    public List&lt;String&gt; roles() { return roles; }</span>
+
+    public static Map&lt;String, String&gt; scopes() {
+<span class="fc" id="L52">        var scopes = new LinkedHashMap&lt;String, String&gt;();</span>
+<span class="fc" id="L53">        Arrays.stream(values()).forEach(permission -&gt; scopes.put(permission.scope, permission.description));</span>
+<span class="fc" id="L54">        return scopes;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

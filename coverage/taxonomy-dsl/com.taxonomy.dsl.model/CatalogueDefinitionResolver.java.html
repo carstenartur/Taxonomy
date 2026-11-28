@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>CatalogueDefinitionResolver.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-dsl</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dsl.model</a> &gt; <span class="el_source">CatalogueDefinitionResolver.java</span></div><h1>CatalogueDefinitionResolver.java</h1><pre class="source lang-java linenums">package com.taxonomy.dsl.model;
+
+import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
+
+/** Resolve the immutable workbook definition that a canonical model pins. */
+@FunctionalInterface
+public interface CatalogueDefinitionResolver {
+    CatalogueDefinition forModel(CanonicalArchitectureModel model);
+
+    /** Parent codes for catalogue elements in this model, including intermediate catalogue entries. */
+    default java.util.Map&lt;String, String&gt; parentsForModel(CanonicalArchitectureModel model) {
+<span class="fc" id="L14">        return java.util.Map.of();</span>
+    }
+
+<span class="fc" id="L17">    record Node(String code, String root, String parentCode, String nameEn, String nameDe, Integer sortOrder, String uuid) {</span>
+        public Node(String code, String root, String parentCode, String nameEn, String nameDe, Integer sortOrder) {
+<span class="fc" id="L19">            this(code, root, parentCode, nameEn, nameDe, sortOrder, null);</span>
+<span class="fc" id="L20">        }</span>
+    }
+<span class="fc" id="L22">    record AssignmentTarget(boolean known, String catalogueRevision) {}</span>
+<span class="fc" id="L23">    record SourceText(String title, String originalTitle, String description, String descriptionLanguage) {}</span>
+
+    static Map&lt;String, String&gt; parentLinks(List&lt;Node&gt; nodes) {
+<span class="fc" id="L26">        var parents = new HashMap&lt;String, String&gt;();</span>
+<span class="fc bfc" id="L27" title="All 2 branches covered.">        for (var node : nodes) {</span>
+<span class="fc bfc" id="L28" title="All 2 branches covered.">            if (node.parentCode() != null) parents.put(node.code(), node.parentCode());</span>
+<span class="fc" id="L29">        }</span>
+<span class="fc" id="L30">        return parents;</span>
+    }
+
+    /** Editable catalogue nodes in parent-first order for the selected revision. */
+<span class="nc" id="L34">    default List&lt;Node&gt; catalogueNodes(CanonicalArchitectureModel model) { return List.of(); }</span>
+
+<span class="nc" id="L36">    default List&lt;Node&gt; analysisNodes(String revision) { return List.of(); }</span>
+
+    /** Read-only workbook content for elements with an identifiable catalogue source. */
+<span class="fc" id="L39">    default Map&lt;String, SourceText&gt; sourceTexts(CanonicalArchitectureModel model, String language) { return Map.of(); }</span>
+
+    /** Presentation-only titles resolved from source identity and the exact catalogue revision. */
+    default Map&lt;String, String&gt; translatedTitles(CanonicalArchitectureModel model, String language) {
+<span class="fc bfc" id="L43" title="All 2 branches covered.">        if (!&quot;de&quot;.equals(language)) return Map.of();</span>
+<span class="fc" id="L44">        Map&lt;String, String&gt; titles = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L45" title="All 2 branches covered.">        for (var element : model.getElements()) {</span>
+<span class="fc" id="L46">            String display = CatalogueReference.displayTitle(element, language);</span>
+<span class="pc bpc" id="L47" title="1 of 4 branches missed.">            if (display != null &amp;&amp; !display.equals(element.getTitle())) titles.put(element.getId(), display);</span>
+<span class="fc" id="L48">        }</span>
+<span class="fc" id="L49">        return titles;</span>
+    }
+
+    /** An editable code must belong to the actual catalogue selected by this model. */
+    default AssignmentTarget assignmentTarget(CanonicalArchitectureModel model, String code) {
+<span class="nc" id="L54">        var definition = forModel(model);</span>
+<span class="nc" id="L55">        return new AssignmentTarget(definition.rootCodes().contains(definition.rootFromId(code)), null);</span>
+    }
+
+    /** Reads the applied workbook for an exact historical generation. */
+    default CatalogueDefinition forRevision(String revision) {
+<span class="nc" id="L60">        throw new IllegalStateException(&quot;Historical catalogue definitions are unavailable&quot;);</span>
+    }
+
+<span class="fc" id="L63">    static CatalogueDefinitionResolver standard() { return model -&gt; CatalogueDefinition.standard(); }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

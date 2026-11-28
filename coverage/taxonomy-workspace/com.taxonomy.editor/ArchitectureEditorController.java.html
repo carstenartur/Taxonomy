@@ -1,0 +1,517 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchitectureEditorController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.editor</a> &gt; <span class="el_source">ArchitectureEditorController.java</span></div><h1>ArchitectureEditorController.java</h1><pre class="source lang-java linenums">package com.taxonomy.editor;
+
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Schema;
+
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
+
+import com.taxonomy.dsl.command.ArchitectureCommand.*;
+import com.taxonomy.dsl.command.ArchitectureDslCommands;
+import com.taxonomy.dsl.command.ArchitectureDslCommands.CommandProblem;
+import com.taxonomy.dsl.model.ArchitectureOrganization;
+import com.taxonomy.dsl.model.CatalogueDefinitionResolver;
+import com.taxonomy.dsl.model.CatalogueResponsibility;
+import com.taxonomy.editor.persistence.EditorJournal.RevisionConflict;
+import com.taxonomy.editor.ArchitectureCommandPort.*;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import org.eclipse.jgit.lib.ObjectId;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.*;
+
+import java.io.IOException;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.UUID;
+
+@Controller
+@Tag(name = &quot;Architecture editor&quot;)
+public class ArchitectureEditorController {
+    private final ArchitectureEditorService service;
+    private final ArchitectureEditorProjection projection;
+    private final WorkspaceResolver resolver;
+    private final Optional&lt;ArchitectureEditPermission&gt; editPermission;
+    private WorkspaceCollaborationService collaboration;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setCollaboration(WorkspaceCollaborationService collaboration) {
+<span class="fc" id="L46">        this.collaboration = collaboration;</span>
+<span class="fc" id="L47">    }</span>
+
+    public ArchitectureEditorController(ArchitectureEditorService service, ArchitectureEditorProjection projection,
+                                        WorkspaceResolver resolver) {
+<span class="fc" id="L51">        this(service, projection, resolver, Optional.empty());</span>
+<span class="fc" id="L52">    }</span>
+
+    @Autowired
+    public ArchitectureEditorController(ArchitectureEditorService service, ArchitectureEditorProjection projection,
+<span class="fc" id="L56">                                        WorkspaceResolver resolver, Optional&lt;ArchitectureEditPermission&gt; editPermission) {</span>
+<span class="fc" id="L57">        this.service = service;</span>
+<span class="fc" id="L58">        this.projection = projection;</span>
+<span class="fc" id="L59">        this.resolver = resolver;</span>
+<span class="fc" id="L60">        this.editPermission = editPermission;</span>
+<span class="fc" id="L61">    }</span>
+
+    @GetMapping(&quot;/architecture/editor&quot;)
+    public String page(@RequestParam org.springframework.util.MultiValueMap&lt;String,String&gt; coordinates) {
+<span class="fc" id="L65">        return ArchitectureWorkspaceRedirect.working(coordinates);</span>
+    }
+
+<span class="nc" id="L68">    public String page() { return page(new org.springframework.util.LinkedMultiValueMap&lt;&gt;()); }</span>
+
+    @GetMapping(&quot;/api/architecture/editor&quot;)
+    @ResponseBody
+    @io.swagger.v3.oas.annotations.Operation(summary = &quot;Read the scoped architecture editor state&quot;,
+            description = &quot;Reads the authorized repository, workspace and branch at the selected retained semantic revision or Git checkpoint. Supplied scope pins must match the selected context. Returns source and ETag headers; this read does not execute an edit.&quot;)
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Read the scoped architecture editor state response&quot;)
+    public ResponseEntity&lt;ArchitectureEditorProjection.View&gt; read(
+            @Parameter(description = &quot;Optional repository pin; must match the authenticated selected context&quot;)
+            @RequestParam(required = false) String repositoryId,
+            @Parameter(description = &quot;Optional workspace scope pin; must match the authenticated selected context&quot;)
+            @RequestParam(required = false) String workspaceScopeKey,
+            @Parameter(description = &quot;Optional branch pin; must match the authenticated selected context&quot;)
+            @RequestParam(required = false) String branch,
+            @Parameter(description = &quot;Exact retained Git checkpoint SHA; omit to read semantic workspace state&quot;)
+            @RequestParam(required = false) String commit,
+            @Parameter(description = &quot;Retained semantic revision to read; distinct from a Git checkpoint SHA&quot;)
+            @RequestParam(required = false) Long revision,
+            @Parameter(description = &quot;Server layout: stable (default) or reduce-crossings&quot;)
+            @RequestParam(required = false) String layout,
+            @Parameter(description = &quot;Optional retained workspace revision supplying the explicit optimized ordering&quot;)
+            @RequestParam(required = false) Long layoutRevision,
+            @Parameter(description = &quot;Optional canonical view identity in the selected retained revision or checkpoint; omit to read the full model&quot;)
+            @RequestParam(required = false) String viewId) throws IOException {
+<span class="fc" id="L92">        var strategy = com.taxonomy.diagram.DiagramLayout.Strategy.fromId(layout);</span>
+<span class="fc" id="L93">        RepositoryContext context = readContext(repositoryId, workspaceScopeKey, branch);</span>
+<span class="fc" id="L94">        var document = service.read(context, commit, revision);</span>
+<span class="fc" id="L95">        ArchitectureEditorProjection.requireLayoutRevision(document, strategy, layoutRevision);</span>
+<span class="fc bfc" id="L96" title="All 2 branches covered.">        var reference = layoutRevision == null ? null : service.read(context, null, layoutRevision);</span>
+<span class="fc" id="L97">        var result = projection.project(document, mayEdit(), strategy, reference, viewId);</span>
+<span class="fc bfc" id="L98" title="All 2 branches covered.">        if (collaboration != null) result = result.withCollaboration(collaboration.status(context));</span>
+<span class="fc" id="L99">        return documentResponse(document).body(result);</span>
+    }
+
+    public record SharingRequest(Context context, Boolean enabled) {
+<span class="fc" id="L103">        public SharingRequest {</span>
+<span class="pc bpc" id="L104" title="2 of 4 branches missed.">            if (context == null || enabled == null) throw new IllegalArgumentException(&quot;Context and an explicit sharing choice are required&quot;);</span>
+<span class="fc" id="L105">        }</span>
+    }
+
+    @PostMapping(&quot;/api/architecture/editor/collaboration&quot;)
+    @ResponseBody
+    @io.swagger.v3.oas.annotations.Operation(summary = &quot;Enable or disable shared editing of this working copy&quot;,
+            description = &quot;Only the working-copy owner may opt in. Active explicit source-repository contributors can then join the exact workspace link. Private workspaces remain the default; disabling sharing retains all accepted operations.&quot;)
+    public ResponseEntity&lt;WorkspaceCollaborationService.Status&gt; share(
+            @RequestBody SharingRequest request,
+            @Parameter(description = &quot;Required ETag of the exact semantic revision, in the form \&quot;workspace-revision-N\&quot;&quot;, required = true, schema = @Schema(type = &quot;string&quot;, pattern = &quot;\&quot;workspace-revision-[0-9]+\&quot;&quot;))
+            @RequestHeader(value = HttpHeaders.IF_MATCH, required = false) String ifMatch) throws IOException {
+<span class="fc" id="L116">        requireRevision(request.context(), ifMatch, null);</span>
+<span class="fc" id="L117">        return ResponseEntity.ok().header(HttpHeaders.CACHE_CONTROL, &quot;no-store&quot;)</span>
+<span class="fc" id="L118">                .body(collaboration.setEnabled(resolver.resolveCurrentRepositoryContext(), request.context(), request.enabled()));</span>
+    }
+
+    public ResponseEntity&lt;ArchitectureEditorProjection.View&gt; read(String repositoryId, String workspaceScopeKey,
+            String branch, String commit, Long revision, String layout, Long layoutRevision) throws IOException {
+<span class="fc" id="L123">        return read(repositoryId, workspaceScopeKey, branch, commit, revision, layout, layoutRevision, null);</span>
+    }
+
+    public ResponseEntity&lt;ArchitectureEditorProjection.View&gt; read(String repositoryId, String workspaceScopeKey,
+            String branch, String commit, Long revision) throws IOException {
+<span class="fc" id="L128">        return read(repositoryId, workspaceScopeKey, branch, commit, revision, null, null);</span>
+    }
+
+    public record CatalogueDirectory(Context context, boolean editable, List&lt;ArchitectureOrganization&gt; organizations,
+                                     List&lt;CatalogueResponsibility&gt; assignments, List&lt;CatalogueDefinitionResolver.Node&gt; catalogue) {
+<span class="fc" id="L133">        public CatalogueDirectory {</span>
+<span class="fc" id="L134">            organizations = List.copyOf(organizations);</span>
+<span class="fc" id="L135">            assignments = List.copyOf(assignments);</span>
+<span class="fc" id="L136">            catalogue = List.copyOf(catalogue);</span>
+<span class="fc" id="L137">        }</span>
+    }
+
+    @GetMapping(&quot;/api/architecture/editor/catalogue-responsibilities&quot;)
+    @ResponseBody
+    @io.swagger.v3.oas.annotations.Operation(summary = &quot;Read organizational assignments on catalogue elements&quot;,
+            description = &quot;Returns catalogue elements, organizations and their assignments for the authorized workspace state, retained semantic revision or Git checkpoint.&quot;)
+    public ResponseEntity&lt;CatalogueDirectory&gt; catalogueDirectory(
+            @Parameter(description = &quot;Optional repository pin that must match the authenticated context.&quot;)
+            @RequestParam(required = false) String repositoryId,
+            @Parameter(description = &quot;Optional workspace scope pin that must match the authenticated context.&quot;)
+            @RequestParam(required = false) String workspaceScopeKey,
+            @Parameter(description = &quot;Optional branch pin that must match the authenticated context.&quot;)
+            @RequestParam(required = false) String branch,
+            @Parameter(description = &quot;Exact retained Git checkpoint SHA. Omit to read semantic workspace state.&quot;)
+            @RequestParam(required = false) String commit,
+            @Parameter(description = &quot;Retained semantic workspace revision number.&quot;)
+            @RequestParam(required = false) Long revision) throws IOException {
+<span class="fc" id="L155">        var context = readContext(repositoryId, workspaceScopeKey, branch);</span>
+<span class="fc" id="L156">        var document = service.read(context, commit, revision);</span>
+<span class="fc" id="L157">        var model = new ArchitectureDslCommands().model(document.dsl());</span>
+<span class="pc bpc" id="L158" title="1 of 4 branches missed.">        return documentResponse(document).body(new CatalogueDirectory(document.context(),</span>
+<span class="pc bpc" id="L159" title="1 of 2 branches missed.">                commit == null &amp;&amp; revision == null &amp;&amp; ArchitectureEditorProjection.editable(document, mayEdit()), model.getOrganizations(),</span>
+<span class="fc" id="L160">                model.getCatalogueResponsibilities(), service.catalogueNodes(model)));</span>
+    }
+
+    @PostMapping(&quot;/api/architecture/editor/preview&quot;)
+    @ResponseBody
+    @io.swagger.v3.oas.annotations.Operation(summary = &quot;Preview a semantic editor command&quot;,
+            description = &quot;Validates and previews the bounded typed command in the selected repository without applying the edit. Requires the exact semantic revision If-Match; If-None-Match is not a substitute.&quot;)
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Preview a semantic editor command response&quot;)
+    @ApiResponse(responseCode = &quot;400&quot;, description = &quot;Invalid command or mismatched HTTP revision format&quot;)
+    @ApiResponse(responseCode = &quot;412&quot;, description = &quot;Semantic revision moved&quot;)
+    @ApiResponse(responseCode = &quot;428&quot;, description = &quot;Required semantic revision If-Match is missing&quot;)
+    @ApiResponse(responseCode = &quot;409&quot;, description = &quot;Command, checkpoint or dependencies conflict&quot;)
+    @ApiResponse(responseCode = &quot;422&quot;, description = &quot;Semantic command validation failed&quot;)
+    @ApiResponse(responseCode = &quot;503&quot;, description = &quot;Git storage unavailable&quot;)
+    public ResponseEntity&lt;Preview&gt; preview(@RequestBody WireCommand body,
+            @Parameter(description = &quot;Required ETag of the exact semantic revision, in the form \&quot;workspace-revision-N\&quot;&quot;, required = true, schema = @Schema(type = &quot;string&quot;, pattern = &quot;\&quot;workspace-revision-[0-9]+\&quot;&quot;))
+            @RequestHeader(value = HttpHeaders.IF_MATCH, required = false) String ifMatch,
+            @Parameter(description = &quot;Not supported for semantic editor commands; supplying this header is rejected&quot;)
+            @RequestHeader(value = HttpHeaders.IF_NONE_MATCH, required = false) String ifNoneMatch) throws IOException {
+<span class="fc" id="L179">        Command command = command(body, ifMatch, ifNoneMatch);</span>
+<span class="fc" id="L180">        Preview result = service.preview(resolver.resolveCurrentRepositoryContext(), command);</span>
+<span class="fc" id="L181">        return response(HttpStatus.OK, result.context()).body(result);</span>
+    }
+
+    @PostMapping(&quot;/api/architecture/editor/commands&quot;)
+    @ResponseBody
+    @io.swagger.v3.oas.annotations.Operation(summary = &quot;Execute an idempotent semantic editor command&quot;,
+            description = &quot;Executes the bounded command using its command metadata and exact workspace revision. Returns 200 when the projection is ready or 202 when the command is accepted but projection work remains. Undo/redo use an explicit target operation, not a Git reset.&quot;)
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Execute an idempotent semantic editor command response&quot;)
+    @ApiResponse(responseCode = &quot;400&quot;, description = &quot;Invalid command or mismatched HTTP revision format&quot;)
+    @ApiResponse(responseCode = &quot;412&quot;, description = &quot;Semantic revision moved&quot;)
+    @ApiResponse(responseCode = &quot;428&quot;, description = &quot;Required semantic revision If-Match is missing&quot;)
+    @ApiResponse(responseCode = &quot;409&quot;, description = &quot;Command, checkpoint or dependencies conflict&quot;)
+    @ApiResponse(responseCode = &quot;422&quot;, description = &quot;Semantic command validation failed&quot;)
+    @ApiResponse(responseCode = &quot;503&quot;, description = &quot;Git storage unavailable&quot;)
+    @ApiResponse(responseCode = &quot;202&quot;, description = &quot;Durable command accepted; projection is not yet ready&quot;)
+    public ResponseEntity&lt;Accepted&gt; execute(@RequestBody WireCommand body,
+            @Parameter(description = &quot;Required ETag of the exact semantic revision, in the form \&quot;workspace-revision-N\&quot;&quot;, required = true, schema = @Schema(type = &quot;string&quot;, pattern = &quot;\&quot;workspace-revision-[0-9]+\&quot;&quot;))
+            @RequestHeader(value = HttpHeaders.IF_MATCH, required = false) String ifMatch,
+            @Parameter(description = &quot;Not supported for semantic editor commands; supplying this header is rejected&quot;)
+            @RequestHeader(value = HttpHeaders.IF_NONE_MATCH, required = false) String ifNoneMatch) throws IOException {
+<span class="fc" id="L201">        Accepted result = service.execute(resolver.resolveCurrentRepositoryContext(), command(body, ifMatch, ifNoneMatch));</span>
+<span class="pc bpc" id="L202" title="1 of 2 branches missed.">        return response(&quot;READY&quot;.equals(result.projectionState()) ? HttpStatus.OK : HttpStatus.ACCEPTED,</span>
+<span class="fc" id="L203">                result.context()).body(result);</span>
+    }
+
+    @PostMapping(&quot;/api/architecture/editor/change-sets/preview&quot;)
+    @ResponseBody
+    @io.swagger.v3.oas.annotations.Operation(summary = &quot;Review a Git-bound architecture change set&quot;,
+            description = &quot;Validates an element, a relationship and a requirement allocation against the exact Git checkpoint and semantic revision. Returns the before and after of each changed block without editing the workspace.&quot;)
+    public ResponseEntity&lt;ArchitectureChangeSet.Preview&gt; previewChangeSet(@RequestBody ArchitectureChangeSet.Request request,
+            @Parameter(description = &quot;Required exact semantic revision ETag&quot;, required = true)
+            @RequestHeader(value = HttpHeaders.IF_MATCH, required = false) String ifMatch,
+            @Parameter(description = &quot;Not supported for architecture change sets; supplying this header is rejected&quot;)
+            @RequestHeader(value = HttpHeaders.IF_NONE_MATCH, required = false) String ifNoneMatch) throws IOException {
+<span class="fc" id="L215">        requireRevision(request.context(), ifMatch, ifNoneMatch);</span>
+<span class="fc" id="L216">        var result = service.previewChangeSet(resolver.resolveCurrentRepositoryContextForRead(), request);</span>
+<span class="fc" id="L217">        return response(HttpStatus.OK, result.context()).body(result);</span>
+    }
+
+    @PostMapping(&quot;/api/architecture/editor/change-sets/accept&quot;)
+    @ResponseBody
+    @io.swagger.v3.oas.annotations.Operation(summary = &quot;Accept the reviewed architecture change set as one checkpoint&quot;,
+            description = &quot;Requires the exact reviewed payload, preview fingerprint, semantic revision and target Git HEAD. Publishes a single audit checkpoint, or returns a conflict when the target branch has moved.&quot;)
+    public ResponseEntity&lt;CheckpointAccepted&gt; acceptChangeSet(@RequestBody ArchitectureChangeSet.Request request,
+            @Parameter(description = &quot;Required exact semantic revision ETag&quot;, required = true)
+            @RequestHeader(value = HttpHeaders.IF_MATCH, required = false) String ifMatch,
+            @Parameter(description = &quot;Not supported for architecture change sets; supplying this header is rejected&quot;)
+            @RequestHeader(value = HttpHeaders.IF_NONE_MATCH, required = false) String ifNoneMatch) throws IOException {
+<span class="fc" id="L229">        requireRevision(request.context(), ifMatch, ifNoneMatch);</span>
+<span class="fc" id="L230">        var result = service.acceptChangeSet(resolver.resolveCurrentRepositoryContext(), request);</span>
+<span class="fc" id="L231">        return response(HttpStatus.OK, result.context()).body(result);</span>
+    }
+
+    @PostMapping(&quot;/api/architecture/editor/rebuild&quot;)
+    @ResponseBody
+    @io.swagger.v3.oas.annotations.Operation(summary = &quot;Rebuild the editor projection&quot;,
+            description = &quot;Rebuilds the projection of the exact authorized semantic workspace revision. If-Match must equal the supplied context's workspace-revision ETag; this does not create a semantic edit.&quot;)
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Rebuild the editor projection response&quot;)
+    @ApiResponse(responseCode = &quot;400&quot;, description = &quot;Invalid command or mismatched HTTP revision format&quot;)
+    @ApiResponse(responseCode = &quot;412&quot;, description = &quot;Semantic revision moved&quot;)
+    @ApiResponse(responseCode = &quot;428&quot;, description = &quot;Required semantic revision If-Match is missing&quot;)
+    @ApiResponse(responseCode = &quot;409&quot;, description = &quot;Command, checkpoint or dependencies conflict&quot;)
+    @ApiResponse(responseCode = &quot;422&quot;, description = &quot;Semantic command validation failed&quot;)
+    @ApiResponse(responseCode = &quot;503&quot;, description = &quot;Git storage unavailable&quot;)
+    public ResponseEntity&lt;Map&lt;String, String&gt;&gt; rebuild(@RequestBody Context context,
+            @Parameter(description = &quot;Required ETag of the exact semantic revision, in the form \&quot;workspace-revision-N\&quot;&quot;, required = true, schema = @Schema(type = &quot;string&quot;, pattern = &quot;\&quot;workspace-revision-[0-9]+\&quot;&quot;))
+            @RequestHeader(value = HttpHeaders.IF_MATCH, required = false) String ifMatch) throws IOException {
+<span class="nc" id="L248">        requireRevision(context, ifMatch, null);</span>
+<span class="nc" id="L249">        return response(HttpStatus.OK, context).body(Map.of(&quot;projectionState&quot;,</span>
+<span class="nc" id="L250">                service.rebuild(resolver.resolveCurrentRepositoryContext(), context)));</span>
+    }
+
+    /** A bounded wire union is converted immediately to typed application/domain commands. No full graph payload exists. */
+    public record WireCommand(Context context, Metadata metadata, String kind, String id, String type,
+                              Map&lt;String, String&gt; properties, String sourceId, String relationType, String targetId,
+                              String status, String parentId, String targetOperationId,
+                              List&lt;PackagePlacement&gt; placements, java.util.Set&lt;String&gt; completeParentScopes,
+                              PlanningEdit planning, List&lt;RelationCreation&gt; relations) {
+        public WireCommand(Context context, Metadata metadata, String kind, String id, String type,
+                           Map&lt;String, String&gt; properties, String sourceId, String relationType, String targetId,
+                           String status, String parentId, String targetOperationId,
+                           List&lt;PackagePlacement&gt; placements, java.util.Set&lt;String&gt; completeParentScopes,
+                           PlanningEdit planning) {
+<span class="fc" id="L264">            this(context, metadata, kind, id, type, properties, sourceId, relationType, targetId,</span>
+<span class="fc" id="L265">                    status, parentId, targetOperationId, placements, completeParentScopes, planning, List.of());</span>
+<span class="fc" id="L266">        }</span>
+        public WireCommand(Context context, Metadata metadata, String kind, String id, String type,
+                           Map&lt;String, String&gt; properties, String sourceId, String relationType, String targetId,
+                           String status, String parentId, String targetOperationId,
+                           List&lt;PackagePlacement&gt; placements, java.util.Set&lt;String&gt; completeParentScopes) {
+<span class="fc" id="L271">            this(context, metadata, kind, id, type, properties, sourceId, relationType, targetId,</span>
+                    status, parentId, targetOperationId, placements, completeParentScopes, null);
+<span class="fc" id="L273">        }</span>
+        public WireCommand(Context context, Metadata metadata, String kind, String id, String type,
+                           Map&lt;String, String&gt; properties, String sourceId, String relationType, String targetId,
+                           String status, String parentId, String targetOperationId) {
+<span class="fc" id="L277">            this(context, metadata, kind, id, type, properties, sourceId, relationType, targetId,</span>
+<span class="fc" id="L278">                    status, parentId, targetOperationId, List.of(), java.util.Set.of());</span>
+<span class="fc" id="L279">        }</span>
+<span class="fc" id="L280">        public WireCommand {</span>
+<span class="pc bpc" id="L281" title="2 of 6 branches missed.">            if (context == null || metadata == null || kind == null) throw new IllegalArgumentException(&quot;Context, metadata and kind are required&quot;);</span>
+<span class="pc bpc" id="L282" title="1 of 4 branches missed.">            if (properties != null &amp;&amp; properties.values().stream().anyMatch(Objects::isNull)) {</span>
+<span class="nc" id="L283">                throw new IllegalArgumentException(&quot;Property values must be strings&quot;);</span>
+            }
+<span class="fc bfc" id="L285" title="All 2 branches covered.">            properties = properties == null ? Map.of() : Map.copyOf(properties);</span>
+<span class="fc bfc" id="L286" title="All 2 branches covered.">            placements = placements == null ? List.of() : List.copyOf(placements);</span>
+<span class="fc bfc" id="L287" title="All 2 branches covered.">            completeParentScopes = completeParentScopes == null ? java.util.Set.of() : java.util.Set.copyOf(completeParentScopes);</span>
+<span class="pc bpc" id="L288" title="2 of 6 branches missed.">            if (relations != null &amp;&amp; (relations.size() &gt; 32 || relations.stream().anyMatch(Objects::isNull))) {</span>
+<span class="nc" id="L289">                throw new IllegalArgumentException(&quot;Relationships must contain up to 32 entries&quot;);</span>
+            }
+<span class="fc bfc" id="L291" title="All 2 branches covered.">            relations = relations == null ? List.of() : List.copyOf(relations);</span>
+<span class="fc" id="L292">        }</span>
+    }
+
+<span class="nc" id="L295">    public record PlanningEdit(String entryId, String profile, String version, Map&lt;String, String&gt; values) {}</span>
+<span class="fc" id="L296">    public record RelationCreation(String sourceId, String relationType, String targetId, Map&lt;String, String&gt; properties) {}</span>
+
+    private static PlanningEdit planning(WireCommand body) {
+<span class="nc bnc" id="L299" title="All 2 branches missed.">        if (body.planning() == null) throw new IllegalArgumentException(&quot;Planning edit is required&quot;);</span>
+<span class="nc" id="L300">        return body.planning();</span>
+    }
+
+    private static Command command(WireCommand body, String ifMatch, String ifNoneMatch) {
+<span class="fc" id="L304">        requireRevision(body.context(), ifMatch, ifNoneMatch);</span>
+<span class="pc bpc" id="L305" title="14 of 25 branches missed.">        Operation operation = switch (body.kind()) {</span>
+<span class="nc" id="L306">            case &quot;SET_ARCHITECTURE_BRIEF&quot; -&gt; new SemanticCommand(new SetArchitectureBrief(body.properties()));</span>
+<span class="nc" id="L307">            case &quot;SET_ARCHITECTURE_REFERENCE&quot; -&gt; new SemanticCommand(new SetArchitectureReference(body.id(), body.properties()));</span>
+<span class="nc" id="L308">            case &quot;DELETE_ARCHITECTURE_REFERENCE&quot; -&gt; new SemanticCommand(new DeleteArchitectureReference(body.id()));</span>
+            case &quot;SET_PLANNING&quot; -&gt; {
+<span class="nc" id="L310">                PlanningEdit p = planning(body);</span>
+<span class="nc" id="L311">                yield new SemanticCommand(new SetRequirementPlanning(body.id(),</span>
+<span class="nc" id="L312">                        new com.taxonomy.dsl.planning.PlanningEntry(p.entryId(), p.profile(), p.version(), &quot;MANUAL&quot;, p.values())));</span>
+            }
+<span class="nc" id="L314">            case &quot;DELETE_PLANNING&quot; -&gt; new SemanticCommand(new DeleteRequirementPlanning(body.id(), planning(body).entryId()));</span>
+<span class="fc" id="L315">            case &quot;CREATE_PACKAGE&quot; -&gt; new SemanticCommand(new CreateArchitecturePackage(&quot;pkg-&quot; + body.metadata().commandId(), body.properties()));</span>
+<span class="fc" id="L316">            case &quot;UPDATE_PACKAGE&quot; -&gt; new SemanticCommand(new UpdateArchitecturePackage(body.id(), body.properties()));</span>
+<span class="fc" id="L317">            case &quot;UPSERT_ORGANIZATION&quot; -&gt; new SemanticCommand(new UpsertOrganization(body.id(), body.properties()));</span>
+<span class="fc" id="L318">            case &quot;DELETE_ORGANIZATION&quot; -&gt; new SemanticCommand(new DeleteOrganization(body.id()));</span>
+<span class="fc" id="L319">            case &quot;SET_CATALOGUE_RESPONSIBILITY&quot; -&gt; new SemanticCommand(</span>
+<span class="fc" id="L320">                    new SetCatalogueResponsibility(body.id(), body.properties().get(CatalogueResponsibility.ORGANIZATION)));</span>
+<span class="nc" id="L321">            case &quot;DELETE_PACKAGE&quot; -&gt; new SemanticCommand(new DeleteArchitecturePackage(body.id()));</span>
+<span class="fc" id="L322">            case &quot;SET_PACKAGE_PLACEMENTS&quot; -&gt; new SemanticCommand(new SetArchitecturePackagePlacements(body.placements(), body.completeParentScopes()));</span>
+<span class="nc" id="L323">            case &quot;UPSERT_REQUIREMENT_MAPPING&quot; -&gt; new SemanticCommand(new UpsertRequirementMapping(body.sourceId(), body.targetId(), body.metadata().rationale(), body.properties()));</span>
+<span class="nc" id="L324">            case &quot;DELETE_REQUIREMENT_MAPPING&quot; -&gt; new SemanticCommand(new DeleteRequirementMapping(body.sourceId(), body.targetId()));</span>
+<span class="fc" id="L325">            case &quot;CREATE_ELEMENT&quot; -&gt; new SemanticCommand(new CreateArchitectureElement(&quot;arch-&quot; + body.metadata().commandId(), body.type(), body.properties()));</span>
+<span class="nc" id="L326">            case &quot;UPDATE_ELEMENT&quot; -&gt; new SemanticCommand(new UpdateArchitectureElement(body.id(), body.type(), body.properties()));</span>
+<span class="nc" id="L327">            case &quot;DELETE_ELEMENT&quot; -&gt; new SemanticCommand(new DeleteArchitectureElement(body.id()));</span>
+<span class="fc" id="L328">            case &quot;CREATE_RELATION&quot; -&gt; new SemanticCommand(new CreateArchitectureRelation(relation(body), body.status(), body.properties()));</span>
+<span class="fc" id="L329">            case &quot;CREATE_RELATIONS&quot; -&gt; new SemanticCommand(new CreateArchitectureRelations(body.relations().stream()</span>
+<span class="fc" id="L330">                    .map(relation -&gt; new CreateArchitectureRelation(</span>
+<span class="fc" id="L331">                            relation(relation.sourceId(), relation.relationType(), relation.targetId()), &quot;accepted&quot;,</span>
+<span class="pc bpc" id="L332" title="1 of 2 branches missed.">                            relation.properties() == null ? Map.of() : relation.properties())).toList()));</span>
+<span class="nc" id="L333">            case &quot;UPDATE_RELATION&quot; -&gt; new SemanticCommand(new UpdateArchitectureRelation(relation(body), body.status()));</span>
+<span class="nc" id="L334">            case &quot;DELETE_RELATION&quot; -&gt; new SemanticCommand(new DeleteArchitectureRelation(relation(body)));</span>
+<span class="nc" id="L335">            case &quot;MOVE_ELEMENT&quot; -&gt; new SemanticCommand(new MoveOrGroupElement(body.id(), body.parentId()));</span>
+<span class="fc" id="L336">            case &quot;UNDO&quot; -&gt; new UndoArchitectureCommand(requireTarget(body.targetOperationId()));</span>
+<span class="fc" id="L337">            case &quot;REDO&quot; -&gt; new RedoArchitectureCommand(requireTarget(body.targetOperationId()));</span>
+<span class="nc" id="L338">            default -&gt; throw new IllegalArgumentException(&quot;Unsupported semantic command&quot;);</span>
+        };
+<span class="fc" id="L340">        return new Command(body.context(), body.metadata(), operation);</span>
+    }
+
+    private static RelationKey relation(WireCommand body) {
+<span class="fc" id="L344">        return relation(body.sourceId(), body.relationType(), body.targetId());</span>
+    }
+
+    private static RelationKey relation(String sourceId, String relationType, String targetId) {
+<span class="pc bpc" id="L348" title="3 of 6 branches missed.">        if (sourceId == null || relationType == null || targetId == null) throw new IllegalArgumentException(&quot;Relation identity is required&quot;);</span>
+<span class="fc" id="L349">        return new RelationKey(sourceId, relationType, targetId);</span>
+    }
+
+    private static UUID requireTarget(String target) {
+<span class="pc bpc" id="L353" title="1 of 2 branches missed.">        if (target == null) throw new IllegalArgumentException(&quot;Target operation ID is required&quot;);</span>
+<span class="fc" id="L354">        return UUID.fromString(target);</span>
+    }
+
+    private RepositoryContext readContext(String repositoryId, String workspaceScopeKey, String branch) {
+<span class="fc" id="L358">        RepositoryContext context = resolver.resolveCurrentRepositoryContext();</span>
+<span class="fc" id="L359">        Context current = Context.of(context, null);</span>
+<span class="fc bfc" id="L360" title="All 6 branches covered.">        if ((repositoryId != null &amp;&amp; !repositoryId.equals(current.repositoryId()))</span>
+<span class="pc bpc" id="L361" title="1 of 4 branches missed.">                || (workspaceScopeKey != null &amp;&amp; !workspaceScopeKey.equals(current.workspaceScopeKey()))</span>
+<span class="pc bpc" id="L362" title="1 of 2 branches missed.">                || (branch != null &amp;&amp; !branch.equals(current.branch()))) {</span>
+<span class="fc" id="L363">            throw new CommandProblem(&quot;NOT_FOUND&quot;, &quot;context&quot;, &quot;This exact context is not selected or accessible&quot;, List.of());</span>
+        }
+<span class="fc" id="L365">        return context;</span>
+    }
+
+    private boolean mayEdit() {
+<span class="fc" id="L369">        return ArchitectureEditPermission.allowed(SecurityContextHolder.getContext().getAuthentication(), editPermission);</span>
+    }
+
+    private static ResponseEntity.BodyBuilder documentResponse(ArchitectureEditorService.Document document) {
+<span class="fc bfc" id="L373" title="All 2 branches covered.">        if (&quot;GIT_CHECKPOINT&quot;.equals(document.source())) {</span>
+<span class="fc" id="L374">            return ResponseEntity.ok().header(HttpHeaders.CACHE_CONTROL, &quot;no-store&quot;)</span>
+<span class="fc" id="L375">                    .eTag(commitEtag(document.context().commit()))</span>
+<span class="fc" id="L376">                    .header(&quot;X-Taxonomy-Source&quot;, document.source());</span>
+        }
+<span class="fc" id="L378">        return response(HttpStatus.OK, document.context()).header(&quot;X-Taxonomy-Source&quot;, document.source());</span>
+    }
+
+    @PostMapping(&quot;/api/architecture/editor/versions/recover&quot;)
+    @ResponseBody
+    @io.swagger.v3.oas.annotations.Operation(summary = &quot;Reconcile editor version state&quot;,
+            description = &quot;Explicitly reconciles the editor's version state with its retained journal/checkpoint in the authorized repository. Returns 204 without executing an arbitrary new semantic command.&quot;)
+    @ApiResponse(responseCode = &quot;204&quot;, description = &quot;Reconcile editor version state response&quot;)
+    public ResponseEntity&lt;Void&gt; recoverVersion() throws IOException {
+<span class="nc" id="L387">        service.reconcileVersion(resolver.resolveCurrentRepositoryContext());</span>
+<span class="nc" id="L388">        return ResponseEntity.noContent().build();</span>
+    }
+
+    @PostMapping(&quot;/api/architecture/editor/versions/reconciliation/preview&quot;)
+    @ResponseBody
+    @io.swagger.v3.oas.annotations.Operation(summary = &quot;Preview explicit reconciliation of local edits and a moved Git version&quot;,
+            description = &quot;Reads both original sources at the exact workspace revision. Shared block or document annotation changes require LOCAL/INCOMING choices and a fresh preview of those choices. Does not write the journal or Git.&quot;)
+    public ResponseEntity&lt;ArchitectureReconciliationProjection.Preview&gt; previewReconciliation(
+            @RequestBody ArchitectureEditorService.ReconciliationRequest request,
+            @Parameter(description = &quot;Required ETag of the request context's exact semantic revision, in the form \&quot;workspace-revision-N\&quot;; a missing header returns 428&quot;, required = true, schema = @Schema(type = &quot;string&quot;, pattern = &quot;\&quot;workspace-revision-[0-9]+\&quot;&quot;))
+            @RequestHeader(value = HttpHeaders.IF_MATCH, required = false) String ifMatch,
+            @Parameter(description = &quot;Not supported for reconciliation; supplying this header is rejected and cannot replace If-Match&quot;)
+            @RequestHeader(value = HttpHeaders.IF_NONE_MATCH, required = false) String ifNoneMatch) throws IOException {
+<span class="nc" id="L401">        requireRevision(request.context(), ifMatch, ifNoneMatch);</span>
+<span class="nc" id="L402">        var result = service.previewReconciliation(resolver.resolveCurrentRepositoryContext(), request);</span>
+<span class="nc" id="L403">        return response(HttpStatus.OK, result.context()).body(projection.compare(result));</span>
+    }
+
+    @PostMapping(&quot;/api/architecture/editor/versions/reconciliation/accept&quot;)
+    @ResponseBody
+    @io.swagger.v3.oas.annotations.Operation(summary = &quot;Accept the exact previewed reconciliation and checkpoint it&quot;,
+            description = &quot;Binds the source choices to the repository, workspace, revision, Git HEAD and preview fingerprint. Appends one durable reconciliation and checkpoints through the existing retryable publication boundary. No client-supplied replacement document is accepted.&quot;)
+    public ResponseEntity&lt;CheckpointAccepted&gt; acceptReconciliation(
+            @RequestBody ArchitectureEditorService.ReconciliationRequest request,
+            @Parameter(description = &quot;Required ETag of the request context's exact semantic revision, in the form \&quot;workspace-revision-N\&quot;; a missing header returns 428&quot;, required = true, schema = @Schema(type = &quot;string&quot;, pattern = &quot;\&quot;workspace-revision-[0-9]+\&quot;&quot;))
+            @RequestHeader(value = HttpHeaders.IF_MATCH, required = false) String ifMatch,
+            @Parameter(description = &quot;Not supported for reconciliation; supplying this header is rejected and cannot replace If-Match&quot;)
+            @RequestHeader(value = HttpHeaders.IF_NONE_MATCH, required = false) String ifNoneMatch) throws IOException {
+<span class="nc" id="L416">        requireRevision(request.context(), ifMatch, ifNoneMatch);</span>
+<span class="nc" id="L417">        var result = service.acceptReconciliation(resolver.resolveCurrentRepositoryContext(), request);</span>
+<span class="nc" id="L418">        return response(HttpStatus.OK, result.context()).body(result);</span>
+    }
+
+<span class="fc" id="L421">    private static String etag(Context context) { return &quot;\&quot;workspace-revision-&quot; + context.revision() + &quot;\&quot;&quot;; }</span>
+
+    private static String commitEtag(String commitId) {
+<span class="fc" id="L424">        return '&quot;' + ObjectId.fromString(commitId).name() + '&quot;';</span>
+    }
+
+    private static void requireRevision(Context context, String ifMatch, String ifNoneMatch) {
+<span class="fc bfc" id="L428" title="All 2 branches covered.">        if (ifMatch == null) {</span>
+<span class="fc" id="L429">            throw new PreconditionRequiredException(&quot;An exact semantic revision If-Match header is required&quot;);</span>
+        }
+<span class="pc bpc" id="L431" title="1 of 4 branches missed.">        if (ifNoneMatch != null || !etag(context).equals(ifMatch)) {</span>
+<span class="fc" id="L432">            throw new IllegalArgumentException(&quot;HTTP precondition must match the semantic workspace revision&quot;);</span>
+        }
+<span class="fc" id="L434">    }</span>
+
+    static final class PreconditionRequiredException extends IllegalArgumentException {
+        PreconditionRequiredException(String message) {
+<span class="fc" id="L438">            super(message);</span>
+<span class="fc" id="L439">        }</span>
+    }
+
+    private static ResponseEntity.BodyBuilder response(HttpStatus status, Context context) {
+<span class="fc" id="L443">        return ResponseEntity.status(status).header(HttpHeaders.CACHE_CONTROL, &quot;no-store&quot;)</span>
+<span class="fc" id="L444">                .header(HttpHeaders.ETAG, etag(context))</span>
+<span class="fc" id="L445">                .header(&quot;X-Taxonomy-Semantic-Revision&quot;, Long.toString(context.revision()));</span>
+    }
+
+    @PostMapping(&quot;/api/architecture/editor/checkpoints&quot;)
+    @ResponseBody
+    @io.swagger.v3.oas.annotations.Operation(summary = &quot;Create an editor Git checkpoint&quot;,
+            description = &quot;Creates a Git checkpoint for the explicit semantic revision after checking its If-Match ETag. Semantic operation history remains separate from Git checkpoints; returns the checkpoint receipt.&quot;)
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Create an editor Git checkpoint response&quot;)
+    @ApiResponse(responseCode = &quot;400&quot;, description = &quot;Invalid command or mismatched HTTP revision format&quot;)
+    @ApiResponse(responseCode = &quot;412&quot;, description = &quot;Semantic revision moved&quot;)
+    @ApiResponse(responseCode = &quot;428&quot;, description = &quot;Required semantic revision If-Match is missing&quot;)
+    @ApiResponse(responseCode = &quot;409&quot;, description = &quot;Command, checkpoint or dependencies conflict&quot;)
+    @ApiResponse(responseCode = &quot;422&quot;, description = &quot;Semantic command validation failed&quot;)
+    @ApiResponse(responseCode = &quot;503&quot;, description = &quot;Git storage unavailable&quot;)
+    public ResponseEntity&lt;CheckpointAccepted&gt; checkpoint(@RequestBody CreateCheckpointCommand command,
+            @Parameter(description = &quot;Required ETag of the exact semantic revision, in the form \&quot;workspace-revision-N\&quot;&quot;, required = true, schema = @Schema(type = &quot;string&quot;, pattern = &quot;\&quot;workspace-revision-[0-9]+\&quot;&quot;))
+            @RequestHeader(value = HttpHeaders.IF_MATCH, required = false) String ifMatch) throws IOException {
+<span class="fc" id="L462">        requireRevision(command.context(), ifMatch, null);</span>
+<span class="fc" id="L463">        var result = service.checkpoint(resolver.resolveCurrentRepositoryContext(), command);</span>
+<span class="fc" id="L464">        return response(HttpStatus.OK, result.context()).body(result);</span>
+    }
+
+    @PostMapping(&quot;/api/architecture/editor/checkpoints/resume&quot;)
+    @ResponseBody
+    @io.swagger.v3.oas.annotations.Operation(summary = &quot;Resume an interrupted editor checkpoint&quot;,
+            description = &quot;Resumes the retained checkpoint operation in the authorized repository rather than creating a new semantic command. Returns the checkpoint receipt and the current semantic revision headers.&quot;)
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Resume an interrupted editor checkpoint response&quot;)
+    public ResponseEntity&lt;CheckpointAccepted&gt; resumeCheckpoint() throws IOException {
+<span class="nc" id="L473">        var result = service.resumeCheckpoint(resolver.resolveCurrentRepositoryContext());</span>
+<span class="nc" id="L474">        return response(HttpStatus.OK, result.context()).body(result);</span>
+    }
+
+    @ExceptionHandler(RevisionConflict.class)
+    @ResponseBody
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; conflict(RevisionConflict error) {
+<span class="fc" id="L480">        return ResponseEntity.status(HttpStatus.PRECONDITION_FAILED).body(Map.of(</span>
+                &quot;code&quot;, &quot;REVISION_MOVED&quot;, &quot;detail&quot;, &quot;The workspace changed. Refresh, compare and preview again.&quot;,
+<span class="fc" id="L482">                &quot;expectedRevision&quot;, error.expected(), &quot;currentRevision&quot;, error.actual()));</span>
+    }
+
+    @ExceptionHandler(PreconditionRequiredException.class)
+    @ResponseBody
+    public ResponseEntity&lt;Map&lt;String, String&gt;&gt; missingPrecondition(Exception error) {
+<span class="fc" id="L488">        return ResponseEntity.status(428).body(Map.of(&quot;code&quot;, &quot;PRECONDITION_REQUIRED&quot;, &quot;detail&quot;, error.getMessage()));</span>
+    }
+
+    @ExceptionHandler(CommandProblem.class)
+    @ResponseBody
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; problem(CommandProblem error) {
+<span class="pc bpc" id="L494" title="3 of 5 branches missed.">        int status = switch (error.code()) {</span>
+<span class="fc" id="L495">            case &quot;NOT_FOUND&quot; -&gt; 404;</span>
+<span class="nc" id="L496">            case &quot;READ_ONLY&quot; -&gt; 403;</span>
+<span class="nc" id="L497">            case &quot;PORTFOLIO_UNAVAILABLE&quot; -&gt; 503;</span>
+<span class="fc" id="L498">            case &quot;CONTEXT_CHANGED&quot;, &quot;UNDO_CONFLICT&quot;, &quot;ALREADY_INVERTED&quot;, &quot;COMMAND_ID_REUSED&quot;, &quot;DEPENDENCIES_EXIST&quot;, &quot;CHECKPOINT_PENDING&quot;, &quot;CHECKPOINT_CONFLICT&quot;, &quot;CHECKPOINT_REQUIRED&quot;, &quot;VERSION_CHANGED&quot;, &quot;RECONCILIATION_CONFLICT&quot;, &quot;PREVIEW_CHANGED&quot;, &quot;NO_RECONCILIATION&quot;, &quot;PORTFOLIO_RECONCILIATION_REQUIRED&quot; -&gt; 409;</span>
+<span class="nc" id="L499">            default -&gt; 422;</span>
+        };
+<span class="fc" id="L501">        return ResponseEntity.status(status).body(Map.of(&quot;code&quot;, error.code(), &quot;field&quot;, error.field(),</span>
+<span class="fc" id="L502">                &quot;detail&quot;, error.getMessage(), &quot;dependencies&quot;, error.dependencies()));</span>
+    }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    @ResponseBody
+    public ResponseEntity&lt;Map&lt;String, String&gt;&gt; invalid(IllegalArgumentException error) {
+<span class="pc bpc" id="L508" title="1 of 2 branches missed.">        return ResponseEntity.badRequest().body(Map.of(&quot;code&quot;, &quot;INVALID_COMMAND&quot;, &quot;detail&quot;, error.getMessage() == null ? &quot;Invalid command&quot; : error.getMessage()));</span>
+    }
+
+    @ExceptionHandler(IOException.class)
+    @ResponseBody
+    public ResponseEntity&lt;Map&lt;String, String&gt;&gt; unavailable() {
+<span class="nc" id="L514">        return ResponseEntity.status(503).body(Map.of(&quot;code&quot;, &quot;GIT_UNAVAILABLE&quot;, &quot;detail&quot;, &quot;Git storage is unavailable; refresh before retrying the same command identity&quot;));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

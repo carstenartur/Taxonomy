@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PluginExchangeConnector.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-interop</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.interop</a> &gt; <span class="el_source">PluginExchangeConnector.java</span></div><h1>PluginExchangeConnector.java</h1><pre class="source lang-java linenums">package com.taxonomy.interop;
+
+import com.taxonomy.extension.api.integration.IntegrationConnectorExtension;
+import com.taxonomy.extension.api.integration.IntegrationContracts.*;
+import com.taxonomy.extension.api.integration.LifecycleIntegrationConnector;
+import com.taxonomy.extension.api.plugin.*;
+
+import java.util.Objects;
+import java.util.Set;
+import java.util.TreeMap;
+import java.util.function.Function;
+
+/** Host-owned lease and provenance boundary. No plugin callback runs outside a lease. */
+final class PluginExchangeConnector implements LifecycleIntegrationConnector {
+    private static final String ID = &quot;taxonomy.plugin.id&quot;;
+    private static final String VERSION = &quot;taxonomy.plugin.version&quot;;
+    private static final String SHA = &quot;taxonomy.plugin.sha256&quot;;
+<span class="fc" id="L18">    static final Set&lt;String&gt; BINDING_KEYS = Set.of(ID, VERSION, SHA);</span>
+    private final ExtensionCatalog catalog;
+    private final ExtensionKey key;
+    private final PluginIdentity plugin;
+    private final IntegrationDescriptor descriptor;
+
+<span class="fc" id="L24">    PluginExchangeConnector(ExtensionCatalog catalog, ExtensionKey key, PluginIdentity plugin, IntegrationDescriptor descriptor) {</span>
+<span class="fc" id="L25">        this.catalog = catalog; this.key = key; this.plugin = plugin; this.descriptor = descriptor;</span>
+<span class="fc" id="L26">    }</span>
+
+<span class="fc" id="L28">    @Override public IntegrationDescriptor descriptor() { return descriptor; }</span>
+
+    @Override public ExchangeDocument previewInbound(InboundRequest request) {
+<span class="fc" id="L31">        requireContext(request.context());</span>
+<span class="fc" id="L32">        return invoke(connector -&gt; {</span>
+<span class="fc" id="L33">            ExchangeDocument result = connector.previewInbound(request);</span>
+<span class="fc" id="L34">            requireProfile(result);</span>
+<span class="pc bpc" id="L35" title="1 of 4 branches missed.">            if (result.completeScope() &amp;&amp; !request.completeScope()</span>
+<span class="pc bpc" id="L36" title="1 of 2 branches missed.">                    || !Objects.equals(result.externalVersion(), request.externalVersion()))</span>
+<span class="nc" id="L37">                throw new IntegrationProblem(&quot;INVALID_CONNECTOR_DOCUMENT&quot;, 422, &quot;Connector changed snapshot identity or completeness&quot;);</span>
+<span class="fc" id="L38">            return bind(result);</span>
+        });
+    }
+
+    @Override public void validateInboundSelection(OutboundRequest request) {
+<span class="nc" id="L43">        requireContext(request.context());</span>
+<span class="nc" id="L44">        requireCompatible(request.document());</span>
+<span class="nc" id="L45">        invoke(connector -&gt; { connector.validateInboundSelection(request); return null; });</span>
+<span class="nc" id="L46">    }</span>
+
+    @Override public ExchangeFile previewOutbound(OutboundRequest request) {
+<span class="nc" id="L49">        requireContext(request.context());</span>
+<span class="nc" id="L50">        requireCompatible(request.document());</span>
+<span class="nc" id="L51">        return invoke(connector -&gt; connector.previewOutbound(request));</span>
+    }
+
+    @Override public FileExportProfile fileExportProfile() {
+<span class="fc" id="L55">        requireBasedExport();</span>
+<span class="fc" id="L56">        return invoke(IntegrationConnectorExtension::fileExportProfile);</span>
+    }
+
+    @Override public ExchangeFile previewOutbound(BasedOutboundRequest request) {
+<span class="fc" id="L60">        requireBasedExport();</span>
+<span class="fc" id="L61">        requireContext(request.outbound().context());</span>
+<span class="fc" id="L62">        requireCompatible(request.outbound().document());</span>
+<span class="pc bpc" id="L63" title="1 of 2 branches missed.">        if (!request.identityNamespace().equals(request.outbound().context().connectionId()))</span>
+<span class="nc" id="L64">            throw new IntegrationProblem(&quot;INVALID_CONNECTOR_CONTEXT&quot;, 422, &quot;File identities require the exact connection namespace&quot;);</span>
+<span class="fc" id="L65">        return invoke(connector -&gt; connector.previewOutbound(request));</span>
+    }
+
+    private void requireBasedExport() {
+<span class="pc bpc" id="L69" title="1 of 2 branches missed.">        if (!descriptor.capabilities().containsAll(Set.of(Capability.FILE_EXPORT, Capability.BASED_FILE_EXPORT_V1)))</span>
+<span class="nc" id="L70">            throw new IntegrationProblem(&quot;CAPABILITY_UNAVAILABLE&quot;, 409, &quot;Connector does not support based file export&quot;);</span>
+<span class="fc" id="L71">    }</span>
+
+    @Override public DiscoveryResult discover(IntegrationContext context) {
+<span class="nc" id="L74">        requireContext(context);</span>
+<span class="nc" id="L75">        return invoke(connector -&gt; connector.discover(context));</span>
+    }
+
+    ExchangeDocument bind(ExchangeDocument document) {
+<span class="fc" id="L79">        requireProfile(document);</span>
+<span class="fc" id="L80">        var metadata = new TreeMap&lt;&gt;(document.metadata());</span>
+<span class="fc" id="L81">        metadata.put(ID, plugin.id()); metadata.put(VERSION, plugin.version()); metadata.put(SHA, plugin.artifactSha256());</span>
+<span class="fc" id="L82">        return new ExchangeDocument(document.profile(), document.profileVersion(), document.externalVersion(),</span>
+<span class="fc" id="L83">                document.completeScope(), document.source(), document.artifacts(), document.relations(), document.placements(), metadata, document.losses());</span>
+    }
+
+    static boolean hasBinding(ExchangeDocument document) {
+<span class="pc bpc" id="L87" title="3 of 6 branches missed.">        return document.metadata().containsKey(ID) || document.metadata().containsKey(VERSION) || document.metadata().containsKey(SHA);</span>
+    }
+
+    void requireCompatible(ExchangeDocument document) {
+<span class="fc" id="L91">        requireProfile(document);</span>
+<span class="pc bpc" id="L92" title="2 of 4 branches missed.">        if (!plugin.id().equals(document.metadata().get(ID)) || !plugin.version().equals(document.metadata().get(VERSION))</span>
+<span class="fc bfc" id="L93" title="All 2 branches covered.">                || !plugin.artifactSha256().equals(document.metadata().get(SHA)))</span>
+<span class="fc" id="L94">            throw IntegrationProblem.conflict(&quot;INTEGRATION_PLUGIN_CHANGED&quot;);</span>
+<span class="fc" id="L95">    }</span>
+
+    private void requireProfile(ExchangeDocument document) {
+<span class="pc bpc" id="L98" title="2 of 6 branches missed.">        if (document == null || !descriptor.id().equals(document.profile()) || !descriptor.version().equals(document.profileVersion()))</span>
+<span class="fc" id="L99">            throw new IntegrationProblem(&quot;INVALID_CONNECTOR_DOCUMENT&quot;, 422, &quot;Connector returned a different profile or version&quot;);</span>
+<span class="fc" id="L100">    }</span>
+
+    private void requireContext(IntegrationContext context) {
+<span class="pc bpc" id="L103" title="2 of 4 branches missed.">        if (!descriptor.id().equals(context.profile()) || !descriptor.version().equals(context.profileVersion()))</span>
+<span class="nc" id="L104">            throw new IntegrationProblem(&quot;INVALID_CONNECTOR_CONTEXT&quot;, 422, &quot;Connector requires the exact reviewed profile&quot;);</span>
+<span class="fc" id="L105">    }</span>
+
+    private &lt;T&gt; T invoke(Function&lt;IntegrationConnectorExtension, T&gt; action) {
+<span class="fc" id="L108">        try (var lease = catalog.acquire(key, IntegrationConnectorExtension.class)) {</span>
+<span class="pc bpc" id="L109" title="1 of 4 branches missed.">            if (!plugin.equals(lease.plugin()) || !descriptor.equals(lease.extension().descriptor()))</span>
+<span class="fc" id="L110">                throw IntegrationProblem.conflict(&quot;INTEGRATION_PLUGIN_CHANGED&quot;);</span>
+<span class="fc" id="L111">            return action.apply(lease.extension());</span>
+<span class="fc" id="L112">        } catch (ExtensionUnavailableException unavailable) {</span>
+<span class="fc" id="L113">            throw IntegrationProblem.conflict(&quot;INTEGRATION_PLUGIN_CHANGED&quot;);</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

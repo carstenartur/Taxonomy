@@ -1,0 +1,505 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>SyncIntegrationService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.service</a> &gt; <span class="el_source">SyncIntegrationService.java</span></div><h1>SyncIntegrationService.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.service;
+
+import com.taxonomy.workspace.storage.DslGitRepository;
+import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
+import com.taxonomy.workspace.model.SyncState;
+import com.taxonomy.workspace.model.UserWorkspace;
+import com.taxonomy.workspace.repository.SyncStateRepository;
+import com.taxonomy.workspace.repository.UserWorkspaceRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import java.io.IOException;
+import java.time.Instant;
+import java.util.UUID;
+
+/**
+ * Manages synchronization between user workspaces and the shared integration
+ * repository.
+ *
+ * &lt;p&gt;The shared branch (called {@code &quot;draft&quot;} by default) represents the
+ * canonical team-wide state. Users work on their own branches and periodically
+ * sync (pull) from the shared branch and publish (push) their changes back.
+ *
+ * &lt;p&gt;This service tracks the synchronization state via the {@link SyncState}
+ * entity and delegates actual Git merge operations to {@link DslGitRepository}.
+ */
+@Service
+public class SyncIntegrationService {
+
+<span class="fc" id="L32">    private static final Logger log = LoggerFactory.getLogger(SyncIntegrationService.class);</span>
+
+    private final SyncStateRepository syncStateRepository;
+    private final DslGitRepository gitRepository;
+    private final UserWorkspaceRepository workspaceRepository;
+    private final SystemRepositoryService systemRepositoryService;
+    private final DslGitRepositoryFactory repositoryFactory;
+
+    @Autowired
+    public SyncIntegrationService(SyncStateRepository syncStateRepository,
+                                  UserWorkspaceRepository workspaceRepository,
+                                  SystemRepositoryService systemRepositoryService,
+<span class="fc" id="L44">                                  DslGitRepositoryFactory repositoryFactory) {</span>
+<span class="fc" id="L45">        this.syncStateRepository = syncStateRepository;</span>
+<span class="fc" id="L46">        this.gitRepository = repositoryFactory.getSystemRepository();</span>
+<span class="fc" id="L47">        this.workspaceRepository = workspaceRepository;</span>
+<span class="fc" id="L48">        this.systemRepositoryService = systemRepositoryService;</span>
+<span class="fc" id="L49">        this.repositoryFactory = repositoryFactory;</span>
+<span class="fc" id="L50">    }</span>
+
+    /**
+     * Legacy constructor for backward compatibility (used in tests).
+     */
+    public SyncIntegrationService(SyncStateRepository syncStateRepository,
+                                  DslGitRepository gitRepository,
+                                  UserWorkspaceRepository workspaceRepository,
+<span class="fc" id="L58">                                  SystemRepositoryService systemRepositoryService) {</span>
+<span class="fc" id="L59">        this.syncStateRepository = syncStateRepository;</span>
+<span class="fc" id="L60">        this.gitRepository = gitRepository;</span>
+<span class="fc" id="L61">        this.workspaceRepository = workspaceRepository;</span>
+<span class="fc" id="L62">        this.systemRepositoryService = systemRepositoryService;</span>
+<span class="fc" id="L63">        this.repositoryFactory = null;</span>
+<span class="fc" id="L64">    }</span>
+
+    private String getSharedBranch() {
+<span class="fc" id="L67">        return systemRepositoryService.getSharedBranch();</span>
+    }
+
+    /**
+     * Get or create the sync state for a user.
+     *
+     * &lt;p&gt;If no sync state record exists, a new one is created with default
+     * values and an {@code UP_TO_DATE} status. If persistence fails, the
+     * error is logged and an unsaved instance is returned as a best-effort
+     * fallback.
+     *
+     * @param username the authenticated user's username
+     * @return the sync state entity (never null)
+     */
+    public SyncState getSyncState(String username) {
+<span class="fc" id="L82">        return syncStateRepository.findByUsername(username)</span>
+<span class="fc" id="L83">                .orElseGet(() -&gt; createSyncState(username));</span>
+    }
+
+    private SyncState createSyncState(String username) {
+<span class="fc" id="L87">        log.info(&quot;Creating sync state for user '{}'&quot;, username);</span>
+<span class="fc" id="L88">        SyncState state = new SyncState();</span>
+<span class="fc" id="L89">        state.setUsername(username);</span>
+        // Link to existing UserWorkspace if available; otherwise generate a new ID
+<span class="fc" id="L91">        String wsId = workspaceRepository.findByUsernameAndSharedFalse(username)</span>
+<span class="fc" id="L92">                .map(UserWorkspace::getWorkspaceId)</span>
+<span class="fc" id="L93">                .orElseGet(() -&gt; UUID.randomUUID().toString());</span>
+<span class="fc" id="L94">        state.setWorkspaceId(wsId);</span>
+<span class="fc" id="L95">        state.setSyncStatus(&quot;UP_TO_DATE&quot;);</span>
+<span class="fc" id="L96">        state.setUnpublishedCommitCount(0);</span>
+<span class="fc" id="L97">        state.setCreatedAt(Instant.now());</span>
+        try {
+<span class="fc" id="L99">            return syncStateRepository.save(state);</span>
+<span class="fc" id="L100">        } catch (Exception e) {</span>
+            // Non-fatal: sync state can be recreated; subsequent calls
+            // will retry persistence via the orElseGet path.
+<span class="fc" id="L103">            log.warn(&quot;Could not persist sync state for user '{}': {}&quot;,</span>
+<span class="fc" id="L104">                    username, e.getMessage());</span>
+<span class="fc" id="L105">            return state;</span>
+        }
+    }
+
+    /**
+     * Merge the shared branch into the user's branch (pull).
+     *
+     * &lt;p&gt;This brings the user's branch up to date with the latest shared
+     * state. After a successful merge, the sync state is updated to record
+     * the shared branch HEAD as the last synced commit.
+     *
+     * @param username   the authenticated user's username
+     * @param userBranch the user's branch to merge into
+     * @return the merge commit SHA
+     * @throws IOException if the Git merge operation fails
+     */
+    public String syncFromShared(String username, String userBranch) throws IOException {
+<span class="fc" id="L122">        log.info(&quot;User '{}': syncing from shared branch '{}' into '{}'&quot;,</span>
+<span class="fc" id="L123">                username, getSharedBranch(), userBranch);</span>
+
+<span class="fc" id="L125">        String mergeCommit = gitRepository.merge(getSharedBranch(), userBranch);</span>
+
+<span class="fc bfc" id="L127" title="All 2 branches covered.">        if (mergeCommit == null) {</span>
+<span class="fc" id="L128">            log.warn(&quot;User '{}': merge from '{}' into '{}' returned null (branch missing or conflict)&quot;,</span>
+<span class="fc" id="L129">                    username, getSharedBranch(), userBranch);</span>
+<span class="fc" id="L130">            throw new IOException(&quot;Sync failed: merge returned null (branch missing or conflict)&quot;);</span>
+        }
+
+        // Update sync state
+        try {
+<span class="fc" id="L135">            SyncState state = getSyncState(username);</span>
+<span class="fc" id="L136">            String sharedHead = gitRepository.getHeadCommit(getSharedBranch());</span>
+<span class="fc" id="L137">            state.setLastSyncedCommitId(sharedHead);</span>
+<span class="fc" id="L138">            state.setLastSyncTimestamp(Instant.now());</span>
+<span class="fc" id="L139">            state.setSyncStatus(&quot;UP_TO_DATE&quot;);</span>
+<span class="fc" id="L140">            state.setUpdatedAt(Instant.now());</span>
+<span class="fc" id="L141">            syncStateRepository.save(state);</span>
+<span class="nc" id="L142">        } catch (Exception e) {</span>
+<span class="nc" id="L143">            log.warn(&quot;Could not update sync state after pull for user '{}': {}&quot;,</span>
+<span class="nc" id="L144">                    username, e.getMessage());</span>
+<span class="fc" id="L145">        }</span>
+
+<span class="fc" id="L147">        log.info(&quot;User '{}': sync from shared complete, merge commit='{}'&quot;,</span>
+<span class="fc" id="L148">                username, abbreviateSha(mergeCommit));</span>
+<span class="fc" id="L149">        return mergeCommit;</span>
+    }
+
+    /**
+     * Merge the user's branch into the shared branch (publish).
+     *
+     * &lt;p&gt;This publishes the user's changes to the shared integration
+     * repository. After a successful merge, the sync state is updated to
+     * record the published commit and reset the unpublished count.
+     *
+     * @param username   the authenticated user's username
+     * @param userBranch the user's branch to merge from
+     * @return the merge commit SHA on the shared branch
+     * @throws IOException if the Git merge operation fails
+     */
+<span class="fc" id="L164">    public record Publication(String commit, WorkspacePublicationJournal.View operation) { }</span>
+
+    public Publication pullWithReceipt(String username,String branch,String key,String cause) throws IOException {
+<span class="nc" id="L167">        return new Publication(syncFromShared(username,branch),null);</span>
+    }
+
+    /** HTTP callers receive the durable receipt with both synchronous and deferred publications. */
+    public Publication publishWithReceipt(String username,String branch,String key,String cause) throws IOException {
+<span class="nc" id="L172">        return new Publication(publishToShared(username,branch),null);</span>
+    }
+
+    public String publishToShared(String username, String userBranch) throws IOException {
+<span class="fc" id="L176">        log.info(&quot;User '{}': publishing branch '{}' to shared branch '{}'&quot;,</span>
+<span class="fc" id="L177">                username, userBranch, getSharedBranch());</span>
+
+<span class="fc" id="L179">        String mergeCommit = gitRepository.merge(userBranch, getSharedBranch());</span>
+
+<span class="fc bfc" id="L181" title="All 2 branches covered.">        if (mergeCommit == null) {</span>
+<span class="fc" id="L182">            log.warn(&quot;User '{}': merge from '{}' into '{}' returned null (branch missing or conflict)&quot;,</span>
+<span class="fc" id="L183">                    username, userBranch, getSharedBranch());</span>
+<span class="fc" id="L184">            throw new IOException(&quot;Publish failed: merge returned null (branch missing or conflict)&quot;);</span>
+        }
+
+        // Update sync state
+        try {
+<span class="fc" id="L189">            SyncState state = getSyncState(username);</span>
+<span class="fc" id="L190">            state.setLastPublishedCommitId(mergeCommit);</span>
+<span class="fc" id="L191">            state.setLastPublishTimestamp(Instant.now());</span>
+<span class="fc" id="L192">            state.setSyncStatus(&quot;UP_TO_DATE&quot;);</span>
+<span class="fc" id="L193">            state.setUnpublishedCommitCount(0);</span>
+<span class="fc" id="L194">            state.setUpdatedAt(Instant.now());</span>
+<span class="fc" id="L195">            syncStateRepository.save(state);</span>
+<span class="nc" id="L196">        } catch (Exception e) {</span>
+<span class="nc" id="L197">            log.warn(&quot;Could not update sync state after publish for user '{}': {}&quot;,</span>
+<span class="nc" id="L198">                    username, e.getMessage());</span>
+<span class="fc" id="L199">        }</span>
+
+<span class="fc" id="L201">        log.info(&quot;User '{}': publish to shared complete, merge commit='{}'&quot;,</span>
+<span class="fc" id="L202">                username, abbreviateSha(mergeCommit));</span>
+<span class="fc" id="L203">        return mergeCommit;</span>
+    }
+
+    // ── Cross-repository sync (per-workspace isolation) ─────────────
+
+    /**
+     * Sync from the shared system repository into a workspace repository.
+     *
+     * &lt;p&gt;When a {@link DslGitRepositoryFactory} is configured, this method
+     * reads the DSL from the system repository's shared branch and copies it
+     * into the workspace repository's &quot;main&quot; branch. If both sides have
+     * content and they differ, the workspace content is overwritten with the
+     * shared content (fast-forward semantics).
+     *
+     * @param username    the authenticated user's username
+     * @param workspaceId the workspace identifier
+     * @return the commit ID (SHA) of the workspace commit created by the sync
+     * @throws IOException if Git operations fail
+     */
+    public String syncFromSharedToWorkspace(String username, String workspaceId) throws IOException {
+<span class="fc bfc" id="L223" title="All 2 branches covered.">        if (repositoryFactory == null) {</span>
+<span class="fc" id="L224">            throw new IllegalStateException(&quot;Repository factory not configured for cross-repo sync&quot;);</span>
+        }
+
+<span class="fc" id="L227">        DslGitRepository sysRepo = repositoryFactory.getSystemRepository();</span>
+<span class="fc" id="L228">        DslGitRepository wsRepo = repositoryFactory.getWorkspaceRepository(workspaceId);</span>
+
+<span class="fc" id="L230">        String sharedDsl = sysRepo.getDslAtHead(getSharedBranch());</span>
+<span class="fc bfc" id="L231" title="All 2 branches covered.">        if (sharedDsl == null) {</span>
+<span class="fc" id="L232">            throw new IOException(&quot;Shared branch has no content&quot;);</span>
+        }
+
+<span class="fc" id="L235">        String wsDsl = wsRepo.getDslAtHead(&quot;main&quot;);</span>
+        String commitId;
+<span class="fc bfc" id="L237" title="All 2 branches covered.">        if (wsDsl == null) {</span>
+            // Workspace branch is empty: create initial sync commit from shared
+<span class="fc" id="L239">            commitId = wsRepo.commitDsl(&quot;main&quot;, sharedDsl, username, &quot;Synced from shared&quot;);</span>
+<span class="pc bpc" id="L240" title="1 of 2 branches missed.">        } else if (sharedDsl.equals(wsDsl)) {</span>
+            // No-op: content already identical, return existing HEAD commit ID
+<span class="nc" id="L242">            commitId = wsRepo.getHeadCommit(&quot;main&quot;);</span>
+<span class="nc bnc" id="L243" title="All 2 branches missed.">            if (commitId == null) {</span>
+<span class="nc" id="L244">                commitId = wsRepo.commitDsl(&quot;main&quot;, sharedDsl, username, &quot;Synced from shared&quot;);</span>
+            }
+        } else {
+<span class="fc" id="L247">            commitId = wsRepo.commitDsl(&quot;main&quot;, sharedDsl, username, &quot;Merged shared into workspace&quot;);</span>
+        }
+
+        // Update sync state
+        try {
+<span class="fc" id="L252">            SyncState state = getSyncState(username);</span>
+<span class="fc" id="L253">            state.setLastSyncedCommitId(commitId);</span>
+<span class="fc" id="L254">            state.setLastSyncTimestamp(Instant.now());</span>
+<span class="fc" id="L255">            state.setSyncStatus(&quot;UP_TO_DATE&quot;);</span>
+<span class="fc" id="L256">            state.setUpdatedAt(Instant.now());</span>
+<span class="fc" id="L257">            syncStateRepository.save(state);</span>
+<span class="nc" id="L258">        } catch (Exception e) {</span>
+<span class="nc" id="L259">            log.warn(&quot;Could not update sync state after cross-repo sync for user '{}': {}&quot;,</span>
+<span class="nc" id="L260">                    username, e.getMessage());</span>
+<span class="fc" id="L261">        }</span>
+
+<span class="fc" id="L263">        log.info(&quot;User '{}': cross-repo sync from shared to workspace '{}' complete&quot;,</span>
+                username, workspaceId);
+<span class="fc" id="L265">        return commitId;</span>
+    }
+
+    /**
+     * Publish from a workspace repository to the shared system repository.
+     *
+     * &lt;p&gt;When a {@link DslGitRepositoryFactory} is configured, this method
+     * reads the DSL from the workspace repository's &quot;main&quot; branch and commits
+     * it to the system repository's shared branch.
+     *
+     * @param username    the authenticated user's username
+     * @param workspaceId the workspace identifier
+     * @return the commit SHA on the shared branch
+     * @throws IOException if Git operations fail
+     */
+    public String publishFromWorkspaceToShared(String username, String workspaceId) throws IOException {
+<span class="fc bfc" id="L281" title="All 2 branches covered.">        if (repositoryFactory == null) {</span>
+<span class="fc" id="L282">            throw new IllegalStateException(&quot;Repository factory not configured for cross-repo publish&quot;);</span>
+        }
+
+<span class="fc" id="L285">        DslGitRepository sysRepo = repositoryFactory.getSystemRepository();</span>
+<span class="fc" id="L286">        DslGitRepository wsRepo = repositoryFactory.getWorkspaceRepository(workspaceId);</span>
+
+<span class="fc" id="L288">        String wsDsl = wsRepo.getDslAtHead(&quot;main&quot;);</span>
+<span class="fc bfc" id="L289" title="All 2 branches covered.">        if (wsDsl == null) {</span>
+<span class="fc" id="L290">            throw new IOException(&quot;Workspace has no content&quot;);</span>
+        }
+
+        // Check if shared DSL already matches workspace content to avoid redundant commits
+<span class="fc" id="L294">        String sharedDsl = sysRepo.getDslAtHead(getSharedBranch());</span>
+        String commitId;
+<span class="pc bpc" id="L296" title="2 of 4 branches missed.">        if (sharedDsl != null &amp;&amp; sharedDsl.equals(wsDsl)) {</span>
+            // No-op: content already identical, return existing shared HEAD commit ID
+<span class="nc" id="L298">            commitId = sysRepo.getHeadCommit(getSharedBranch());</span>
+<span class="nc" id="L299">            log.info(&quot;User '{}': cross-repo publish from workspace '{}' to shared skipped (no changes)&quot;,</span>
+                    username, workspaceId);
+        } else {
+<span class="fc" id="L302">            commitId = sysRepo.commitDsl(getSharedBranch(), wsDsl, username,</span>
+                    &quot;Published from workspace &quot; + workspaceId);
+        }
+
+        // Update sync state
+        try {
+<span class="fc" id="L308">            SyncState state = getSyncState(username);</span>
+<span class="fc" id="L309">            state.setLastPublishedCommitId(commitId);</span>
+<span class="fc" id="L310">            state.setLastPublishTimestamp(Instant.now());</span>
+<span class="fc" id="L311">            state.setSyncStatus(&quot;UP_TO_DATE&quot;);</span>
+<span class="fc" id="L312">            state.setUnpublishedCommitCount(0);</span>
+<span class="fc" id="L313">            state.setUpdatedAt(Instant.now());</span>
+<span class="fc" id="L314">            syncStateRepository.save(state);</span>
+<span class="nc" id="L315">        } catch (Exception e) {</span>
+<span class="nc" id="L316">            log.warn(&quot;Could not update sync state after cross-repo publish for user '{}': {}&quot;,</span>
+<span class="nc" id="L317">                    username, e.getMessage());</span>
+<span class="fc" id="L318">        }</span>
+
+<span class="fc" id="L320">        log.info(&quot;User '{}': cross-repo publish from workspace '{}' to shared complete&quot;,</span>
+                username, workspaceId);
+<span class="fc" id="L322">        return commitId;</span>
+    }
+
+    /**
+     * Count unpublished commits on the user's branch relative to the shared branch.
+     *
+     * &lt;p&gt;Uses merge-base computation to accurately determine ahead/behind counts.
+     * The sync status is set to:
+     * &lt;ul&gt;
+     *   &lt;li&gt;{@code UP_TO_DATE} — both branches are at the same commit&lt;/li&gt;
+     *   &lt;li&gt;{@code AHEAD} — user has commits not in the shared branch&lt;/li&gt;
+     *   &lt;li&gt;{@code BEHIND} — shared branch has commits the user hasn't pulled&lt;/li&gt;
+     *   &lt;li&gt;{@code DIVERGED} — both sides have unique commits&lt;/li&gt;
+     * &lt;/ul&gt;
+     *
+     * @param username   the authenticated user's username
+     * @param userBranch the user's branch to check
+     * @return the number of unpublished commits (ahead count)
+     * @throws IOException if Git operations fail
+     */
+    public int getLocalChanges(String username, String userBranch) throws IOException {
+<span class="fc" id="L343">        int[] aheadBehind = gitRepository.getAheadBehindCounts(userBranch, getSharedBranch());</span>
+<span class="fc" id="L344">        int ahead = aheadBehind[0];</span>
+<span class="fc" id="L345">        int behind = aheadBehind[1];</span>
+
+        String status;
+<span class="fc bfc" id="L348" title="All 4 branches covered.">        if (ahead == 0 &amp;&amp; behind == 0) {</span>
+<span class="fc" id="L349">            status = &quot;UP_TO_DATE&quot;;</span>
+<span class="fc bfc" id="L350" title="All 4 branches covered.">        } else if (ahead &gt; 0 &amp;&amp; behind == 0) {</span>
+<span class="fc" id="L351">            status = &quot;AHEAD&quot;;</span>
+<span class="pc bpc" id="L352" title="1 of 4 branches missed.">        } else if (ahead == 0 &amp;&amp; behind &gt; 0) {</span>
+<span class="fc" id="L353">            status = &quot;BEHIND&quot;;</span>
+        } else {
+<span class="fc" id="L355">            status = &quot;DIVERGED&quot;;</span>
+        }
+
+<span class="fc" id="L358">        updateUnpublishedCount(username, ahead, status);</span>
+<span class="fc" id="L359">        return ahead;</span>
+    }
+
+    private void updateUnpublishedCount(String username, int count, String status) {
+        try {
+<span class="fc" id="L364">            SyncState state = getSyncState(username);</span>
+<span class="fc" id="L365">            state.setUnpublishedCommitCount(count);</span>
+<span class="fc" id="L366">            state.setSyncStatus(status);</span>
+<span class="fc" id="L367">            state.setUpdatedAt(Instant.now());</span>
+<span class="fc" id="L368">            syncStateRepository.save(state);</span>
+<span class="nc" id="L369">        } catch (Exception e) {</span>
+<span class="nc" id="L370">            log.warn(&quot;Could not update unpublished count for user '{}': {}&quot;,</span>
+<span class="nc" id="L371">                    username, e.getMessage());</span>
+<span class="fc" id="L372">        }</span>
+<span class="fc" id="L373">    }</span>
+
+    /**
+     * Check if the workspace has unpublished changes.
+     *
+     * &lt;p&gt;Reads the persistent sync state to determine if the user has
+     * local commits that have not been published to the shared branch.
+     *
+     * @param username the authenticated user's username
+     * @return true if the workspace has unpublished changes
+     */
+    public boolean isDirty(String username) {
+        try {
+<span class="fc" id="L386">            SyncState state = getSyncState(username);</span>
+<span class="fc bfc" id="L387" title="All 2 branches covered.">            return state.getUnpublishedCommitCount() &gt; 0</span>
+<span class="fc bfc" id="L388" title="All 2 branches covered.">                    || &quot;AHEAD&quot;.equals(state.getSyncStatus())</span>
+<span class="fc bfc" id="L389" title="All 2 branches covered.">                    || &quot;DIVERGED&quot;.equals(state.getSyncStatus());</span>
+<span class="fc" id="L390">        } catch (Exception e) {</span>
+<span class="fc" id="L391">            log.warn(&quot;Could not check dirty state for user '{}': {}&quot;, username, e.getMessage());</span>
+<span class="fc" id="L392">            return false;</span>
+        }
+    }
+
+    // ── Internal helpers ────────────────────────────────────────────
+
+    /**
+     * Resolution strategy for a diverged sync state.
+     */
+<span class="fc" id="L401">    public enum DivergedStrategy {</span>
+        /** Merge the shared branch into the user's branch. */
+<span class="fc" id="L403">        MERGE,</span>
+        /** Keep the user's branch, discard shared changes. */
+<span class="fc" id="L405">        KEEP_MINE,</span>
+        /** Replace the user's branch with the shared branch. */
+<span class="fc" id="L407">        TAKE_SHARED</span>
+    }
+
+    /**
+     * Resolve a diverged state between user's branch and the shared branch.
+     *
+     * &lt;p&gt;Three strategies are available:
+     * &lt;ul&gt;
+     *   &lt;li&gt;{@code MERGE} — merge shared into user branch (may fail if conflicts persist)&lt;/li&gt;
+     *   &lt;li&gt;{@code KEEP_MINE} — force-update shared from user (publish forcefully)&lt;/li&gt;
+     *   &lt;li&gt;{@code TAKE_SHARED} — force-update user from shared (overwrite local changes)&lt;/li&gt;
+     * &lt;/ul&gt;
+     *
+     * @param username   the authenticated user's username
+     * @param userBranch the user's branch
+     * @param strategy   the resolution strategy
+     * @return a description of what was done
+     * @throws IOException if a Git operation fails
+     */
+    public String resolveDiverged(String username, String userBranch, DivergedStrategy strategy)
+            throws IOException {
+<span class="fc" id="L428">        log.info(&quot;User '{}': resolving DIVERGED state with strategy {} on branch '{}'&quot;,</span>
+                username, strategy, userBranch);
+
+<span class="pc bpc" id="L431" title="1 of 4 branches missed.">        switch (strategy) {</span>
+            case MERGE:
+<span class="fc" id="L433">                String mergeCommit = gitRepository.merge(getSharedBranch(), userBranch);</span>
+<span class="fc bfc" id="L434" title="All 2 branches covered.">                if (mergeCommit == null) {</span>
+<span class="fc" id="L435">                    throw new IOException(&quot;Merge failed — conflict could not be auto-resolved. &quot; +</span>
+                            &quot;Try KEEP_MINE or TAKE_SHARED strategy instead.&quot;);
+                }
+<span class="fc" id="L438">                updateSyncStateAfterResolve(username, &quot;UP_TO_DATE&quot;,</span>
+<span class="fc" id="L439">                        gitRepository.getHeadCommit(getSharedBranch()), null);</span>
+<span class="fc" id="L440">                return &quot;Merged shared into your branch: &quot; + abbreviateSha(mergeCommit);</span>
+
+            case KEEP_MINE:
+                // Force publish: merge user → shared
+<span class="fc" id="L444">                String publishCommit = gitRepository.merge(userBranch, getSharedBranch());</span>
+<span class="fc bfc" id="L445" title="All 2 branches covered.">                if (publishCommit == null) {</span>
+                    // If merge fails, restore from user's HEAD
+<span class="fc" id="L447">                    String userHead = gitRepository.getHeadCommit(userBranch);</span>
+<span class="fc" id="L448">                    publishCommit = gitRepository.restore(userHead, getSharedBranch());</span>
+<span class="fc bfc" id="L449" title="All 2 branches covered.">                    if (publishCommit == null) {</span>
+<span class="fc" id="L450">                        throw new IOException(&quot;Could not force-publish user branch to shared&quot;);</span>
+                    }
+                }
+<span class="fc" id="L453">                updateSyncStateAfterResolve(username, &quot;UP_TO_DATE&quot;,</span>
+                        null, publishCommit);
+<span class="fc" id="L455">                return &quot;Published your changes to shared: &quot; + abbreviateSha(publishCommit);</span>
+
+            case TAKE_SHARED:
+                // Force sync: restore user branch from shared HEAD
+<span class="fc" id="L459">                String sharedHead = gitRepository.getHeadCommit(getSharedBranch());</span>
+<span class="fc bfc" id="L460" title="All 2 branches covered.">                if (sharedHead == null) {</span>
+<span class="fc" id="L461">                    throw new IOException(&quot;Shared branch has no commits&quot;);</span>
+                }
+<span class="fc" id="L463">                String restoreCommit = gitRepository.restore(sharedHead, userBranch);</span>
+<span class="fc bfc" id="L464" title="All 2 branches covered.">                if (restoreCommit == null) {</span>
+<span class="fc" id="L465">                    throw new IOException(&quot;Could not restore user branch from shared&quot;);</span>
+                }
+<span class="fc" id="L467">                updateSyncStateAfterResolve(username, &quot;UP_TO_DATE&quot;,</span>
+                        sharedHead, null);
+<span class="fc" id="L469">                return &quot;Replaced your branch with shared content: &quot; + abbreviateSha(restoreCommit);</span>
+
+            default:
+<span class="nc" id="L472">                throw new IllegalArgumentException(&quot;Unknown strategy: &quot; + strategy);</span>
+        }
+    }
+
+    private void updateSyncStateAfterResolve(String username, String status,
+                                              String syncedCommitId, String publishedCommitId) {
+        try {
+<span class="fc" id="L479">            SyncState state = getSyncState(username);</span>
+<span class="fc" id="L480">            state.setSyncStatus(status);</span>
+<span class="fc" id="L481">            state.setUnpublishedCommitCount(0);</span>
+<span class="fc" id="L482">            state.setLastSyncTimestamp(Instant.now());</span>
+<span class="fc" id="L483">            state.setUpdatedAt(Instant.now());</span>
+<span class="fc bfc" id="L484" title="All 2 branches covered.">            if (syncedCommitId != null) {</span>
+<span class="fc" id="L485">                state.setLastSyncedCommitId(syncedCommitId);</span>
+            }
+<span class="fc bfc" id="L487" title="All 2 branches covered.">            if (publishedCommitId != null) {</span>
+<span class="fc" id="L488">                state.setLastPublishedCommitId(publishedCommitId);</span>
+<span class="fc" id="L489">                state.setLastPublishTimestamp(Instant.now());</span>
+            }
+<span class="fc" id="L491">            syncStateRepository.save(state);</span>
+<span class="nc" id="L492">        } catch (Exception e) {</span>
+<span class="nc" id="L493">            log.warn(&quot;Could not update sync state after resolve for user '{}': {}&quot;,</span>
+<span class="nc" id="L494">                    username, e.getMessage());</span>
+<span class="fc" id="L495">        }</span>
+<span class="fc" id="L496">    }</span>
+
+    // ── Internal helpers (private) ──────────────────────────────────
+
+    private String abbreviateSha(String commitId) {
+<span class="pc bpc" id="L501" title="1 of 2 branches missed.">        if (commitId == null) return &quot;null&quot;;</span>
+<span class="fc" id="L502">        return commitId.substring(0, Math.min(7, commitId.length()));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

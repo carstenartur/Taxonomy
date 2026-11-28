@@ -1,0 +1,251 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>VisioDrawingPdf.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-reporting</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.reporting.render.decision</a> &gt; <span class="el_source">VisioDrawingPdf.java</span></div><h1>VisioDrawingPdf.java</h1><pre class="source lang-java linenums">package com.taxonomy.reporting.render.decision;
+
+import org.w3c.dom.Element;
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.transform.Transformer;
+import java.net.URI;
+import java.util.function.Predicate;
+import javax.xml.XMLConstants;
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.transform.TransformerFactory;
+import javax.xml.transform.dom.DOMSource;
+import javax.xml.transform.stream.StreamResult;
+import java.io.*;
+import java.nio.file.*;
+import java.util.*;
+import java.util.concurrent.TimeUnit;
+import java.util.zip.*;
+
+/** Standalone Java source launcher and drawing converter for locally generated Taxonomy VSDX exports. */
+public final class VisioDrawingPdf {
+    private static final int MIB = 1024 * 1024;
+    private static final int MAX_PAGES = 160; // 32 native diagram pages and 128 evidence pages
+    private static final int MAX_INPUT = 32 * MIB;
+    static final int MAX_OUTPUT = 64 * MIB;
+    private static final String INDEX = &quot;visio/pages/pages.xml&quot;;
+    private static final String PAGE_RELS = &quot;visio/pages/_rels/pages.xml.rels&quot;;
+    private static final String TYPES = &quot;[Content_Types].xml&quot;;
+    private static final String OPC_RELS = &quot;http://schemas.openxmlformats.org/package/2006/relationships&quot;;
+    private static final String OFFICE_RELS = &quot;http://schemas.openxmlformats.org/officeDocument/2006/relationships&quot;;
+    private static final String VISIO_RELS = &quot;http://schemas.microsoft.com/visio/2010/relationships/&quot;;
+    private static final String VISIO = &quot;http://schemas.microsoft.com/office/visio/2012/main&quot;;
+    private VisioDrawingPdf() { }
+
+    public static void main(String[] args) throws Exception {
+<span class="nc bnc" id="L35" title="All 2 branches missed.">        if (args.length != 2) throw new IllegalArgumentException(&quot;Usage: java VisioDrawingPdf.java input.vsdx output.pdf&quot;);</span>
+<span class="nc" id="L36">        Path input = Path.of(args[0]), target = Path.of(args[1]).toAbsolutePath();</span>
+<span class="nc bnc" id="L37" title="All 2 branches missed.">        if (Files.exists(target)) throw new FileAlreadyExistsException(target.toString());</span>
+<span class="nc bnc" id="L38" title="All 2 branches missed.">        if (Files.size(input) &gt; MAX_INPUT) throw new IOException(&quot;VSDX exceeds 32 MiB&quot;);</span>
+        // Stage beside the requested output so a conversion failure leaves existing files intact.
+<span class="nc" id="L40">        Path staged = Files.createTempFile(target.getParent(), &quot;.visio-&quot;, &quot;.pdf&quot;);</span>
+        try {
+<span class="nc" id="L42">            Files.write(staged, convert(input, &quot;soffice&quot;, &quot;pdfunite&quot;, &quot;pdfinfo&quot;));</span>
+<span class="nc" id="L43">            Files.move(staged, target);</span>
+<span class="nc" id="L44">        } finally { Files.deleteIfExists(staged); }</span>
+<span class="nc" id="L45">    }</span>
+
+    static byte[] convert(Path input, String soffice, String pdfunite, String pdfinfo) throws IOException, InterruptedException {
+<span class="nc" id="L48">        Path work = Files.createTempDirectory(&quot;taxonomy-visio-pdf-&quot;);</span>
+        try {
+<span class="nc" id="L50">            var pages = pagePackages(input,work);</span>
+<span class="nc" id="L51">            var render = new ArrayList&lt;&gt;(List.of(soffice, &quot;-env:UserInstallation=&quot; + work.resolve(&quot;profile&quot;).toUri(),</span>
+<span class="nc" id="L52">                    &quot;--headless&quot;, &quot;--norestore&quot;, &quot;--convert-to&quot;, &quot;pdf:draw_pdf_Export&quot;, &quot;--outdir&quot;, work.toString()));</span>
+<span class="nc" id="L53">            pages.forEach(page -&gt; render.add(page.toString()));</span>
+<span class="nc" id="L54">            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(90);</span>
+<span class="nc" id="L55">            command(render, work, deadline);</span>
+<span class="nc" id="L56">            var merge = new ArrayList&lt;&gt;(List.of(pdfunite));</span>
+<span class="nc" id="L57">            long bytes = 0;</span>
+<span class="nc bnc" id="L58" title="All 2 branches missed.">            for (Path page : pages) {</span>
+<span class="nc" id="L59">                Path pdf = page.resolveSibling(page.getFileName().toString().replace(&quot;.vsdx&quot;, &quot;.pdf&quot;));</span>
+<span class="nc" id="L60">                long size = Files.size(pdf);</span>
+<span class="nc" id="L61">                bytes += size;</span>
+<span class="nc bnc" id="L62" title="All 4 branches missed.">                if (size == 0 || bytes &gt; MAX_OUTPUT) throw new IOException(&quot;Empty or oversized rendered drawings&quot;);</span>
+<span class="nc" id="L63">                merge.add(pdf.toString());</span>
+<span class="nc" id="L64">            }</span>
+<span class="nc" id="L65">            Path output = work.resolve(&quot;combined.pdf&quot;);</span>
+<span class="nc" id="L66">            merge.add(output.toString());</span>
+<span class="nc" id="L67">            command(merge, work, deadline);</span>
+<span class="nc bnc" id="L68" title="All 2 branches missed.">            if (Files.size(output) &gt; MAX_OUTPUT) throw new IOException(&quot;PDF exceeds 64 MiB&quot;);</span>
+<span class="nc" id="L69">            Path info = command(List.of(pdfinfo, output.toString()), work, deadline);</span>
+<span class="nc" id="L70">            String count = Files.readAllLines(info).stream().filter(line -&gt; line.startsWith(&quot;Pages:&quot;))</span>
+<span class="nc" id="L71">                    .map(line -&gt; line.substring(&quot;Pages:&quot;.length()).strip()).findFirst().orElse(&quot;&quot;);</span>
+<span class="nc bnc" id="L72" title="All 2 branches missed.">            if (!Integer.toString(pages.size()).equals(count)) throw new IOException(&quot;PDF page count differs from VSDX&quot;);</span>
+<span class="nc" id="L73">            return Files.readAllBytes(output);</span>
+        } finally {
+<span class="nc" id="L75">            try (var files = Files.walk(work)) {</span>
+<span class="nc bnc" id="L76" title="All 2 branches missed.">                for (Path path : files.sorted(Comparator.reverseOrder()).toList()) Files.deleteIfExists(path);</span>
+            }
+        }
+    }
+
+    static List&lt;Path&gt; pagePackages(Path input, Path work) throws IOException {
+<span class="pc bpc" id="L82" title="1 of 2 branches missed.">        if (Files.size(input) &gt; MAX_INPUT) throw new IOException(&quot;VSDX exceeds 32 MiB&quot;);</span>
+<span class="fc" id="L83">        var parts = new LinkedHashMap&lt;String,byte[]&gt;();</span>
+<span class="fc" id="L84">        long total = 0;</span>
+<span class="fc" id="L85">        try (var zip = new ZipFile(input.toFile())) {</span>
+<span class="pc bpc" id="L86" title="1 of 2 branches missed.">            if (zip.size() &gt; 2048) throw new IOException(&quot;VSDX has too many package parts&quot;);</span>
+<span class="fc bfc" id="L87" title="All 2 branches covered.">            for (var entries = zip.entries(); entries.hasMoreElements();) {</span>
+<span class="fc" id="L88">                var entry = entries.nextElement();</span>
+<span class="pc bpc" id="L89" title="1 of 2 branches missed.">                if (entry.isDirectory()) continue;</span>
+<span class="fc" id="L90">                long size = entry.getSize();</span>
+<span class="pc bpc" id="L91" title="2 of 4 branches missed.">                if (size &lt; 0 || (total += size) &gt; 64L * MIB) throw new IOException(&quot;VSDX exceeds 64 MiB expanded&quot;);</span>
+<span class="fc" id="L92">                try (var stream = zip.getInputStream(entry)) {</span>
+<span class="fc" id="L93">                    byte[] data = stream.readNBytes((int) size + 1);</span>
+<span class="pc bpc" id="L94" title="2 of 4 branches missed.">                    if (data.length != size || parts.putIfAbsent(entry.getName(),data) != null)</span>
+<span class="nc" id="L95">                        throw new IOException(&quot;Invalid VSDX package entry&quot;);</span>
+                }
+<span class="fc" id="L97">            }</span>
+        }
+        try {
+<span class="fc" id="L100">            var factory = DocumentBuilderFactory.newNSInstance();</span>
+<span class="fc" id="L101">            factory.setFeature(&quot;http://apache.org/xml/features/disallow-doctype-decl&quot;, true);</span>
+<span class="fc" id="L102">            factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD,&quot;&quot;);</span>
+<span class="fc" id="L103">            factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA,&quot;&quot;);</span>
+<span class="fc" id="L104">            var parser = factory.newDocumentBuilder();</span>
+<span class="fc" id="L105">            var writer = TransformerFactory.newDefaultInstance().newTransformer();</span>
+<span class="fc" id="L106">            Element index = root(parts, INDEX, parser, VISIO, &quot;Pages&quot;);</span>
+<span class="pc bpc" id="L107" title="2 of 4 branches missed.">            var pages = children(index).stream().filter(e -&gt; VISIO.equals(e.getNamespaceURI()) &amp;&amp; &quot;Page&quot;.equals(e.getLocalName())).toList();</span>
+<span class="fc bfc" id="L108" title="All 4 branches covered.">            if (pages.isEmpty() || pages.size() &gt; MAX_PAGES) throw new IOException(&quot;Expected 1–160 Visio drawings&quot;);</span>
+<span class="fc" id="L109">            Element pageRels = root(parts, PAGE_RELS, parser, OPC_RELS, &quot;Relationships&quot;);</span>
+<span class="fc" id="L110">            Element types = root(parts, TYPES, parser, &quot;http://schemas.openxmlformats.org/package/2006/content-types&quot;, &quot;Types&quot;);</span>
+
+            // Follow the rendering graph. Package metadata and the source window selection describe the whole handoff.
+<span class="fc" id="L113">            var graph = new HashMap&lt;String,Map&lt;String,String&gt;&gt;();</span>
+<span class="fc bfc" id="L114" title="All 2 branches covered.">            for (String name : parts.keySet()) {</span>
+<span class="fc bfc" id="L115" title="All 2 branches covered.">                if (!name.endsWith(&quot;.rels&quot;)) continue;</span>
+<span class="fc bfc" id="L116" title="All 2 branches covered.">                Element relations = name.equals(PAGE_RELS) ? pageRels : root(parts, name, parser, OPC_RELS, &quot;Relationships&quot;);</span>
+<span class="fc" id="L117">                var targets = new LinkedHashMap&lt;String,String&gt;();</span>
+<span class="fc" id="L118">                var links = children(relations);</span>
+<span class="fc bfc" id="L119" title="All 2 branches covered.">                for (Element relation : links) {</span>
+<span class="pc bpc" id="L120" title="2 of 4 branches missed.">                    if (!OPC_RELS.equals(relation.getNamespaceURI()) || !&quot;Relationship&quot;.equals(relation.getLocalName()))</span>
+<span class="nc" id="L121">                        throw new IOException(&quot;Invalid OPC relationship&quot;);</span>
+<span class="fc" id="L122">                    String type = relation.getAttribute(&quot;Type&quot;);</span>
+<span class="pc bpc" id="L123" title="1 of 6 branches missed.">                    if ((name.equals(&quot;_rels/.rels&quot;) &amp;&amp; !type.equals(VISIO_RELS + &quot;document&quot;)) || type.equals(VISIO_RELS + &quot;windows&quot;))</span>
+<span class="nc" id="L124">                        continue;</span>
+<span class="pc bpc" id="L125" title="1 of 4 branches missed.">                    if (name.equals(PAGE_RELS) &amp;&amp; !type.equals(VISIO_RELS + &quot;page&quot;)) throw new IOException(&quot;Invalid Visio page relationship&quot;);</span>
+<span class="fc" id="L126">                    String id = relation.getAttribute(&quot;Id&quot;);</span>
+<span class="fc" id="L127">                    String target = targetPart(name, relation);</span>
+<span class="pc bpc" id="L128" title="3 of 6 branches missed.">                    if (id.isEmpty() || !parts.containsKey(target) || targets.putIfAbsent(id,target) != null)</span>
+<span class="nc" id="L129">                        throw new IOException(&quot;Missing or duplicate OPC relationship target&quot;);</span>
+<span class="fc" id="L130">                }</span>
+<span class="fc" id="L131">                graph.put(name,targets);</span>
+<span class="fc bfc" id="L132" title="All 2 branches covered.">                if (targets.size() != links.size()) {</span>
+<span class="fc" id="L133">                    parts.put(name, filtered(writer,relations,e -&gt; targets.containsKey(e.getAttribute(&quot;Id&quot;))));</span>
+                }
+<span class="fc" id="L135">            }</span>
+<span class="fc" id="L136">            var shared = new LinkedHashSet&lt;String&gt;();</span>
+<span class="fc" id="L137">            include(&quot;&quot;, shared, graph);</span>
+<span class="pc bpc" id="L138" title="2 of 4 branches missed.">            if (!shared.contains(INDEX) || !shared.contains(PAGE_RELS)) throw new IOException(&quot;Missing Visio drawing relationship&quot;);</span>
+<span class="fc" id="L139">            var selectedTargets = new HashSet&lt;String&gt;();</span>
+<span class="fc" id="L140">            var files = new ArrayList&lt;Path&gt;();</span>
+<span class="fc" id="L141">            long packageBytes = 0;</span>
+<span class="fc bfc" id="L142" title="All 2 branches covered.">            for (Element page : pages) {</span>
+<span class="pc bpc" id="L143" title="2 of 4 branches missed.">                var links = children(page).stream().filter(e -&gt; VISIO.equals(e.getNamespaceURI()) &amp;&amp; &quot;Rel&quot;.equals(e.getLocalName())).toList();</span>
+<span class="pc bpc" id="L144" title="1 of 2 branches missed.">                if (links.size() != 1) throw new IOException(&quot;Expected one relationship for each Visio page&quot;);</span>
+<span class="fc" id="L145">                String id = links.getFirst().getAttributeNS(OFFICE_RELS,&quot;id&quot;);</span>
+<span class="fc" id="L146">                String target = graph.get(PAGE_RELS).get(id);</span>
+<span class="pc bpc" id="L147" title="2 of 4 branches missed.">                if (target == null || !selectedTargets.add(target)) throw new IOException(&quot;Missing or repeated Visio page target&quot;);</span>
+<span class="fc" id="L148">                var included = new LinkedHashSet&lt;&gt;(shared);</span>
+<span class="fc" id="L149">                include(target, included, graph);</span>
+<span class="fc" id="L150">                var overrides = new HashMap&lt;String,byte[]&gt;();</span>
+<span class="fc bfc" id="L151" title="All 2 branches covered.">                overrides.put(INDEX, filtered(writer, index, e -&gt; e == page));</span>
+<span class="fc" id="L152">                overrides.put(PAGE_RELS, filtered(writer, pageRels, e -&gt; id.equals(e.getAttribute(&quot;Id&quot;))));</span>
+<span class="fc" id="L153">                overrides.put(TYPES, filtered(writer, types, entry -&gt; {</span>
+<span class="fc" id="L154">                    String part = entry.getAttribute(&quot;PartName&quot;);</span>
+<span class="pc bpc" id="L155" title="1 of 6 branches missed.">                    return !&quot;Override&quot;.equals(entry.getLocalName()) || (part.startsWith(&quot;/&quot;) &amp;&amp; included.contains(part.substring(1)));</span>
+                }));
+<span class="fc" id="L157">                included.add(TYPES);</span>
+<span class="fc" id="L158">                Path path = work.resolve(&quot;drawing-&quot; + files.size() + &quot;.vsdx&quot;);</span>
+<span class="fc" id="L159">                try (var archive = new ZipOutputStream(new BufferedOutputStream(Files.newOutputStream(path,StandardOpenOption.CREATE_NEW)))) {</span>
+<span class="fc bfc" id="L160" title="All 2 branches covered.">                    for (String name : included) {</span>
+<span class="fc" id="L161">                        archive.putNextEntry(new ZipEntry(name));</span>
+<span class="fc" id="L162">                        archive.write(overrides.getOrDefault(name, parts.get(name)));</span>
+<span class="fc" id="L163">                        archive.closeEntry();</span>
+<span class="fc" id="L164">                    }</span>
+                }
+<span class="fc" id="L166">                packageBytes += Files.size(path);</span>
+<span class="pc bpc" id="L167" title="1 of 2 branches missed.">                if (packageBytes &gt; 512L * MIB) throw new IOException(&quot;Drawing packages exceed 512 MiB&quot;);</span>
+<span class="fc" id="L168">                files.add(path);</span>
+<span class="fc" id="L169">            }</span>
+<span class="fc" id="L170">            return files;</span>
+<span class="nc" id="L171">        } catch (javax.xml.parsers.ParserConfigurationException | org.xml.sax.SAXException | javax.xml.transform.TransformerException failure) {</span>
+<span class="nc" id="L172">            throw new IOException(&quot;Invalid Visio drawing package&quot;,failure);</span>
+        }
+    }
+
+    private static Element root(Map&lt;String,byte[]&gt; parts, String name, DocumentBuilder parser, String namespace, String localName)
+            throws IOException, org.xml.sax.SAXException {
+<span class="fc" id="L178">        byte[] bytes = parts.get(name);</span>
+<span class="pc bpc" id="L179" title="1 of 2 branches missed.">        if (bytes == null) throw new IOException(&quot;Missing OPC part: &quot; + name);</span>
+<span class="fc" id="L180">        Element element = parser.parse(new ByteArrayInputStream(bytes)).getDocumentElement();</span>
+<span class="pc bpc" id="L181" title="2 of 4 branches missed.">        if (!namespace.equals(element.getNamespaceURI()) || !localName.equals(element.getLocalName()))</span>
+<span class="nc" id="L182">            throw new IOException(&quot;Invalid OPC part: &quot; + name);</span>
+<span class="fc" id="L183">        return element;</span>
+    }
+
+    private static List&lt;Element&gt; children(Element parent) {
+<span class="fc" id="L187">        var elements = new ArrayList&lt;Element&gt;();</span>
+<span class="fc bfc" id="L188" title="All 2 branches covered.">        for (var node = parent.getFirstChild(); node != null; node = node.getNextSibling())</span>
+<span class="pc bpc" id="L189" title="1 of 2 branches missed.">            if (node instanceof Element element) elements.add(element);</span>
+<span class="fc" id="L190">        return elements;</span>
+    }
+
+    private static byte[] filtered(Transformer writer, Element source, Predicate&lt;Element&gt; keep)
+            throws javax.xml.transform.TransformerException {
+<span class="fc" id="L195">        var result = (Element)source.cloneNode(false);</span>
+<span class="fc bfc" id="L196" title="All 4 branches covered.">        for (Element child : children(source)) if (keep.test(child)) result.appendChild(child.cloneNode(true));</span>
+<span class="fc" id="L197">        var output = new ByteArrayOutputStream();</span>
+<span class="fc" id="L198">        writer.transform(new DOMSource(result), new StreamResult(output));</span>
+<span class="fc" id="L199">        return output.toByteArray();</span>
+    }
+
+    private static String targetPart(String relationships, Element link) throws IOException {
+<span class="fc" id="L203">        String target = link.getAttribute(&quot;Target&quot;);</span>
+<span class="pc bpc" id="L204" title="2 of 4 branches missed.">        if (target.isEmpty() || &quot;External&quot;.equals(link.getAttribute(&quot;TargetMode&quot;))) throw new IOException(&quot;Expected an internal OPC target&quot;);</span>
+<span class="fc" id="L205">        int separator = relationships.lastIndexOf(&quot;_rels/&quot;);</span>
+<span class="pc bpc" id="L206" title="1 of 2 branches missed.">        if (separator &lt; 0) throw new IOException(&quot;Invalid OPC relationship part&quot;);</span>
+        try {
+<span class="fc" id="L208">            URI path = URI.create(&quot;/&quot; + relationships.substring(0,separator)).resolve(target).normalize();</span>
+<span class="pc bpc" id="L209" title="4 of 8 branches missed.">            if (path.isAbsolute() || path.getAuthority() != null || path.getQuery() != null || path.getFragment() != null</span>
+<span class="pc bpc" id="L210" title="2 of 4 branches missed.">                    || !path.getPath().startsWith(&quot;/&quot;) || path.getPath().startsWith(&quot;/../&quot;)) throw new IOException(&quot;Invalid OPC target&quot;);</span>
+<span class="fc" id="L211">            return path.getPath().substring(1);</span>
+<span class="nc" id="L212">        } catch (IllegalArgumentException invalid) {</span>
+<span class="nc" id="L213">            throw new IOException(&quot;Invalid OPC target&quot;, invalid);</span>
+        }
+    }
+
+    private static void include(String first, Set&lt;String&gt; included, Map&lt;String,Map&lt;String,String&gt;&gt; graph) {
+<span class="fc" id="L218">        var pending = new ArrayDeque&lt;String&gt;();</span>
+<span class="fc" id="L219">        pending.add(first);</span>
+<span class="fc bfc" id="L220" title="All 2 branches covered.">        while (!pending.isEmpty()) {</span>
+<span class="fc" id="L221">            String name = pending.removeFirst();</span>
+<span class="pc bpc" id="L222" title="1 of 4 branches missed.">            if (!name.isEmpty() &amp;&amp; !included.add(name)) continue;</span>
+<span class="fc" id="L223">            int directory = name.lastIndexOf('/') + 1;</span>
+<span class="fc" id="L224">            String relationships = name.substring(0,directory) + &quot;_rels/&quot; + name.substring(directory) + &quot;.rels&quot;;</span>
+<span class="fc" id="L225">            var targets = graph.get(relationships);</span>
+<span class="fc bfc" id="L226" title="All 2 branches covered.">            if (targets == null) continue;</span>
+<span class="fc" id="L227">            included.add(relationships);</span>
+<span class="fc bfc" id="L228" title="All 2 branches covered.">            if (!name.equals(INDEX)) pending.addAll(targets.values());</span>
+<span class="fc" id="L229">        }</span>
+<span class="fc" id="L230">    }</span>
+
+    private static Path command(List&lt;String&gt; args, Path work, long deadline) throws IOException, InterruptedException {
+<span class="nc" id="L233">        Path log = work.resolve(&quot;command.log&quot;);</span>
+<span class="nc" id="L234">        var builder = new ProcessBuilder(args).directory(work.toFile()).redirectErrorStream(true).redirectOutput(log.toFile());</span>
+<span class="nc" id="L235">        builder.environment().put(&quot;LC_ALL&quot;,&quot;C&quot;);</span>
+<span class="nc" id="L236">        Process process = builder.start();</span>
+        try {
+<span class="nc bnc" id="L238" title="All 2 branches missed.">            if (!process.waitFor(Math.max(0,deadline - System.nanoTime()),TimeUnit.NANOSECONDS))</span>
+<span class="nc" id="L239">                throw new IOException(&quot;Drawing PDF conversion timed out&quot;);</span>
+<span class="nc bnc" id="L240" title="All 2 branches missed.">            if (process.exitValue() != 0) throw new IOException(&quot;Drawing PDF conversion failed in &quot; + Path.of(args.getFirst()).getFileName());</span>
+        } finally {
+<span class="nc bnc" id="L242" title="All 2 branches missed.">            if (process.isAlive()) {</span>
+<span class="nc" id="L243">                process.descendants().forEach(ProcessHandle::destroyForcibly);</span>
+<span class="nc" id="L244">                process.destroyForcibly();</span>
+<span class="nc" id="L245">                process.waitFor(5,TimeUnit.SECONDS);</span>
+            }
+        }
+<span class="nc" id="L248">        return log;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

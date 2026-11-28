@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>GeneratedDraftText.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.reformulation</a> &gt; <span class="el_source">GeneratedDraftText.java</span></div><h1>GeneratedDraftText.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.reformulation;
+
+import com.taxonomy.reformulation.DecisionAnswer;
+import com.taxonomy.reformulation.DecisionQuestion;
+import com.taxonomy.reformulation.ReformulationBaseline;
+import com.taxonomy.reformulation.Statement;
+import com.taxonomy.reformulation.ValidationReport;
+
+import java.text.BreakIterator;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Set;
+
+/** Editable generated text. Sections and source references carry the separate synthesis evidence. */
+final class GeneratedDraftText {
+<span class="fc" id="L19">    private static final Set&lt;String&gt; ABBREVIATED_TITLES = Set.of(&quot;dr&quot;, &quot;prof&quot;, &quot;dipl&quot;, &quot;priv&quot;, &quot;mr&quot;, &quot;mrs&quot;, &quot;ms&quot;, &quot;jr&quot;, &quot;sr&quot;, &quot;lieut&quot;, &quot;capt&quot;);</span>
+
+    private GeneratedDraftText() {}
+
+    static String render(ReformulationBaseline baseline, Collection&lt;Statement&gt; statements, Collection&lt;DecisionQuestion&gt; questions,
+                         List&lt;DecisionAnswer&gt; answers, List&lt;ValidationReport.Finding&gt; findings) {
+<span class="fc" id="L25">        String original = baseline.originalText();</span>
+<span class="fc" id="L26">        boolean sourceRejected = originalRejected(original, statements);</span>
+<span class="fc bfc" id="L27" title="All 2 branches covered.">        var provenance = baseline.frozenContext().containsKey(&quot;adoptedLineage&quot;)</span>
+<span class="fc" id="L28">                ? Statement.Provenance.ADOPTED_SOURCE : Statement.Provenance.ORIGINAL;</span>
+<span class="fc" id="L29">        boolean german = baseline.language().equals(&quot;de&quot;);</span>
+<span class="fc" id="L30">        var decisionWordings = new LinkedHashMap&lt;String, String&gt;();</span>
+<span class="fc" id="L31">        questions.forEach(q -&gt; q.referenceIds().forEach(id -&gt; decisionWordings.put(id, q.wording())));</span>
+<span class="fc" id="L32">        var parts = new ArrayList&lt;String&gt;();</span>
+<span class="pc bpc" id="L33" title="1 of 4 branches missed.">        if (!sourceRejected &amp;&amp; !original.isEmpty()) parts.add(paragraphs(baseline));</span>
+<span class="fc bfc" id="L34" title="All 2 branches covered.">        for (var statement : statements) {</span>
+<span class="fc bfc" id="L35" title="All 2 branches covered.">            if (rejected(statement)) continue;</span>
+<span class="fc bfc" id="L36" title="All 4 branches covered.">            boolean automatic = statement.editingOrigin() != Statement.EditingOrigin.HUMAN &amp;&amp; unqualified(statement);</span>
+<span class="pc bpc" id="L37" title="2 of 6 branches missed.">            if (sourceRejected &amp;&amp; automatic &amp;&amp; statement.wording().equals(original)) continue;</span>
+<span class="pc bpc" id="L38" title="1 of 6 branches missed.">            if (!sourceRejected &amp;&amp; automatic &amp;&amp; statement.provenance() == provenance</span>
+<span class="pc bpc" id="L39" title="1 of 4 branches missed.">                    &amp;&amp; (&quot;UNREVIEWED&quot;.equals(statement.reviewState()) || statement.wording().equals(original))</span>
+<span class="fc bfc" id="L40" title="All 2 branches covered.">                    &amp;&amp; exactQuote(statement, original)) continue;</span>
+<span class="fc" id="L41">            var text = new StringBuilder(&quot;[&quot;).append(statement.provenance()).append(&quot;] &quot;).append(statement.wording());</span>
+<span class="fc bfc" id="L42" title="All 2 branches covered.">            if (statement.conditionalValidity() != null)</span>
+<span class="fc bfc" id="L43" title="All 2 branches covered.">                text.append(german ? &quot;\nBedingung: &quot; : &quot;\nCondition: &quot;).append(statement.conditionalValidity());</span>
+<span class="fc bfc" id="L44" title="All 2 branches covered.">            for (String id : statement.questionDependencies())</span>
+<span class="fc bfc" id="L45" title="All 2 branches covered.">                text.append(german ? &quot;\nAbhängig von: &quot; : &quot;\nDepends on: &quot;).append(decisionWordings.getOrDefault(id, id));</span>
+<span class="fc" id="L46">            parts.add(text.toString());</span>
+<span class="fc" id="L47">        }</span>
+<span class="fc" id="L48">        var activeAnswers = DecisionAnswer.active(answers);</span>
+<span class="fc bfc" id="L49" title="All 2 branches covered.">        for (var question : questions) {</span>
+<span class="fc" id="L50">            var text = new StringBuilder(&quot;[&quot;).append(question.state()).append(&quot;] &quot;).append(question.wording());</span>
+<span class="fc bfc" id="L51" title="All 4 branches covered.">            if (question.state() == DecisionQuestion.State.OPEN &amp;&amp; !question.answerSchema().options().isEmpty())</span>
+<span class="fc" id="L52">                text.append(&quot; — &quot;).append(String.join(&quot; / &quot;, question.answerSchema().options()));</span>
+<span class="fc bfc" id="L53" title="All 2 branches covered.">            for (var resolution : question.sourceResolutions())</span>
+<span class="fc" id="L54">                text.append(&quot; — Original: &quot;).append(String.join(&quot;, &quot;, resolution.values())).append(&quot; (&quot;).append(resolution.rationale()).append(&quot;)&quot;);</span>
+<span class="fc" id="L55">            activeAnswers.stream().filter(a -&gt; question.referenceIds().contains(a.questionId()))</span>
+<span class="pc bpc" id="L56" title="1 of 4 branches missed.">                    .filter(a -&gt; !a.values().isEmpty() || a.otherText() != null).forEach(answer -&gt; {</span>
+<span class="fc" id="L57">                text.append(&quot; — Human decision: &quot;).append(String.join(&quot;, &quot;, answer.values()));</span>
+<span class="fc bfc" id="L58" title="All 2 branches covered.">                if (answer.otherText() != null) text.append(&quot; — &quot;).append(answer.otherText());</span>
+<span class="fc" id="L59">            });</span>
+<span class="fc" id="L60">            parts.add(text.toString());</span>
+<span class="fc" id="L61">        }</span>
+<span class="fc bfc" id="L62" title="All 2 branches covered.">        findings.stream().filter(f -&gt; f.kind() == ValidationReport.Kind.CONFLICT).distinct()</span>
+<span class="fc" id="L63">                .forEach(f -&gt; parts.add(&quot;[CONFLICT] &quot; + f.message()));</span>
+<span class="fc" id="L64">        return String.join(&quot;\n\n&quot;, parts);</span>
+    }
+
+    static boolean originalRejected(String original, Collection&lt;Statement&gt; statements) {
+<span class="fc bfc" id="L68" title="All 4 branches covered.">        return statements.stream().anyMatch(s -&gt; s.provenance().isSource() &amp;&amp; unqualified(s)</span>
+<span class="pc bpc" id="L69" title="1 of 4 branches missed.">                &amp;&amp; rejected(s) &amp;&amp; original.equals(s.wording()));</span>
+    }
+
+    static boolean hasParagraphSource(ReformulationBaseline baseline, String body, Collection&lt;Statement&gt; statements) {
+<span class="fc" id="L73">        String projection = paragraphs(baseline);</span>
+<span class="fc bfc" id="L74" title="All 4 branches covered.">        return !projection.equals(baseline.originalText()) &amp;&amp; !originalRejected(baseline.originalText(), statements)</span>
+<span class="fc bfc" id="L75" title="All 4 branches covered.">                &amp;&amp; (body.equals(projection) || body.startsWith(projection + &quot;\n\n&quot;));</span>
+    }
+
+<span class="fc" id="L78">    private static boolean rejected(Statement statement) { return &quot;REJECTED&quot;.equals(statement.reviewState()); }</span>
+
+    private static boolean unqualified(Statement statement) {
+<span class="fc bfc" id="L81" title="All 4 branches covered.">        return statement.conditionalValidity() == null &amp;&amp; statement.questionDependencies().isEmpty();</span>
+    }
+
+    private static boolean exactQuote(Statement statement, String source) {
+<span class="fc bfc" id="L85" title="All 2 branches covered.">        if (statement.sourceSpans().isEmpty()) return false;</span>
+<span class="fc" id="L86">        int start = statement.sourceSpans().getFirst().start();</span>
+<span class="fc" id="L87">        int end = start;</span>
+<span class="fc bfc" id="L88" title="All 2 branches covered.">        for (var span : statement.sourceSpans()) {</span>
+<span class="pc bpc" id="L89" title="2 of 4 branches missed.">            if (span.start() != end || !span.matches(source)) return false;</span>
+<span class="fc" id="L90">            end = span.end();</span>
+<span class="fc" id="L91">        }</span>
+<span class="fc" id="L92">        return statement.wording().equals(source.substring(start, end));</span>
+    }
+
+    /** Only exchange one plain inline space at a complete sentence boundary for a paragraph break. */
+    private static String paragraphs(ReformulationBaseline baseline) {
+<span class="fc" id="L97">        String source = baseline.originalText();</span>
+        // An adopted requirement is already authored version evidence, including its layout.
+<span class="fc bfc" id="L99" title="All 2 branches covered.">        if (baseline.frozenContext().containsKey(&quot;adoptedLineage&quot;)) return source;</span>
+<span class="pc bpc" id="L100" title="1 of 6 branches missed.">        if (source.isEmpty() || !Character.isLetter(source.codePointAt(0)) || source.chars().anyMatch(c -&gt;</span>
+<span class="pc bpc" id="L101" title="3 of 8 branches missed.">                c == '\n' || c == '\r' || c == '\t' || &quot;|`&lt;&gt;=[]{}&quot;.indexOf(c) &gt;= 0)) return source;</span>
+<span class="fc" id="L102">        var boundaries = BreakIterator.getSentenceInstance(Locale.forLanguageTag(baseline.language()));</span>
+<span class="fc" id="L103">        boundaries.setText(source);</span>
+<span class="fc" id="L104">        var text = new StringBuilder();</span>
+<span class="fc" id="L105">        int start = 0;</span>
+<span class="pc bpc" id="L106" title="1 of 4 branches missed.">        for (int end = boundaries.next(); end != BreakIterator.DONE &amp;&amp; end &lt; source.length(); end = boundaries.next()) {</span>
+<span class="pc bpc" id="L107" title="3 of 6 branches missed.">            if (end &gt;= 2 &amp;&amp; source.charAt(end - 1) == ' ' &amp;&amp; &quot;.!?&quot;.indexOf(source.charAt(end - 2)) &gt;= 0</span>
+<span class="pc bpc" id="L108" title="1 of 4 branches missed.">                    &amp;&amp; Character.isUpperCase(source.codePointAt(end)) &amp;&amp; !abbreviatedTitleOrInitial(source, end - 2)) {</span>
+<span class="fc" id="L109">                text.append(source, start, end - 1).append(&quot;\n\n&quot;);</span>
+<span class="fc" id="L110">                start = end;</span>
+            }
+        }
+<span class="fc" id="L113">        return text.append(source, start, source.length()).toString();</span>
+    }
+
+    private static boolean abbreviatedTitleOrInitial(String source, int punctuation) {
+<span class="pc bpc" id="L117" title="1 of 2 branches missed.">        if (source.charAt(punctuation) != '.') return false;</span>
+<span class="fc" id="L118">        int start = punctuation;</span>
+<span class="fc bfc" id="L119" title="All 4 branches covered.">        while (start &gt; 0 &amp;&amp; Character.isLetter(source.charAt(start - 1))) start--;</span>
+<span class="pc bpc" id="L120" title="1 of 2 branches missed.">        if (start == punctuation) return false;</span>
+        // Sentence segmentation can treat Dr., Mrs. or an initial as a sentence end.
+<span class="fc bfc" id="L122" title="All 4 branches covered.">        return punctuation - start &lt;= 3 &amp;&amp; Character.isUpperCase(source.codePointAt(start))</span>
+<span class="fc bfc" id="L123" title="All 2 branches covered.">                || ABBREVIATED_TITLES.contains(source.substring(start, punctuation).toLowerCase(Locale.ROOT));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

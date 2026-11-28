@@ -1,0 +1,214 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PreviewVectorStore.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-knowledge</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.catalog.snapshot</a> &gt; <span class="el_source">PreviewVectorStore.java</span></div><h1>PreviewVectorStore.java</h1><pre class="source lang-java linenums">package com.taxonomy.catalog.snapshot;
+
+import com.taxonomy.catalog.service.NodeEmbeddingText;
+import com.taxonomy.dsl.model.CatalogueDefinition;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import tools.jackson.databind.ObjectMapper;
+
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
+import java.io.DataInputStream;
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
+import java.nio.channels.OverlappingFileLockException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.LinkOption;
+import java.nio.file.NoSuchFileException;
+import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.Collections;
+import java.util.HexFormat;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.TreeMap;
+
+import static java.nio.file.StandardCopyOption.ATOMIC_MOVE;
+import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
+import static java.nio.file.StandardOpenOption.CREATE;
+import static java.nio.file.StandardOpenOption.TRUNCATE_EXISTING;
+import static java.nio.file.StandardOpenOption.WRITE;
+
+/** Optional, two-slot disk cache of catalogue document vectors. Request texts and query vectors never enter this store. */
+final class PreviewVectorStore {
+<span class="fc" id="L39">    private static final Logger log = LoggerFactory.getLogger(PreviewVectorStore.class);</span>
+    private static final int DIMENSIONS = 384;
+    private static final int ROW_BYTES = DIMENSIONS * Float.BYTES;
+    private static final long MAX_FILE_BYTES = 64L * 1024 * 1024;
+    private static final int SHA_BYTES = 32;
+<span class="fc" id="L44">    private static final java.util.regex.Pattern WORD = java.util.regex.Pattern.compile(&quot;\\S+&quot;);</span>
+    private static final int DESCRIPTION_LEAD_WORDS = 20;
+<span class="fc" id="L46">    private static final ObjectMapper JSON = new ObjectMapper();</span>
+    private final Path directory;
+
+<span class="fc" id="L49">    PreviewVectorStore(Path directory) {</span>
+<span class="fc" id="L50">        this.directory = directory;</span>
+<span class="fc" id="L51">    }</span>
+
+    /** Key and ordered model inputs are built together; vector rows use this exact code order. */
+<span class="fc" id="L54">    record Manifest(String key, Map&lt;String, String&gt; documents) {</span>
+<span class="fc" id="L55">        private long fileBytes() { return SHA_BYTES * 2L + (long) ROW_BYTES * documents.size(); }</span>
+    }
+
+    static Manifest manifest(List&lt;RootCatalogueSnapshot&gt; snapshots, String modelKey) {
+<span class="fc" id="L59">        var first = snapshots.getFirst();</span>
+<span class="fc" id="L60">        var source = first.catalogueProvenance();</span>
+<span class="pc bpc" id="L61" title="1 of 2 branches missed.">        var spec = first.catalogueDefinition() == null ? CatalogueDefinition.standard().spec() : first.catalogueDefinition();</span>
+<span class="fc" id="L62">        var digest = sha256();</span>
+        // Frame format, model/tokenizer identity, exact workbook/overlay generation and DSL definition.
+<span class="fc" id="L64">        digest.update(JSON.writeValueAsBytes(List.of(&quot;bilingual-preview-reference-v2:titles-and-parallel-description-leads:fp32be:384&quot;, modelKey,</span>
+<span class="fc" id="L65">                source.id(), source.workbook(), source.overlay(), spec)));</span>
+<span class="fc" id="L66">        var documents = new TreeMap&lt;String, String&gt;();</span>
+<span class="fc bfc" id="L67" title="All 2 branches covered.">        for (var snapshot : snapshots) {</span>
+<span class="pc bpc" id="L68" title="2 of 4 branches missed.">            if (!source.equals(snapshot.catalogueProvenance()) || !first.source().equals(snapshot.source())</span>
+<span class="pc bpc" id="L69" title="1 of 2 branches missed.">                    || !java.util.Objects.equals(first.catalogueDefinition(), snapshot.catalogueDefinition()))</span>
+<span class="nc" id="L70">                throw new IllegalArgumentException(&quot;Mixed catalogue inputs for semantic preview&quot;);</span>
+<span class="fc bfc" id="L71" title="All 2 branches covered.">            for (var node : snapshot.nodes()) {</span>
+<span class="pc bpc" id="L72" title="1 of 2 branches missed.">                if (documents.putIfAbsent(node.code(), documentText(node)) != null)</span>
+<span class="nc" id="L73">                    throw new IllegalArgumentException(&quot;Duplicate catalogue preview document code&quot;);</span>
+<span class="fc" id="L74">            }</span>
+<span class="fc" id="L75">        }</span>
+<span class="fc" id="L76">        documents.forEach((code, text) -&gt; {</span>
+<span class="fc" id="L77">            frame(digest, code);</span>
+<span class="fc" id="L78">            frame(digest, text);</span>
+<span class="fc" id="L79">        });</span>
+<span class="fc" id="L80">        return new Manifest(HexFormat.of().formatHex(digest.digest()), Collections.unmodifiableMap(documents));</span>
+    }
+
+    // Short-context multilingual encoders should see both catalogue titles and both introductory descriptions.
+    // Retain the full tails for models with longer context windows.
+    private static String documentText(RootCatalogueSnapshot.Node node) {
+<span class="pc bpc" id="L86" title="4 of 8 branches missed.">        if ((node.nameDe() == null || node.nameDe().isBlank()) &amp;&amp; (node.descriptionDe() == null || node.descriptionDe().isBlank()))</span>
+<span class="fc" id="L87">            return NodeEmbeddingText.globalReferenceText(node.detached());</span>
+<span class="fc" id="L88">        var parts = new java.util.StringJoiner(&quot;\n&quot;);</span>
+<span class="pc bpc" id="L89" title="1 of 2 branches missed.">        if (!node.nameEn().isBlank()) parts.add(node.nameEn() + &quot;.&quot;);</span>
+<span class="fc" id="L90">        add(parts, node.nameDe());</span>
+<span class="fc bfc" id="L91" title="All 2 branches covered.">        String en = node.descriptionEn() == null ? &quot;&quot; : node.descriptionEn().strip();</span>
+<span class="fc bfc" id="L92" title="All 2 branches covered.">        String de = node.descriptionDe() == null ? &quot;&quot; : node.descriptionDe().strip();</span>
+<span class="pc bpc" id="L93" title="1 of 4 branches missed.">        if (en.isEmpty() || de.isEmpty()) {</span>
+<span class="fc" id="L94">            add(parts, en);</span>
+<span class="fc" id="L95">            add(parts, de);</span>
+        } else {
+<span class="fc" id="L97">            int enLead = leadEnd(en);</span>
+<span class="fc" id="L98">            int deLead = leadEnd(de);</span>
+<span class="fc" id="L99">            add(parts, en.substring(0, enLead));</span>
+<span class="fc" id="L100">            add(parts, de.substring(0, deLead));</span>
+<span class="fc" id="L101">            add(parts, en.substring(enLead));</span>
+<span class="fc" id="L102">            add(parts, de.substring(deLead));</span>
+        }
+<span class="fc" id="L104">        return parts.toString();</span>
+    }
+
+    private static void add(java.util.StringJoiner parts, String text) {
+<span class="pc bpc" id="L108" title="1 of 4 branches missed.">        if (text != null &amp;&amp; !text.isBlank()) parts.add(text.strip());</span>
+<span class="fc" id="L109">    }</span>
+
+    private static int leadEnd(String text) {
+<span class="fc" id="L112">        var words = WORD.matcher(text);</span>
+<span class="fc bfc" id="L113" title="All 2 branches covered.">        for (int count = 0; count &lt; DESCRIPTION_LEAD_WORDS; count++) {</span>
+<span class="fc bfc" id="L114" title="All 2 branches covered.">            if (!words.find()) return text.length();</span>
+        }
+<span class="fc" id="L116">        return words.end();</span>
+    }
+
+    Optional&lt;Map&lt;String, float[]&gt;&gt; read(Manifest manifest) {
+<span class="pc bpc" id="L120" title="1 of 4 branches missed.">        if (directory == null || manifest.fileBytes() &gt; MAX_FILE_BYTES) return Optional.empty();</span>
+<span class="fc" id="L121">        Path file = slot(manifest, &quot;.bin&quot;);</span>
+<span class="fc" id="L122">        try (var channel = FileChannel.open(file, java.nio.file.StandardOpenOption.READ, LinkOption.NOFOLLOW_LINKS);</span>
+<span class="fc" id="L123">             var in = new DataInputStream(new BufferedInputStream(java.nio.channels.Channels.newInputStream(channel)))) {</span>
+<span class="fc bfc" id="L124" title="All 2 branches covered.">            if (channel.size() != manifest.fileBytes()) return Optional.empty();</span>
+<span class="fc" id="L125">            byte[] key = in.readNBytes(SHA_BYTES);</span>
+<span class="fc bfc" id="L126" title="All 2 branches covered.">            if (!MessageDigest.isEqual(key, HexFormat.of().parseHex(manifest.key()))) return Optional.empty();</span>
+<span class="fc" id="L127">            var digest = sha256();</span>
+<span class="fc" id="L128">            digest.update(key);</span>
+<span class="fc" id="L129">            var bytes = ByteBuffer.allocate(ROW_BYTES);</span>
+<span class="fc" id="L130">            var vectors = new LinkedHashMap&lt;String, float[]&gt;();</span>
+<span class="fc bfc" id="L131" title="All 2 branches covered.">            for (String code : manifest.documents().keySet()) {</span>
+<span class="fc" id="L132">                in.readFully(bytes.array());</span>
+<span class="fc" id="L133">                digest.update(bytes.array());</span>
+<span class="fc" id="L134">                var vector = new float[DIMENSIONS];</span>
+<span class="fc" id="L135">                bytes.asFloatBuffer().get(vector);</span>
+<span class="pc bpc" id="L136" title="1 of 2 branches missed.">                if (!valid(vector)) return Optional.empty();</span>
+<span class="fc" id="L137">                vectors.put(code, vector);</span>
+<span class="fc" id="L138">            }</span>
+<span class="pc bpc" id="L139" title="1 of 4 branches missed.">            if (!MessageDigest.isEqual(digest.digest(), in.readNBytes(SHA_BYTES)) || in.read() != -1)</span>
+<span class="fc" id="L140">                return Optional.empty();</span>
+<span class="fc" id="L141">            return Optional.of(Map.copyOf(vectors));</span>
+<span class="pc bpc" id="L142" title="5 of 8 branches missed.">        } catch (NoSuchFileException absent) {</span>
+<span class="fc" id="L143">            return Optional.empty();</span>
+<span class="fc" id="L144">        } catch (IOException | SecurityException unavailable) {</span>
+<span class="fc" id="L145">            log.warn(&quot;Catalogue vector cache read unavailable ({})&quot;, unavailable.getClass().getSimpleName());</span>
+<span class="fc" id="L146">            return Optional.empty();</span>
+        }
+    }
+
+    void write(Manifest manifest, Map&lt;String, float[]&gt; vectors) {
+<span class="pc bpc" id="L151" title="1 of 6 branches missed.">        if (directory == null || manifest.fileBytes() &gt; MAX_FILE_BYTES || !vectors.keySet().equals(manifest.documents().keySet())) return;</span>
+        try {
+<span class="fc" id="L153">            Files.createDirectories(directory);</span>
+            // A stable staging name bounds remnants of crashed writers; OS locks release on process exit.
+<span class="fc" id="L155">            try (var channel = FileChannel.open(slot(manifest, &quot;.lock&quot;), CREATE, WRITE, LinkOption.NOFOLLOW_LINKS);</span>
+<span class="fc" id="L156">                 var lock = channel.tryLock()) {</span>
+<span class="pc bpc" id="L157" title="1 of 2 branches missed.">                if (lock == null) return;</span>
+<span class="fc" id="L158">                Path staging = slot(manifest, &quot;.part&quot;);</span>
+                try {
+<span class="fc" id="L160">                    writePayload(staging, manifest, vectors);</span>
+<span class="fc" id="L161">                    Files.move(staging, slot(manifest, &quot;.bin&quot;), ATOMIC_MOVE, REPLACE_EXISTING);</span>
+                } finally {
+<span class="fc" id="L163">                    Files.deleteIfExists(staging);</span>
+                }
+<span class="nc bnc" id="L165" title="All 4 branches missed.">            }</span>
+<span class="fc" id="L166">        } catch (OverlappingFileLockException busy) {</span>
+            // Another publisher owns this slot in this JVM. The in-memory generation remains usable.
+<span class="fc" id="L168">        } catch (IOException | SecurityException unavailable) {</span>
+<span class="fc" id="L169">            log.warn(&quot;Catalogue vector cache write unavailable ({})&quot;, unavailable.getClass().getSimpleName());</span>
+<span class="fc" id="L170">        }</span>
+<span class="fc" id="L171">    }</span>
+
+    private static void writePayload(Path staging, Manifest manifest, Map&lt;String, float[]&gt; vectors) throws IOException {
+<span class="fc" id="L174">        byte[] key = HexFormat.of().parseHex(manifest.key());</span>
+<span class="fc" id="L175">        var digest = sha256();</span>
+<span class="fc" id="L176">        digest.update(key);</span>
+<span class="fc" id="L177">        var row = ByteBuffer.allocate(ROW_BYTES);</span>
+<span class="fc" id="L178">        try (var out = new BufferedOutputStream(Files.newOutputStream(staging, CREATE, TRUNCATE_EXISTING, WRITE, LinkOption.NOFOLLOW_LINKS))) {</span>
+<span class="fc" id="L179">            out.write(key);</span>
+<span class="fc bfc" id="L180" title="All 2 branches covered.">            for (String code : manifest.documents().keySet()) {</span>
+<span class="fc" id="L181">                var vector = vectors.get(code);</span>
+<span class="fc bfc" id="L182" title="All 2 branches covered.">                if (!valid(vector)) throw new IOException(&quot;Invalid embedding vector&quot;);</span>
+<span class="fc" id="L183">                row.asFloatBuffer().put(vector);</span>
+<span class="fc" id="L184">                digest.update(row.array());</span>
+<span class="fc" id="L185">                out.write(row.array());</span>
+<span class="fc" id="L186">            }</span>
+<span class="fc" id="L187">            out.write(digest.digest());</span>
+        }
+<span class="fc" id="L189">    }</span>
+
+    private Path slot(Manifest manifest, String suffix) {
+<span class="fc" id="L192">        int slot = Character.digit(manifest.key().charAt(0), 16) % 2;</span>
+<span class="fc" id="L193">        return directory.resolve(&quot;taxonomy-preview-v1-&quot; + slot + suffix);</span>
+    }
+
+    static boolean valid(float[] vector) {
+<span class="pc bpc" id="L197" title="1 of 4 branches missed.">        if (vector == null || vector.length != DIMENSIONS) return false;</span>
+<span class="fc" id="L198">        double squaredLength = 0;</span>
+<span class="fc bfc" id="L199" title="All 2 branches covered.">        for (float v : vector) squaredLength += (double) v * v;</span>
+<span class="fc bfc" id="L200" title="All 4 branches covered.">        return squaredLength &gt;= Float.MIN_NORMAL &amp;&amp; squaredLength &lt;= Float.MAX_VALUE;</span>
+    }
+
+    private static void frame(MessageDigest digest, String text) {
+<span class="fc" id="L204">        byte[] bytes = text.getBytes(StandardCharsets.UTF_8);</span>
+<span class="fc" id="L205">        digest.update(ByteBuffer.allocate(Integer.BYTES).putInt(bytes.length).array());</span>
+<span class="fc" id="L206">        digest.update(bytes);</span>
+<span class="fc" id="L207">    }</span>
+
+    private static MessageDigest sha256() {
+<span class="fc" id="L210">        try { return MessageDigest.getInstance(&quot;SHA-256&quot;); }</span>
+<span class="nc" id="L211">        catch (NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

@@ -1,0 +1,298 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>SourceCoverageManifestService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-portfolio</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.workbench</a> &gt; <span class="el_source">SourceCoverageManifestService.java</span></div><h1>SourceCoverageManifestService.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.workbench;
+
+import com.taxonomy.dsl.ast.BlockAst;
+import com.taxonomy.dsl.command.ArchitectureDslCommands.CommandProblem;
+import com.taxonomy.dsl.command.ArchitectureSemanticPatch;
+import com.taxonomy.dto.RequirementElementView;
+import com.taxonomy.identity.StableIdentityHash;
+import com.taxonomy.portfolio.dto.PortfolioDtos.RequirementVersionView;
+import com.taxonomy.portfolio.dto.PortfolioDtos.SnapshotDetail;
+import com.taxonomy.portfolio.dto.PortfolioDtos.SnapshotSummary;
+import com.taxonomy.portfolio.dto.PortfolioDtos.SourceReference;
+import com.taxonomy.portfolio.model.PortfolioTypes.ReviewStatus;
+import com.taxonomy.portfolio.service.PortfolioAnalysisPersistenceService;
+import com.taxonomy.portfolio.service.PortfolioException;
+import com.taxonomy.portfolio.service.PortfolioGitService;
+import com.taxonomy.portfolio.service.PortfolioJsonCodec;
+import com.taxonomy.portfolio.service.ProjectPortfolioService;
+import com.taxonomy.portfolio.workbench.SourceCoverageManifest.*;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.WorkspaceDslReadPort;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.io.IOException;
+import java.time.Instant;
+import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+
+import static com.taxonomy.portfolio.workbench.SourceCoverageManifest.GapCode.*;
+import static com.taxonomy.portfolio.workbench.SourceCoverageManifest.GapState.MISSING;
+import static com.taxonomy.portfolio.workbench.SourceCoverageManifest.GapState.STALE;
+import static com.taxonomy.workspace.service.WorkspaceDslReadPort.CommitRelationship.ANCESTOR;
+import static com.taxonomy.workspace.service.WorkspaceDslReadPort.CommitRelationship.SAME;
+
+/** Resolves source and review evidence against an exact, authorized Git checkpoint. */
+@Service
+public class SourceCoverageManifestService {
+    private final PortfolioAnalysisPersistenceService snapshots;
+    private final ProjectPortfolioService projects;
+    private final WorkspaceDslReadPort repositories;
+    private final PortfolioJsonCodec json;
+
+    public SourceCoverageManifestService(PortfolioAnalysisPersistenceService snapshots,
+                                         ProjectPortfolioService projects,
+<span class="fc" id="L49">                                         WorkspaceDslReadPort repositories, PortfolioJsonCodec json) {</span>
+<span class="fc" id="L50">        this.snapshots = snapshots;</span>
+<span class="fc" id="L51">        this.projects = projects;</span>
+<span class="fc" id="L52">        this.repositories = repositories;</span>
+<span class="fc" id="L53">        this.json = json;</span>
+<span class="fc" id="L54">    }</span>
+
+    @Transactional(readOnly = true)
+    public SourceCoverageManifest load(Long projectId, String snapshotId, String requestedCommit,
+                                       RepositoryContext selected) {
+<span class="fc" id="L59">        var workspace = WorkspaceResolver.workspaceContext(selected);</span>
+<span class="fc" id="L60">        var detail = snapshots.getSnapshot(projectId, snapshotId, selected.username(), workspace);</span>
+<span class="fc" id="L61">        var summary = detail.summary();</span>
+<span class="pc bpc" id="L62" title="2 of 4 branches missed.">        if (!projectId.equals(summary.projectId()) || !snapshotId.equals(summary.id())</span>
+<span class="pc bpc" id="L63" title="1 of 2 branches missed.">                || !Objects.equals(summary.workspaceId(), selected.workspaceId())</span>
+<span class="pc bpc" id="L64" title="1 of 4 branches missed.">                || present(summary.branchName()) &amp;&amp; !summary.branchName().equals(selected.branch())) {</span>
+<span class="fc" id="L65">            throw PortfolioException.notFound(&quot;Analysis snapshot not found in the selected source&quot;);</span>
+        }
+
+<span class="fc" id="L68">        String projectKey = projects.getProject(projectId, selected.username(), workspace).projectKey();</span>
+<span class="fc" id="L69">        var version = projects.findRequirementVersion(projectId, summary.requirementId(), summary.requirementVersionId(),</span>
+<span class="fc" id="L70">                selected.username(), workspace).orElse(null);</span>
+<span class="fc" id="L71">        var gaps = new ArrayList&lt;Gap&gt;();</span>
+<span class="fc" id="L72">        var snapshot = snapshotEvidence(detail, gaps);</span>
+<span class="fc" id="L73">        var checkpoint = readCheckpoint(summary, requestedCommit, selected, gaps);</span>
+<span class="fc" id="L74">        List&lt;Passage&gt; passages = List.of();</span>
+<span class="fc" id="L75">        List&lt;Decision&gt; decisions = List.of();</span>
+<span class="fc" id="L76">        String semanticRequirement = null;</span>
+<span class="pc bpc" id="L77" title="2 of 4 branches missed.">        boolean versionRetained = version != null &amp;&amp; version.id().equals(summary.requirementVersionId())</span>
+<span class="pc bpc" id="L78" title="1 of 2 branches missed.">                &amp;&amp; version.versionNumber() == summary.requirementVersionNumber();</span>
+<span class="pc bpc" id="L79" title="1 of 2 branches missed.">        if (!versionRetained) {</span>
+<span class="nc" id="L80">            gaps.add(new Gap(MISSING, REQUIREMENT_VERSION_UNAVAILABLE, string(summary.requirementVersionId()), null));</span>
+        } else {
+<span class="fc" id="L82">            passages = passages(version, gaps);</span>
+<span class="fc bfc" id="L83" title="All 2 branches covered.">            if (checkpoint.blocks() != null) {</span>
+<span class="fc" id="L84">                semanticRequirement = semanticRequirement(projectKey, summary.requirementKey(), version, checkpoint.blocks(), gaps);</span>
+<span class="pc bpc" id="L85" title="1 of 2 branches missed.">                if (semanticRequirement != null) {</span>
+<span class="fc" id="L86">                    decisions = decisions(snapshot, semanticRequirement, checkpoint.blocks(), gaps);</span>
+                }
+            }
+        }
+<span class="fc" id="L90">        return new SourceCoverageManifest(1,</span>
+<span class="fc" id="L91">                new Scope(selected.repositoryId(), summary.workspaceId(), summary.branchName(), projectId, projectKey),</span>
+<span class="fc" id="L92">                new RequirementVersion(summary.requirementId(), summary.requirementKey(), summary.requirementVersionId(),</span>
+<span class="pc bpc" id="L93" title="1 of 2 branches missed.">                        summary.requirementVersionNumber(), versionRetained ? version.contentHash() : null, semanticRequirement),</span>
+                snapshot,
+<span class="fc" id="L95">                checkpoint.evidence(), passages, decisions, gaps);</span>
+    }
+
+    private CheckpointRead readCheckpoint(SnapshotSummary snapshot, String requested, RepositoryContext context,
+                                          List&lt;Gap&gt; gaps) {
+<span class="fc bfc" id="L100" title="All 2 branches covered.">        var selection = requested == null ? CheckpointSelection.ANALYSIS_RECORD : CheckpointSelection.EXPLICIT;</span>
+<span class="fc bfc" id="L101" title="All 2 branches covered.">        String candidate = requested == null ? snapshot.commitSha() : requested;</span>
+<span class="pc bpc" id="L102" title="1 of 4 branches missed.">        if (!present(candidate) &amp;&amp; requested == null) {</span>
+<span class="fc" id="L103">            return unavailable(selection, null, MISSING, CHECKPOINT_NOT_RECORDED, gaps);</span>
+        }
+        final String commit;
+        try {
+<span class="fc" id="L107">            commit = WorkspaceDslReadPort.normalizeCommitId(candidate);</span>
+<span class="fc" id="L108">        } catch (IllegalArgumentException invalid) {</span>
+<span class="pc bpc" id="L109" title="1 of 2 branches missed.">            if (requested != null) throw PortfolioException.validation(&quot;checkpoint must be a full Git object ID&quot;);</span>
+<span class="nc" id="L110">            return unavailable(selection, candidate, STALE, CHECKPOINT_INVALID_ID, gaps);</span>
+<span class="fc" id="L111">        }</span>
+<span class="pc bpc" id="L112" title="1 of 2 branches missed.">        if (!present(snapshot.branchName())) {</span>
+<span class="nc" id="L113">            return unavailable(selection, commit, MISSING, CHECKPOINT_SCOPE_NOT_RECORDED, gaps);</span>
+        }
+        try {
+<span class="fc" id="L116">            var repository = repositories.openRead(context);</span>
+            // A branch tip is used only to prove visibility for the selected commit.
+<span class="fc" id="L118">            String head = repository.currentHead();</span>
+<span class="pc bpc" id="L119" title="1 of 2 branches missed.">            if (head != null) {</span>
+<span class="fc" id="L120">                var relationship = repository.relationshipsTo(head, List.of(commit)).getFirst();</span>
+<span class="pc bpc" id="L121" title="1 of 4 branches missed.">                if (relationship == SAME || relationship == ANCESTOR) {</span>
+<span class="fc" id="L122">                    var document = repository.dslAtCommit(commit);</span>
+<span class="pc bpc" id="L123" title="1 of 2 branches missed.">                    if (document.isEmpty()) return unavailable(selection, commit, MISSING, CHECKPOINT_DOCUMENT_MISSING, gaps);</span>
+<span class="fc" id="L124">                    return new CheckpointRead(new Checkpoint(selection, commit, StableIdentityHash.sha256(document.get())),</span>
+<span class="fc" id="L125">                            ArchitectureSemanticPatch.index(document.get()));</span>
+                }
+            }
+<span class="nc" id="L128">        } catch (CommandProblem ambiguous) {</span>
+<span class="nc" id="L129">            return unavailable(selection, commit, STALE, CHECKPOINT_DOCUMENT_AMBIGUOUS, gaps);</span>
+<span class="nc" id="L130">        } catch (IOException unavailable) {</span>
+<span class="nc" id="L131">            return unavailable(selection, commit, MISSING, CHECKPOINT_UNAVAILABLE, gaps);</span>
+<span class="fc" id="L132">        }</span>
+<span class="fc" id="L133">        return unavailable(selection, commit, MISSING, CHECKPOINT_UNAVAILABLE, gaps);</span>
+    }
+
+    private static CheckpointRead unavailable(CheckpointSelection selection, String commit, GapState state,
+                                              GapCode code, List&lt;Gap&gt; gaps) {
+<span class="fc" id="L138">        gaps.add(new Gap(state, code, commit, null));</span>
+<span class="fc" id="L139">        return new CheckpointRead(new Checkpoint(selection, commit, null), null);</span>
+    }
+
+    private static List&lt;Passage&gt; passages(RequirementVersionView version, List&lt;Gap&gt; gaps) {
+<span class="fc" id="L143">        SourceReference source = version.source();</span>
+<span class="fc bfc" id="L144" title="All 2 branches covered.">        List&lt;Long&gt; fragmentIds = source == null ? List.of() : fragments(source);</span>
+<span class="fc" id="L145">        String reference = version.id().toString();</span>
+<span class="pc bpc" id="L146" title="1 of 6 branches missed.">        if (source == null || fragmentIds.isEmpty() &amp;&amp; !present(source.originalText())) {</span>
+<span class="fc" id="L147">            gaps.add(new Gap(MISSING, SOURCE_PASSAGE_NOT_RECORDED, reference, null));</span>
+<span class="fc" id="L148">            return List.of();</span>
+        }
+<span class="pc bpc" id="L150" title="2 of 4 branches missed.">        if (source.sourceArtifactId() == null || source.sourceVersionId() == null) {</span>
+<span class="nc" id="L151">            gaps.add(new Gap(MISSING, SOURCE_VERSION_NOT_RECORDED, reference, null));</span>
+        }
+<span class="fc bfc" id="L153" title="All 2 branches covered.">        if (!fragmentIds.isEmpty()) {</span>
+<span class="fc" id="L154">            return fragmentIds.stream().map(id -&gt; new Passage(PassageEvidence.RECORDED_FRAGMENT,</span>
+<span class="fc" id="L155">                    source.sourceArtifactId(), source.sourceVersionId(), id, source.sectionReference(), source.pageNumber(), null)).toList();</span>
+        }
+<span class="pc bpc" id="L157" title="3 of 4 branches missed.">        if (!present(source.sectionReference()) &amp;&amp; source.pageNumber() == null) {</span>
+<span class="nc" id="L158">            gaps.add(new Gap(MISSING, SOURCE_PASSAGE_LOCATOR_NOT_RECORDED, reference, null));</span>
+        }
+<span class="fc" id="L160">        return List.of(new Passage(PassageEvidence.RECORDED_ORIGINAL, source.sourceArtifactId(), source.sourceVersionId(),</span>
+<span class="fc" id="L161">                null, source.sectionReference(), source.pageNumber(), StableIdentityHash.sha256(source.originalText())));</span>
+    }
+
+    private String semanticRequirement(String project, String requirement, RequirementVersionView version,
+                                       Map&lt;String, BlockAst&gt; blocks, List&lt;Gap&gt; gaps) {
+<span class="fc" id="L166">        String versionKey = PortfolioGitService.VERSION_BLOCK + &quot;:&quot; + project + &quot; &quot; + requirement + &quot; &quot; + version.versionNumber();</span>
+<span class="fc" id="L167">        var recordedVersion = blocks.get(versionKey);</span>
+<span class="pc bpc" id="L168" title="1 of 2 branches missed.">        if (recordedVersion == null) {</span>
+<span class="nc" id="L169">            gaps.add(new Gap(MISSING, REQUIREMENT_VERSION_NOT_CHECKPOINTED, versionKey, null));</span>
+<span class="nc" id="L170">            return null;</span>
+        }
+<span class="pc bpc" id="L172" title="1 of 2 branches missed.">        if (!matchesProperty(recordedVersion, PortfolioGitService.MANAGED_PROPERTY, &quot;true&quot;)</span>
+<span class="pc bpc" id="L173" title="1 of 2 branches missed.">                || !matchesVersion(recordedVersion, &quot;contentHash&quot;, version)) {</span>
+<span class="nc" id="L174">            gaps.add(new Gap(STALE, REQUIREMENT_VERSION_MISMATCH, versionKey, recordedVersion.property(&quot;contentHash&quot;)));</span>
+<span class="nc" id="L175">            return null;</span>
+        }
+<span class="fc bfc" id="L177" title="All 2 branches covered.">        if (!matchesPassages(recordedVersion, version.source())) {</span>
+<span class="fc" id="L178">            gaps.add(new Gap(STALE, SOURCE_PASSAGE_MISMATCH, versionKey, null));</span>
+        }
+
+<span class="fc bfc" id="L181" title="All 2 branches covered.">        var matches = blocks.values().stream().filter(block -&gt; &quot;requirement&quot;.equals(block.getKind())</span>
+<span class="pc bpc" id="L182" title="2 of 4 branches missed.">                &amp;&amp; matchesProperty(block, &quot;x-project-key&quot;, project) &amp;&amp; matchesProperty(block, &quot;x-requirement-key&quot;, requirement)).toList();</span>
+<span class="pc bpc" id="L183" title="1 of 2 branches missed.">        if (matches.isEmpty()) {</span>
+<span class="nc" id="L184">            gaps.add(new Gap(MISSING, SEMANTIC_REQUIREMENT_NOT_CHECKPOINTED, versionKey, null));</span>
+<span class="nc" id="L185">            return null;</span>
+        }
+<span class="pc bpc" id="L187" title="1 of 2 branches missed.">        if (matches.size() != 1) {</span>
+<span class="nc" id="L188">            gaps.add(new Gap(STALE, SEMANTIC_REQUIREMENT_AMBIGUOUS, versionKey, null));</span>
+<span class="nc" id="L189">            return null;</span>
+        }
+<span class="fc" id="L191">        var block = matches.getFirst();</span>
+<span class="fc" id="L192">        String id = block.getHeaderTokens().getFirst();</span>
+<span class="pc bpc" id="L193" title="1 of 2 branches missed.">        if (!matchesProperty(block, PortfolioGitService.MANAGED_PROPERTY, &quot;true&quot;)</span>
+<span class="pc bpc" id="L194" title="1 of 2 branches missed.">                || !matchesProperty(block, &quot;x-version&quot;, Integer.toString(version.versionNumber()))</span>
+<span class="pc bpc" id="L195" title="1 of 2 branches missed.">                || !matchesVersion(block, &quot;x-content-hash&quot;, version)) {</span>
+<span class="nc" id="L196">            gaps.add(new Gap(STALE, SEMANTIC_REQUIREMENT_VERSION_MISMATCH, id, block.property(&quot;x-version&quot;)));</span>
+<span class="nc" id="L197">            return null;</span>
+        }
+<span class="fc" id="L199">        return id;</span>
+    }
+
+    private boolean matchesPassages(BlockAst block, SourceReference source) {
+        try {
+<span class="pc bpc" id="L204" title="1 of 2 branches missed.">            if (block.propertyValues(&quot;sourceFragmentIds&quot;).size() &gt; 1) return false;</span>
+<span class="fc" id="L205">            var checkpointFragments = json.readLongList(block.property(&quot;sourceFragmentIds&quot;)).stream().sorted().toList();</span>
+<span class="pc bpc" id="L206" title="1 of 2 branches missed.">            if (source == null) {</span>
+<span class="nc bnc" id="L207" title="All 2 branches missed.">                return checkpointFragments.isEmpty() &amp;&amp; List.of(&quot;sourceArtifactId&quot;, &quot;sourceVersionId&quot;, &quot;sectionReference&quot;, &quot;pageNumber&quot;, &quot;originalText&quot;)</span>
+<span class="nc bnc" id="L208" title="All 4 branches missed.">                        .stream().allMatch(property -&gt; block.property(property) == null);</span>
+            }
+<span class="pc bpc" id="L210" title="1 of 2 branches missed.">            return matchesProperty(block, &quot;sourceArtifactId&quot;, string(source.sourceArtifactId()))</span>
+<span class="pc bpc" id="L211" title="1 of 2 branches missed.">                    &amp;&amp; matchesProperty(block, &quot;sourceVersionId&quot;, string(source.sourceVersionId()))</span>
+<span class="fc bfc" id="L212" title="All 2 branches covered.">                    &amp;&amp; checkpointFragments.equals(fragments(source))</span>
+<span class="pc bpc" id="L213" title="1 of 2 branches missed.">                    &amp;&amp; matchesProperty(block, &quot;sectionReference&quot;, source.sectionReference())</span>
+<span class="pc bpc" id="L214" title="1 of 2 branches missed.">                    &amp;&amp; matchesProperty(block, &quot;pageNumber&quot;, string(source.pageNumber()))</span>
+                    // Current-only projections may keep the original passage only in the immutable version row.
+<span class="pc bpc" id="L216" title="2 of 4 branches missed.">                    &amp;&amp; (block.property(&quot;originalText&quot;) == null || matchesProperty(block, &quot;originalText&quot;, source.originalText()));</span>
+<span class="nc" id="L217">        } catch (PortfolioException malformed) {</span>
+<span class="nc" id="L218">            return false;</span>
+        }
+    }
+
+    private static boolean matchesVersion(BlockAst block, String hashProperty, RequirementVersionView version) {
+<span class="pc bpc" id="L223" title="2 of 4 branches missed.">        return version.contentHash() != null &amp;&amp; matchesProperty(block, hashProperty, version.contentHash())</span>
+<span class="pc bpc" id="L224" title="2 of 4 branches missed.">                &amp;&amp; matchesProperty(block, &quot;text&quot;, version.text()) &amp;&amp; version.text() != null</span>
+<span class="pc bpc" id="L225" title="1 of 2 branches missed.">                &amp;&amp; version.contentHash().equals(StableIdentityHash.sha256(version.text()));</span>
+    }
+
+    private static boolean matchesProperty(BlockAst block, String property, String expected) {
+<span class="pc bpc" id="L229" title="1 of 4 branches missed.">        return block.propertyValues(property).size() &lt;= 1 &amp;&amp; Objects.equals(block.property(property), expected);</span>
+    }
+
+    private static Snapshot snapshotEvidence(SnapshotDetail detail, List&lt;Gap&gt; gaps) {
+<span class="fc" id="L233">        var summary = detail.summary();</span>
+<span class="pc bpc" id="L234" title="1 of 2 branches missed.">        var view = detail.analysis() == null ? null : detail.analysis().getArchitectureView();</span>
+<span class="pc bpc" id="L235" title="2 of 4 branches missed.">        var elements = view == null || view.getIncludedElements() == null ? List.&lt;String&gt;of()</span>
+<span class="fc" id="L236">                : view.getIncludedElements().stream().map(RequirementElementView::getNodeCode)</span>
+<span class="fc" id="L237">                        .filter(SourceCoverageManifestService::present).distinct().sorted().toList();</span>
+<span class="pc bpc" id="L238" title="2 of 4 branches missed.">        var relations = view == null || view.getIncludedRelationships() == null ? List.&lt;String&gt;of()</span>
+<span class="fc" id="L239">                : view.getIncludedRelationships().stream()</span>
+<span class="pc bpc" id="L240" title="3 of 6 branches missed.">                        .filter(relation -&gt; present(relation.getSourceCode()) &amp;&amp; present(relation.getTargetCode()) &amp;&amp; present(relation.getRelationType()))</span>
+<span class="fc" id="L241">                        .map(relation -&gt; &quot;relation:&quot; + relation.getSourceCode() + &quot; &quot; + relation.getRelationType() + &quot; &quot; + relation.getTargetCode())</span>
+<span class="fc" id="L242">                        .distinct().sorted().toList();</span>
+<span class="pc bpc" id="L243" title="1 of 2 branches missed.">        if (elements.isEmpty()) gaps.add(new Gap(MISSING, SNAPSHOT_ARCHITECTURE_NOT_RECORDED, summary.id(), null));</span>
+<span class="fc" id="L244">        return new Snapshot(summary.id(), summary.status(), summary.provider(), summary.commitSha(),</span>
+<span class="fc" id="L245">                summary.taxonomyFingerprint(), elements, relations);</span>
+    }
+
+    private static List&lt;Decision&gt; decisions(Snapshot snapshot, String requirement,
+                                             Map&lt;String, BlockAst&gt; blocks, List&lt;Gap&gt; gaps) {
+<span class="fc" id="L250">        var decisions = new ArrayList&lt;Decision&gt;();</span>
+<span class="fc bfc" id="L251" title="All 2 branches covered.">        for (String target : snapshot.candidateArchitectureIds()) {</span>
+<span class="fc" id="L252">            String key = &quot;mapping:&quot; + requirement + &quot; -&gt; &quot; + target;</span>
+<span class="fc" id="L253">            var mapping = blocks.get(key);</span>
+<span class="pc bpc" id="L254" title="1 of 4 branches missed.">            if (mapping == null || !matchesProperty(mapping, PortfolioGitService.MANAGED_PROPERTY, &quot;true&quot;)) {</span>
+<span class="fc" id="L255">                gaps.add(new Gap(MISSING, DECISION_NOT_CHECKPOINTED, key, null));</span>
+<span class="fc bfc" id="L256" title="All 2 branches covered.">            } else if (!matchesProperty(mapping, &quot;source&quot;, snapshot.id())) {</span>
+<span class="fc" id="L257">                gaps.add(new Gap(STALE, DECISION_SNAPSHOT_MISMATCH, key, mapping.property(&quot;source&quot;)));</span>
+            } else {
+<span class="fc" id="L259">                var decision = reviewedDecision(mapping, key, target);</span>
+<span class="fc bfc" id="L260" title="All 2 branches covered.">                if (decision == null) {</span>
+<span class="fc" id="L261">                    gaps.add(new Gap(MISSING, DECISION_EVIDENCE_INCOMPLETE, key, mapping.property(&quot;x-review-status&quot;)));</span>
+<span class="fc bfc" id="L262" title="All 2 branches covered.">                } else if (!blocks.containsKey(&quot;element:&quot; + target)) {</span>
+<span class="fc" id="L263">                    gaps.add(new Gap(MISSING, SEMANTIC_ELEMENT_NOT_CHECKPOINTED, target, key));</span>
+                } else {
+<span class="fc" id="L265">                    decisions.add(decision);</span>
+                }
+            }
+<span class="fc" id="L268">        }</span>
+        // The portable portfolio currently checkpoints element mapping reviews only.
+<span class="fc" id="L270">        snapshot.candidateRelationKeys().forEach(relation -&gt; gaps.add(new Gap(MISSING, RELATION_DECISION_NOT_CHECKPOINTED, relation, null)));</span>
+<span class="fc" id="L271">        return decisions;</span>
+    }
+
+    private static Decision reviewedDecision(BlockAst mapping, String key, String target) {
+<span class="fc" id="L275">        String status = mapping.property(&quot;x-review-status&quot;);</span>
+<span class="fc" id="L276">        String actor = mapping.property(&quot;x-decision-by&quot;);</span>
+<span class="fc" id="L277">        String decidedAt = mapping.property(&quot;x-decision-at&quot;);</span>
+<span class="pc bpc" id="L278" title="2 of 8 branches missed.">        if (!&quot;CONFIRMED&quot;.equals(status) &amp;&amp; !&quot;REJECTED&quot;.equals(status) || !present(actor) || !present(decidedAt)</span>
+<span class="pc bpc" id="L279" title="2 of 4 branches missed.">                || !matchesProperty(mapping, &quot;x-review-status&quot;, status) || !matchesProperty(mapping, &quot;x-decision-by&quot;, actor)</span>
+<span class="pc bpc" id="L280" title="1 of 2 branches missed.">                || !matchesProperty(mapping, &quot;x-decision-at&quot;, decidedAt)) return null;</span>
+        try {
+<span class="fc" id="L282">            return new Decision(key, target, ReviewStatus.valueOf(status), mapping.property(&quot;x-action-status&quot;), actor, Instant.parse(decidedAt));</span>
+<span class="nc" id="L283">        } catch (DateTimeParseException malformed) {</span>
+<span class="nc" id="L284">            return null;</span>
+        }
+    }
+
+    private static List&lt;Long&gt; fragments(SourceReference source) {
+<span class="pc bpc" id="L289" title="1 of 2 branches missed.">        return source.sourceFragmentIds() == null ? List.of() : source.sourceFragmentIds().stream().distinct().sorted().toList();</span>
+    }
+
+<span class="fc" id="L292">    private static String string(Object value) { return Objects.toString(value, null); }</span>
+
+<span class="pc bpc" id="L294" title="1 of 4 branches missed.">    private static boolean present(String value) { return value != null &amp;&amp; !value.isBlank(); }</span>
+
+<span class="fc" id="L296">    private record CheckpointRead(Checkpoint evidence, Map&lt;String, BlockAst&gt; blocks) {}</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

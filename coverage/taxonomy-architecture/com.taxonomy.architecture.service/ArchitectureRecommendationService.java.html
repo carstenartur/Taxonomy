@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchitectureRecommendationService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-architecture</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.architecture.service</a> &gt; <span class="el_source">ArchitectureRecommendationService.java</span></div><h1>ArchitectureRecommendationService.java</h1><pre class="source lang-java linenums">package com.taxonomy.architecture.service;
+
+import com.taxonomy.dto.*;
+import com.taxonomy.catalog.model.TaxonomyNode;
+import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
+import com.taxonomy.catalog.service.LocalEmbeddingService;
+import com.taxonomy.dsl.command.ArchitectureDslCommands;
+import com.taxonomy.dsl.model.TaxonomyRootTypes;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.WorkspaceDslReadPort;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import java.io.IOException;
+import java.util.*;
+
+/** Relevance ranks candidates; only an exact canonical revision establishes model membership. */
+@Service
+public class ArchitectureRecommendationService {
+    static final int HIGH_SCORE_THRESHOLD = 70;
+    private final ArchitectureGapService gaps;
+    private final TaxonomyNodeRepository nodes;
+    private final WorkspaceDslReadPort dslReader;
+    private final LocalEmbeddingService embeddingService;
+    public ArchitectureRecommendationService(ArchitectureGapService gaps, TaxonomyNodeRepository nodes,
+<span class="fc" id="L25">            LocalEmbeddingService embeddingService, WorkspaceDslReadPort dslReader) {</span>
+<span class="fc" id="L26">        this.gaps = gaps; this.nodes = nodes; this.dslReader = dslReader; this.embeddingService = embeddingService;</span>
+<span class="fc" id="L27">    }</span>
+    /** A retained ranking has no acceptance authority and no implied obligations. */
+    public ArchitectureRecommendation rankMatches(Map&lt;String, Double&gt; scores, String businessText, int minScore) {
+<span class="fc" id="L30">        var result = new ArchitectureRecommendation(); result.setBusinessText(businessText);</span>
+<span class="pc bpc" id="L31" title="1 of 2 branches missed.">        int threshold = minScore &gt; 0 ? minScore : 50;</span>
+<span class="fc bfc" id="L32" title="All 2 branches covered.">        if (scores != null) scores.entrySet().stream()</span>
+<span class="pc bpc" id="L33" title="2 of 6 branches missed.">                .filter(e -&gt; e.getValue() != null &amp;&amp; Double.isFinite(e.getValue()) &amp;&amp; e.getValue() &gt;= threshold)</span>
+<span class="fc" id="L34">                .sorted(Map.Entry.&lt;String,Double&gt;comparingByValue().reversed().thenComparing(Map.Entry.comparingByKey()))</span>
+<span class="fc" id="L35">                .forEach(e -&gt; nodes.findByCode(e.getKey()).ifPresent(node -&gt; result.getMatchedElements().add(</span>
+<span class="fc" id="L36">                        new RecommendedElement(node.getCode(), node.getNameEn(), node.getTaxonomyRoot(), e.getValue(), &quot;Relevance match; not accepted model membership&quot;))));</span>
+<span class="fc bfc" id="L37" title="All 2 branches covered.">        result.setMeanRelevance(result.getMatchedElements().isEmpty() ? null : result.getMatchedElements().stream().mapToDouble(RecommendedElement::getScore).average().orElseThrow());</span>
+<span class="fc" id="L38">        result.setGapAnalysis(ArchitectureGapService.compatibilityAssessment(businessText));</span>
+<span class="fc" id="L39">        result.getNotes().add(&quot;Scores rank candidates and do not establish acceptance, completeness or architectural correctness.&quot;);</span>
+<span class="fc" id="L40">        return result;</span>
+    }
+    @Transactional(readOnly = true)
+    public ArchitectureRecommendation recommend(RepositoryContext context, String commitId, String profileId,
+            String profileVersion, EvidenceCompleteness completeness, Map&lt;String,Double&gt; scores,
+            String businessText, int minScore) throws IOException {
+<span class="fc" id="L46">        var result = rankMatches(scores, businessText, minScore);</span>
+<span class="fc" id="L47">        var assessment = gaps.analyze(context, commitId, profileId, profileVersion, completeness, businessText);</span>
+<span class="fc" id="L48">        result.setGapAnalysis(assessment);</span>
+<span class="fc" id="L49">        var read = dslReader.openRead(context);</span>
+<span class="fc" id="L50">        var model = new ArchitectureDslCommands().model(read.dslAtCommit(assessment.getCommitId())</span>
+<span class="pc" id="L51">                .orElseThrow(() -&gt; new IllegalStateException(&quot;Selected revision has no canonical model&quot;)));</span>
+<span class="fc" id="L52">        model.getElements().forEach(e -&gt; result.getAcceptedElements().add(new RecommendedElement(e.getId(), e.getTitle(),</span>
+<span class="fc" id="L53">                TaxonomyRootTypes.rootFor(e.getType()), 0, &quot;Member of canonical model at &quot; + assessment.getCommitId())));</span>
+<span class="fc" id="L54">        Set&lt;String&gt; members = new HashSet&lt;&gt;(); model.getElements().forEach(e -&gt; members.add(e.getId()));</span>
+<span class="fc" id="L55">        Set&lt;String&gt; proposed = new HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L56" title="All 2 branches covered.">        for (var judgment : assessment.getJudgments()) {</span>
+<span class="pc bpc" id="L57" title="2 of 4 branches missed.">            if (judgment.status() != ObligationJudgment.Status.VIOLATED || judgment.observedCount() &gt;= judgment.minCount()) continue;</span>
+<span class="fc" id="L58">            int remaining = judgment.minCount() - judgment.observedCount();</span>
+<span class="fc" id="L59">            Set&lt;String&gt; alreadyLinked = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L60">            model.getRelations().stream()</span>
+<span class="pc bpc" id="L61" title="2 of 4 branches missed.">                    .filter(r -&gt; judgment.sourceNodeCode().equals(r.getSourceId()) &amp;&amp; judgment.relationType().equals(r.getRelationType())</span>
+<span class="pc bpc" id="L62" title="1 of 2 branches missed.">                            &amp;&amp; &quot;accepted&quot;.equals(r.getStatus()))</span>
+<span class="fc" id="L63">                    .forEach(r -&gt; alreadyLinked.add(r.getTargetId()));</span>
+<span class="fc" id="L64">            Map&lt;String, RecommendedElement&gt; candidates = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L65">            model.getElements().stream()</span>
+<span class="fc bfc" id="L66" title="All 4 branches covered.">                    .filter(e -&gt; !e.getId().equals(judgment.sourceNodeCode()) &amp;&amp; !alreadyLinked.contains(e.getId()))</span>
+<span class="pc bpc" id="L67" title="1 of 4 branches missed.">                    .filter(e -&gt; TaxonomyRootTypes.rootFor(e.getType()) != null &amp;&amp; judgment.targetRoots().contains(TaxonomyRootTypes.rootFor(e.getType())))</span>
+<span class="fc" id="L68">                    .sorted(Comparator.comparing(com.taxonomy.dsl.model.ArchitectureElement::getId))</span>
+<span class="fc" id="L69">                    .forEach(e -&gt; candidates.put(e.getId(), new RecommendedElement(e.getId(), e.getTitle(), TaxonomyRootTypes.rootFor(e.getType()),</span>
+<span class="fc" id="L70">                            0, &quot;Existing model element eligible for obligation &quot; + judgment.ruleId())));</span>
+            // Canonical identities/types are authoritative. Introduce catalogue elements only
+            // if unlinked, eligible existing members cannot fill the remaining cardinality.
+<span class="fc" id="L73">            int suggestionLimit = Math.min(3, remaining);</span>
+<span class="pc bpc" id="L74" title="1 of 4 branches missed.">            if (candidates.size() &lt; remaining &amp;&amp; candidates.size() &lt; suggestionLimit) {</span>
+<span class="fc" id="L75">                var catalogue = judgment.targetRoots().stream().sorted()</span>
+<span class="fc" id="L76">                        .flatMap(root -&gt; nodes.findByTaxonomyRootOrderByLevelAscNameEnAsc(root).stream())</span>
+<span class="pc bpc" id="L77" title="1 of 4 branches missed.">                        .filter(n -&gt; !members.contains(n.getCode()) &amp;&amp; !alreadyLinked.contains(n.getCode()))</span>
+<span class="fc" id="L78">                        .toList();</span>
+<span class="fc bfc" id="L79" title="All 2 branches covered.">                for (var n : rankCatalogue(catalogue, businessText, result.getNotes())) {</span>
+<span class="fc bfc" id="L80" title="All 2 branches covered.">                    if (candidates.size() &gt;= suggestionLimit) break;</span>
+<span class="fc" id="L81">                    candidates.putIfAbsent(n.getCode(), new RecommendedElement(n.getCode(), n.getNameEn(), n.getTaxonomyRoot(),</span>
+<span class="fc" id="L82">                            0, &quot;Catalogue candidate for obligation &quot; + judgment.ruleId()));</span>
+<span class="fc" id="L83">                }</span>
+            }
+<span class="fc bfc" id="L85" title="All 2 branches covered.">            for (var candidate : candidates.values().stream().limit(suggestionLimit).toList()) {</span>
+<span class="pc bpc" id="L86" title="1 of 4 branches missed.">                if (!members.contains(candidate.getNodeCode()) &amp;&amp; proposed.add(candidate.getNodeCode())) result.getProposedElements().add(candidate);</span>
+<span class="fc" id="L87">                result.getSuggestedRelations().add(new SuggestedRelation(judgment.sourceNodeCode(), candidate.getNodeCode(), judgment.relationType(),</span>
+<span class="fc" id="L88">                        &quot;Review candidate for violated rule &quot; + judgment.ruleId() + &quot;; alternatives share one cardinality&quot;));</span>
+<span class="fc" id="L89">            }</span>
+<span class="fc" id="L90">        }</span>
+<span class="fc" id="L91">        read.verifyExpectedHead(assessment.getCommitId());</span>
+<span class="fc" id="L92">        return result;</span>
+    }
+    private List&lt;TaxonomyNode&gt; rankCatalogue(List&lt;TaxonomyNode&gt; candidates, String text, List&lt;String&gt; notes) {
+<span class="fc bfc" id="L95" title="All 2 branches covered.">        if (candidates.isEmpty()) return List.of();</span>
+<span class="pc bpc" id="L96" title="3 of 6 branches missed.">        if (text != null &amp;&amp; !text.isBlank() &amp;&amp; embeddingService.isAvailable()) {</span>
+            try {
+<span class="nc" id="L98">                var scores = embeddingService.scoreNodes(text, candidates);</span>
+<span class="nc" id="L99">                return candidates.stream().sorted(Comparator.comparingDouble(</span>
+<span class="nc" id="L100">                        (TaxonomyNode node) -&gt; scores.getOrDefault(node.getCode(), 0d)).reversed().thenComparing(TaxonomyNode::getCode)).toList();</span>
+<span class="nc" id="L101">            } catch (Exception unavailable) {</span>
+<span class="nc" id="L102">                notes.add(&quot;Local semantic ranking failed; catalogue candidates use specificity order.&quot;);</span>
+            }
+        }
+<span class="fc" id="L105">        return candidates.stream().sorted(Comparator.comparingInt(TaxonomyNode::getLevel).reversed().thenComparing(TaxonomyNode::getCode)).toList();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

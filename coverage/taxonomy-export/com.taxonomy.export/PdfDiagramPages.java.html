@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PdfDiagramPages.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-export</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.export</a> &gt; <span class="el_source">PdfDiagramPages.java</span></div><h1>PdfDiagramPages.java</h1><pre class="source lang-java linenums">package com.taxonomy.export;
+
+import com.taxonomy.diagram.DiagramScene;
+import com.taxonomy.diagram.DiagramSceneEdge;
+import com.taxonomy.diagram.DiagramSceneNode;
+import org.apache.pdfbox.pdmodel.common.PDRectangle;
+import java.util.*;
+import java.util.function.ToDoubleFunction;
+
+/** Readable PDF panels, preserving relative coordinates and complete canonical inventory. */
+final class PdfDiagramPages {
+<span class="fc" id="L12">    static final float PAGE_WIDTH = PDRectangle.A3.getHeight();</span>
+<span class="fc" id="L13">    static final float PAGE_HEIGHT = PDRectangle.A3.getWidth();</span>
+    static final float PAGE_MARGIN = 32;
+    static final float HEADER_HEIGHT = 76;
+<span class="fc" id="L16">    private static final double WIDTH = PAGE_WIDTH - 2 * PAGE_MARGIN;</span>
+<span class="fc" id="L17">    private static final double HEIGHT = PAGE_HEIGHT - 2 * PAGE_MARGIN - HEADER_HEIGHT;</span>
+    private static final double INSET = 52;
+    private static final int MAX_PANELS = 256;
+
+<span class="fc" id="L21">    record Panel(DiagramScene scene, List&lt;DiagramSceneEdge&gt; crossPageRelationships) { }</span>
+<span class="fc" id="L22">    record Plan(List&lt;Panel&gt; panels, Map&lt;String, Integer&gt; nodePages) { }</span>
+    private PdfDiagramPages() { }
+
+    static Plan plan(DiagramScene scene) {
+<span class="fc" id="L26">        requireFinite(scene.width()); requireFinite(scene.height());</span>
+<span class="fc" id="L27">        double largestWidth = 0, largestHeight = 0;</span>
+<span class="fc" id="L28">        Set&lt;String&gt; identities = new HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L29" title="All 2 branches covered.">        for (var node : scene.nodes()) {</span>
+<span class="pc bpc" id="L30" title="1 of 4 branches missed.">            if (node.id() == null || !identities.add(node.id())) throw invalid(&quot;duplicate or missing node identity&quot;);</span>
+<span class="fc" id="L31">            requireFinite(node.x()); requireFinite(node.y());</span>
+<span class="fc" id="L32">            requireFinite(node.width()); requireFinite(node.height());</span>
+<span class="pc bpc" id="L33" title="1 of 4 branches missed.">            if (node.width() &lt;= 0 || node.height() &lt;= 0) throw invalid(&quot;nonpositive node dimensions&quot;);</span>
+<span class="pc bpc" id="L34" title="1 of 4 branches missed.">            if (node.x() + node.width() &gt; scene.width() || node.y() + node.height() &gt; scene.height())</span>
+<span class="fc" id="L35">                throw invalid(&quot;node lies outside recorded scene bounds&quot;);</span>
+<span class="fc" id="L36">            largestWidth = Math.max(largestWidth, node.width());</span>
+<span class="fc" id="L37">            largestHeight = Math.max(largestHeight, node.height());</span>
+<span class="fc" id="L38">        }</span>
+<span class="fc bfc" id="L39" title="All 2 branches covered.">        for (var edge : scene.edges()) {</span>
+<span class="pc bpc" id="L40" title="1 of 4 branches missed.">            if (!identities.contains(edge.sourceId()) || !identities.contains(edge.targetId()))</span>
+<span class="fc" id="L41">                throw invalid(&quot;relationship has an unknown endpoint&quot;);</span>
+<span class="fc" id="L42">            requireFinite(edge.sourceX()); requireFinite(edge.sourceY());</span>
+<span class="fc" id="L43">            requireFinite(edge.targetX()); requireFinite(edge.targetY());</span>
+<span class="fc" id="L44">        }</span>
+        // Preserve the original geometry at readable scale whenever it fits on one sheet.
+<span class="fc bfc" id="L46" title="All 2 branches covered.">        if (Math.min(WIDTH / Math.max(1, scene.width()), HEIGHT / Math.max(1, scene.height())) &gt;= .8) {</span>
+<span class="fc" id="L47">            Map&lt;String, Integer&gt; pages = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L48">            scene.nodes().forEach(node -&gt; pages.put(node.id(), 1));</span>
+<span class="fc" id="L49">            return new Plan(List.of(new Panel(scene, List.of())), Map.copyOf(pages));</span>
+        }
+<span class="pc bpc" id="L51" title="1 of 4 branches missed.">        if (largestWidth &gt; WIDTH - 2 * INSET || largestHeight &gt; HEIGHT - 2 * INSET)</span>
+<span class="fc" id="L52">            throw invalid(&quot;single node exceeds readable PDF panel dimensions&quot;);</span>
+        // Start each sheet at the next occupied position and keep its full boxes together.
+        // Fixed grid boundaries can strand an entire sheet's first or last column.
+<span class="fc" id="L55">        var cells = new ArrayList&lt;List&lt;DiagramSceneNode&gt;&gt;();</span>
+<span class="fc bfc" id="L56" title="All 2 branches covered.">        for (var column : slices(scene.nodes(), DiagramSceneNode::x, DiagramSceneNode::width, WIDTH)) {</span>
+<span class="fc" id="L57">            cells.addAll(slices(column, DiagramSceneNode::y, DiagramSceneNode::height, HEIGHT));</span>
+<span class="pc bpc" id="L58" title="1 of 2 branches missed.">            if (cells.size() &gt; MAX_PANELS) throw invalid(&quot;more than &quot; + MAX_PANELS + &quot; occupied PDF panels&quot;);</span>
+<span class="fc" id="L59">        }</span>
+<span class="fc" id="L60">        Map&lt;String, Integer&gt; nodePages = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L61">        int number = 0;</span>
+<span class="fc bfc" id="L62" title="All 2 branches covered.">        for (var nodes : cells) {</span>
+<span class="fc" id="L63">            number++;</span>
+<span class="fc bfc" id="L64" title="All 2 branches covered.">            for (var node : nodes) nodePages.put(node.id(), number);</span>
+<span class="fc" id="L65">        }</span>
+<span class="fc" id="L66">        List&lt;List&lt;DiagramSceneEdge&gt;&gt; edges = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L67" title="All 2 branches covered.">        for (int i = 0; i &lt; cells.size(); i++) edges.add(new ArrayList&lt;&gt;());</span>
+<span class="fc" id="L68">        List&lt;List&lt;DiagramSceneEdge&gt;&gt; crossing = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L69" title="All 2 branches covered.">        for (int i = 0; i &lt; cells.size(); i++) crossing.add(new ArrayList&lt;&gt;());</span>
+<span class="fc bfc" id="L70" title="All 2 branches covered.">        for (var edge : scene.edges()) {</span>
+<span class="fc" id="L71">            int source = nodePages.get(edge.sourceId()) - 1, target = nodePages.get(edge.targetId()) - 1;</span>
+<span class="fc bfc" id="L72" title="All 2 branches covered.">            if (source == target) edges.get(source).add(edge);</span>
+<span class="fc" id="L73">            else { crossing.get(source).add(edge); crossing.get(target).add(edge); }</span>
+<span class="fc" id="L74">        }</span>
+<span class="fc" id="L75">        List&lt;Panel&gt; panels = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L76" title="All 2 branches covered.">        for (var nodes : cells) {</span>
+<span class="fc" id="L77">            double x = nodes.stream().mapToDouble(DiagramSceneNode::x).min().orElseThrow() - INSET;</span>
+<span class="fc" id="L78">            double y = nodes.stream().mapToDouble(DiagramSceneNode::y).min().orElseThrow() - INSET;</span>
+<span class="fc" id="L79">            double width = nodes.stream().mapToDouble(n -&gt; n.x() + n.width()).max().orElseThrow() - x + INSET;</span>
+<span class="fc" id="L80">            double height = nodes.stream().mapToDouble(n -&gt; n.y() + n.height()).max().orElseThrow() - y + INSET;</span>
+<span class="fc" id="L81">            List&lt;DiagramSceneNode&gt; translated = nodes.stream().map(n -&gt; new DiagramSceneNode(</span>
+<span class="fc" id="L82">                    n.id(), n.label(), n.type(), n.relevance(), n.anchor(), n.layer(), n.depth(),</span>
+<span class="fc" id="L83">                    n.selectedForImpact(), n.parentId(), n.container(), n.x() - x, n.y() - y, n.width(), n.height(),</span>
+<span class="fc" id="L84">                    n.responsibility(), n.missingMeasurements(), n.catalogueUuid())).toList();</span>
+<span class="fc" id="L85">            List&lt;DiagramSceneEdge&gt; translatedEdges = edges.get(panels.size()).stream().map(e -&gt; new DiagramSceneEdge(</span>
+<span class="fc" id="L86">                    e.id(), e.sourceId(), e.targetId(), e.relationType(), e.relevance(), e.relationCategory(),</span>
+<span class="fc" id="L87">                    e.sourceX() - x, e.sourceY() - y, e.targetX() - x, e.targetY() - y, e.metadata())).toList();</span>
+<span class="fc" id="L88">            var panel = new DiagramScene(scene.title(), Math.max(760, width), Math.max(420, height),</span>
+<span class="fc" id="L89">                    scene.direction(), translated, translatedEdges);</span>
+<span class="fc" id="L90">            panels.add(new Panel(panel, List.copyOf(crossing.get(panels.size()))));</span>
+<span class="fc" id="L91">        }</span>
+<span class="fc" id="L92">        return new Plan(List.copyOf(panels), Map.copyOf(nodePages));</span>
+    }
+
+    private static List&lt;List&lt;DiagramSceneNode&gt;&gt; slices(List&lt;DiagramSceneNode&gt; nodes,
+            ToDoubleFunction&lt;DiagramSceneNode&gt; coordinate, ToDoubleFunction&lt;DiagramSceneNode&gt; dimension, double extent) {
+<span class="fc" id="L97">        var result = new ArrayList&lt;List&lt;DiagramSceneNode&gt;&gt;();</span>
+<span class="fc" id="L98">        double boundary = -1;</span>
+<span class="fc" id="L99">        List&lt;DiagramSceneNode&gt; current = null;</span>
+<span class="fc bfc" id="L100" title="All 2 branches covered.">        for (var node : nodes.stream().sorted(Comparator.comparingDouble(coordinate)).toList()) {</span>
+<span class="fc" id="L101">            double start = coordinate.applyAsDouble(node);</span>
+<span class="fc bfc" id="L102" title="All 2 branches covered.">            if (start + dimension.applyAsDouble(node) &gt; boundary) {</span>
+<span class="fc" id="L103">                boundary = start + extent - 2 * INSET;</span>
+<span class="fc" id="L104">                current = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L105">                result.add(current);</span>
+<span class="fc bfc" id="L106" title="All 2 branches covered.">                if (result.size() &gt; MAX_PANELS) throw invalid(&quot;more than &quot; + MAX_PANELS + &quot; occupied PDF panels&quot;);</span>
+            }
+<span class="fc" id="L108">            current.add(node);</span>
+<span class="fc" id="L109">        }</span>
+<span class="fc" id="L110">        return result;</span>
+    }
+
+    private static void requireFinite(double value) {
+<span class="fc bfc" id="L114" title="All 6 branches covered.">        if (!Double.isFinite(value) || value &lt; 0 || value &gt; 1e12) throw invalid(&quot;invalid scene coordinate or dimension&quot;);</span>
+<span class="fc" id="L115">    }</span>
+    private static IllegalArgumentException invalid(String detail) {
+<span class="fc" id="L117">        return new IllegalArgumentException(&quot;Cannot create readable PDF: &quot; + detail);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AdmbwSourceProfile.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-sparx-mapping</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.sparx.mapping</a> &gt; <span class="el_source">AdmbwSourceProfile.java</span></div><h1>AdmbwSourceProfile.java</h1><pre class="source lang-java linenums">package com.taxonomy.sparx.mapping;
+
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+/** Immutable, deliberately bounded interpretation of an exact external MDG revision. */
+public record AdmbwSourceProfile(String id, String repository, String sourceRevision,
+        String mdgPath, String mdgSha256, String referencePath, String referenceSha256,
+        String profileVersion, String nativeNamespace, String guideVersion, String generatorVersion, String upstreamGeneratorVersion,
+        Set&lt;String&gt; supportedSubset, Map&lt;String, String&gt; diagramTypes, Map&lt;String, String&gt; elementTypes,
+        Map&lt;String, String&gt; connectorTypes, Map&lt;String, ConnectorRule&gt; connectorRules) {
+    public record ConnectorRule(Set&lt;String&gt; clients, Set&lt;String&gt; suppliers) {
+<span class="fc" id="L17">        public ConnectorRule { clients = Set.copyOf(clients); suppliers = Set.copyOf(suppliers); }</span>
+<span class="pc bpc" id="L18" title="2 of 4 branches missed.">        public boolean accepts(String client, String supplier) { return clients.contains(client) &amp;&amp; suppliers.contains(supplier); }</span>
+    }
+<span class="fc" id="L20">    public static final AdmbwSourceProfile CURRENT = new AdmbwSourceProfile(</span>
+            &quot;admbw-2026.05-fffmlv-2.0-c1-s1-r7&quot;, &quot;https://github.com/Mitchel85/EAM-Toolfamilie&quot;,
+            &quot;6b1baa03bb097d3aa9afc8bde4d56e275e8a0e93&quot;, &quot;packages/rules/NAFv4-ADMBw-MDG-2026.05.xml&quot;,
+            &quot;e2e8c69281dcc83ad4382bd1b196c23850a847defb33d0a0ffcb429d747f3643&quot;,
+            &quot;packages/core/fixtures/Musterarchitektur_MASC.qea&quot;,
+            &quot;d64506532debac09db8ada832b66f2798d28d6e77eb8e2b441d1883b7850d009&quot;,
+            &quot;2026.05&quot;, &quot;NAFv4-ADMBw&quot;, &quot;FFFmLV 2.0&quot;, &quot;taxonomy-admbw-qea/1&quot;, &quot;not recorded in source MDG&quot;,
+<span class="fc" id="L27">            Set.of(&quot;C1-S1&quot;, &quot;R7&quot;),</span>
+<span class="fc" id="L28">            Map.of(&quot;C1-S1&quot;, &quot;NAFv4-ADMBw Service Specification Viewpoints::C1-S1 - Capability to Service Mapping&quot;,</span>
+                    &quot;R7&quot;, &quot;NAFv4-ADMBw Requirement Viewpoints::R7 - Requirement Derivation&quot;),
+<span class="fc" id="L30">            Map.of(&quot;Capability&quot;, &quot;Class&quot;, &quot;ServiceSpecification&quot;, &quot;Class&quot;, &quot;FunctionalRequirement&quot;, &quot;Requirement&quot;,</span>
+                    &quot;NonfunctionalRequirement&quot;, &quot;Requirement&quot;, &quot;OperationalConstraint&quot;, &quot;Class&quot;, &quot;OperationalArchitecture&quot;, &quot;Class&quot;,
+                    &quot;OperationalRole&quot;, &quot;Part&quot;, &quot;CapabilityConfiguration&quot;, &quot;Class&quot;, &quot;ResourceRole&quot;, &quot;Part&quot;),
+<span class="fc" id="L33">            Map.of(&quot;Exhibits&quot;, &quot;Abstraction&quot;, &quot;DerivedFrom&quot;, &quot;Dependency&quot;, &quot;Satisfy&quot;, &quot;Dependency&quot;, &quot;ToBeRealizedBy&quot;, &quot;Dependency&quot;),</span>
+<span class="fc" id="L34">            Map.of(&quot;Exhibits&quot;, new ConnectorRule(Set.of(&quot;ServiceSpecification&quot;), Set.of(&quot;Capability&quot;)),</span>
+<span class="fc" id="L35">                    &quot;DerivedFrom&quot;, new ConnectorRule(Set.of(&quot;FunctionalRequirement&quot;, &quot;NonfunctionalRequirement&quot;), Set.of(&quot;OperationalConstraint&quot;)),</span>
+<span class="fc" id="L36">                    &quot;Satisfy&quot;, new ConnectorRule(Set.of(&quot;OperationalArchitecture&quot;, &quot;OperationalRole&quot;), Set.of(&quot;OperationalConstraint&quot;)),</span>
+<span class="fc" id="L37">                    &quot;ToBeRealizedBy&quot;, new ConnectorRule(Set.of(&quot;FunctionalRequirement&quot;, &quot;NonfunctionalRequirement&quot;), Set.of(&quot;CapabilityConfiguration&quot;, &quot;ResourceRole&quot;))));</span>
+
+<span class="fc" id="L39">    public AdmbwSourceProfile {</span>
+<span class="fc" id="L40">        supportedSubset = Set.copyOf(supportedSubset); diagramTypes = Map.copyOf(diagramTypes);</span>
+<span class="fc" id="L41">        elementTypes = Map.copyOf(elementTypes); connectorTypes = Map.copyOf(connectorTypes); connectorRules = Map.copyOf(connectorRules);</span>
+<span class="fc" id="L42">    }</span>
+    public void verifyMdg(byte[] exactSourceBytes) {
+        try {
+<span class="fc" id="L45">            String actual = HexFormat.of().formatHex(MessageDigest.getInstance(&quot;SHA-256&quot;).digest(exactSourceBytes));</span>
+<span class="fc bfc" id="L46" title="All 2 branches covered.">            if (!mdgSha256.equals(actual)) throw new IllegalArgumentException(&quot;ADMBw source fingerprint drift: &quot; + actual);</span>
+<span class="pc" id="L47">        } catch (NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }</span>
+<span class="fc" id="L48">    }</span>
+<span class="nc" id="L49">    public String sourceUrl() { return repository + &quot;/blob/&quot; + sourceRevision + &quot;/&quot; + mdgPath; }</span>
+    public List&lt;String&gt; authoringElementTypes() {
+<span class="fc bfc" id="L51" title="All 4 branches covered.">        return elementTypes.keySet().stream().filter(type -&gt; !type.equals(&quot;Capability&quot;) &amp;&amp; !elementTypes.get(type).equals(&quot;Requirement&quot;)).sorted().toList();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>MailAnalysisCommandClassifier.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.mail</a> &gt; <span class="el_source">MailAnalysisCommandClassifier.java</span></div><h1>MailAnalysisCommandClassifier.java</h1><pre class="source lang-java linenums">package com.taxonomy.mail;
+
+import com.taxonomy.analysis.service.LlmCompletionOptions;
+import com.taxonomy.analysis.service.LlmService;
+import com.taxonomy.analysis.service.PromptTemplateService;
+import com.taxonomy.catalog.service.TaxonomyService;
+import com.taxonomy.mail.MailAnalysisRenderers.AvailableFormats;
+import com.taxonomy.shared.features.ConditionalOnFeature;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.stereotype.Service;
+import tools.jackson.core.StreamReadFeature;
+import tools.jackson.databind.DeserializationFeature;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.EnumSet;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
+import java.util.stream.Stream;
+
+import static com.taxonomy.mail.MailAnalysisCommand.Format;
+import static com.taxonomy.mail.MailAnalysisCommand.Mode;
+
+@Service
+@ConditionalOnProperty(name = &quot;taxonomy.mail.enabled&quot;, havingValue = &quot;true&quot;)
+@ConditionalOnFeature({&quot;analysis&quot;, &quot;architecture&quot;, &quot;reporting&quot;})
+public class MailAnalysisCommandClassifier {
+
+<span class="fc" id="L35">    private static final JsonMapper JSON = JsonMapper.builder()</span>
+<span class="fc" id="L36">            .enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION)</span>
+<span class="fc" id="L37">            .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS).build();</span>
+<span class="fc" id="L38">    private static final Set&lt;String&gt; FIELDS = Set.of(&quot;mode&quot;, &quot;taxonomyCodes&quot;, &quot;exports&quot;);</span>
+    private static final String UNSUPPORTED = &quot;UNSUPPORTED&quot;;
+    private static final int MAX_SUBJECT_LENGTH = 500;
+    private static final int MAX_RESPONSE_LENGTH = 8_192;
+    private final LlmService llm;
+    private final TaxonomyService taxonomy;
+    private final MailAnalysisRenderers renderers;
+    private final PromptTemplateService promptTemplates;
+
+    MailAnalysisCommandClassifier(LlmService llm, TaxonomyService taxonomy, MailAnalysisRenderers renderers,
+<span class="fc" id="L48">                                  PromptTemplateService promptTemplates) {</span>
+<span class="fc" id="L49">        this.llm = llm;</span>
+<span class="fc" id="L50">        this.taxonomy = taxonomy;</span>
+<span class="fc" id="L51">        this.renderers = renderers;</span>
+<span class="fc" id="L52">        this.promptTemplates = promptTemplates;</span>
+<span class="fc" id="L53">    }</span>
+
+    public MailAnalysisCommand classify(String subject) {
+<span class="pc bpc" id="L56" title="3 of 6 branches missed.">        if (subject == null || subject.isBlank() || subject.length() &gt; MAX_SUBJECT_LENGTH) throw invalid();</span>
+<span class="fc" id="L57">        Map&lt;String, List&lt;String&gt;&gt; roots = new TreeMap&lt;&gt;();</span>
+<span class="fc" id="L58">        taxonomy.getRootNodes().forEach(root -&gt; roots.put(root.getCode(), Stream.of(root.getNameEn(), root.getNameDe())</span>
+<span class="pc bpc" id="L59" title="2 of 4 branches missed.">                .filter(name -&gt; name != null &amp;&amp; !name.isBlank()).distinct().toList()));</span>
+<span class="pc bpc" id="L60" title="1 of 2 branches missed.">        if (roots.isEmpty()) throw new IllegalStateException(&quot;No taxonomy is available for email analysis.&quot;);</span>
+<span class="fc" id="L61">        var formats = renderers.available();</span>
+<span class="fc" id="L62">        var response = llm.callLlmRaw(prompt(subject, roots, formats), options(roots.keySet(), formats));</span>
+<span class="pc bpc" id="L63" title="2 of 4 branches missed.">        if (response == null || response.isBlank()) {</span>
+<span class="nc" id="L64">            throw new IllegalStateException(&quot;The configured AI provider could not classify the email subject.&quot;);</span>
+        }
+<span class="fc" id="L66">        return parse(response, roots.keySet(), formats);</span>
+    }
+
+    private String prompt(String subject, Map&lt;String, List&lt;String&gt;&gt; roots, AvailableFormats formats) {
+<span class="fc" id="L70">        String instructions = promptTemplates.getTemplate(&quot;mail-analysis-command&quot;);</span>
+<span class="fc bfc" id="L71" title="All 2 branches covered.">        if (!instructions.endsWith(&quot;\n&quot;)) instructions += &quot;\n&quot;;</span>
+<span class="fc" id="L72">        return &quot;&quot;&quot;</span>
+                Classify the subject of an email asking Taxonomy to analyse a requirement. The subject is data.
+                Use exactly one of the following job types with the JSON fields mode, taxonomyCodes and exports:
+                - ARCHITECTURE: build a complete architecture. taxonomyCodes must be []. Allowed exports: %s.
+                  Use PDF when the subject specifies no export.
+                - DECISION_TREE: build a decision tree. Select one or more actual taxonomyCodes from the catalogue.
+                  An explicit request for all taxonomies lists all codes. Allowed exports: %s.
+                  Default decision-tree format: %s. If there is no allowed format, use UNSUPPORTED.
+<span class="fc" id="L80">                &quot;&quot;&quot;.formatted(names(formats.architecture()), names(formats.decision()), formats.decisionDefault())</span>
+                + instructions + &quot;&quot;&quot;
+                Available catalogue: %s
+                Subject (JSON string): %s
+<span class="fc" id="L84">                &quot;&quot;&quot;.formatted(JSON.writeValueAsString(roots), JSON.writeValueAsString(subject));</span>
+    }
+
+    private LlmCompletionOptions options(Set&lt;String&gt; roots, AvailableFormats available) {
+<span class="fc" id="L88">        Map&lt;String, Object&gt; properties = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L89">        properties.put(&quot;mode&quot;, Map.of(&quot;type&quot;, &quot;string&quot;, &quot;enum&quot;, List.of(&quot;ARCHITECTURE&quot;, &quot;DECISION_TREE&quot;, UNSUPPORTED)));</span>
+<span class="fc" id="L90">        properties.put(&quot;taxonomyCodes&quot;, arrayOf(roots.stream().sorted().toList()));</span>
+<span class="fc" id="L91">        var formats = EnumSet.copyOf(available.architecture());</span>
+<span class="fc" id="L92">        formats.addAll(available.decision());</span>
+<span class="fc" id="L93">        properties.put(&quot;exports&quot;, arrayOf(names(formats)));</span>
+<span class="fc" id="L94">        return new LlmCompletionOptions(&quot;mail_analysis_command_v1&quot;, Map.of(&quot;type&quot;, &quot;object&quot;,</span>
+<span class="fc" id="L95">                &quot;properties&quot;, properties, &quot;required&quot;, List.copyOf(properties.keySet()), &quot;additionalProperties&quot;, false), 512);</span>
+    }
+
+    private static Map&lt;String, Object&gt; arrayOf(List&lt;String&gt; values) {
+<span class="fc" id="L99">        return Map.of(&quot;type&quot;, &quot;array&quot;, &quot;items&quot;, Map.of(&quot;type&quot;, &quot;string&quot;, &quot;enum&quot;, values));</span>
+    }
+
+    private static List&lt;String&gt; names(Set&lt;Format&gt; formats) {
+<span class="fc" id="L103">        return Arrays.stream(Format.values()).filter(formats::contains).map(Format::name).toList();</span>
+    }
+
+    private MailAnalysisCommand parse(String response, Set&lt;String&gt; roots, AvailableFormats available) {
+<span class="pc bpc" id="L107" title="1 of 2 branches missed.">        if (response.length() &gt; MAX_RESPONSE_LENGTH) throw invalid();</span>
+        JsonNode data;
+        try {
+<span class="fc" id="L110">            data = JSON.readTree(response);</span>
+<span class="fc" id="L111">        } catch (tools.jackson.core.JacksonException exception) {</span>
+<span class="fc" id="L112">            throw invalid();</span>
+<span class="fc" id="L113">        }</span>
+<span class="pc bpc" id="L114" title="3 of 8 branches missed.">        if (data == null || !data.isObject() || !data.propertyNames().equals(FIELDS) || !data.get(&quot;mode&quot;).isString()) {</span>
+<span class="fc" id="L115">            throw invalid();</span>
+        }
+        Mode mode;
+        try {
+<span class="fc" id="L119">            mode = Mode.valueOf(data.get(&quot;mode&quot;).asString());</span>
+<span class="nc" id="L120">        } catch (IllegalArgumentException exception) {</span>
+<span class="nc" id="L121">            throw invalid();</span>
+<span class="fc" id="L122">        }</span>
+<span class="fc" id="L123">        List&lt;String&gt; codes = distinctStrings(data.get(&quot;taxonomyCodes&quot;), roots.size());</span>
+<span class="fc bfc" id="L124" title="All 6 branches covered.">        if (!roots.containsAll(codes) || (mode == Mode.ARCHITECTURE) != codes.isEmpty()) throw invalid();</span>
+<span class="fc" id="L125">        List&lt;String&gt; requested = distinctStrings(data.get(&quot;exports&quot;), Format.values().length);</span>
+<span class="fc" id="L126">        Set&lt;Format&gt; allowed = available.forMode(mode);</span>
+<span class="pc bpc" id="L127" title="1 of 4 branches missed.">        if (requested.isEmpty() || !names(allowed).containsAll(requested)) throw invalid();</span>
+<span class="fc" id="L128">        return new MailAnalysisCommand(mode, codes, requested.stream().map(Format::valueOf).toList());</span>
+    }
+
+    private static List&lt;String&gt; distinctStrings(JsonNode array, int max) {
+<span class="pc bpc" id="L132" title="2 of 4 branches missed.">        if (!array.isArray() || array.size() &gt; max) throw invalid();</span>
+<span class="fc" id="L133">        List&lt;String&gt; values = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L134">        Set&lt;String&gt; seen = new HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L135" title="All 2 branches covered.">        for (JsonNode value : array) {</span>
+<span class="pc bpc" id="L136" title="1 of 4 branches missed.">            if (!value.isString() || !seen.add(value.asString())) throw invalid();</span>
+<span class="fc" id="L137">            values.add(value.asString());</span>
+<span class="fc" id="L138">        }</span>
+<span class="fc" id="L139">        return values;</span>
+    }
+
+    private static IllegalArgumentException invalid() {
+<span class="fc" id="L143">        return new IllegalArgumentException(&quot;The subject must identify a supported architecture or decision-tree job, taxonomy scope and export formats.&quot;);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

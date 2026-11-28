@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RootAssessmentEvidence.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.service</a> &gt; <span class="el_source">RootAssessmentEvidence.java</span></div><h1>RootAssessmentEvidence.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.service;
+
+import com.taxonomy.dto.LlmCallDetail;
+
+import java.util.Collection;
+import java.util.Map;
+
+/** Recognizes a validated semantic root clarification without interpreting diagnostic text as evidence. */
+public final class RootAssessmentEvidence {
+    public static final String DIAGNOSTIC_PREFIX = &quot;ROOT_UNRESOLVED:&quot;;
+
+    private RootAssessmentEvidence() { }
+
+    public static boolean isClarification(LlmCallDetail detail) {
+<span class="fc bfc" id="L15" title="All 4 branches covered.">        return detail != null &amp;&amp; detail.getError() != null</span>
+<span class="fc bfc" id="L16" title="All 2 branches covered.">                &amp;&amp; detail.getError().startsWith(DIAGNOSTIC_PREFIX)</span>
+<span class="pc bpc" id="L17" title="1 of 4 branches missed.">                &amp;&amp; detail.getScores() != null &amp;&amp; detail.getScores().isEmpty()</span>
+<span class="fc bfc" id="L18" title="All 2 branches covered.">                &amp;&amp; detail.getRootAssessments().size() == 1</span>
+<span class="pc bpc" id="L19" title="1 of 2 branches missed.">                &amp;&amp; detail.getRootAssessments().values().iterator().next().unresolved();</span>
+    }
+
+    /** A saved clarification belongs to its exact single offered root. */
+    public static boolean isClarificationFor(LlmCallDetail detail, Collection&lt;String&gt; offered) {
+<span class="pc bpc" id="L24" title="1 of 4 branches missed.">        return isClarification(detail) &amp;&amp; offered.size() == 1</span>
+<span class="pc bpc" id="L25" title="1 of 2 branches missed.">                &amp;&amp; detail.getRootAssessments().containsKey(offered.iterator().next());</span>
+    }
+
+    /** Project only the reason bound to the root; the archived reply remains unchanged. */
+    public static Map&lt;String, String&gt; clarificationReasons(LlmCallDetail detail) {
+<span class="pc bpc" id="L30" title="1 of 4 branches missed.">        if (!isClarification(detail) || detail.getReasons() == null) return Map.of();</span>
+<span class="fc" id="L31">        String root = detail.getRootAssessments().keySet().iterator().next();</span>
+<span class="fc" id="L32">        String reason = detail.getReasons().get(root);</span>
+<span class="pc bpc" id="L33" title="1 of 2 branches missed.">        return reason == null ? Map.of() : Map.of(root, reason);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

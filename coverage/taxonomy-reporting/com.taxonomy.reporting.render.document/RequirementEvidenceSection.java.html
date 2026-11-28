@@ -1,0 +1,169 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RequirementEvidenceSection.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-reporting</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.reporting.render.document</a> &gt; <span class="el_source">RequirementEvidenceSection.java</span></div><h1>RequirementEvidenceSection.java</h1><pre class="source lang-java linenums">package com.taxonomy.reporting.render.document;
+
+import com.taxonomy.dto.RequirementNodeAssessment;
+import com.taxonomy.dto.RequirementNodeAssessment.EvidenceStatus;
+import com.taxonomy.reporting.render.decision.DecisionReportLabels;
+import org.apache.poi.xwpf.usermodel.XWPFParagraph;
+import org.springframework.web.util.HtmlUtils;
+
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
+import java.util.Map;
+import java.util.function.BiConsumer;
+import java.util.stream.Collectors;
+
+/** Common presentation of the recorded, source-bound node evidence in HTML and Word. */
+public final class RequirementEvidenceSection {
+
+    private RequirementEvidenceSection() {}
+
+    public static void appendHtml(StringBuilder html,
+            Map&lt;String, List&lt;RequirementNodeAssessment&gt;&gt; assessments, Collection&lt;String&gt; reportNodes,
+            DecisionReportLabels labels) {
+<span class="fc" id="L24">        boolean german = labels.german();</span>
+<span class="fc" id="L25">        html.append(&quot;&lt;section class=\&quot;report-section requirement-evidence\&quot;&gt;&lt;h2&gt;&quot;)</span>
+<span class="fc" id="L26">                .append(title(german)).append(&quot;&lt;/h2&gt;&lt;p&gt;&quot;).append(summary(assessments, reportNodes, german)).append(&quot;&lt;/p&gt;&quot;);</span>
+<span class="fc bfc" id="L27" title="All 2 branches covered.">        if (!assessments.isEmpty()) html.append(&quot;&lt;p&gt;&quot;).append(reviewNotice(german)).append(&quot;&lt;/p&gt;&quot;);</span>
+<span class="fc" id="L28">        assessments.forEach((code, claims) -&gt; {</span>
+<span class="fc" id="L29">            html.append(&quot;&lt;h3&gt;&quot;).append(escape(code)).append(&quot;&lt;/h3&gt;&quot;);</span>
+<span class="fc bfc" id="L30" title="All 2 branches covered.">            for (var claim : claims) {</span>
+<span class="fc" id="L31">                html.append(&quot;&lt;article data-evidence-status=\&quot;&quot;).append(claim.evidenceStatus().name()).append(&quot;\&quot;&gt;&quot;)</span>
+<span class="fc" id="L32">                        .append(&quot;&lt;p&gt;&lt;strong style=\&quot;color:#&quot;).append(color(claim.evidenceStatus())).append(&quot;\&quot;&gt;&quot;)</span>
+<span class="fc" id="L33">                        .append(label(claim.evidenceStatus(), german)).append(&quot;&lt;/strong&gt; · &quot;)</span>
+<span class="fc" id="L34">                        .append(label(claim.contributionType(), german)).append(&quot;&lt;/p&gt;&quot;);</span>
+<span class="pc bpc" id="L35" title="1 of 2 branches missed.">                if (!claim.requirementQuote().isEmpty()) {</span>
+<span class="fc" id="L36">                    html.append(&quot;&lt;p&gt;&lt;strong&gt;&quot;).append(originalQuote(german)).append(&quot;&lt;/strong&gt;&lt;/p&gt;&quot;)</span>
+<span class="fc" id="L37">                            .append(&quot;&lt;blockquote style=\&quot;white-space:pre-wrap;overflow-wrap:anywhere\&quot;&gt;&quot;)</span>
+<span class="fc" id="L38">                            .append(escape(claim.requirementQuote())).append(&quot;&lt;/blockquote&gt;&quot;);</span>
+                }
+<span class="fc" id="L40">                html.append(&quot;&lt;dl&gt;&quot;);</span>
+<span class="fc" id="L41">                fields(claim, german, (name, value) -&gt; html.append(&quot;&lt;dt&gt;&quot;).append(name)</span>
+<span class="fc" id="L42">                        .append(&quot;&lt;/dt&gt;&lt;dd style=\&quot;white-space:pre-wrap;overflow-wrap:anywhere\&quot;&gt;&quot;)</span>
+<span class="fc" id="L43">                        .append(escape(value)).append(&quot;&lt;/dd&gt;&quot;));</span>
+<span class="fc" id="L44">                html.append(&quot;&lt;/dl&gt;&lt;/article&gt;&quot;);</span>
+<span class="fc" id="L45">            }</span>
+<span class="fc" id="L46">        });</span>
+<span class="fc" id="L47">        html.append(&quot;&lt;/section&gt;&quot;);</span>
+<span class="fc" id="L48">    }</span>
+
+    public static void writeWord(WordDocumentWriter writer,
+            Map&lt;String, List&lt;RequirementNodeAssessment&gt;&gt; assessments, Collection&lt;String&gt; reportNodes,
+            DecisionReportLabels labels) {
+<span class="fc" id="L53">        boolean german = labels.german();</span>
+<span class="fc" id="L54">        writer.heading(title(german), 1, null);</span>
+<span class="fc" id="L55">        writer.paragraph(summary(assessments, reportNodes, german));</span>
+<span class="fc bfc" id="L56" title="All 2 branches covered.">        if (!assessments.isEmpty()) writer.paragraph(reviewNotice(german));</span>
+<span class="fc" id="L57">        assessments.forEach((code, claims) -&gt; {</span>
+<span class="fc" id="L58">            writer.heading(code, 2, null);</span>
+<span class="fc bfc" id="L59" title="All 2 branches covered.">            for (var claim : claims) {</span>
+<span class="fc" id="L60">                var paragraphs = new ArrayList&lt;XWPFParagraph&gt;();</span>
+<span class="fc" id="L61">                var status = writer.paragraph(label(claim.evidenceStatus(), german));</span>
+<span class="fc" id="L62">                paragraphs.add(status);</span>
+<span class="fc" id="L63">                status.getRuns().getFirst().setBold(true);</span>
+<span class="fc" id="L64">                status.getRuns().getFirst().setColor(color(claim.evidenceStatus()));</span>
+<span class="fc" id="L65">                var contribution = status.createRun();</span>
+<span class="fc" id="L66">                contribution.setFontSize(10);</span>
+<span class="fc" id="L67">                contribution.setText(&quot; · &quot; + label(claim.contributionType(), german));</span>
+<span class="pc bpc" id="L68" title="1 of 2 branches missed.">                if (!claim.requirementQuote().isEmpty()) {</span>
+<span class="fc" id="L69">                    paragraphs.add(writer.paragraph(originalQuote(german)));</span>
+<span class="fc" id="L70">                    paragraphs.add(writer.paragraph(claim.requirementQuote()));</span>
+                }
+<span class="fc" id="L72">                fields(claim, german, (name, value) -&gt; paragraphs.add(writer.paragraph(name + &quot;: &quot; + value)));</span>
+                // Keep the claim together and allow a page break before the next claim.
+<span class="fc" id="L74">                paragraphs.subList(0, paragraphs.size() - 1).forEach(paragraph -&gt; paragraph.setKeepNext(true));</span>
+<span class="fc" id="L75">            }</span>
+<span class="fc" id="L76">        });</span>
+<span class="fc" id="L77">    }</span>
+
+    private static String title(boolean german) {
+<span class="fc bfc" id="L80" title="All 2 branches covered.">        return german ? &quot;Anforderungsbeiträge und Beleglage&quot; : &quot;Requirement contributions and evidence&quot;;</span>
+    }
+
+    private static String summary(Map&lt;String, List&lt;RequirementNodeAssessment&gt;&gt; assessments,
+            Collection&lt;String&gt; reportNodes, boolean german) {
+<span class="fc bfc" id="L85" title="All 2 branches covered.">        if (assessments.isEmpty())</span>
+<span class="fc bfc" id="L86" title="All 2 branches covered.">            return german ? &quot;Nicht beurteilt. Es wurden keine Anforderungsnachweise erfasst.&quot;</span>
+<span class="fc" id="L87">                    : &quot;Not assessed. No requirement evidence was recorded.&quot;;</span>
+<span class="fc bfc" id="L88" title="All 2 branches covered.">        long unassessed = reportNodes.stream().distinct().filter(code -&gt; !assessments.containsKey(code)).count();</span>
+<span class="pc bpc" id="L89" title="1 of 2 branches missed.">        return german ? &quot;Knoten mit erfassten Nachweisen: &quot; + assessments.size() + &quot; · Nicht beurteilt: &quot; + unassessed</span>
+<span class="fc" id="L90">                : &quot;Nodes with recorded evidence: &quot; + assessments.size() + &quot; · Not assessed: &quot; + unassessed;</span>
+    }
+
+    private static String reviewNotice(boolean german) {
+<span class="pc bpc" id="L94" title="1 of 2 branches missed.">        return german ? &quot;KI-Interpretationen zur fachlichen Prüfung. Die Übernahme in die Architektur erfordert eine separate Prüfung.&quot;</span>
+<span class="fc" id="L95">                : &quot;AI interpretations for review. Adoption into the architecture requires a separate review.&quot;;</span>
+    }
+
+    private static String originalQuote(boolean german) {
+<span class="pc bpc" id="L99" title="1 of 2 branches missed.">        return german ? &quot;Originalpassage&quot; : &quot;Original passage&quot;;</span>
+    }
+
+    private static void fields(RequirementNodeAssessment claim, boolean de, BiConsumer&lt;String, String&gt; show) {
+<span class="pc bpc" id="L103" title="1 of 2 branches missed.">        show.accept(de ? &quot;Gegenstandsarten&quot; : &quot;Subject kinds&quot;, labels(claim.subjectKinds(), de));</span>
+<span class="pc bpc" id="L104" title="1 of 2 branches missed.">        show.accept(de ? &quot;Anforderungsarten&quot; : &quot;Requirement kinds&quot;, labels(claim.requirementKinds(), de));</span>
+<span class="pc bpc" id="L105" title="1 of 2 branches missed.">        show.accept(de ? &quot;Belegart&quot; : &quot;Evidence basis&quot;, label(claim.evidenceBasis(), de));</span>
+<span class="pc bpc" id="L106" title="1 of 2 branches missed.">        show.accept(de ? &quot;Verbindlichkeit&quot; : &quot;Necessity&quot;, label(claim.necessity(), de));</span>
+<span class="pc bpc" id="L107" title="1 of 2 branches missed.">        show.accept(de ? &quot;Geltungsbereich&quot; : &quot;Scope&quot;, label(claim.scope(), de));</span>
+<span class="pc bpc" id="L108" title="1 of 4 branches missed.">        if (!claim.condition().isBlank()) show.accept(de ? &quot;Bedingung&quot; : &quot;Condition&quot;, claim.condition());</span>
+<span class="fc" id="L109">        show.accept(&quot;Interpretation&quot;, claim.rationale());</span>
+<span class="pc bpc" id="L110" title="1 of 4 branches missed.">        if (!claim.question().isBlank()) show.accept(de ? &quot;Offene Frage&quot; : &quot;Open question&quot;, claim.question());</span>
+<span class="fc" id="L111">    }</span>
+
+    private static String color(EvidenceStatus status) {
+<span class="pc bpc" id="L114" title="2 of 4 branches missed.">        return switch (status) {</span>
+<span class="fc" id="L115">            case SUPPORTED -&gt; &quot;166534&quot;;</span>
+<span class="fc" id="L116">            case UNRESOLVED -&gt; &quot;92400E&quot;;</span>
+<span class="nc" id="L117">            case CONFLICT -&gt; &quot;991B1B&quot;;</span>
+<span class="nc" id="L118">            case NOT_APPLICABLE, OUT_OF_SCOPE -&gt; &quot;475569&quot;;</span>
+        };
+    }
+
+    private static String labels(List&lt;? extends Enum&lt;?&gt;&gt; values, boolean german) {
+<span class="fc" id="L123">        return values.stream().map(value -&gt; label(value, german)).collect(Collectors.joining(&quot;, &quot;));</span>
+    }
+
+    private static String label(Enum&lt;?&gt; value, boolean german) {
+<span class="pc bpc" id="L127" title="19 of 33 branches missed.">        String[] words = switch (value.name()) {</span>
+<span class="nc" id="L128">            case &quot;PRODUCT&quot; -&gt; new String[]{&quot;Product&quot;, &quot;Produkt&quot;};</span>
+<span class="nc" id="L129">            case &quot;SERVICE&quot; -&gt; new String[]{&quot;Service&quot;, &quot;Dienstleistung&quot;};</span>
+<span class="fc" id="L130">            case &quot;PROCESS&quot; -&gt; new String[]{&quot;Process&quot;, &quot;Prozess&quot;};</span>
+<span class="fc" id="L131">            case &quot;INFORMATION&quot; -&gt; new String[]{&quot;Information&quot;, &quot;Information&quot;};</span>
+<span class="nc" id="L132">            case &quot;ROLE&quot; -&gt; new String[]{&quot;Role&quot;, &quot;Rolle&quot;};</span>
+<span class="fc" id="L133">            case &quot;CAPABILITY&quot; -&gt; new String[]{&quot;Capability&quot;, &quot;Fähigkeit&quot;};</span>
+<span class="fc" id="L134">            case &quot;FUNCTIONAL&quot; -&gt; new String[]{&quot;Functional&quot;, &quot;Funktional&quot;};</span>
+<span class="fc" id="L135">            case &quot;QUALITY&quot; -&gt; new String[]{&quot;Quality&quot;, &quot;Qualität&quot;};</span>
+<span class="nc" id="L136">            case &quot;CONSTRAINT&quot; -&gt; new String[]{&quot;Constraint&quot;, &quot;Randbedingung&quot;};</span>
+<span class="nc" id="L137">            case &quot;ORGANIZATIONAL&quot; -&gt; new String[]{&quot;Organizational&quot;, &quot;Organisatorisch&quot;};</span>
+<span class="nc" id="L138">            case &quot;CONTEXT&quot; -&gt; new String[]{&quot;Context&quot;, &quot;Kontext&quot;};</span>
+<span class="nc" id="L139">            case &quot;GOAL&quot; -&gt; new String[]{&quot;Goal&quot;, &quot;Ziel&quot;};</span>
+<span class="fc" id="L140">            case &quot;DIRECT_SUBJECT&quot; -&gt; new String[]{&quot;Direct subject&quot;, &quot;Direkter Gegenstand&quot;};</span>
+<span class="nc" id="L141">            case &quot;PROVIDES&quot; -&gt; new String[]{&quot;Provides&quot;, &quot;Stellt bereit&quot;};</span>
+<span class="fc" id="L142">            case &quot;SUPPORTS&quot; -&gt; new String[]{&quot;Supports&quot;, &quot;Unterstützt&quot;};</span>
+<span class="nc" id="L143">            case &quot;REQUIRES&quot; -&gt; new String[]{&quot;Requires&quot;, &quot;Setzt voraus&quot;};</span>
+<span class="nc" id="L144">            case &quot;CONSTRAINS&quot; -&gt; new String[]{&quot;Constrains&quot;, &quot;Schränkt ein&quot;};</span>
+<span class="fc" id="L145">            case &quot;UNDETERMINED&quot; -&gt; new String[]{&quot;Undetermined&quot;, &quot;Unbestimmt&quot;};</span>
+<span class="fc" id="L146">            case &quot;SUPPORTED&quot; -&gt; new String[]{&quot;Supported&quot;, &quot;Belegt&quot;};</span>
+<span class="fc" id="L147">            case &quot;UNRESOLVED&quot; -&gt; new String[]{&quot;Clarification needed&quot;, &quot;Klärung erforderlich&quot;};</span>
+<span class="nc" id="L148">            case &quot;CONFLICT&quot; -&gt; new String[]{&quot;Conflicting evidence&quot;, &quot;Widersprüchliche Belege&quot;};</span>
+<span class="nc" id="L149">            case &quot;NOT_APPLICABLE&quot; -&gt; new String[]{&quot;Not applicable&quot;, &quot;Nicht anwendbar&quot;};</span>
+<span class="nc" id="L150">            case &quot;OUT_OF_SCOPE&quot; -&gt; new String[]{&quot;Outside the considered scope&quot;, &quot;Außerhalb des betrachteten Umfangs&quot;};</span>
+<span class="fc" id="L151">            case &quot;EXPLICIT&quot; -&gt; new String[]{&quot;Explicit source&quot;, &quot;Explizite Quelle&quot;};</span>
+<span class="nc" id="L152">            case &quot;INFERRED&quot; -&gt; new String[]{&quot;Inferred from source&quot;, &quot;Aus Quelle abgeleitet&quot;};</span>
+<span class="fc" id="L153">            case &quot;UNSPECIFIED&quot; -&gt; new String[]{&quot;Unspecified&quot;, &quot;Nicht angegeben&quot;};</span>
+<span class="nc" id="L154">            case &quot;REQUIRED&quot; -&gt; new String[]{&quot;Required&quot;, &quot;Erforderlich&quot;};</span>
+<span class="fc" id="L155">            case &quot;OPTIONAL&quot; -&gt; new String[]{&quot;Optional&quot;, &quot;Optional&quot;};</span>
+<span class="nc" id="L156">            case &quot;ALTERNATIVE&quot; -&gt; new String[]{&quot;Alternative&quot;, &quot;Alternative&quot;};</span>
+<span class="nc" id="L157">            case &quot;DELIVERY&quot; -&gt; new String[]{&quot;Requested delivery&quot;, &quot;Geforderter Leistungsumfang&quot;};</span>
+<span class="fc" id="L158">            case &quot;EXISTING_ENVIRONMENT&quot; -&gt; new String[]{&quot;Existing environment&quot;, &quot;Bestehende Umgebung&quot;};</span>
+<span class="nc" id="L159">            case &quot;EXCLUDED&quot; -&gt; new String[]{&quot;Excluded&quot;, &quot;Ausgeschlossen&quot;};</span>
+<span class="nc" id="L160">            default -&gt; throw new IllegalArgumentException(&quot;Unknown requirement evidence label: &quot; + value);</span>
+        };
+<span class="pc bpc" id="L162" title="1 of 2 branches missed.">        return words[german ? 1 : 0];</span>
+    }
+
+    private static String escape(String value) {
+<span class="fc" id="L166">        return HtmlUtils.htmlEscape(value, &quot;UTF-8&quot;);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

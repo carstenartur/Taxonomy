@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>LlmDetailAccumulator.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.service</a> &gt; <span class="el_source">LlmDetailAccumulator.java</span></div><h1>LlmDetailAccumulator.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.service;
+
+import com.taxonomy.dto.LlmCallDetail;
+import com.taxonomy.dto.RootAssessment;
+import com.taxonomy.dto.RequirementNodeAssessment;
+import java.util.List;
+import com.taxonomy.dto.TaxonomyDiscrepancy;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
+
+/** Incremental diagnostic aggregation; scores and explanations are never truncated. */
+<span class="fc" id="L13">final class LlmDetailAccumulator {</span>
+    private static final int TEXT_LIMIT = 32_768;
+    private static final String TRUNCATED = &quot;\n[diagnostic transcript truncated]&quot;;
+<span class="fc" id="L16">    private final Map&lt;String, Double&gt; scores = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L17">    private final Map&lt;String, Double&gt; assessedProductScores = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L18">    private final Map&lt;String, String&gt; reasons = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L19">    private final Map&lt;String, List&lt;RequirementNodeAssessment&gt;&gt; nodeAssessments = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L20">    private final Map&lt;String, RootAssessment&gt; rootAssessments = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L21">    private final StringBuilder prompts = new StringBuilder();</span>
+<span class="fc" id="L22">    private final StringBuilder responses = new StringBuilder();</span>
+<span class="fc" id="L23">    private final StringBuilder errors = new StringBuilder();</span>
+    private String provider;
+    private TaxonomyDiscrepancy discrepancy;
+    private long duration;
+    private int count;
+
+    void add(LlmCallDetail detail) {
+<span class="fc" id="L30">        count++;</span>
+<span class="fc bfc" id="L31" title="All 2 branches covered.">        if (detail.getScores() != null) scores.putAll(detail.getScores());</span>
+<span class="fc bfc" id="L32" title="All 2 branches covered.">        if (detail.getReasons() != null) reasons.putAll(detail.getReasons());</span>
+<span class="fc" id="L33">        assessedProductScores.putAll(detail.getAssessedProductScores());</span>
+<span class="fc" id="L34">        rootAssessments.putAll(detail.getRootAssessments());</span>
+<span class="fc" id="L35">        nodeAssessments.putAll(detail.getNodeAssessments());</span>
+<span class="fc bfc" id="L36" title="All 2 branches covered.">        if (provider == null) provider = detail.getProvider();</span>
+<span class="pc bpc" id="L37" title="1 of 2 branches missed.">        if (discrepancy == null) discrepancy = detail.getDiscrepancy();</span>
+<span class="fc" id="L38">        duration += detail.getDurationMs();</span>
+<span class="fc bfc" id="L39" title="All 2 branches covered.">        if (detail.getPrompt() != null) {</span>
+<span class="fc" id="L40">            append(prompts, &quot;--- call &quot; + count + &quot; ---\n&quot;);</span>
+<span class="fc" id="L41">            append(prompts, detail.getPrompt());</span>
+<span class="fc" id="L42">            append(prompts, &quot;\n&quot;);</span>
+        }
+<span class="fc bfc" id="L44" title="All 2 branches covered.">        if (detail.getRawResponse() != null) {</span>
+<span class="fc" id="L45">            append(responses, &quot;--- call &quot; + count + &quot; ---\n&quot;);</span>
+<span class="fc" id="L46">            append(responses, detail.getRawResponse());</span>
+<span class="fc" id="L47">            append(responses, &quot;\n&quot;);</span>
+        }
+<span class="fc bfc" id="L49" title="All 2 branches covered.">        if (detail.getError() != null) {</span>
+<span class="fc bfc" id="L50" title="All 2 branches covered.">            if (!errors.isEmpty()) append(errors, &quot;; &quot;);</span>
+<span class="fc" id="L51">            append(errors, detail.getError());</span>
+        }
+<span class="fc" id="L53">    }</span>
+
+    LlmCallDetail result() {
+<span class="fc" id="L56">        LlmCallDetail result = new LlmCallDetail();</span>
+<span class="fc" id="L57">        result.setScores(scores);</span>
+<span class="fc" id="L58">        result.setReasons(reasons);</span>
+<span class="fc" id="L59">        result.setAssessedProductScores(assessedProductScores);</span>
+<span class="fc" id="L60">        result.setRootAssessments(rootAssessments);</span>
+<span class="fc" id="L61">        result.setNodeAssessments(nodeAssessments);</span>
+<span class="fc" id="L62">        result.setProvider(provider);</span>
+<span class="fc" id="L63">        result.setPrompt(prompts.toString());</span>
+<span class="fc" id="L64">        result.setRawResponse(responses.toString());</span>
+<span class="fc bfc" id="L65" title="All 2 branches covered.">        result.setError(errors.isEmpty() ? null : errors.toString());</span>
+<span class="fc" id="L66">        result.setDurationMs(duration);</span>
+<span class="fc" id="L67">        result.setDiscrepancy(discrepancy);</span>
+<span class="fc" id="L68">        return result;</span>
+    }
+
+    private static void append(StringBuilder target, String value) {
+<span class="fc bfc" id="L72" title="All 2 branches covered.">        if (value.isEmpty()) return;</span>
+<span class="fc bfc" id="L73" title="All 2 branches covered.">        if (value.length() &lt;= TEXT_LIMIT - target.length()) {</span>
+<span class="fc" id="L74">            target.append(value);</span>
+<span class="fc" id="L75">            return;</span>
+        }
+<span class="fc" id="L77">        int contentLimit = TEXT_LIMIT - TRUNCATED.length();</span>
+<span class="fc bfc" id="L78" title="All 2 branches covered.">        if (target.length() &gt; contentLimit) target.setLength(contentLimit);</span>
+<span class="fc" id="L79">        target.append(value, 0, Math.min(value.length(), contentLimit - target.length()));</span>
+<span class="fc" id="L80">        target.append(TRUNCATED);</span>
+<span class="fc" id="L81">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RequirementAssessmentContract.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.assessment</a> &gt; <span class="el_source">RequirementAssessmentContract.java</span></div><h1>RequirementAssessmentContract.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.assessment;
+
+import com.taxonomy.dto.RequirementNodeAssessment;
+import com.taxonomy.dto.RequirementNodeAssessment.*;
+import static com.taxonomy.dto.RequirementNodeAssessment.MAX_PER_NODE;
+
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+/** Strict provider wire validation before the scoring result is accepted. */
+public final class RequirementAssessmentContract {
+<span class="fc" id="L14">    private static final Set&lt;String&gt; FIELDS = Set.of(</span>
+            &quot;requirementQuote&quot;, &quot;subjectKinds&quot;, &quot;requirementKinds&quot;, &quot;contributionType&quot;, &quot;evidenceStatus&quot;,
+            &quot;evidenceBasis&quot;, &quot;necessity&quot;, &quot;scope&quot;, &quot;condition&quot;, &quot;rationale&quot;, &quot;question&quot;);
+
+    private RequirementAssessmentContract() { }
+
+    public static List&lt;RequirementNodeAssessment&gt; decode(Map&lt;?, ?&gt; node, String originalRequirement) {
+<span class="fc bfc" id="L21" title="All 2 branches covered.">        if (!node.containsKey(&quot;assessments&quot;)) return List.of();</span>
+<span class="fc" id="L22">        var assessments = decodeRecorded(node.get(&quot;assessments&quot;));</span>
+<span class="fc" id="L23">        assessments.forEach(assessment -&gt; assessment.requireOriginalSource(originalRequirement));</span>
+<span class="fc" id="L24">        return assessments;</span>
+    }
+
+    /** Revalidates the shape of retained evidence at a boundary that only has the source fingerprint. */
+    public static List&lt;RequirementNodeAssessment&gt; decodeRecorded(Object raw) {
+<span class="pc bpc" id="L29" title="1 of 4 branches missed.">        if (!(raw instanceof List&lt;?&gt; values) || values.size() &gt; MAX_PER_NODE)</span>
+<span class="fc" id="L30">            throw new IllegalArgumentException(&quot;Node assessments must be an array of at most &quot; + MAX_PER_NODE + &quot; entries&quot;);</span>
+
+<span class="fc" id="L32">        var assessments = new LinkedHashSet&lt;RequirementNodeAssessment&gt;();</span>
+<span class="fc bfc" id="L33" title="All 2 branches covered.">        for (Object value : values) {</span>
+<span class="pc bpc" id="L34" title="1 of 4 branches missed.">            if (!(value instanceof Map&lt;?, ?&gt; object) || !object.keySet().equals(FIELDS))</span>
+<span class="fc" id="L35">                throw new IllegalArgumentException(&quot;Node assessment fields do not match the evidence contract&quot;);</span>
+<span class="fc" id="L36">            var assessment = new RequirementNodeAssessment(</span>
+<span class="fc" id="L37">                    text(object.get(&quot;requirementQuote&quot;), &quot;requirementQuote&quot;),</span>
+<span class="fc" id="L38">                    kinds(object, &quot;subjectKinds&quot;, SubjectKind.class),</span>
+<span class="fc" id="L39">                    kinds(object, &quot;requirementKinds&quot;, RequirementKind.class),</span>
+<span class="fc" id="L40">                    enumValue(object.get(&quot;contributionType&quot;), &quot;contributionType&quot;, ContributionType.class),</span>
+<span class="fc" id="L41">                    enumValue(object.get(&quot;evidenceStatus&quot;), &quot;evidenceStatus&quot;, EvidenceStatus.class),</span>
+<span class="fc" id="L42">                    enumValue(object.get(&quot;evidenceBasis&quot;), &quot;evidenceBasis&quot;, EvidenceBasis.class),</span>
+<span class="fc" id="L43">                    enumValue(object.get(&quot;necessity&quot;), &quot;necessity&quot;, Necessity.class),</span>
+<span class="fc" id="L44">                    enumValue(object.get(&quot;scope&quot;), &quot;scope&quot;, Scope.class),</span>
+<span class="fc" id="L45">                    text(object.get(&quot;condition&quot;), &quot;condition&quot;),</span>
+<span class="fc" id="L46">                    text(object.get(&quot;rationale&quot;), &quot;rationale&quot;),</span>
+<span class="fc" id="L47">                    text(object.get(&quot;question&quot;), &quot;question&quot;));</span>
+<span class="fc bfc" id="L48" title="All 2 branches covered.">            if (!assessments.add(assessment)) throw new IllegalArgumentException(&quot;Duplicate node assessment&quot;);</span>
+<span class="fc" id="L49">        }</span>
+<span class="fc" id="L50">        return List.copyOf(assessments);</span>
+    }
+
+    /** Validate archived or observed evidence against the text and its recorded catalogue authority. */
+    public static void validateRecorded(Map&lt;String, List&lt;RequirementNodeAssessment&gt;&gt; assessments,
+                                        String originalRequirement, Set&lt;String&gt; offeredCodes) {
+<span class="fc bfc" id="L56" title="All 2 branches covered.">        if (!offeredCodes.containsAll(assessments.keySet()))</span>
+<span class="fc" id="L57">            throw new IllegalArgumentException(&quot;Requirement evidence contains a foreign catalogue identity&quot;);</span>
+<span class="fc bfc" id="L58" title="All 2 branches covered.">        for (var claims : assessments.values()) {</span>
+<span class="fc bfc" id="L59" title="All 2 branches covered.">            for (var claim : claims) claim.requireOriginalSource(originalRequirement);</span>
+<span class="fc" id="L60">        }</span>
+<span class="fc" id="L61">    }</span>
+
+    /** Copies may be absent in older records. Two recorded copies must agree exactly. */
+    public static void mergeRecorded(Map&lt;String, List&lt;RequirementNodeAssessment&gt;&gt; retained,
+                                     Map&lt;String, List&lt;RequirementNodeAssessment&gt;&gt; incoming) {
+<span class="fc" id="L66">        incoming.forEach((code, claims) -&gt; {</span>
+<span class="fc" id="L67">            var prior = retained.putIfAbsent(code, claims);</span>
+<span class="fc bfc" id="L68" title="All 4 branches covered.">            if (prior != null &amp;&amp; !prior.equals(claims))</span>
+<span class="fc" id="L69">                throw new IllegalArgumentException(&quot;Conflicting archived requirement evidence&quot;);</span>
+<span class="fc" id="L70">        });</span>
+<span class="fc" id="L71">    }</span>
+
+    private static &lt;E extends Enum&lt;E&gt;&gt; List&lt;E&gt; kinds(Map&lt;?, ?&gt; object, String field, Class&lt;E&gt; type) {
+<span class="pc bpc" id="L74" title="2 of 4 branches missed.">        if (!(object.get(field) instanceof List&lt;?&gt; values) || values.isEmpty()</span>
+<span class="pc bpc" id="L75" title="1 of 2 branches missed.">                || values.size() &gt; type.getEnumConstants().length) {</span>
+<span class="nc" id="L76">            throw new IllegalArgumentException(&quot;Node assessment requires a nonempty &quot; + field + &quot; array&quot;);</span>
+        }
+<span class="fc" id="L78">        var kinds = new LinkedHashSet&lt;E&gt;();</span>
+<span class="fc bfc" id="L79" title="All 2 branches covered.">        for (var value : values) {</span>
+<span class="fc bfc" id="L80" title="All 2 branches covered.">            if (!kinds.add(enumValue(value, field, type)))</span>
+<span class="fc" id="L81">                throw new IllegalArgumentException(&quot;Duplicate &quot; + field + &quot; entry in node assessment&quot;);</span>
+<span class="fc" id="L82">        }</span>
+<span class="fc" id="L83">        return List.copyOf(kinds);</span>
+    }
+
+    private static &lt;E extends Enum&lt;E&gt;&gt; E enumValue(Object value, String field, Class&lt;E&gt; type) {
+<span class="fc" id="L87">        return Enum.valueOf(type, text(value, field));</span>
+    }
+
+    private static String text(Object value, String field) {
+<span class="pc bpc" id="L91" title="1 of 2 branches missed.">        if (!(value instanceof String string))</span>
+<span class="nc" id="L92">            throw new IllegalArgumentException(&quot;Node assessment requires a string for &quot; + field);</span>
+<span class="fc" id="L93">        return string;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

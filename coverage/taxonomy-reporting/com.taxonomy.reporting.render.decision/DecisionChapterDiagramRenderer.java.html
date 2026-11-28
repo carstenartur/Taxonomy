@@ -1,0 +1,569 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DecisionChapterDiagramRenderer.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-reporting</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.reporting.render.decision</a> &gt; <span class="el_source">DecisionChapterDiagramRenderer.java</span></div><h1>DecisionChapterDiagramRenderer.java</h1><pre class="source lang-java linenums">package com.taxonomy.reporting.render.decision;
+
+import com.taxonomy.reporting.api.decision.DecisionRationaleReport;
+
+import com.taxonomy.reporting.api.decision.DecisionRationaleReport.ChildDecision;
+import com.taxonomy.reporting.api.decision.DecisionRationaleReport.DecisionChapter;
+import com.taxonomy.reporting.api.decision.DecisionRationaleReport.Disposition;
+import org.springframework.stereotype.Component;
+
+import javax.imageio.ImageIO;
+import java.awt.BasicStroke;
+import java.awt.Color;
+import java.awt.Font;
+import java.awt.FontMetrics;
+import java.awt.Graphics2D;
+import java.awt.RenderingHints;
+import java.awt.Stroke;
+import java.awt.geom.Line2D;
+import java.awt.geom.RoundRectangle2D;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.function.BiConsumer;
+import com.taxonomy.dto.TaxonomyResponsibilityLookup.Assignment;
+
+/**
+ * Deterministically renders one-level parent/children decision diagrams.
+ *
+ * &lt;p&gt;Large sibling sets are split into panels of at most six children. Every panel repeats
+ * the parent node, so it remains understandable when a page break separates the images.&lt;/p&gt;
+ */
+@Component
+<span class="fc" id="L36">public class DecisionChapterDiagramRenderer {</span>
+
+    static final int WIDTH = 1200;
+<span class="fc bfc" id="L39" title="All 2 branches covered.">    private static int height(int children) { return children &lt;= 3 ? 520 : 770; }</span>
+    static final int CHILDREN_PER_PANEL = 6;
+
+<span class="fc" id="L42">    private static final Color NAVY = new Color(11, 31, 51);</span>
+<span class="fc" id="L43">    private static final Color TEAL = new Color(0, 122, 120);</span>
+<span class="fc" id="L44">    private static final Color LIGHT_TEAL = new Color(225, 244, 243);</span>
+<span class="fc" id="L45">    private static final Color PALE_BLUE = new Color(233, 240, 247);</span>
+<span class="fc" id="L46">    private static final Color GRAY_900 = new Color(38, 48, 58);</span>
+<span class="fc" id="L47">    private static final Color GRAY_600 = new Color(100, 112, 124);</span>
+<span class="fc" id="L48">    private static final Color GRAY_300 = new Color(205, 213, 220);</span>
+<span class="fc" id="L49">    private static final Color GRAY_100 = new Color(244, 246, 248);</span>
+<span class="fc" id="L50">    private static final Color WHITE = Color.WHITE;</span>
+
+<span class="fc" id="L52">    public record DiagramPanel(</span>
+            int panelNumber,
+            int panelCount,
+            byte[] png,
+            String svg,
+            String altText, String responsibilityCaption) {
+        public DiagramPanel(int panelNumber, int panelCount, byte[] png, String svg, String altText) {
+<span class="nc" id="L59">            this(panelNumber, panelCount, png, svg, altText, &quot;&quot;);</span>
+<span class="nc" id="L60">        }</span>
+    }
+
+    public List&lt;DiagramPanel&gt; render(DecisionChapter chapter, String languageTag) {
+<span class="fc" id="L64">        return render(chapter, languageTag, Map.of());</span>
+    }
+
+    public List&lt;DiagramPanel&gt; render(DecisionChapter chapter, String languageTag, Map&lt;String, Assignment&gt; owners) {
+<span class="fc" id="L68">        DecisionReportLabels labels = new DecisionReportLabels(languageTag);</span>
+<span class="fc" id="L69">        List&lt;ChildDecision&gt; children = chapter.children();</span>
+<span class="fc" id="L70">        int panelCount = Math.max(1,</span>
+<span class="fc" id="L71">                (children.size() + CHILDREN_PER_PANEL - 1) / CHILDREN_PER_PANEL);</span>
+<span class="fc" id="L72">        List&lt;DiagramPanel&gt; panels = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L73" title="All 2 branches covered.">        for (int panel = 0; panel &lt; panelCount; panel++) {</span>
+<span class="fc" id="L74">            int from = panel * CHILDREN_PER_PANEL;</span>
+<span class="fc" id="L75">            int to = Math.min(children.size(), from + CHILDREN_PER_PANEL);</span>
+<span class="fc" id="L76">            List&lt;ChildDecision&gt; panelChildren = children.subList(from, to);</span>
+<span class="fc" id="L77">            String altText = altText(chapter, panelChildren, labels, panel + 1, panelCount);</span>
+<span class="fc" id="L78">            var unitNames = new ArrayList&lt;String&gt;();</span>
+<span class="pc bpc" id="L79" title="1 of 2 branches missed.">            if (!owners.isEmpty()) {</span>
+<span class="nc" id="L80">                var codes = new ArrayList&lt;String&gt;();</span>
+<span class="nc" id="L81">                codes.add(chapter.parentCode());</span>
+<span class="nc" id="L82">                panelChildren.forEach(child -&gt; codes.add(child.code()));</span>
+<span class="nc bnc" id="L83" title="All 2 branches missed.">                for (String code : codes) {</span>
+<span class="nc" id="L84">                    var owner = owners.get(code);</span>
+<span class="nc bnc" id="L85" title="All 2 branches missed.">                    if (owner != null) unitNames.add(code + &quot; · &quot; + owner.name());</span>
+<span class="nc" id="L86">                }</span>
+            }
+<span class="pc bpc" id="L88" title="1 of 2 branches missed.">            String caption = unitNames.isEmpty() ? &quot;&quot; : labels.responsibility() + &quot;: &quot; + String.join(&quot;; &quot;, unitNames);</span>
+<span class="pc bpc" id="L89" title="1 of 2 branches missed.">            if (!caption.isEmpty()) altText += &quot; &quot; + caption;</span>
+<span class="fc" id="L90">            panels.add(new DiagramPanel(</span>
+                    panel + 1,
+                    panelCount,
+<span class="fc" id="L93">                    renderPng(chapter, panelChildren, labels, panel + 1, panelCount, owners),</span>
+<span class="fc" id="L94">                    renderSvg(chapter, panelChildren, labels, panel + 1, panelCount, owners, altText),</span>
+                    altText, caption));
+        }
+<span class="fc" id="L97">        return List.copyOf(panels);</span>
+    }
+
+    private byte[] renderPng(
+            DecisionChapter chapter,
+            List&lt;ChildDecision&gt; children,
+            DecisionReportLabels labels,
+            int panelNumber,
+            int panelCount, Map&lt;String, Assignment&gt; owners) {
+<span class="fc" id="L106">        BufferedImage image = new BufferedImage(WIDTH, height(children.size()), BufferedImage.TYPE_INT_ARGB);</span>
+<span class="fc" id="L107">        Graphics2D graphics = image.createGraphics();</span>
+        try {
+<span class="fc" id="L109">            graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);</span>
+<span class="fc" id="L110">            graphics.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING,</span>
+                    RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+<span class="fc" id="L112">            graphics.setColor(WHITE);</span>
+<span class="fc" id="L113">            graphics.fillRect(0, 0, WIDTH, height(children.size()));</span>
+
+<span class="fc" id="L115">            graphics.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 24));</span>
+<span class="fc" id="L116">            graphics.setColor(NAVY);</span>
+<span class="fc" id="L117">            String heading = labels.parentNode() + &quot; &quot; + chapter.parentCode()</span>
+<span class="fc bfc" id="L118" title="All 2 branches covered.">                    + (panelCount &gt; 1 ? &quot; · &quot; + panelNumber + &quot;/&quot; + panelCount : &quot;&quot;);</span>
+<span class="fc" id="L119">            graphics.drawString(heading, 50, 42);</span>
+
+<span class="fc" id="L121">            Card parentCard = new Card(370, 70, 460, 126);</span>
+<span class="fc" id="L122">            drawCard(graphics, parentCard, NAVY, NAVY, false);</span>
+<span class="fc" id="L123">            graphics.setColor(WHITE);</span>
+<span class="fc" id="L124">            graphics.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 25));</span>
+<span class="fc" id="L125">            graphics.drawString(chapter.parentCode(), parentCard.x + 24, parentCard.y + 36);</span>
+<span class="fc" id="L126">            graphics.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 20));</span>
+<span class="fc" id="L127">            drawWrapped(graphics, chapter.parentTitle(), parentCard.x + 24,</span>
+                    parentCard.y + 66, parentCard.width - 48, 22, 2);
+<span class="fc" id="L129">            graphics.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 21));</span>
+<span class="pc bpc" id="L130" title="1 of 2 branches missed.">            String score = chapter.parentScore() == null</span>
+<span class="pc" id="L131">                    ? labels.notEvaluated() : chapter.parentScore() + &quot; %&quot;;</span>
+<span class="fc" id="L132">            drawRight(graphics, score, parentCard.x + parentCard.width - 24,</span>
+                    parentCard.y + 38);
+
+<span class="fc" id="L135">            List&lt;Card&gt; cards = childCards(children.size());</span>
+<span class="fc" id="L136">            graphics.setColor(GRAY_300);</span>
+<span class="fc" id="L137">            graphics.setStroke(new BasicStroke(3.0f));</span>
+<span class="fc" id="L138">            double parentX = parentCard.x + parentCard.width / 2.0;</span>
+<span class="fc" id="L139">            double parentY = parentCard.y + parentCard.height;</span>
+<span class="fc" id="L140">            double junctionY = 235;</span>
+<span class="fc" id="L141">            graphics.draw(new Line2D.Double(parentX, parentY, parentX, junctionY));</span>
+<span class="fc bfc" id="L142" title="All 2 branches covered.">            if (!cards.isEmpty()) {</span>
+<span class="fc" id="L143">                double left = cards.stream().mapToDouble(card -&gt; card.x + card.width / 2.0).min().orElse(parentX);</span>
+<span class="fc" id="L144">                double right = cards.stream().mapToDouble(card -&gt; card.x + card.width / 2.0).max().orElse(parentX);</span>
+<span class="fc" id="L145">                graphics.draw(new Line2D.Double(left, junctionY, right, junctionY));</span>
+<span class="fc bfc" id="L146" title="All 2 branches covered.">                for (Card card : cards) {</span>
+<span class="fc" id="L147">                    double center = card.x + card.width / 2.0;</span>
+<span class="fc" id="L148">                    graphics.draw(new Line2D.Double(center, junctionY, center, card.y));</span>
+<span class="fc" id="L149">                }</span>
+            }
+
+<span class="fc bfc" id="L152" title="All 2 branches covered.">            for (int index = 0; index &lt; children.size(); index++) {</span>
+<span class="fc" id="L153">                drawChild(graphics, cards.get(index), children.get(index), labels);</span>
+            }
+
+<span class="fc" id="L156">            markUnits(parentCard, cards, chapter, children, owners, (card, owner) -&gt; {</span>
+<span class="nc" id="L157">                graphics.setColor(Color.decode(owner.color()));</span>
+<span class="nc" id="L158">                graphics.fillRoundRect(card.x + 4, card.y + 8, 5, card.height - 16, 4, 4);</span>
+<span class="nc" id="L159">            });</span>
+<span class="fc" id="L160">            graphics.setColor(GRAY_600);</span>
+<span class="fc" id="L161">            graphics.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 15));</span>
+<span class="fc bfc" id="L162" title="All 2 branches covered.">            String legend = labels.german()</span>
+<span class="fc" id="L163">                    ? &quot;Absoluter Relevanzwert · lokaler Anteil am Vaterwert · Status des Pfades&quot;</span>
+<span class="fc" id="L164">                    : &quot;Absolute relevance score · local share of parent score · path status&quot;;</span>
+<span class="fc" id="L165">            graphics.drawString(legend, 50, height(children.size()) - 30);</span>
+        } finally {
+<span class="fc" id="L167">            graphics.dispose();</span>
+        }
+
+<span class="fc" id="L170">        try (ByteArrayOutputStream output = new ByteArrayOutputStream()) {</span>
+<span class="fc" id="L171">            ImageIO.write(image, &quot;png&quot;, output);</span>
+<span class="fc" id="L172">            return output.toByteArray();</span>
+<span class="nc" id="L173">        } catch (Exception exception) {</span>
+<span class="nc" id="L174">            throw new IllegalStateException(&quot;Could not render decision diagram PNG&quot;, exception);</span>
+        }
+    }
+
+    private void drawChild(
+            Graphics2D graphics,
+            Card card,
+            ChildDecision child,
+            DecisionReportLabels labels) {
+<span class="fc" id="L183">        CardStyle style = style(child);</span>
+<span class="fc" id="L184">        drawCard(graphics, card, style.fill(), style.border(), style.dashed());</span>
+
+<span class="fc" id="L186">        graphics.setColor(style.text());</span>
+<span class="fc" id="L187">        graphics.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 22));</span>
+<span class="fc" id="L188">        graphics.drawString(child.code(), card.x + 18, card.y + 31);</span>
+
+<span class="pc bpc" id="L190" title="1 of 2 branches missed.">        String absolute = child.absoluteScore() == null</span>
+<span class="pc" id="L191">                ? &quot;—&quot; : child.absoluteScore() + &quot; %&quot;;</span>
+<span class="fc" id="L192">        graphics.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 22));</span>
+<span class="fc" id="L193">        drawRight(graphics, absolute, card.x + card.width - 18, card.y + 31);</span>
+
+<span class="fc" id="L195">        graphics.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 18));</span>
+<span class="fc" id="L196">        drawWrapped(graphics, child.title(), card.x + 18, card.y + 60,</span>
+                card.width - 36, 20, 3);
+
+<span class="fc" id="L199">        graphics.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 16));</span>
+<span class="fc" id="L200">        graphics.setColor(style.secondaryText());</span>
+<span class="pc bpc" id="L201" title="1 of 2 branches missed.">        String local = child.localSharePercent() == null</span>
+<span class="nc" id="L202">                ? labels.localShare() + &quot;: —&quot;</span>
+<span class="fc" id="L203">                : labels.localShare() + &quot;: &quot; + formatPercent(child.localSharePercent());</span>
+<span class="fc" id="L204">        graphics.drawString(local, card.x + 18, card.y + card.height - 42);</span>
+
+<span class="fc" id="L206">        String status = dispositionLabel(child, labels);</span>
+<span class="fc" id="L207">        graphics.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 15));</span>
+<span class="fc" id="L208">        graphics.setColor(style.text());</span>
+<span class="fc" id="L209">        graphics.drawString(status, card.x + 18, card.y + card.height - 17);</span>
+<span class="fc bfc" id="L210" title="All 2 branches covered.">        if (child.leadingSibling()) {</span>
+<span class="fc" id="L211">            String leading = labels.leadingLabel();</span>
+<span class="fc" id="L212">            int width = graphics.getFontMetrics().stringWidth(leading) + 18;</span>
+<span class="fc" id="L213">            graphics.setColor(TEAL);</span>
+<span class="fc" id="L214">            graphics.fillRoundRect(card.x + card.width - width - 14,</span>
+                    card.y + card.height - 34, width, 24, 12, 12);
+<span class="fc" id="L216">            graphics.setColor(WHITE);</span>
+<span class="fc" id="L217">            graphics.drawString(leading, card.x + card.width - width - 5,</span>
+                    card.y + card.height - 17);
+        }
+<span class="fc" id="L220">    }</span>
+
+    private void drawCard(
+            Graphics2D graphics,
+            Card card,
+            Color fill,
+            Color border,
+            boolean dashed) {
+<span class="fc" id="L228">        RoundRectangle2D shape = new RoundRectangle2D.Double(</span>
+                card.x, card.y, card.width, card.height, 24, 24);
+<span class="fc" id="L230">        graphics.setColor(fill);</span>
+<span class="fc" id="L231">        graphics.fill(shape);</span>
+<span class="fc" id="L232">        Stroke previous = graphics.getStroke();</span>
+<span class="pc bpc" id="L233" title="1 of 2 branches missed.">        graphics.setStroke(dashed</span>
+<span class="nc" id="L234">                ? new BasicStroke(2.5f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_ROUND,</span>
+                    10.0f, new float[]{10.0f, 8.0f}, 0.0f)
+<span class="fc" id="L236">                : new BasicStroke(2.5f));</span>
+<span class="fc" id="L237">        graphics.setColor(border);</span>
+<span class="fc" id="L238">        graphics.draw(shape);</span>
+<span class="fc" id="L239">        graphics.setStroke(previous);</span>
+<span class="fc" id="L240">    }</span>
+
+    private List&lt;Card&gt; childCards(int count) {
+<span class="fc bfc" id="L243" title="All 2 branches covered.">        if (count &lt;= 0) {</span>
+<span class="fc" id="L244">            return List.of();</span>
+        }
+<span class="fc bfc" id="L246" title="All 4 branches covered.">        int columns = count == 1 ? 1 : count == 2 ? 2 : 3;</span>
+<span class="fc" id="L247">        int rows = (count + columns - 1) / columns;</span>
+<span class="fc bfc" id="L248" title="All 4 branches covered.">        int cardWidth = columns == 1 ? 520 : columns == 2 ? 470 : 340;</span>
+<span class="fc bfc" id="L249" title="All 2 branches covered.">        int cardHeight = rows == 1 ? 210 : 190;</span>
+<span class="fc" id="L250">        int gapX = 34;</span>
+<span class="fc" id="L251">        int totalWidth = columns * cardWidth + (columns - 1) * gapX;</span>
+<span class="fc" id="L252">        int startX = (WIDTH - totalWidth) / 2;</span>
+<span class="fc bfc" id="L253" title="All 2 branches covered.">        int startY = rows == 1 ? 255 : 285;</span>
+<span class="fc" id="L254">        int gapY = 42;</span>
+<span class="fc" id="L255">        List&lt;Card&gt; result = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L256" title="All 2 branches covered.">        for (int index = 0; index &lt; count; index++) {</span>
+<span class="fc" id="L257">            int row = index / columns;</span>
+<span class="fc" id="L258">            int column = index % columns;</span>
+<span class="fc" id="L259">            result.add(new Card(</span>
+                    startX + column * (cardWidth + gapX),
+                    startY + row * (cardHeight + gapY),
+                    cardWidth,
+                    cardHeight));
+        }
+<span class="fc" id="L265">        return result;</span>
+    }
+
+    private static void markUnits(Card parent, List&lt;Card&gt; cards, DecisionChapter chapter, List&lt;ChildDecision&gt; children,
+            Map&lt;String, Assignment&gt; owners, BiConsumer&lt;Card, Assignment&gt; paint) {
+<span class="pc bpc" id="L270" title="1 of 2 branches missed.">        if (owners.isEmpty()) return;</span>
+<span class="nc" id="L271">        var parentOwner = owners.get(chapter.parentCode());</span>
+<span class="nc bnc" id="L272" title="All 2 branches missed.">        if (parentOwner != null) paint.accept(parent, parentOwner);</span>
+<span class="nc bnc" id="L273" title="All 2 branches missed.">        for (int i = 0; i &lt; children.size(); i++) {</span>
+<span class="nc" id="L274">            var owner = owners.get(children.get(i).code());</span>
+<span class="nc bnc" id="L275" title="All 2 branches missed.">            if (owner != null) paint.accept(cards.get(i), owner);</span>
+        }
+<span class="nc" id="L277">    }</span>
+
+    private CardStyle style(ChildDecision child) {
+<span class="pc bpc" id="L280" title="1 of 2 branches missed.">        if (child.disposition() == Disposition.NOT_EVALUATED) {</span>
+<span class="nc" id="L281">            return new CardStyle(WHITE, GRAY_600, GRAY_900, GRAY_600, true);</span>
+        }
+<span class="fc bfc" id="L283" title="All 2 branches covered.">        if (child.disposition() == Disposition.REJECTED) {</span>
+<span class="fc" id="L284">            return new CardStyle(GRAY_100, GRAY_300, GRAY_900, GRAY_600, false);</span>
+        }
+<span class="fc bfc" id="L286" title="All 2 branches covered.">        if (child.leadingSibling()) {</span>
+<span class="fc" id="L287">            return new CardStyle(LIGHT_TEAL, TEAL, NAVY, GRAY_900, false);</span>
+        }
+<span class="fc" id="L289">        return new CardStyle(PALE_BLUE, NAVY, NAVY, GRAY_900, false);</span>
+    }
+
+    private String renderSvg(
+            DecisionChapter chapter,
+            List&lt;ChildDecision&gt; children,
+            DecisionReportLabels labels,
+            int panelNumber,
+            int panelCount, Map&lt;String, Assignment&gt; owners, String altText) {
+<span class="fc" id="L298">        String idPrefix = &quot;decision-chapter-&quot; + chapter.number()</span>
+                + &quot;-panel-&quot; + panelNumber;
+<span class="fc" id="L300">        String titleId = idPrefix + &quot;-title&quot;;</span>
+<span class="fc" id="L301">        String descriptionId = idPrefix + &quot;-desc&quot;;</span>
+<span class="fc" id="L302">        StringBuilder svg = new StringBuilder(8_192);</span>
+<span class="fc" id="L303">        svg.append(&quot;&lt;svg xmlns=\&quot;http://www.w3.org/2000/svg\&quot; viewBox=\&quot;0 0 &quot;)</span>
+<span class="fc" id="L304">                .append(WIDTH).append(' ').append(height(children.size()))</span>
+<span class="fc" id="L305">                .append(&quot;\&quot; role=\&quot;img\&quot; aria-labelledby=\&quot;&quot;)</span>
+<span class="fc" id="L306">                .append(titleId).append(' ').append(descriptionId)</span>
+<span class="fc" id="L307">                .append(&quot;\&quot;&gt;&quot;);</span>
+<span class="fc" id="L308">        svg.append(&quot;&lt;title id=\&quot;&quot;).append(titleId).append(&quot;\&quot;&gt;&quot;)</span>
+<span class="fc" id="L309">                .append(xml(labels.parentNode() + &quot; &quot; + chapter.parentCode()))</span>
+<span class="fc" id="L310">                .append(&quot;&lt;/title&gt;&quot;);</span>
+<span class="fc" id="L311">        svg.append(&quot;&lt;desc id=\&quot;&quot;).append(descriptionId).append(&quot;\&quot;&gt;&quot;)</span>
+<span class="fc" id="L312">                .append(xml(altText))</span>
+<span class="fc" id="L313">                .append(&quot;&lt;/desc&gt;&quot;);</span>
+<span class="fc" id="L314">        svg.append(&quot;&lt;rect width=\&quot;1200\&quot; height=\&quot;&quot;).append(height(children.size())).append(&quot;\&quot; fill=\&quot;#ffffff\&quot;/&gt;&quot;);</span>
+<span class="fc" id="L315">        String heading = labels.parentNode() + &quot; &quot; + chapter.parentCode()</span>
+<span class="fc bfc" id="L316" title="All 2 branches covered.">                + (panelCount &gt; 1 ? &quot; · &quot; + panelNumber + &quot;/&quot; + panelCount : &quot;&quot;);</span>
+<span class="fc" id="L317">        svg.append(text(50, 42, heading, 24, true, &quot;#0b1f33&quot;, &quot;start&quot;));</span>
+
+<span class="fc" id="L319">        Card parent = new Card(370, 70, 460, 126);</span>
+<span class="fc" id="L320">        svg.append(rect(parent, &quot;#0b1f33&quot;, &quot;#0b1f33&quot;, false));</span>
+<span class="fc" id="L321">        svg.append(text(parent.x + 24, parent.y + 36, chapter.parentCode(), 25,</span>
+                true, &quot;#ffffff&quot;, &quot;start&quot;));
+<span class="fc" id="L323">        svg.append(wrappedSvgText(parent.x + 24, parent.y + 66,</span>
+<span class="fc" id="L324">                chapter.parentTitle(), 20, parent.width - 48, 2, &quot;#ffffff&quot;));</span>
+<span class="pc bpc" id="L325" title="1 of 2 branches missed.">        String parentScore = chapter.parentScore() == null</span>
+<span class="pc" id="L326">                ? labels.notEvaluated() : chapter.parentScore() + &quot; %&quot;;</span>
+<span class="fc" id="L327">        svg.append(text(parent.x + parent.width - 24, parent.y + 38,</span>
+                parentScore, 21, true, &quot;#ffffff&quot;, &quot;end&quot;));
+
+<span class="fc" id="L330">        List&lt;Card&gt; cards = childCards(children.size());</span>
+<span class="fc" id="L331">        double parentX = parent.x + parent.width / 2.0;</span>
+<span class="fc" id="L332">        double parentY = parent.y + parent.height;</span>
+<span class="fc" id="L333">        double junctionY = 235;</span>
+<span class="fc" id="L334">        svg.append(line(parentX, parentY, parentX, junctionY));</span>
+<span class="fc bfc" id="L335" title="All 2 branches covered.">        if (!cards.isEmpty()) {</span>
+<span class="fc" id="L336">            double left = cards.stream().mapToDouble(card -&gt; card.x + card.width / 2.0).min().orElse(parentX);</span>
+<span class="fc" id="L337">            double right = cards.stream().mapToDouble(card -&gt; card.x + card.width / 2.0).max().orElse(parentX);</span>
+<span class="fc" id="L338">            svg.append(line(left, junctionY, right, junctionY));</span>
+<span class="fc bfc" id="L339" title="All 2 branches covered.">            for (Card card : cards) {</span>
+<span class="fc" id="L340">                double center = card.x + card.width / 2.0;</span>
+<span class="fc" id="L341">                svg.append(line(center, junctionY, center, card.y));</span>
+<span class="fc" id="L342">            }</span>
+        }
+
+<span class="fc bfc" id="L345" title="All 2 branches covered.">        for (int index = 0; index &lt; children.size(); index++) {</span>
+<span class="fc" id="L346">            ChildDecision child = children.get(index);</span>
+<span class="fc" id="L347">            Card card = cards.get(index);</span>
+<span class="fc" id="L348">            CardStyle style = style(child);</span>
+<span class="fc" id="L349">            svg.append(rect(card, hex(style.fill()), hex(style.border()), style.dashed()));</span>
+<span class="fc" id="L350">            svg.append(text(card.x + 18, card.y + 31, child.code(), 22, true,</span>
+<span class="fc" id="L351">                    hex(style.text()), &quot;start&quot;));</span>
+<span class="pc bpc" id="L352" title="1 of 2 branches missed.">            String absolute = child.absoluteScore() == null ? &quot;—&quot; : child.absoluteScore() + &quot; %&quot;;</span>
+<span class="fc" id="L353">            svg.append(text(card.x + card.width - 18, card.y + 31, absolute, 22,</span>
+<span class="fc" id="L354">                    true, hex(style.text()), &quot;end&quot;));</span>
+<span class="fc" id="L355">            svg.append(wrappedSvgText(card.x + 18, card.y + 60, child.title(), 18,</span>
+<span class="fc" id="L356">                    card.width - 36, 3, hex(style.text())));</span>
+<span class="pc bpc" id="L357" title="1 of 2 branches missed.">            String local = child.localSharePercent() == null</span>
+<span class="nc" id="L358">                    ? labels.localShare() + &quot;: —&quot;</span>
+<span class="fc" id="L359">                    : labels.localShare() + &quot;: &quot; + formatPercent(child.localSharePercent());</span>
+<span class="fc" id="L360">            svg.append(text(card.x + 18, card.y + card.height - 42, local, 16,</span>
+<span class="fc" id="L361">                    false, hex(style.secondaryText()), &quot;start&quot;));</span>
+<span class="fc" id="L362">            svg.append(text(card.x + 18, card.y + card.height - 17,</span>
+<span class="fc" id="L363">                    dispositionLabel(child, labels), 15, true,</span>
+<span class="fc" id="L364">                    hex(style.text()), &quot;start&quot;));</span>
+<span class="fc bfc" id="L365" title="All 2 branches covered.">            if (child.leadingSibling()) {</span>
+<span class="fc" id="L366">                int badgeWidth = 112;</span>
+<span class="fc" id="L367">                Card badge = new Card(card.x + card.width - badgeWidth - 14,</span>
+                        card.y + card.height - 36, badgeWidth, 26);
+<span class="fc" id="L369">                svg.append(rect(badge, &quot;#007a78&quot;, &quot;#007a78&quot;, false));</span>
+<span class="fc" id="L370">                svg.append(text(badge.x + badge.width / 2,</span>
+<span class="fc" id="L371">                        badge.y + 19, labels.leadingLabel(), 14, true,</span>
+                        &quot;#ffffff&quot;, &quot;middle&quot;));
+            }
+        }
+<span class="fc bfc" id="L375" title="All 2 branches covered.">        String legend = labels.german()</span>
+<span class="fc" id="L376">                ? &quot;Absoluter Relevanzwert · lokaler Anteil am Vaterwert · Status des Pfades&quot;</span>
+<span class="fc" id="L377">                : &quot;Absolute relevance score · local share of parent score · path status&quot;;</span>
+<span class="fc" id="L378">        svg.append(text(50, height(children.size()) - 30, legend, 15, false, &quot;#64707c&quot;, &quot;start&quot;));</span>
+<span class="pc" id="L379">        markUnits(parent, cards, chapter, children, owners, (card, owner) -&gt; svg</span>
+<span class="nc" id="L380">                .append(&quot;&lt;rect class=\&quot;responsibility-marker\&quot; x=\&quot;&quot;).append(card.x + 4)</span>
+<span class="nc" id="L381">                .append(&quot;\&quot; y=\&quot;&quot;).append(card.y + 8).append(&quot;\&quot; width=\&quot;5\&quot; height=\&quot;&quot;).append(card.height - 16)</span>
+<span class="nc" id="L382">                .append(&quot;\&quot; rx=\&quot;2\&quot; fill=\&quot;&quot;).append(owner.color()).append(&quot;\&quot;&gt;&lt;title&gt;&quot;).append(xml(owner.name())).append(&quot;&lt;/title&gt;&lt;/rect&gt;&quot;));</span>
+<span class="fc" id="L383">        svg.append(&quot;&lt;/svg&gt;&quot;);</span>
+<span class="fc" id="L384">        return svg.toString();</span>
+    }
+
+    private String dispositionLabel(ChildDecision child, DecisionReportLabels labels) {
+<span class="pc bpc" id="L388" title="1 of 4 branches missed.">        return switch (child.disposition()) {</span>
+<span class="fc" id="L389">            case CONTINUED -&gt; labels.continuedLabel();</span>
+<span class="fc" id="L390">            case LEAF_CANDIDATE -&gt; labels.leafLabel();</span>
+<span class="fc" id="L391">            case REJECTED -&gt; labels.rejectedLabel();</span>
+<span class="nc" id="L392">            case NOT_EVALUATED -&gt; labels.notEvaluatedLabel();</span>
+        };
+    }
+
+    private String altText(
+            DecisionChapter chapter,
+            List&lt;ChildDecision&gt; children,
+            DecisionReportLabels labels,
+            int panelNumber,
+            int panelCount) {
+<span class="fc" id="L402">        StringBuilder text = new StringBuilder();</span>
+<span class="fc" id="L403">        text.append(labels.parentNode()).append(' ').append(chapter.parentCode())</span>
+<span class="fc" id="L404">                .append(' ').append(chapter.parentTitle()).append(&quot;, &quot;)</span>
+<span class="pc bpc" id="L405" title="1 of 2 branches missed.">                .append(chapter.parentScore() == null ? labels.notEvaluated()</span>
+<span class="fc" id="L406">                        : chapter.parentScore() + &quot;%&quot;);</span>
+<span class="fc bfc" id="L407" title="All 2 branches covered.">        if (panelCount &gt; 1) {</span>
+<span class="fc" id="L408">            text.append(&quot;, &quot;).append(labels.panel()).append(&quot; &quot;).append(panelNumber).append(&quot; &quot;).append(labels.of()).append(&quot; &quot;).append(panelCount);</span>
+        }
+<span class="fc bfc" id="L410" title="All 2 branches covered.">        for (ChildDecision child : children) {</span>
+<span class="fc" id="L411">            text.append(&quot;; &quot;).append(child.code()).append(' ').append(child.title())</span>
+<span class="pc bpc" id="L412" title="1 of 2 branches missed.">                    .append(' ').append(child.absoluteScore() == null ? labels.notEvaluated()</span>
+<span class="fc" id="L413">                            : child.absoluteScore() + &quot;%&quot;)</span>
+<span class="fc" id="L414">                    .append(' ').append(dispositionLabel(child, labels));</span>
+<span class="fc" id="L415">        }</span>
+<span class="fc" id="L416">        return text.toString();</span>
+    }
+
+    private void drawWrapped(
+            Graphics2D graphics,
+            String value,
+            int x,
+            int y,
+            int maxWidth,
+            int lineHeight,
+            int maxLines) {
+<span class="fc" id="L427">        List&lt;String&gt; lines = wrap(value, graphics.getFontMetrics(), maxWidth, maxLines);</span>
+<span class="fc bfc" id="L428" title="All 2 branches covered.">        for (int index = 0; index &lt; lines.size(); index++) {</span>
+<span class="fc" id="L429">            graphics.drawString(lines.get(index), x, y + index * lineHeight);</span>
+        }
+<span class="fc" id="L431">    }</span>
+
+    private void drawRight(Graphics2D graphics, String value, int rightX, int baselineY) {
+<span class="fc" id="L434">        graphics.drawString(value, rightX - graphics.getFontMetrics().stringWidth(value), baselineY);</span>
+<span class="fc" id="L435">    }</span>
+
+    private List&lt;String&gt; wrap(String value, FontMetrics metrics, int maxWidth, int maxLines) {
+<span class="pc bpc" id="L438" title="2 of 4 branches missed.">        String safe = value == null || value.isBlank() ? &quot;—&quot; : value.strip();</span>
+<span class="fc" id="L439">        String[] words = safe.split(&quot;\\s+&quot;);</span>
+<span class="fc" id="L440">        List&lt;String&gt; lines = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L441">        StringBuilder current = new StringBuilder();</span>
+<span class="fc bfc" id="L442" title="All 2 branches covered.">        for (String word : words) {</span>
+<span class="fc bfc" id="L443" title="All 2 branches covered.">            String candidate = current.isEmpty() ? word : current + &quot; &quot; + word;</span>
+<span class="pc bpc" id="L444" title="1 of 4 branches missed.">            if (metrics.stringWidth(candidate) &lt;= maxWidth || current.isEmpty()) {</span>
+<span class="fc" id="L445">                current.setLength(0);</span>
+<span class="fc" id="L446">                current.append(candidate);</span>
+            } else {
+<span class="fc" id="L448">                lines.add(current.toString());</span>
+<span class="fc" id="L449">                current.setLength(0);</span>
+<span class="fc" id="L450">                current.append(word);</span>
+<span class="fc bfc" id="L451" title="All 2 branches covered.">                if (lines.size() == maxLines - 1) {</span>
+<span class="fc" id="L452">                    break;</span>
+                }
+            }
+        }
+<span class="pc bpc" id="L456" title="2 of 4 branches missed.">        if (!current.isEmpty() &amp;&amp; lines.size() &lt; maxLines) {</span>
+<span class="fc" id="L457">            lines.add(current.toString());</span>
+        }
+<span class="pc bpc" id="L459" title="1 of 2 branches missed.">        if (lines.isEmpty()) {</span>
+<span class="nc" id="L460">            lines.add(&quot;—&quot;);</span>
+        }
+<span class="pc bpc" id="L462" title="1 of 2 branches missed.">        if (String.join(&quot; &quot;, lines).length() &lt; safe.length()) {</span>
+<span class="nc" id="L463">            int last = lines.size() - 1;</span>
+<span class="nc" id="L464">            String shortened = lines.get(last);</span>
+<span class="nc bnc" id="L465" title="All 4 branches missed.">            while (!shortened.isEmpty() &amp;&amp; metrics.stringWidth(shortened + &quot;…&quot;) &gt; maxWidth) {</span>
+<span class="nc" id="L466">                shortened = shortened.substring(0, shortened.length() - 1);</span>
+            }
+<span class="nc" id="L468">            lines.set(last, shortened.stripTrailing() + &quot;…&quot;);</span>
+        }
+<span class="fc" id="L470">        return lines;</span>
+    }
+
+    private String wrappedSvgText(
+            int x,
+            int y,
+            String value,
+            int fontSize,
+            int maxWidth,
+            int maxLines,
+            String color) {
+<span class="fc" id="L481">        FontMetrics metrics = metrics(new Font(Font.SANS_SERIF, Font.PLAIN, fontSize));</span>
+<span class="fc" id="L482">        List&lt;String&gt; lines = wrap(value, metrics, maxWidth, maxLines);</span>
+<span class="fc" id="L483">        StringBuilder result = new StringBuilder();</span>
+<span class="fc" id="L484">        result.append(&quot;&lt;text x=\&quot;&quot;).append(x).append(&quot;\&quot; y=\&quot;&quot;).append(y)</span>
+<span class="fc" id="L485">                .append(&quot;\&quot; font-family=\&quot;Arial, sans-serif\&quot; font-size=\&quot;&quot;)</span>
+<span class="fc" id="L486">                .append(fontSize).append(&quot;\&quot; fill=\&quot;&quot;).append(color).append(&quot;\&quot;&gt;&quot;);</span>
+<span class="fc bfc" id="L487" title="All 2 branches covered.">        for (int index = 0; index &lt; lines.size(); index++) {</span>
+<span class="fc" id="L488">            result.append(&quot;&lt;tspan x=\&quot;&quot;).append(x).append(&quot;\&quot; dy=\&quot;&quot;)</span>
+<span class="fc bfc" id="L489" title="All 2 branches covered.">                    .append(index == 0 ? 0 : fontSize + 2).append(&quot;\&quot;&gt;&quot;)</span>
+<span class="fc" id="L490">                    .append(xml(lines.get(index))).append(&quot;&lt;/tspan&gt;&quot;);</span>
+        }
+<span class="fc" id="L492">        result.append(&quot;&lt;/text&gt;&quot;);</span>
+<span class="fc" id="L493">        return result.toString();</span>
+    }
+
+    private FontMetrics metrics(Font font) {
+<span class="fc" id="L497">        BufferedImage image = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB);</span>
+<span class="fc" id="L498">        Graphics2D graphics = image.createGraphics();</span>
+        try {
+<span class="fc" id="L500">            graphics.setFont(font);</span>
+<span class="fc" id="L501">            return graphics.getFontMetrics();</span>
+        } finally {
+<span class="fc" id="L503">            graphics.dispose();</span>
+        }
+    }
+
+    private String rect(Card card, String fill, String stroke, boolean dashed) {
+<span class="fc" id="L508">        return &quot;&lt;rect x=\&quot;&quot; + card.x + &quot;\&quot; y=\&quot;&quot; + card.y</span>
+                + &quot;\&quot; width=\&quot;&quot; + card.width + &quot;\&quot; height=\&quot;&quot; + card.height
+                + &quot;\&quot; rx=\&quot;18\&quot; fill=\&quot;&quot; + fill + &quot;\&quot; stroke=\&quot;&quot; + stroke
+                + &quot;\&quot; stroke-width=\&quot;2.5\&quot;&quot;
+<span class="pc bpc" id="L512" title="1 of 2 branches missed.">                + (dashed ? &quot; stroke-dasharray=\&quot;10 8\&quot;&quot; : &quot;&quot;) + &quot;/&gt;&quot;;</span>
+    }
+
+    private String line(double x1, double y1, double x2, double y2) {
+<span class="fc" id="L516">        return &quot;&lt;line x1=\&quot;&quot; + x1 + &quot;\&quot; y1=\&quot;&quot; + y1 + &quot;\&quot; x2=\&quot;&quot; + x2</span>
+                + &quot;\&quot; y2=\&quot;&quot; + y2 + &quot;\&quot; stroke=\&quot;#cdd5dc\&quot; stroke-width=\&quot;3\&quot;/&gt;&quot;;
+    }
+
+    private String text(
+            int x,
+            int y,
+            String value,
+            int fontSize,
+            boolean bold,
+            String fill,
+            String anchor) {
+<span class="fc" id="L528">        return &quot;&lt;text x=\&quot;&quot; + x + &quot;\&quot; y=\&quot;&quot; + y</span>
+                + &quot;\&quot; font-family=\&quot;Arial, sans-serif\&quot; font-size=\&quot;&quot; + fontSize
+<span class="fc bfc" id="L530" title="All 2 branches covered.">                + &quot;\&quot; font-weight=\&quot;&quot; + (bold ? &quot;700&quot; : &quot;400&quot;)</span>
+                + &quot;\&quot; fill=\&quot;&quot; + fill + &quot;\&quot; text-anchor=\&quot;&quot; + anchor + &quot;\&quot;&gt;&quot;
+<span class="fc" id="L532">                + xml(value) + &quot;&lt;/text&gt;&quot;;</span>
+    }
+
+    private String formatPercent(Double value) {
+<span class="pc bpc" id="L536" title="1 of 2 branches missed.">        if (value == null) {</span>
+<span class="nc" id="L537">            return &quot;—&quot;;</span>
+        }
+<span class="fc" id="L539">        return com.taxonomy.dto.AnalysisPercentages.display(value);</span>
+    }
+
+    private String hex(Color color) {
+<span class="fc" id="L543">        return String.format(java.util.Locale.ROOT, &quot;#%02x%02x%02x&quot;,</span>
+<span class="fc" id="L544">                color.getRed(), color.getGreen(), color.getBlue());</span>
+    }
+
+    private String xml(String value) {
+<span class="pc bpc" id="L548" title="1 of 2 branches missed.">        if (value == null) {</span>
+<span class="nc" id="L549">            return &quot;&quot;;</span>
+        }
+<span class="fc" id="L551">        return value.replace(&quot;&amp;&quot;, &quot;&amp;amp;&quot;)</span>
+<span class="fc" id="L552">                .replace(&quot;&lt;&quot;, &quot;&amp;lt;&quot;)</span>
+<span class="fc" id="L553">                .replace(&quot;&gt;&quot;, &quot;&amp;gt;&quot;)</span>
+<span class="fc" id="L554">                .replace(&quot;\&quot;&quot;, &quot;&amp;quot;&quot;)</span>
+<span class="fc" id="L555">                .replace(&quot;'&quot;, &quot;&amp;apos;&quot;);</span>
+    }
+
+<span class="fc" id="L558">    private record Card(int x, int y, int width, int height) {</span>
+    }
+
+<span class="fc" id="L561">    private record CardStyle(</span>
+            Color fill,
+            Color border,
+            Color text,
+            Color secondaryText,
+            boolean dashed) {
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

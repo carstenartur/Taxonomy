@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>SnapshotClarifications.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-portfolio</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.reformulation</a> &gt; <span class="el_source">SnapshotClarifications.java</span></div><h1>SnapshotClarifications.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.reformulation;
+
+import com.taxonomy.dto.AnalysisResult;
+import com.taxonomy.dto.TaxonomyNodeDto;
+import com.taxonomy.identity.StableIdentityHash;
+import com.taxonomy.portfolio.dto.RequirementDecisionSection;
+import com.taxonomy.portfolio.service.PortfolioJsonCodec;
+import com.taxonomy.reformulation.DecisionQuestion;
+import com.taxonomy.reformulation.Section;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.stream.Stream;
+
+/** Human questions recorded by a completed analysis. Interrupted provider work is not a domain question. */
+<span class="fc" id="L18">record SnapshotClarifications(List&lt;DecisionQuestion&gt; questions, List&lt;Section&gt; sections) {</span>
+    private static final String CLARIFICATION = &quot;CLARIFICATION:&quot;;
+<span class="fc" id="L20">    private static final DecisionQuestion.AnswerSchema TEXT =</span>
+<span class="fc" id="L21">            new DecisionQuestion.AnswerSchema(DecisionQuestion.AnswerSchema.Kind.TEXT, List.of(), null, null, null);</span>
+
+    static SnapshotClarifications from(AnalysisResult analysis, String snapshot, PortfolioJsonCodec json) {
+<span class="fc" id="L24">        var questions = new LinkedHashMap&lt;String, DecisionQuestion&gt;();</span>
+<span class="fc bfc" id="L25" title="All 2 branches covered.">        if (analysis == null) return new SnapshotClarifications(List.of(), List.of());</span>
+<span class="fc" id="L26">        analysis.getNodeAssessments().forEach((code, assessments) -&gt; assessments.forEach(assessment -&gt; {</span>
+<span class="fc bfc" id="L27" title="All 2 branches covered.">            if (assessment.evidenceStatus() != com.taxonomy.dto.RequirementNodeAssessment.EvidenceStatus.UNRESOLVED) return;</span>
+            // Preserve claim-specific context and conditionality; the same wording can concern different passages.
+<span class="fc" id="L29">            add(questions, snapshot, &quot;REQUIREMENT_CONTRIBUTION&quot;, List.of(code), assessment.question(),</span>
+<span class="fc" id="L30">                    json.write(assessment), assessment.contributionType().name(), json);</span>
+<span class="fc" id="L31">        }));</span>
+<span class="fc bfc" id="L32" title="All 2 branches covered.">        if (analysis.getAnalysisCoverage() != null) {</span>
+<span class="fc" id="L33">            analysis.getAnalysisCoverage().nodes().forEach((code, assessment) -&gt; {</span>
+<span class="fc" id="L34">                var reason = assessment.reason();</span>
+<span class="pc bpc" id="L35" title="1 of 4 branches missed.">                if (reason != null &amp;&amp; reason.startsWith(CLARIFICATION)) {</span>
+                    // Historical snapshots retained the reason and question together. Keep their exact wording.
+<span class="fc" id="L37">                    add(questions, snapshot, &quot;ROOT&quot;, List.of(code), reason.substring(CLARIFICATION.length()),</span>
+                            &quot;&quot;, &quot;&quot;, json);
+                }
+<span class="fc" id="L40">            });</span>
+        }
+<span class="fc" id="L42">        var report = analysis.getRelationSearchReport();</span>
+<span class="fc bfc" id="L43" title="All 4 branches covered.">        if (report == null &amp;&amp; analysis.getArchitectureView() != null) report = analysis.getArchitectureView().getRelationSearchReport();</span>
+<span class="fc bfc" id="L44" title="All 2 branches covered.">        if (report != null) {</span>
+<span class="fc bfc" id="L45" title="All 2 branches covered.">            for (var source : report.sources()) {</span>
+<span class="fc" id="L46">                add(questions, snapshot, &quot;SOURCE&quot;, List.of(source.node().id()), source.question(),</span>
+<span class="fc" id="L47">                        source.rationale(), &quot;&quot;, json);</span>
+<span class="fc" id="L48">            }</span>
+<span class="fc bfc" id="L49" title="All 2 branches covered.">            for (var work : report.result().unfinished()) {</span>
+<span class="pc bpc" id="L50" title="1 of 4 branches missed.">                if (!&quot;UNRESOLVED&quot;.equals(work.reason()) &amp;&amp; !&quot;ENDPOINT_REFINEMENT&quot;.equals(work.reason())) continue;</span>
+<span class="fc" id="L51">                var nodes = Stream.concat(Stream.of(work.sourceId()), work.targets().stream())</span>
+<span class="fc" id="L52">                        .filter(Objects::nonNull).distinct().toList();</span>
+<span class="pc bpc" id="L53" title="1 of 2 branches missed.">                if (nodes.isEmpty()) continue;</span>
+<span class="fc" id="L54">                add(questions, snapshot, work.reason(), nodes, work.question(),</span>
+<span class="fc" id="L55">                        String.join(&quot; · &quot;, Objects.toString(work.type(), &quot;&quot;), Objects.toString(work.direction(), &quot;&quot;)),</span>
+<span class="fc" id="L56">                        Objects.toString(work.contributionKey(), &quot;&quot;), json);</span>
+<span class="fc" id="L57">            }</span>
+        }
+<span class="fc" id="L59">        var byNode = new LinkedHashMap&lt;String, List&lt;String&gt;&gt;();</span>
+<span class="fc" id="L60">        questions.values().forEach(question -&gt; question.discoveries().getFirst().nodeIds().forEach(node -&gt;</span>
+<span class="fc" id="L61">                byNode.computeIfAbsent(node, unused -&gt; new ArrayList&lt;&gt;()).add(question.id())));</span>
+<span class="fc" id="L62">        var roots = new LinkedHashMap&lt;String, String&gt;();</span>
+<span class="fc bfc" id="L63" title="All 4 branches covered.">        if (!byNode.isEmpty() &amp;&amp; analysis.getTree() != null)</span>
+<span class="fc" id="L64">            analysis.getTree().forEach(root -&gt; collectRoots(root, root.getCode(), roots));</span>
+<span class="fc" id="L65">        var sections = byNode.entrySet().stream().map(entry -&gt; new Section(entry.getKey(),</span>
+<span class="fc" id="L66">                roots.getOrDefault(entry.getKey(), &quot;&quot;), entry.getKey(), &quot;&quot;, List.of(), List.of(), entry.getValue())).toList();</span>
+<span class="fc" id="L67">        return new SnapshotClarifications(List.copyOf(questions.values()), sections);</span>
+    }
+
+    SnapshotClarifications withSourceQuestions(String original, String snapshot, PortfolioJsonCodec json) {
+<span class="fc" id="L71">        var authored = RequirementDecisionSection.questions(original);</span>
+<span class="fc bfc" id="L72" title="All 2 branches covered.">        if (authored.isEmpty()) return this;</span>
+<span class="fc" id="L73">        var combined = new ArrayList&lt;&gt;(questions);</span>
+<span class="fc" id="L74">        var combinedSections = new ArrayList&lt;&gt;(sections);</span>
+<span class="fc bfc" id="L75" title="All 2 branches covered.">        for (var entry : authored) {</span>
+            // A source decision has no inferred catalogue owner. Refine the exact passage in its own section.
+<span class="fc" id="L77">            String id = &quot;source-question-&quot; + StableIdentityHash.sha256(json.write(List.of(</span>
+<span class="fc" id="L78">                    entry.heading(), entry.question(), entry.paragraph())));</span>
+<span class="fc" id="L79">            var discovery = new DecisionQuestion.Discovery(snapshot, entry.heading(), &quot;&quot;,</span>
+<span class="fc bfc" id="L80" title="All 2 branches covered.">                    entry.paragraph().equals(entry.question()) ? List.of(entry.question()) : List.of(entry.paragraph(), entry.question()),</span>
+<span class="fc" id="L81">                    List.of(), List.of());</span>
+<span class="fc" id="L82">            combined.add(new DecisionQuestion(id, new DecisionQuestion.Key(id, &quot;SOURCE_DECISION&quot;, id), entry.question().exactText(),</span>
+<span class="fc" id="L83">                    List.of(discovery), List.of(), TEXT, List.of(), List.of(), &quot;&quot;, DecisionQuestion.State.OPEN));</span>
+<span class="fc" id="L84">            combinedSections.add(new Section(id, &quot;&quot;, entry.heading(), entry.paragraph().exactText(), List.of(), List.of(), List.of(id)));</span>
+<span class="fc" id="L85">        }</span>
+<span class="fc" id="L86">        return new SnapshotClarifications(List.copyOf(combined), List.copyOf(combinedSections));</span>
+    }
+
+    private static void collectRoots(TaxonomyNodeDto node, String root, Map&lt;String, String&gt; roots) {
+<span class="fc" id="L90">        roots.put(node.getCode(), root);</span>
+<span class="pc bpc" id="L91" title="1 of 2 branches missed.">        if (node.getChildren() != null) node.getChildren().forEach(child -&gt; collectRoots(child, root, roots));</span>
+<span class="fc" id="L92">    }</span>
+
+    private static void add(Map&lt;String, DecisionQuestion&gt; questions, String snapshot, String kind, List&lt;String&gt; nodes,
+                            String wording, String context, String contribution, PortfolioJsonCodec json) {
+<span class="pc bpc" id="L96" title="2 of 4 branches missed.">        if (wording == null || wording.isBlank()) return;</span>
+<span class="fc" id="L97">        String recorded = wording.strip();</span>
+<span class="fc" id="L98">        String id = &quot;analysis-&quot; + StableIdentityHash.sha256(json.write(List.of(snapshot, kind, nodes, recorded,</span>
+<span class="fc" id="L99">                Objects.toString(context, &quot;&quot;), contribution)));</span>
+<span class="fc" id="L100">        var discovery = new DecisionQuestion.Discovery(snapshot, Objects.toString(context, &quot;&quot;), &quot;&quot;, List.of(), nodes, List.of());</span>
+<span class="fc" id="L101">        questions.putIfAbsent(id, new DecisionQuestion(id, new DecisionQuestion.Key(nodes.getFirst(), kind + &quot;-&quot; + id, nodes.getFirst()),</span>
+<span class="fc" id="L102">                recorded, List.of(discovery), List.of(), TEXT, List.of(), List.of(), &quot;&quot;, DecisionQuestion.State.OPEN));</span>
+<span class="fc" id="L103">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

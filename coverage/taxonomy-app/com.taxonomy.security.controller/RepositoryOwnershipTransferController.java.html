@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RepositoryOwnershipTransferController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.security.controller</a> &gt; <span class="el_source">RepositoryOwnershipTransferController.java</span></div><h1>RepositoryOwnershipTransferController.java</h1><pre class="source lang-java linenums">package com.taxonomy.security.controller;
+
+import com.taxonomy.backup.PrincipalId;
+import com.taxonomy.security.service.RepositoryOwnershipTransfer;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.http.CacheControl;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
+
+import java.util.UUID;
+
+@RestController
+@RequestMapping(&quot;/api/repositories/{repositoryId}/ownership&quot;)
+@Tag(name = &quot;Architecture Repositories&quot;)
+@ConditionalOnProperty(prefix = &quot;taxonomy.features.multi-repository-api&quot;, name = &quot;enabled&quot;, havingValue = &quot;true&quot;)
+public class RepositoryOwnershipTransferController {
+    private final RepositoryOwnershipTransfer transfers;
+
+<span class="fc" id="L24">    public RepositoryOwnershipTransferController(RepositoryOwnershipTransfer transfers) { this.transfers = transfers; }</span>
+
+<span class="fc" id="L26">    public record TransferRequest(UUID targetPrincipalId, Long expectedVersion, String rationale) { }</span>
+
+    @PutMapping
+    @Operation(summary = &quot;Transfer a personal repository to an active principal&quot;,
+            description = &quot;The catalogue owner supplies the successor's stable principal ID, the version from GET /api/repositories/{repositoryId}, and a rationale. The successor receives OWNER, the former owner relinquishes direct ownership, and the receipt identifies the committed audit event.&quot;)
+    public ResponseEntity&lt;RepositoryOwnershipTransfer.Receipt&gt; transfer(@PathVariable String repositoryId,
+            @RequestBody TransferRequest request, Authentication authentication) {
+<span class="fc bfc" id="L33" title="All 2 branches covered.">        if (request.expectedVersion() == null) throw new ResponseStatusException(HttpStatus.PRECONDITION_REQUIRED);</span>
+<span class="fc bfc" id="L34" title="All 2 branches covered.">        if (request.targetPrincipalId() == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST);</span>
+<span class="fc" id="L35">        var receipt = transfers.transfer(authentication, repositoryId, new PrincipalId(request.targetPrincipalId()),</span>
+<span class="fc" id="L36">                request.expectedVersion(), request.rationale());</span>
+<span class="fc" id="L37">        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(receipt);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

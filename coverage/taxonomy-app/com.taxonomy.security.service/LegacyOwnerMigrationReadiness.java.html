@@ -1,0 +1,233 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>LegacyOwnerMigrationReadiness.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.security.service</a> &gt; <span class="el_source">LegacyOwnerMigrationReadiness.java</span></div><h1>LegacyOwnerMigrationReadiness.java</h1><pre class="source lang-java linenums">package com.taxonomy.security.service;
+
+import org.springframework.jdbc.core.ConnectionCallback;
+import org.springframework.jdbc.core.JdbcTemplate;
+
+import javax.sql.DataSource;
+import java.sql.Connection;
+import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Objects;
+import java.util.Set;
+
+/**
+ * Read-only inventory at the LEGACY-to-STABLE boundary. V3 reserved the owners present
+ * during migration, but LEGACY servers can keep writing username-owned rows afterwards.
+ * Such later rows must never silently become new STABLE identities.
+ *
+ * This is a startup fence, not a distributed migration coordinator: the operator must
+ * stop LEGACY writers and approve the actual issuer/subject mapping (EXT-02).
+ */
+public final class LegacyOwnerMigrationReadiness {
+    private static final int MAX_SCOPES = 100_000;
+<span class="fc" id="L26">    private static final List&lt;Source&gt; SOURCES = List.of(</span>
+            new Source(&quot;user_workspace&quot;, &quot;username&quot;),
+            new Source(&quot;repository_membership&quot;, &quot;username&quot;),
+            new Source(&quot;workspace_projection&quot;, &quot;username&quot;),
+            new Source(&quot;sync_state&quot;, &quot;username&quot;),
+            new Source(&quot;context_history_record&quot;, &quot;username&quot;),
+            new Source(&quot;analysis_working_draft&quot;, &quot;username&quot;),
+            new Source(&quot;analysis_continuation&quot;, &quot;username&quot;),
+            new Source(&quot;analysis_cluster_run&quot;, &quot;username&quot;),
+            new Source(&quot;workspace_branch_sync&quot;, &quot;username&quot;),
+            new Source(&quot;webdav_application_credential&quot;, &quot;username&quot;),
+            new Source(&quot;relation_proposal&quot;, &quot;owner_username&quot;),
+            new Source(&quot;relation_hypothesis&quot;, &quot;owner_username&quot;),
+            new Source(&quot;taxonomy_relation&quot;, &quot;owner_username&quot;),
+            new Source(&quot;arch_project&quot;, &quot;owner_username&quot;),
+            new Source(&quot;project_requirement&quot;, &quot;owner_username&quot;),
+            new Source(&quot;solution_definition&quot;, &quot;owner_username&quot;),
+            new Source(&quot;system_repository&quot;, &quot;owner_id&quot;));
+
+    private LegacyOwnerMigrationReadiness() { }
+
+<span class="fc" id="L47">    public record Inventory(int observedScopes, int missingReservations, long unresolvedReservations,</span>
+                            int unverifiedOwnerBindings) {
+        public boolean ready() {
+<span class="fc bfc" id="L50" title="All 6 branches covered.">            return missingReservations == 0 &amp;&amp; unresolvedReservations == 0 &amp;&amp; unverifiedOwnerBindings == 0;</span>
+        }
+    }
+
+    public static Inventory inspect(DataSource database) {
+<span class="fc" id="L55">        Objects.requireNonNull(database, &quot;database&quot;);</span>
+<span class="fc" id="L56">        return inspect(new JdbcTemplate(database));</span>
+    }
+
+    /** Uses the caller's current transaction, including its principal registry lock. */
+    static Inventory inspect(JdbcTemplate jdbc) {
+<span class="fc" id="L61">        return Objects.requireNonNull(jdbc.execute(</span>
+                (ConnectionCallback&lt;Inventory&gt;) LegacyOwnerMigrationReadiness::read));
+    }
+
+    public static void requireReady(DataSource database) {
+<span class="fc bfc" id="L66" title="All 2 branches covered.">        if (!inspect(database).ready()) {</span>
+<span class="fc" id="L67">            throw new IllegalStateException(&quot;STABLE identity startup requires a verified migration of &quot;</span>
+                    + &quot;all historical ownership; keep LEGACY enabled until the operator completes EXT-02&quot;);
+        }
+<span class="fc" id="L70">    }</span>
+
+    private static Set&lt;String&gt; observedScopes(Connection connection) throws SQLException {
+<span class="pc bpc" id="L73" title="2 of 4 branches missed.">        if (!hasTable(connection, &quot;app_principal&quot;) || !hasTable(connection, &quot;principal_binding&quot;)</span>
+<span class="pc bpc" id="L74" title="1 of 2 branches missed.">                || !hasTable(connection, &quot;principal_access_audit&quot;)) {</span>
+<span class="nc" id="L75">            throw new IllegalStateException(&quot;Stable identity schema must be initialized before mode selection&quot;);</span>
+        }
+<span class="fc" id="L77">        Set&lt;String&gt; scopes = new HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L78" title="All 2 branches covered.">        for (var source : SOURCES) {</span>
+<span class="pc bpc" id="L79" title="1 of 4 branches missed.">            if (!hasTable(connection, source.table()) || !hasColumn(connection, source.table(), source.column())) {</span>
+<span class="nc" id="L80">                continue;</span>
+            }
+<span class="fc" id="L82">            String condition = &quot;&quot;;</span>
+<span class="fc bfc" id="L83" title="All 2 branches covered.">            if (&quot;system_repository&quot;.equals(source.table())</span>
+<span class="pc bpc" id="L84" title="1 of 2 branches missed.">                    &amp;&amp; hasColumn(connection, &quot;system_repository&quot;, &quot;owner_type&quot;)) {</span>
+<span class="fc" id="L85">                condition = &quot; and (owner_type is null or owner_type='USER')&quot;;</span>
+            }
+            // Preserve exact spellings even on databases with a case-insensitive collation.
+            // Both identifiers and the optional predicate are fixed schema names.
+<span class="fc" id="L89">            String sql = &quot;select &quot; + source.column() + &quot; from &quot; + source.table()</span>
+<span class="fc" id="L90">                    + &quot; where &quot; + source.column() + &quot; is not null&quot; + condition;</span>
+<span class="fc" id="L91">            try (var statement = connection.createStatement()) {</span>
+<span class="fc" id="L92">                statement.setFetchSize(512);</span>
+<span class="fc" id="L93">                try (var rows = statement.executeQuery(sql)) {</span>
+<span class="fc bfc" id="L94" title="All 2 branches covered.">                    while (rows.next()) {</span>
+<span class="fc" id="L95">                        String scope = rows.getString(1);</span>
+<span class="pc bpc" id="L96" title="1 of 4 branches missed.">                        if (scope != null &amp;&amp; scope.isBlank()) {</span>
+                            // A malformed owner is not proof of an absent historical identity.
+                            // Never silently discard it at the STABLE authority boundary.
+<span class="fc" id="L99">                            throw new IllegalStateException(&quot;Historical owner scope is blank; operator repair required&quot;);</span>
+                        }
+<span class="pc bpc" id="L101" title="1 of 2 branches missed.">                        if (scope != null) {</span>
+<span class="fc" id="L102">                            scopes.add(scope);</span>
+<span class="pc bpc" id="L103" title="1 of 2 branches missed.">                            if (scopes.size() &gt; MAX_SCOPES) {</span>
+<span class="nc" id="L104">                                throw new IllegalStateException(&quot;Historical owner inventory exceeds the safe startup bound&quot;);</span>
+                            }
+                        }
+<span class="fc" id="L107">                    }</span>
+                }
+            }
+<span class="fc" id="L110">        }</span>
+<span class="fc" id="L111">        return scopes;</span>
+    }
+
+    /** The caller holds the installation registry lock throughout discovery and reservation. */
+    static List&lt;String&gt; missingScopes(JdbcTemplate jdbc, int limit) {
+<span class="fc" id="L116">        return jdbc.execute((ConnectionCallback&lt;List&lt;String&gt;&gt;) connection -&gt; {</span>
+<span class="fc" id="L117">            var missing = new ArrayList&lt;String&gt;();</span>
+<span class="fc" id="L118">            var observed = observedScopes(connection);</span>
+<span class="fc" id="L119">            try (var query = connection.prepareStatement(&quot;select scope_key from app_principal where scope_key=?&quot;)) {</span>
+<span class="fc bfc" id="L120" title="All 2 branches covered.">                for (String scope : observed) {</span>
+<span class="fc" id="L121">                    query.setString(1, scope);</span>
+<span class="fc" id="L122">                    try (var rows = query.executeQuery()) {</span>
+<span class="fc bfc" id="L123" title="All 2 branches covered.">                        if (rows.next()) {</span>
+<span class="fc" id="L124">                            requireExactScope(scope, rows.getString(1));</span>
+                        } else {
+<span class="pc bpc" id="L126" title="1 of 2 branches missed.">                            if (missing.size() == limit) {</span>
+<span class="nc" id="L127">                                throw new IllegalStateException(&quot;Reservation limit exceeded; review the historical inventory&quot;);</span>
+                            }
+<span class="fc" id="L129">                            missing.add(scope);</span>
+                        }
+                    }
+<span class="fc" id="L132">                }</span>
+            }
+<span class="fc" id="L134">            missing.sort(String::compareTo);</span>
+<span class="fc" id="L135">            return List.copyOf(missing);</span>
+        });
+    }
+
+    private static void requireExactScope(String observed, String retained) {
+<span class="pc bpc" id="L140" title="1 of 2 branches missed.">        if (!observed.equals(retained)) {</span>
+<span class="nc" id="L141">            throw new IllegalStateException(&quot;Ambiguous historical ownership scope; operator repair required&quot;);</span>
+        }
+<span class="fc" id="L143">    }</span>
+
+    private static Inventory read(Connection connection) throws SQLException {
+<span class="fc" id="L146">        var scopes = observedScopes(connection);</span>
+<span class="fc" id="L147">        int missing = 0;</span>
+<span class="fc" id="L148">        int unverified = 0;</span>
+<span class="fc" id="L149">        try (var owners = connection.prepareStatement(&quot;&quot;&quot;</span>
+                select p.principal_id, p.enabled, b.binding_kind, b.enabled, p.scope_key
+                from app_principal p left join principal_binding b on b.principal_id=p.principal_id
+                where p.scope_key=?
+                &quot;&quot;&quot;);
+<span class="fc" id="L154">             var audit = connection.prepareStatement(&quot;&quot;&quot;</span>
+                select count(distinct decision_kind) from principal_access_audit
+                where target_principal=? and decision_kind in ('LINK_LEGACY_OIDC', ?)
+                &quot;&quot;&quot;)) {
+<span class="fc bfc" id="L158" title="All 2 branches covered.">            for (String scope : scopes) {</span>
+<span class="fc" id="L159">                owners.setString(1, scope);</span>
+<span class="fc" id="L160">                boolean found = false;</span>
+<span class="fc" id="L161">                boolean verified = false;</span>
+<span class="fc" id="L162">                Set&lt;HistoricalBinding&gt; historicalBindings = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L163">                try (var rows = owners.executeQuery()) {</span>
+<span class="fc bfc" id="L164" title="All 2 branches covered.">                    while (rows.next()) {</span>
+<span class="fc" id="L165">                        requireExactScope(scope, rows.getString(5));</span>
+<span class="fc" id="L166">                        found = true;</span>
+<span class="fc bfc" id="L167" title="All 2 branches covered.">                        boolean principalEnabled = rows.getInt(2) == 1;</span>
+<span class="fc bfc" id="L168" title="All 2 branches covered.">                        boolean bindingEnabled = rows.getInt(4) == 1;</span>
+<span class="fc" id="L169">                        String kind = rows.getString(3);</span>
+<span class="pc bpc" id="L170" title="2 of 6 branches missed.">                        if (&quot;LOCAL&quot;.equals(kind) &amp;&amp; principalEnabled &amp;&amp; bindingEnabled) {</span>
+<span class="fc" id="L171">                            verified = true;</span>
+<span class="fc bfc" id="L172" title="All 2 branches covered.">                        } else if (&quot;OIDC&quot;.equals(kind)) {</span>
+<span class="fc" id="L173">                            String id = rows.getString(1);</span>
+<span class="fc bfc" id="L174" title="All 2 branches covered.">                            if (scope.equals(&quot;principal-&quot; + id.toLowerCase(Locale.ROOT))) {</span>
+<span class="fc" id="L175">                                verified = true; // new server-generated STABLE scope</span>
+<span class="pc bpc" id="L176" title="1 of 2 branches missed.">                            } else if (principalEnabled == bindingEnabled) {</span>
+<span class="fc bfc" id="L177" title="All 2 branches covered.">                                historicalBindings.add(new HistoricalBinding(id, !principalEnabled));</span>
+                            }
+                        }
+<span class="fc" id="L180">                    }</span>
+                }
+                // Close the owner cursor first: SQL Server connections without MARS may not
+                // execute a second statement while the initial ResultSet is still open.
+<span class="fc bfc" id="L184" title="All 4 branches covered.">                if (!verified) for (var binding : historicalBindings) {</span>
+<span class="fc" id="L185">                    audit.setString(1, binding.id());</span>
+                    // A disabled historical identity needs both the original link and its audited removal.
+<span class="fc bfc" id="L187" title="All 2 branches covered.">                    audit.setString(2, binding.revoked() ? &quot;UNLINK_LEGACY_OIDC&quot; : &quot;LINK_LEGACY_OIDC&quot;);</span>
+<span class="fc" id="L188">                    try (var matches = audit.executeQuery()) {</span>
+<span class="pc bpc" id="L189" title="1 of 6 branches missed.">                        if (matches.next() &amp;&amp; matches.getInt(1) == (binding.revoked() ? 2 : 1)) {</span>
+<span class="fc" id="L190">                            verified = true;</span>
+                            break;
+                        }
+<span class="pc bpc" id="L193" title="1 of 2 branches missed.">                    }</span>
+<span class="fc" id="L194">                }</span>
+<span class="fc bfc" id="L195" title="All 2 branches covered.">                if (!found) missing++;</span>
+<span class="fc bfc" id="L196" title="All 2 branches covered.">                else if (!verified) unverified++;</span>
+<span class="fc" id="L197">            }</span>
+        }
+        long unresolved;
+<span class="fc" id="L200">        try (var statement = connection.createStatement();</span>
+<span class="fc" id="L201">             var rows = statement.executeQuery(&quot;&quot;&quot;</span>
+                     select count(*) from app_principal p where p.enabled=0
+                     and not exists (select 1 from principal_binding b where b.principal_id=p.principal_id)
+                     &quot;&quot;&quot;)) {
+<span class="fc" id="L205">            rows.next();</span>
+<span class="fc" id="L206">            unresolved = rows.getLong(1);</span>
+        }
+<span class="fc" id="L208">        return new Inventory(scopes.size(), missing, unresolved, unverified);</span>
+    }
+
+    private static boolean hasTable(Connection connection, String name) throws SQLException {
+<span class="fc" id="L212">        try (var tables = connection.getMetaData().getTables(</span>
+<span class="fc" id="L213">                connection.getCatalog(), connection.getSchema(), &quot;%&quot;, new String[]{&quot;TABLE&quot;})) {</span>
+<span class="fc bfc" id="L214" title="All 4 branches covered.">            while (tables.next()) if (name.equalsIgnoreCase(tables.getString(&quot;TABLE_NAME&quot;))) return true;</span>
+<span class="pc bpc" id="L215" title="1 of 2 branches missed.">        }</span>
+<span class="fc" id="L216">        return false;</span>
+    }
+
+    private static boolean hasColumn(Connection connection, String table, String name) throws SQLException {
+<span class="fc" id="L220">        try (var columns = connection.getMetaData().getColumns(</span>
+<span class="fc" id="L221">                connection.getCatalog(), connection.getSchema(), &quot;%&quot;, &quot;%&quot;)) {</span>
+<span class="pc bpc" id="L222" title="1 of 2 branches missed.">            while (columns.next()) {</span>
+<span class="fc bfc" id="L223" title="All 2 branches covered.">                if (table.equalsIgnoreCase(columns.getString(&quot;TABLE_NAME&quot;))</span>
+<span class="fc bfc" id="L224" title="All 2 branches covered.">                        &amp;&amp; name.equalsIgnoreCase(columns.getString(&quot;COLUMN_NAME&quot;))) return true;</span>
+            }
+<span class="pc bpc" id="L226" title="1 of 2 branches missed.">        }</span>
+<span class="nc" id="L227">        return false;</span>
+    }
+
+<span class="fc" id="L230">    private record Source(String table, String column) { }</span>
+<span class="fc" id="L231">    private record HistoricalBinding(String id, boolean revoked) { }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

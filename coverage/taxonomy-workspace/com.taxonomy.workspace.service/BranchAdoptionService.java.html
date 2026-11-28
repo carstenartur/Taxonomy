@@ -1,0 +1,371 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>BranchAdoptionService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.service</a> &gt; <span class="el_source">BranchAdoptionService.java</span></div><h1>BranchAdoptionService.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.service;
+
+import com.taxonomy.dsl.command.ArchitectureDslCommands;
+import com.taxonomy.dsl.command.ArchitectureSemanticPatch;
+import com.taxonomy.dsl.model.CatalogueDefinitionResolver;
+import com.taxonomy.workspace.storage.DefaultCommitAdoption;
+import com.taxonomy.workspace.storage.GitHistoryTransfer;
+import jakarta.persistence.*;
+import org.eclipse.jgit.lib.ObjectId;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import java.io.IOException;
+import java.util.List;
+import java.util.Objects;
+import java.util.stream.Collectors;
+
+@Service
+@Transactional(rollbackFor = IOException.class)
+public class BranchAdoptionService {
+    private static final int MAX_MODEL_BYTES = 4 * 1024 * 1024;
+    private final EntityManager db;
+    private final BranchAdoptionTargets targets;
+    private final WorkspaceFetchAuthority actors;
+    private final WorkspaceArchitectureVersionPort editor;
+    private final WorkspacePortfolioGitPort portfolio;
+    private final CatalogueDefinitionResolver catalogues;
+
+    public BranchAdoptionService(EntityManager db, BranchAdoptionTargets targets, WorkspaceFetchAuthority actors,
+            WorkspaceArchitectureVersionPort editor, WorkspacePortfolioGitPort portfolio,
+<span class="fc" id="L30">            CatalogueDefinitionResolver catalogues) {</span>
+<span class="fc" id="L31">        this.db = db;</span>
+<span class="fc" id="L32">        this.targets = targets;</span>
+<span class="fc" id="L33">        this.actors = actors;</span>
+<span class="fc" id="L34">        this.editor = editor;</span>
+<span class="fc" id="L35">        this.portfolio = portfolio;</span>
+<span class="fc" id="L36">        this.catalogues = catalogues;</span>
+<span class="fc" id="L37">    }</span>
+
+    @Transactional(readOnly = true)
+    public BranchAdoptionRule.View inspect(RepositoryContext c) {
+<span class="fc" id="L41">        var rule = db.find(BranchAdoptionRule.class, BranchAdoptionRule.key(c));</span>
+<span class="fc bfc" id="L42" title="All 2 branches covered.">        return (rule == null ? new BranchAdoptionRule(c, targets.defaultBranch(c)) : rule).view();</span>
+    }
+
+<span class="fc" id="L45">    public record Event(long revision, long recordedAt, String actor, String sourceBranch, String sourceCommit,</span>
+            String targetBefore, String targetAfter, String status, String detail) {
+    }
+
+    @Transactional(readOnly = true)
+    public List&lt;Event&gt; history(RepositoryContext c) {
+<span class="fc" id="L51">        return db</span>
+<span class="fc" id="L52">                .createQuery(&quot;from BranchAdoptionEvent where ruleId=:id order by revision desc&quot;,</span>
+                        BranchAdoptionEvent.class)
+<span class="fc" id="L54">                .setParameter(&quot;id&quot;, BranchAdoptionRule.key(c)).setMaxResults(50).getResultList().stream()</span>
+<span class="fc" id="L55">                .map(e -&gt; new Event(e.revision, e.recordedAt, e.actor, e.sourceBranch, e.sourceCommit,</span>
+                        e.targetBefore, e.targetAfter, e.status, e.detail))
+<span class="fc" id="L57">                .toList();</span>
+    }
+
+    public BranchAdoptionRule.View configure(RepositoryContext c, boolean enabled, long revision) throws IOException {
+<span class="fc" id="L61">        var grant = actors.authorize(c.username(), RepositoryScope.CENTRAL_WRITE);</span>
+        // Serializes first activation as well as subsequent updates in every application instance.
+<span class="fc" id="L63">        var key = BranchAdoptionRule.key(c);</span>
+<span class="fc" id="L64">        targets.lockRepository(c.repositoryId());</span>
+<span class="fc bfc" id="L65" title="All 2 branches covered.">        if (!enabled) {</span>
+<span class="fc" id="L66">            var rule = locked(key);</span>
+<span class="fc" id="L67">            checkRevision(rule, revision);</span>
+<span class="pc bpc" id="L68" title="1 of 2 branches missed.">            if (rule == null)</span>
+<span class="nc" id="L69">                return inspect(c);</span>
+            // Stopping a rule requires current control over this target. Its upstream policy may have changed.
+<span class="fc bfc" id="L71" title="All 2 branches covered.">            if (!targets.canStop(c, grant, rule.principalId))</span>
+<span class="fc" id="L72">                throw BranchAdoptionTargets.denied();</span>
+<span class="pc bpc" id="L73" title="1 of 2 branches missed.">            if (rule.enabled) {</span>
+<span class="fc" id="L74">                rule.enabled = false;</span>
+<span class="fc" id="L75">                record(rule, &quot;DISABLED&quot;,</span>
+<span class="fc bfc" id="L76" title="All 2 branches covered.">                        rule.prepared == null ? null : &quot;A prepared operation is retained for reconciliation&quot;,</span>
+<span class="fc" id="L77">                        grant.principalId());</span>
+            }
+<span class="fc" id="L79">            return rule.view();</span>
+        }
+<span class="fc" id="L81">        var rule = locked(key);</span>
+<span class="fc" id="L82">        var target = targets.lock(c, grant);</span>
+<span class="fc" id="L83">        checkRevision(rule, revision);</span>
+<span class="pc bpc" id="L84" title="1 of 4 branches missed.">        if (rule != null &amp;&amp; rule.enabled)</span>
+<span class="nc" id="L85">            return rule.view();</span>
+<span class="fc bfc" id="L86" title="All 2 branches covered.">        boolean firstActivation = rule == null;</span>
+<span class="fc bfc" id="L87" title="All 2 branches covered.">        if (firstActivation)</span>
+<span class="fc" id="L88">            rule = new BranchAdoptionRule(c, target.sourceBranch());</span>
+<span class="pc bpc" id="L89" title="1 of 4 branches missed.">        if (rule.prepared != null &amp;&amp; !publicationReachedTarget(rule, target))</span>
+<span class="fc" id="L90">            rule.prepared = null;</span>
+<span class="pc bpc" id="L91" title="1 of 2 branches missed.">        if (rule.prepared != null) {</span>
+<span class="nc bnc" id="L92" title="All 4 branches missed.">            if (!rule.principalId.equals(grant.principalId()) || !c.username().equals(rule.username)</span>
+<span class="nc bnc" id="L93" title="All 2 branches missed.">                    || !rule.sourceBranch.equals(target.sourceBranch()))</span>
+<span class="nc" id="L94">                throw BranchAdoptionTargets.denied();</span>
+        } else {
+<span class="fc" id="L96">            var tip = target.source().directBranchHead(target.sourceBranch());</span>
+<span class="fc" id="L97">            var local = target.local().directBranchHead(c.branch());</span>
+<span class="pc bpc" id="L98" title="2 of 4 branches missed.">            if (tip == null || local == null)</span>
+<span class="nc" id="L99">                throw new IllegalArgumentException(&quot;Source and target must exist&quot;);</span>
+<span class="fc" id="L100">            rule.sourceBranch = target.sourceBranch();</span>
+<span class="fc" id="L101">            rule.cursor = tip;</span>
+<span class="fc" id="L102">            rule.sourceCommit = tip;</span>
+<span class="fc" id="L103">            rule.sourceTip = tip;</span>
+<span class="fc" id="L104">            rule.targetBefore = local;</span>
+<span class="fc" id="L105">            rule.targetAfter = local;</span>
+        }
+<span class="fc" id="L107">        rule.bind(c.username(), grant);</span>
+<span class="fc" id="L108">        rule.enabled = true;</span>
+<span class="fc" id="L109">        rule.nextCheck = 0;</span>
+<span class="fc bfc" id="L110" title="All 2 branches covered.">        if (firstActivation)</span>
+<span class="fc" id="L111">            db.persist(rule);</span>
+<span class="fc" id="L112">        record(rule, &quot;ENABLED&quot;, null, grant.principalId());</span>
+<span class="fc" id="L113">        return rule.view();</span>
+    }
+
+    public BranchAdoptionRule.View decide(RepositoryContext c, String action, String commit, long revision)
+            throws IOException {
+<span class="fc" id="L118">        var grant = actors.authorize(c.username(), RepositoryScope.CENTRAL_WRITE);</span>
+<span class="fc" id="L119">        targets.lockRepository(c.repositoryId());</span>
+<span class="fc" id="L120">        var rule = locked(BranchAdoptionRule.key(c));</span>
+<span class="fc" id="L121">        var target = targets.lock(c, grant);</span>
+<span class="fc" id="L122">        checkRevision(rule, revision);</span>
+<span class="pc bpc" id="L123" title="4 of 8 branches missed.">        if (rule == null || !rule.enabled || !rule.stopped() || !ObjectId.isId(commit)</span>
+<span class="pc bpc" id="L124" title="1 of 4 branches missed.">                || !commit.equals(rule.sourceCommit) || !rule.principalId.equals(grant.principalId()))</span>
+<span class="fc" id="L125">            throw stale();</span>
+<span class="pc bpc" id="L126" title="1 of 2 branches missed.">        if (!rule.sourceBranch.equals(target.sourceBranch()))</span>
+<span class="nc" id="L127">            throw stale();</span>
+<span class="fc bfc" id="L128" title="All 2 branches covered.">        if (&quot;SKIP&quot;.equals(action)) {</span>
+<span class="pc bpc" id="L129" title="3 of 4 branches missed.">            if (rule.prepared != null &amp;&amp; publicationReachedTarget(rule, target))</span>
+<span class="nc" id="L130">                throw new IllegalStateException(&quot;Reconcile the published candidate before skipping it&quot;);</span>
+<span class="pc bpc" id="L131" title="1 of 2 branches missed.">            if (!commit.equals(DefaultCommitAdoption.next(target.source(), rule.cursor,</span>
+<span class="fc" id="L132">                    target.source().directBranchHead(rule.sourceBranch))))</span>
+<span class="nc" id="L133">                throw stale();</span>
+<span class="fc" id="L134">            rule.prepared = null;</span>
+<span class="fc" id="L135">            rule.cursor = commit;</span>
+<span class="fc" id="L136">            rule.targetBefore = target.local().directBranchHead(c.branch());</span>
+<span class="fc" id="L137">            rule.targetAfter = rule.targetBefore;</span>
+<span class="fc" id="L138">            record(rule, &quot;SKIPPED&quot;, &quot;Explicitly skipped the selected commit&quot;, grant.principalId());</span>
+<span class="pc bpc" id="L139" title="1 of 2 branches missed.">        } else if (&quot;RETRY&quot;.equals(action)) {</span>
+<span class="pc bpc" id="L140" title="2 of 4 branches missed.">            if (rule.prepared != null &amp;&amp; !publicationReachedTarget(rule, target))</span>
+<span class="fc" id="L141">                rule.prepared = null;</span>
+<span class="fc" id="L142">            rule.bind(c.username(), grant);</span>
+<span class="fc" id="L143">            record(rule, &quot;ENABLED&quot;, &quot;Retry the reviewed source commit&quot;, grant.principalId());</span>
+        } else
+<span class="nc" id="L145">            throw new IllegalArgumentException(&quot;Choose RETRY or SKIP&quot;);</span>
+<span class="fc" id="L146">        rule.nextCheck = 0;</span>
+<span class="fc" id="L147">        return rule.view();</span>
+    }
+
+<span class="fc" id="L150">    public record Due(String id, long revision) {</span>
+    }
+
+    @Transactional(readOnly = true)
+    public List&lt;Due&gt; due() {
+<span class="fc" id="L155">        return db</span>
+<span class="fc" id="L156">                .createQuery(&quot;from BranchAdoptionRule where enabled=true and nextCheck &lt;= :now order by nextCheck,id&quot;,</span>
+                        BranchAdoptionRule.class)
+<span class="fc" id="L158">                .setParameter(&quot;now&quot;, System.currentTimeMillis()).setMaxResults(32).getResultList().stream()</span>
+<span class="fc" id="L159">                .map(r -&gt; new Due(r.id, r.revision)).toList();</span>
+    }
+
+    /** Each call is a separate transaction: a prepared candidate is durable before any branch CAS. */
+    public void advance(Due observed) throws IOException {
+<span class="fc" id="L164">        advance(observed, true, null);</span>
+<span class="fc" id="L165">    }</span>
+
+    public void advance(Due observed, boolean unattended, String reviewedCommit) throws IOException {
+<span class="fc" id="L168">        var repositories = db</span>
+<span class="fc" id="L169">                .createQuery(&quot;select r.repositoryId from BranchAdoptionRule r where r.id=:id&quot;, String.class)</span>
+<span class="fc" id="L170">                .setParameter(&quot;id&quot;, observed.id()).getResultList();</span>
+<span class="pc bpc" id="L171" title="1 of 2 branches missed.">        if (repositories.isEmpty())</span>
+<span class="nc" id="L172">            return;</span>
+<span class="fc" id="L173">        targets.lockRepository(repositories.getFirst());</span>
+<span class="fc" id="L174">        var rule = locked(observed.id());</span>
+<span class="pc bpc" id="L175" title="3 of 8 branches missed.">        if (rule == null || rule.revision != observed.revision() || !rule.enabled || rule.stopped())</span>
+<span class="fc" id="L176">            return;</span>
+<span class="fc" id="L177">        rule.nextCheck = System.currentTimeMillis() + 30_000;</span>
+<span class="fc" id="L178">        Runnable authorize = () -&gt; actors.checkPublication(rule.grant(), rule.username, RepositoryScope.CENTRAL_WRITE,</span>
+                unattended);
+<span class="fc" id="L180">        authorize.run();</span>
+<span class="fc" id="L181">        RepositoryMembershipIdentity.RecordedActor.during(rule.username, rule.grant(), () -&gt; {</span>
+<span class="fc" id="L182">            var target = targets.lock(rule.context(), rule.grant());</span>
+<span class="pc bpc" id="L183" title="1 of 2 branches missed.">            if (!rule.sourceBranch.equals(target.sourceBranch()))</span>
+<span class="nc" id="L184">                throw stale();</span>
+<span class="fc bfc" id="L185" title="All 2 branches covered.">            if (rule.prepared != null)</span>
+<span class="fc" id="L186">                publish(rule, target, authorize);</span>
+<span class="fc bfc" id="L187" title="All 2 branches covered.">            else if (&quot;SELECTED&quot;.equals(rule.status))</span>
+<span class="fc" id="L188">                prepare(rule, target);</span>
+            else
+<span class="fc" id="L190">                selectNext(rule, target, reviewedCommit);</span>
+<span class="fc" id="L191">            return null;</span>
+        });
+<span class="fc" id="L193">    }</span>
+
+    private void selectNext(BranchAdoptionRule rule, BranchAdoptionTargets.Target target, String reviewedCommit)
+            throws IOException {
+<span class="fc" id="L197">        var tip = target.source().directBranchHead(rule.sourceBranch);</span>
+<span class="fc" id="L198">        var next = DefaultCommitAdoption.next(target.source(), rule.cursor, tip);</span>
+<span class="fc bfc" id="L199" title="All 2 branches covered.">        if (next == null)</span>
+<span class="fc" id="L200">            return;</span>
+<span class="pc bpc" id="L201" title="1 of 4 branches missed.">        if (reviewedCommit != null &amp;&amp; !reviewedCommit.equals(next))</span>
+<span class="nc" id="L202">            throw stale();</span>
+<span class="fc" id="L203">        rule.sourceTip = tip;</span>
+<span class="fc" id="L204">        rule.sourceCommit = next;</span>
+<span class="fc" id="L205">        rule.targetBefore = target.local().directBranchHead(rule.branch);</span>
+<span class="fc" id="L206">        rule.targetAfter = rule.targetBefore;</span>
+<span class="fc" id="L207">        rule.nextCheck = 0;</span>
+<span class="fc" id="L208">        record(rule, &quot;SELECTED&quot;, null, rule.principalId);</span>
+<span class="fc" id="L209">    }</span>
+
+    private void prepare(BranchAdoptionRule rule, BranchAdoptionTargets.Target target) throws IOException {
+<span class="fc" id="L212">        var next = rule.sourceCommit;</span>
+<span class="pc bpc" id="L213" title="1 of 2 branches missed.">        if (!Objects.equals(rule.sourceTip, target.source().directBranchHead(rule.sourceBranch)))</span>
+<span class="nc" id="L214">            throw stale();</span>
+<span class="pc bpc" id="L215" title="1 of 2 branches missed.">        if (rule.targetBefore == null) {</span>
+<span class="nc" id="L216">            stop(rule, &quot;PREREQUISITE&quot;, &quot;The target branch is unavailable&quot;);</span>
+<span class="nc" id="L217">            return;</span>
+        }
+<span class="fc bfc" id="L219" title="All 2 branches covered.">        if (target.source() != target.local())</span>
+<span class="fc" id="L220">            GitHistoryTransfer.copyCommitClosure(target.source(), target.local(), next, List.of(rule.targetBefore));</span>
+<span class="pc bpc" id="L221" title="1 of 2 branches missed.">        if (!DefaultCommitAdoption.related(target.local(), rule.targetBefore, next)) {</span>
+<span class="nc" id="L222">            stop(rule, &quot;PREREQUISITE&quot;, &quot;Source and target do not have a unique common history&quot;);</span>
+<span class="nc" id="L223">            return;</span>
+        }
+<span class="fc" id="L225">        var change = target.local().prepareDefaultCommit(rule.repositoryId, rule.sourceBranch, next, rule.branch,</span>
+                rule.targetBefore, rule.username);
+<span class="pc bpc" id="L227" title="1 of 2 branches missed.">        if (&quot;ALREADY_CONTAINED&quot;.equals(change.result())) {</span>
+<span class="nc" id="L228">            rule.cursor = next;</span>
+<span class="nc" id="L229">            rule.nextCheck = 0;</span>
+<span class="nc" id="L230">            record(rule, change.result(), change.detail(), rule.principalId);</span>
+<span class="nc" id="L231">            return;</span>
+        }
+<span class="fc bfc" id="L233" title="All 2 branches covered.">        if (!&quot;PREPARED&quot;.equals(change.result())) {</span>
+<span class="fc" id="L234">            stop(rule, change.result(), change.detail());</span>
+<span class="fc" id="L235">            return;</span>
+        }
+<span class="fc" id="L237">        var local = target.local();</span>
+        try {
+<span class="fc" id="L239">            var before = local.getDslAtCommit(rule.cursor, MAX_MODEL_BYTES);</span>
+<span class="fc" id="L240">            var source = local.getDslAtCommit(next, MAX_MODEL_BYTES);</span>
+<span class="fc" id="L241">            var onto = local.getDslAtCommit(rule.targetBefore, MAX_MODEL_BYTES);</span>
+<span class="pc bpc" id="L242" title="1 of 2 branches missed.">            if (overlappingBlocks(before, source, onto)) {</span>
+<span class="nc" id="L243">                stop(rule, &quot;CONFLICT&quot;, &quot;Both versions changed the same architecture object&quot;);</span>
+<span class="nc" id="L244">                return;</span>
+            }
+<span class="fc" id="L246">            validate(local.getDslAtCommit(change.candidate(), MAX_MODEL_BYTES));</span>
+<span class="fc" id="L247">        } catch (IllegalArgumentException invalid) {</span>
+<span class="fc" id="L248">            stop(rule, &quot;PREREQUISITE&quot;, &quot;The combined model has unresolved dependencies or invalid structure&quot;);</span>
+<span class="fc" id="L249">            return;</span>
+<span class="fc" id="L250">        }</span>
+<span class="fc" id="L251">        DefaultCommitAdoption.retain(local, rule.id, change.candidate());</span>
+<span class="fc" id="L252">        rule.prepared = change.candidate();</span>
+<span class="fc" id="L253">        rule.nextCheck = 0;</span>
+<span class="fc" id="L254">        record(rule, &quot;PREPARED&quot;, &quot;The exact single-commit change is ready for final checks&quot;, rule.principalId);</span>
+<span class="fc" id="L255">    }</span>
+
+    private static boolean overlappingBlocks(String base, String source, String target) {
+<span class="fc" id="L258">        var changed = ArchitectureSemanticPatch.between(base, source).stream()</span>
+<span class="fc" id="L259">                .map(ArchitectureSemanticPatch.BlockChange::id)</span>
+<span class="fc" id="L260">                .collect(Collectors.toSet());</span>
+<span class="pc bpc" id="L261" title="1 of 2 branches missed.">        if (changed.isEmpty())</span>
+<span class="nc" id="L262">            return false;</span>
+<span class="fc" id="L263">        var different = ArchitectureSemanticPatch.between(source, target).stream()</span>
+<span class="fc" id="L264">                .map(ArchitectureSemanticPatch.BlockChange::id)</span>
+<span class="fc" id="L265">                .collect(Collectors.toSet());</span>
+<span class="fc" id="L266">        return ArchitectureSemanticPatch.between(base, target).stream()</span>
+<span class="pc bpc" id="L267" title="3 of 4 branches missed.">                .anyMatch(x -&gt; changed.contains(x.id()) &amp;&amp; different.contains(x.id()));</span>
+    }
+
+    private void validate(String source) {
+<span class="fc" id="L271">        var model = new ArchitectureDslCommands().model(source);</span>
+<span class="pc" id="L272">        new ArchitectureDslCommands(catalogues.forModel(model), code -&gt; catalogues.assignmentTarget(model, code))</span>
+<span class="fc" id="L273">                .validateReconciledSource(source);</span>
+<span class="pc bpc" id="L274" title="1 of 2 branches missed.">        if (!new com.taxonomy.dsl.validation.DslValidator(catalogues).validate(model).isValid())</span>
+<span class="nc" id="L275">            throw new IllegalArgumentException(&quot;Invalid combined model&quot;);</span>
+<span class="fc" id="L276">    }</span>
+
+    private void publish(BranchAdoptionRule rule, BranchAdoptionTargets.Target target, Runnable authorize)
+            throws IOException {
+<span class="fc" id="L280">        var local = target.local();</span>
+<span class="fc" id="L281">        var head = local.directBranchHead(rule.branch);</span>
+<span class="fc" id="L282">        boolean published = rule.prepared.equals(head);</span>
+<span class="fc bfc" id="L283" title="All 4 branches covered.">        if (!published &amp;&amp; !Objects.equals(rule.targetBefore, head))</span>
+<span class="fc" id="L284">            throw stale();</span>
+<span class="fc" id="L285">        var c = rule.context();</span>
+<span class="fc" id="L286">        var workspace = WorkspaceResolver.workspaceContext(c);</span>
+<span class="fc" id="L287">        String candidateDsl = local.getDslAtCommit(rule.prepared, MAX_MODEL_BYTES);</span>
+<span class="fc bfc" id="L288" title="All 2 branches covered.">        if (target.workspace() != null) {</span>
+<span class="fc" id="L289">            portfolio.requireAvailable();</span>
+<span class="fc" id="L290">            portfolio.lockedPublicationDigest(c.username(), workspace);</span>
+<span class="fc" id="L291">            String beforeDsl = local.getDslAtCommit(rule.targetBefore, MAX_MODEL_BYTES);</span>
+<span class="pc bpc" id="L292" title="1 of 4 branches missed.">            if (!portfolio.matchesCheckpoint(beforeDsl, c.username(), workspace)</span>
+<span class="nc bnc" id="L293" title="All 2 branches missed.">                    &amp;&amp; !(published &amp;&amp; portfolio.matchesCheckpoint(candidateDsl, c.username(), workspace)))</span>
+<span class="fc" id="L294">                throw new IllegalStateException(&quot;Uncommitted portfolio changes require a decision&quot;);</span>
+<span class="fc" id="L295">            portfolio.validatePortfolio(beforeDsl, candidateDsl, c.username(), workspace);</span>
+        }
+<span class="fc" id="L297">        WorkspaceArchitectureVersionPort.GitAction&lt;String&gt; publish = () -&gt; {</span>
+<span class="fc" id="L298">            authorize.run();</span>
+            // Once Git has committed, a retry may reconcile only that exact result.
+<span class="fc bfc" id="L300" title="All 2 branches covered.">            if (published)</span>
+<span class="fc" id="L301">                return local.verifyExpectedHead(rule.branch, rule.prepared);</span>
+<span class="pc bpc" id="L302" title="1 of 2 branches missed.">            if (!rule.sourceTip.equals(target.source().directBranchHead(rule.sourceBranch)))</span>
+<span class="nc" id="L303">                throw stale();</span>
+<span class="fc" id="L304">            return local.publishDefaultCommit(rule.branch, rule.targetBefore, rule.prepared, rule.username,</span>
+                    &quot;adopt &quot; + rule.repositoryId + &quot;/&quot; + rule.sourceBranch + &quot; &quot; + rule.sourceCommit);
+        };
+<span class="fc bfc" id="L307" title="All 2 branches covered.">        if (target.workspace() == null)</span>
+<span class="fc" id="L308">            publish.run();</span>
+        else {
+<span class="fc" id="L310">            var row = target.workspace();</span>
+<span class="pc bpc" id="L311" title="4 of 6 branches missed.">            if (row.getCurrentCommit() != null &amp;&amp; !row.getCurrentCommit().equals(rule.targetBefore)</span>
+<span class="nc bnc" id="L312" title="All 2 branches missed.">                    &amp;&amp; !(published &amp;&amp; rule.prepared.equals(row.getCurrentCommit())))</span>
+<span class="nc" id="L313">                throw stale();</span>
+<span class="fc" id="L314">            editor.applyPreparedWorkspaceRebase(c, rule.targetBefore, rule.prepared, &quot;Adopt &quot; + rule.sourceCommit,</span>
+                    publish);
+<span class="fc" id="L316">            portfolio.materializePortfolio(candidateDsl, c.username(), workspace);</span>
+<span class="fc" id="L317">            row.setCurrentCommit(rule.prepared);</span>
+        }
+<span class="fc" id="L319">        rule.targetAfter = rule.prepared;</span>
+<span class="fc" id="L320">        rule.prepared = null;</span>
+<span class="fc" id="L321">        rule.cursor = rule.sourceCommit;</span>
+<span class="fc" id="L322">        rule.nextCheck = 0;</span>
+<span class="fc" id="L323">        record(rule, &quot;APPLIED&quot;, null, rule.principalId);</span>
+<span class="fc" id="L324">    }</span>
+
+    private boolean publicationReachedTarget(BranchAdoptionRule rule, BranchAdoptionTargets.Target target)
+            throws IOException {
+<span class="fc" id="L328">        var head = target.local().directBranchHead(rule.branch);</span>
+<span class="pc bpc" id="L329" title="3 of 6 branches missed.">        return head != null &amp;&amp; (rule.prepared.equals(head) || target.local().isAncestor(rule.prepared, head));</span>
+    }
+
+    public void failed(Due observed, boolean denied) {
+<span class="fc" id="L333">        var repositories = db</span>
+<span class="fc" id="L334">                .createQuery(&quot;select r.repositoryId from BranchAdoptionRule r where r.id=:id&quot;, String.class)</span>
+<span class="fc" id="L335">                .setParameter(&quot;id&quot;, observed.id()).getResultList();</span>
+<span class="pc bpc" id="L336" title="1 of 2 branches missed.">        if (repositories.isEmpty())</span>
+<span class="nc" id="L337">            return;</span>
+<span class="fc" id="L338">        targets.lockRepository(repositories.getFirst());</span>
+<span class="fc" id="L339">        var rule = locked(observed.id());</span>
+<span class="pc bpc" id="L340" title="3 of 6 branches missed.">        if (rule != null &amp;&amp; rule.revision == observed.revision() &amp;&amp; rule.enabled)</span>
+<span class="fc bfc" id="L341" title="All 2 branches covered.">            stop(rule, denied ? &quot;AUTHORIZATION&quot; : &quot;PREREQUISITE&quot;,</span>
+<span class="fc bfc" id="L342" title="All 2 branches covered.">                    denied ? &quot;Current publishing authority must be reviewed&quot;</span>
+<span class="fc" id="L343">                            : &quot;Source, target, editor or portfolio changed; review before retrying&quot;);</span>
+<span class="fc" id="L344">    }</span>
+
+    private void stop(BranchAdoptionRule rule, String status, String detail) {
+<span class="fc" id="L347">        rule.nextCheck = Long.MAX_VALUE;</span>
+<span class="fc" id="L348">        record(rule, status, detail, rule.principalId);</span>
+<span class="fc" id="L349">    }</span>
+
+    private void record(BranchAdoptionRule rule, String status, String detail, String actor) {
+<span class="fc" id="L352">        rule.revision++;</span>
+<span class="fc" id="L353">        rule.status = status;</span>
+<span class="fc bfc" id="L354" title="All 2 branches covered.">        rule.detail = detail == null ? null : detail.substring(0, Math.min(detail.length(), 255));</span>
+<span class="fc" id="L355">        db.persist(new BranchAdoptionEvent(rule, actor));</span>
+<span class="fc" id="L356">    }</span>
+
+    private BranchAdoptionRule locked(String key) {
+<span class="fc" id="L359">        return db.find(BranchAdoptionRule.class, key, LockModeType.PESSIMISTIC_WRITE);</span>
+    }
+
+    private static void checkRevision(BranchAdoptionRule rule, long expected) {
+<span class="fc bfc" id="L363" title="All 4 branches covered.">        if ((rule == null ? 0 : rule.revision) != expected)</span>
+<span class="fc" id="L364">            throw stale();</span>
+<span class="fc" id="L365">    }</span>
+
+    private static IllegalStateException stale() {
+<span class="fc" id="L368">        return new IllegalStateException(&quot;The reviewed source, target or rule revision changed&quot;);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

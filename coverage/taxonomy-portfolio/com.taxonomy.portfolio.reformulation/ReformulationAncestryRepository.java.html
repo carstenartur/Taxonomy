@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ReformulationAncestryRepository.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-portfolio</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.reformulation</a> &gt; <span class="el_source">ReformulationAncestryRepository.java</span></div><h1>ReformulationAncestryRepository.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.reformulation;
+
+import com.taxonomy.portfolio.service.JdbcClobReaders;
+import com.taxonomy.portfolio.service.PortfolioException;
+import jakarta.persistence.EntityManager;
+import org.hibernate.FlushMode;
+import org.hibernate.Session;
+import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.io.Reader;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Types;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.function.Function;
+
+/** Reads the exact proposal baseline without hydrating its analysis snapshot or other associations. */
+@Repository
+public class ReformulationAncestryRepository {
+<span class="fc" id="L22">    record ProposalBaseline&lt;T&gt;(Long projectId, Long requirementId, Long sourceVersionId,</span>
+                              String snapshotId, T baseline) { }
+
+    private final EntityManager entities;
+
+<span class="fc" id="L27">    public ReformulationAncestryRepository(EntityManager entities) {</span>
+<span class="fc" id="L28">        this.entities = entities;</span>
+<span class="fc" id="L29">    }</span>
+
+    @Transactional(readOnly = true)
+    public &lt;T&gt; Optional&lt;ProposalBaseline&lt;T&gt;&gt; read(String proposalId, String scopeKey, Long requirementId,
+                                                  Long previewSourceVersionId, Function&lt;Reader, T&gt; decode) {
+<span class="fc bfc" id="L34" title="All 2 branches covered.">        if (requirementId == null) return Optional.empty();</span>
+<span class="fc" id="L35">        Session session = entities.unwrap(Session.class);</span>
+        // JDBC work does not auto-flush. A joined writer must see its own pending proposal insert.
+<span class="pc bpc" id="L37" title="1 of 6 branches missed.">        if (session.isJoinedToTransaction() &amp;&amp; session.getHibernateFlushMode() != FlushMode.MANUAL &amp;&amp; session.isDirty()) {</span>
+<span class="fc" id="L38">            session.flush();</span>
+        }
+<span class="fc" id="L40">        return session.doReturningWork(connection -&gt; {</span>
+<span class="fc" id="L41">            try (var statement = connection.prepareStatement(&quot;&quot;&quot;</span>
+                    select project_id, requirement_id, source_version_id, snapshot_id, baseline_payload
+                    from reformulation_proposal
+                    where id = ? and scope_key = ? and requirement_id = ?
+                    &quot;&quot;&quot;)) {
+<span class="fc" id="L46">                statement.setString(1, proposalId);</span>
+<span class="fc" id="L47">                statement.setString(2, scopeKey);</span>
+<span class="fc" id="L48">                statement.setLong(3, requirementId);</span>
+<span class="fc" id="L49">                try (var row = statement.executeQuery()) {</span>
+<span class="fc bfc" id="L50" title="All 2 branches covered.">                    if (!row.next()) return Optional.empty();</span>
+<span class="fc" id="L51">                    var sourceVersionId = row.getObject(3, Long.class);</span>
+<span class="fc bfc" id="L52" title="All 2 branches covered.">                    if (!Objects.equals(sourceVersionId, previewSourceVersionId)) {</span>
+<span class="fc" id="L53">                        throw PortfolioException.conflict(&quot;Adopted source baseline does not match preview&quot;);</span>
+                    }
+<span class="fc" id="L55">                    return Optional.of(new ProposalBaseline&lt;&gt;(row.getObject(1, Long.class),</span>
+<span class="fc" id="L56">                            row.getObject(2, Long.class), sourceVersionId, row.getString(4), decodeBaseline(row, decode)));</span>
+<span class="pc bpc" id="L57" title="1 of 2 branches missed.">                }</span>
+<span class="pc bpc" id="L58" title="1 of 2 branches missed.">            }</span>
+        });
+    }
+
+    private static &lt;T&gt; T decodeBaseline(ResultSet row, Function&lt;Reader, T&gt; decode) throws SQLException {
+<span class="fc" id="L63">        int type = row.getMetaData().getColumnType(5);</span>
+        // PostgreSQL stores this column as TEXT, for which getClob would try to read a large-object OID.
+<span class="pc bpc" id="L65" title="1 of 4 branches missed.">        if (type != Types.CLOB &amp;&amp; type != Types.NCLOB) {</span>
+<span class="fc" id="L66">            try (Reader input = row.getCharacterStream(5)) {</span>
+<span class="fc" id="L67">                return decode.apply(input);</span>
+<span class="nc" id="L68">            } catch (java.io.IOException failure) {</span>
+<span class="nc" id="L69">                throw new SQLException(&quot;Could not close reformulation baseline reader&quot;, failure);</span>
+            }
+        }
+<span class="pc bpc" id="L72" title="1 of 2 branches missed.">        var clob = type == Types.NCLOB ? row.getNClob(5) : row.getClob(5);</span>
+<span class="pc bpc" id="L73" title="1 of 2 branches missed.">        if (clob == null) return decode.apply(null);</span>
+<span class="fc" id="L74">        try (AutoCloseable locator = clob::free; Reader input = JdbcClobReaders.open(clob)) {</span>
+<span class="fc" id="L75">            return decode.apply(input);</span>
+<span class="nc" id="L76">        } catch (SQLException | RuntimeException failure) {</span>
+<span class="nc" id="L77">            throw failure;</span>
+<span class="nc" id="L78">        } catch (Exception failure) {</span>
+<span class="nc" id="L79">            throw new SQLException(&quot;Could not close reformulation baseline reader&quot;, failure);</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

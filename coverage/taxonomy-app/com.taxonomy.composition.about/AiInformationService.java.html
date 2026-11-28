@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AiInformationService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.composition.about</a> &gt; <span class="el_source">AiInformationService.java</span></div><h1>AiInformationService.java</h1><pre class="source lang-java linenums">package com.taxonomy.composition.about;
+
+import com.taxonomy.analysis.dto.AiTargetDtos.AiTargetMode;
+import com.taxonomy.analysis.service.AiTargetCatalogService;
+import com.taxonomy.analysis.service.LlmProvider;
+import com.taxonomy.catalog.service.EmbeddingRuntimeInformation;
+import com.taxonomy.catalog.service.LocalEmbeddingService;
+import com.taxonomy.extension.api.llm.ProviderId;
+import org.springframework.stereotype.Service;
+
+import java.util.regex.Pattern;
+
+/** Composes the status of local embeddings and the configured analysis target for the About dialog. */
+@Service
+public class AiInformationService {
+
+    // Public model identifiers can contain an owner namespace and a tag.
+    // Require ordinary name segments so URLs, absolute paths and traversal are omitted.
+    private static final String MODEL_SEGMENT = &quot;[A-Za-z0-9][A-Za-z0-9._-]*&quot;;
+<span class="fc" id="L20">    private static final Pattern MODEL_ID = Pattern.compile(</span>
+            &quot;(?:&quot; + MODEL_SEGMENT + &quot;/)?&quot; + MODEL_SEGMENT + &quot;(?::&quot; + MODEL_SEGMENT + &quot;)?&quot;);
+
+    private final LocalEmbeddingService embeddings;
+    private final AiTargetCatalogService analysisTargets;
+
+<span class="fc" id="L26">    public AiInformationService(LocalEmbeddingService embeddings, AiTargetCatalogService analysisTargets) {</span>
+<span class="fc" id="L27">        this.embeddings = embeddings;</span>
+<span class="fc" id="L28">        this.analysisTargets = analysisTargets;</span>
+<span class="fc" id="L29">    }</span>
+
+    public Snapshot snapshot() {
+<span class="fc" id="L32">        var embedding = embeddings.runtimeInformation();</span>
+<span class="fc" id="L33">        return new Snapshot(embedding, analysisInformation(embedding));</span>
+    }
+
+    private AnalysisInformation analysisInformation(EmbeddingRuntimeInformation embedding) {
+        try {
+<span class="fc" id="L38">            var target = analysisTargets.activeTarget();</span>
+<span class="fc" id="L39">            var mode = executionMode(target.provider(), target.mode());</span>
+<span class="fc" id="L40">            String model = safeModelId(target.model());</span>
+<span class="fc bfc" id="L41" title="All 2 branches covered.">            if (mode == ExecutionMode.EMBEDDED_ONNX) {</span>
+<span class="fc" id="L42">                var loaded = embedding.loadedArtifact();</span>
+<span class="pc bpc" id="L43" title="3 of 4 branches missed.">                model = loaded != null &amp;&amp; loaded.upstream() != null ? loaded.upstream().modelId() : null;</span>
+            }
+<span class="fc" id="L45">            return new AnalysisInformation(target.provider(), model,</span>
+<span class="fc bfc" id="L46" title="All 2 branches covered.">                    target.available() ? AnalysisState.CONFIGURED : AnalysisState.UNAVAILABLE, mode);</span>
+<span class="fc" id="L47">        } catch (IllegalArgumentException invalidConfiguration) {</span>
+            // Invalid provider identifiers can contain arbitrary operator input. Never return that input.
+<span class="fc" id="L49">            return new AnalysisInformation(null, null, AnalysisState.INVALID_CONFIGURATION, null);</span>
+        }
+    }
+
+    private static ExecutionMode executionMode(String provider, AiTargetMode targetMode) {
+<span class="fc bfc" id="L54" title="All 3 branches covered.">        return switch (targetMode) {</span>
+<span class="fc" id="L55">            case LOCAL -&gt; ExecutionMode.EMBEDDED_ONNX;</span>
+<span class="fc" id="L56">            case MOCK, REPLAY -&gt; ExecutionMode.MOCK_REPLAY;</span>
+            case REMOTE -&gt; {
+<span class="fc bfc" id="L58" title="All 2 branches covered.">                if (LlmProvider.CUSTOM_OPENAI.name().equals(provider)) yield ExecutionMode.OPERATOR_ENDPOINT;</span>
+<span class="pc bpc" id="L59" title="1 of 2 branches missed.">                yield LlmProvider.builtin(new ProviderId(provider)).isPresent()</span>
+<span class="pc" id="L60">                        ? ExecutionMode.PROVIDER_HTTP : ExecutionMode.PLUGIN;</span>
+            }
+        };
+    }
+
+    private static String safeModelId(String value) {
+<span class="pc bpc" id="L66" title="2 of 6 branches missed.">        return value != null &amp;&amp; value.length() &lt;= 128 &amp;&amp; MODEL_ID.matcher(value).matches() ? value : null;</span>
+    }
+
+<span class="fc" id="L69">    public record Snapshot(EmbeddingRuntimeInformation embedding, AnalysisInformation analysis) { }</span>
+
+<span class="fc" id="L71">    public record AnalysisInformation(String provider, String model, AnalysisState state, ExecutionMode mode) { }</span>
+
+<span class="fc" id="L73">    public enum AnalysisState { CONFIGURED, UNAVAILABLE, INVALID_CONFIGURATION }</span>
+
+<span class="fc" id="L75">    public enum ExecutionMode { EMBEDDED_ONNX, PROVIDER_HTTP, OPERATOR_ENDPOINT, PLUGIN, MOCK_REPLAY }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

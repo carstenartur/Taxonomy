@@ -1,0 +1,159 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>CatalogueMappingReviewHistory.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-knowledge</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.catalog.service</a> &gt; <span class="el_source">CatalogueMappingReviewHistory.java</span></div><h1>CatalogueMappingReviewHistory.java</h1><pre class="source lang-java linenums">package com.taxonomy.catalog.service;
+
+import com.taxonomy.identity.StableIdentityHash;
+import com.taxonomy.workspace.storage.DslGitRepository;
+import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
+import org.eclipse.jgit.lib.*;
+import org.eclipse.jgit.revwalk.RevCommit;
+import org.eclipse.jgit.revwalk.RevWalk;
+import org.eclipse.jgit.treewalk.TreeWalk;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
+import tools.jackson.databind.ObjectMapper;
+import java.io.IOException;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+
+@Service
+public class CatalogueMappingReviewHistory {
+<span class="fc" id="L21">    public enum Action { ACCEPT, CHANGE, REJECT }</span>
+
+<span class="fc" id="L23">    public record Decision(String code, String catalogueRevision, String mappingVersion, String workbookSha256,</span>
+                           String overlaySha256, TaxonomyService.ProvisionalProductMapping original,
+                           Action action, String proposedParent, List&lt;String&gt; secondary, String rationale,
+                           String reviewer, Instant reviewedAt, String proposedVersion, String proposedSha256) { }
+<span class="fc" id="L27">    public record Entry(String commit, String parent, Decision decision) { }</span>
+<span class="fc" id="L28">    public record Page(String head, List&lt;Entry&gt; decisions, String next) { }</span>
+
+    private static final String DECISION = &quot;decision.json&quot;;
+    private static final String OVERLAY = &quot;overlay.json&quot;;
+    private final DslGitRepositoryFactory repositories;
+    private final ObjectMapper mapper;
+
+<span class="fc" id="L35">    public CatalogueMappingReviewHistory(DslGitRepositoryFactory repositories, ObjectMapper mapper) {</span>
+<span class="fc" id="L36">        this.repositories = repositories;</span>
+<span class="fc" id="L37">        this.mapper = mapper;</span>
+<span class="fc" id="L38">    }</span>
+
+    private static String ref(String code) {
+<span class="pc bpc" id="L41" title="3 of 6 branches missed.">        if (code == null || code.isBlank() || code.length() &gt; 160)</span>
+<span class="nc" id="L42">            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, &quot;Invalid product code&quot;);</span>
+<span class="fc" id="L43">        return &quot;refs/catalogue-review/products/&quot; + StableIdentityHash.sha256(code);</span>
+    }
+    private static ObjectId commitId(String value) {
+<span class="pc bpc" id="L46" title="2 of 4 branches missed.">        if (value == null || !ObjectId.isId(value))</span>
+<span class="nc" id="L47">            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, &quot;An exact review commit is required&quot;);</span>
+<span class="fc" id="L48">        return ObjectId.fromString(value);</span>
+    }
+    private static ObjectId head(Repository repository, String ref) throws IOException {
+<span class="fc" id="L51">        repository.getRefDatabase().refresh();</span>
+<span class="fc" id="L52">        Ref current = repository.exactRef(ref);</span>
+<span class="fc bfc" id="L53" title="All 2 branches covered.">        return current == null ? ObjectId.zeroId() : current.getObjectId();</span>
+    }
+
+    public Entry append(String expectedHead, Decision decision, byte[] proposedOverlay) throws IOException {
+<span class="fc bfc" id="L57" title="All 2 branches covered.">        boolean rejected = decision.action() == Action.REJECT;</span>
+<span class="pc bpc" id="L58" title="2 of 8 branches missed.">        if (rejected != (proposedOverlay == null) || rejected != (decision.proposedSha256() == null)</span>
+<span class="pc bpc" id="L59" title="1 of 4 branches missed.">                || rejected != (decision.proposedVersion() == null))</span>
+<span class="nc" id="L60">            throw new IOException(&quot;Incomplete review proposal&quot;);</span>
+<span class="pc bpc" id="L61" title="1 of 4 branches missed.">        if (proposedOverlay != null &amp;&amp; !decision.proposedSha256().equals(</span>
+<span class="fc" id="L62">                com.taxonomy.catalog.provenance.CatalogueSourceBytes.read(new java.io.ByteArrayInputStream(proposedOverlay)).sha256()))</span>
+<span class="nc" id="L63">            throw new IOException(&quot;Unexpected review proposal digest&quot;);</span>
+<span class="fc" id="L64">        var storage = repositories.getCatalogueReviewRepository();</span>
+<span class="fc" id="L65">        var repository = storage.getGitRepository();</span>
+<span class="fc" id="L66">        String ref = ref(decision.code());</span>
+<span class="fc" id="L67">        var expected = commitId(expectedHead);</span>
+<span class="fc bfc" id="L68" title="All 2 branches covered.">        if (!head(repository, ref).equals(expected)) throw conflict();</span>
+<span class="fc" id="L69">        try (var objects = repository.newObjectInserter()) {</span>
+<span class="fc" id="L70">            var tree = new TreeFormatter();</span>
+<span class="fc" id="L71">            tree.append(DECISION, FileMode.REGULAR_FILE, objects.insert(Constants.OBJ_BLOB, mapper.writeValueAsBytes(decision)));</span>
+<span class="fc bfc" id="L72" title="All 2 branches covered.">            if (proposedOverlay != null) tree.append(OVERLAY, FileMode.REGULAR_FILE, objects.insert(Constants.OBJ_BLOB, proposedOverlay));</span>
+<span class="fc" id="L73">            var commit = new CommitBuilder();</span>
+<span class="fc" id="L74">            commit.setTreeId(objects.insert(tree));</span>
+<span class="fc bfc" id="L75" title="All 2 branches covered.">            if (!expected.equals(ObjectId.zeroId())) commit.setParentId(expected);</span>
+<span class="fc" id="L76">            var author = new PersonIdent(&quot;Taxonomy catalogue review&quot;, &quot;catalogue-review@localhost&quot;);</span>
+<span class="fc" id="L77">            commit.setAuthor(author); commit.setCommitter(author);</span>
+<span class="fc" id="L78">            commit.setMessage(&quot;Review provisional mapping &quot; + decision.code());</span>
+<span class="fc" id="L79">            storage.signCommit(commit, ref);</span>
+<span class="fc" id="L80">            ObjectId saved = objects.insert(commit);</span>
+<span class="fc" id="L81">            objects.flush();</span>
+<span class="fc" id="L82">            var update = repository.updateRef(ref);</span>
+<span class="fc" id="L83">            update.setExpectedOldObjectId(expected); update.setNewObjectId(saved);</span>
+<span class="fc" id="L84">            var result = update.update();</span>
+<span class="fc bfc" id="L85" title="All 4 branches covered.">            if (result != RefUpdate.Result.NEW &amp;&amp; result != RefUpdate.Result.FAST_FORWARD) throw conflict();</span>
+<span class="fc" id="L86">            return new Entry(saved.name(), expected.name(), decision);</span>
+        }
+    }
+
+    public Page page(String code, String after) throws IOException {
+<span class="fc" id="L91">        var storage = repositories.getCatalogueReviewRepository();</span>
+<span class="fc" id="L92">        var repository = storage.getGitRepository();</span>
+<span class="fc" id="L93">        var head = head(repository, ref(code));</span>
+<span class="fc bfc" id="L94" title="All 2 branches covered.">        if (head.equals(ObjectId.zeroId())) {</span>
+<span class="pc bpc" id="L95" title="1 of 2 branches missed.">            if (after != null) throw missing();</span>
+<span class="fc" id="L96">            return new Page(head.name(), List.of(), null);</span>
+        }
+<span class="fc" id="L98">        try (var walk = new RevWalk(repository)) {</span>
+<span class="fc" id="L99">            var cursor = selected(walk, head, after);</span>
+<span class="fc" id="L100">            var entries = new ArrayList&lt;Entry&gt;();</span>
+<span class="pc bpc" id="L101" title="1 of 4 branches missed.">            while (cursor != null &amp;&amp; entries.size() &lt; 40) {</span>
+<span class="fc" id="L102">                var reviewed = read(storage, cursor, code);</span>
+<span class="fc" id="L103">                entries.add(reviewed);</span>
+<span class="fc bfc" id="L104" title="All 2 branches covered.">                cursor = cursor.getParentCount() == 0 ? null : walk.parseCommit(cursor.getParent(0));</span>
+<span class="fc" id="L105">            }</span>
+<span class="pc bpc" id="L106" title="1 of 2 branches missed.">            return new Page(head.name(), List.copyOf(entries), cursor == null ? null : cursor.name());</span>
+        }
+    }
+
+    public byte[] proposal(String code, String commit) throws IOException {
+<span class="fc" id="L111">        var storage = repositories.getCatalogueReviewRepository();</span>
+<span class="fc" id="L112">        var repository = storage.getGitRepository();</span>
+<span class="fc" id="L113">        var head = head(repository, ref(code));</span>
+<span class="pc bpc" id="L114" title="1 of 2 branches missed.">        if (head.equals(ObjectId.zeroId())) throw missing();</span>
+<span class="fc" id="L115">        try (var walk = new RevWalk(repository)) {</span>
+<span class="fc" id="L116">            var selected = selected(walk, head, commitId(commit).name());</span>
+<span class="fc" id="L117">            var decision = read(storage, selected, code).decision();</span>
+<span class="fc bfc" id="L118" title="All 2 branches covered.">            if (decision.proposedSha256() == null) throw missing();</span>
+<span class="fc" id="L119">            byte[] bytes = blob(repository, selected, OVERLAY, com.taxonomy.catalog.provenance.CatalogueSourceBytes.MAX_BYTES);</span>
+<span class="fc" id="L120">            if (!com.taxonomy.catalog.provenance.CatalogueSourceBytes.read(new java.io.ByteArrayInputStream(bytes))</span>
+<span class="pc bpc" id="L121" title="1 of 2 branches missed.">                    .sha256().equals(decision.proposedSha256())) throw new IOException(&quot;Invalid retained proposal&quot;);</span>
+<span class="fc" id="L122">            return bytes;</span>
+        }
+    }
+
+    private Entry read(DslGitRepository storage, RevCommit commit, String code) throws IOException {
+<span class="fc" id="L127">        storage.verifySnapshot(commit.name());</span>
+<span class="pc bpc" id="L128" title="1 of 2 branches missed.">        if (commit.getParentCount() &gt; 1) throw new IOException(&quot;Invalid review ancestry&quot;);</span>
+<span class="fc" id="L129">        var decision = mapper.readValue(blob(storage.getGitRepository(), commit, DECISION, 128 * 1024), Decision.class);</span>
+<span class="pc bpc" id="L130" title="1 of 2 branches missed.">        if (!code.equals(decision.code())) throw new IOException(&quot;Review belongs to a different product&quot;);</span>
+<span class="fc bfc" id="L131" title="All 2 branches covered.">        return new Entry(commit.name(), commit.getParentCount() == 0 ? ObjectId.zeroId().name() : commit.getParent(0).name(), decision);</span>
+    }
+
+    private static RevCommit selected(RevWalk walk, ObjectId head, String id) throws IOException {
+<span class="fc" id="L135">        var latest = walk.parseCommit(head);</span>
+<span class="fc bfc" id="L136" title="All 2 branches covered.">        if (id == null) return latest;</span>
+        try {
+<span class="fc" id="L138">            var selected = walk.parseCommit(commitId(id));</span>
+<span class="fc bfc" id="L139" title="All 2 branches covered.">            if (!walk.isMergedInto(selected, latest)) throw missing();</span>
+<span class="fc" id="L140">            return selected;</span>
+<span class="nc" id="L141">        } catch (org.eclipse.jgit.errors.MissingObjectException | org.eclipse.jgit.errors.IncorrectObjectTypeException unknown) {</span>
+<span class="nc" id="L142">            throw missing();</span>
+        }
+    }
+
+    private static byte[] blob(Repository repo, RevCommit commit, String name, int limit) throws IOException {
+<span class="fc" id="L147">        try (var path = TreeWalk.forPath(repo, name, commit.getTree())) {</span>
+<span class="pc bpc" id="L148" title="2 of 4 branches missed.">            if (path == null || !FileMode.REGULAR_FILE.equals(path.getFileMode(0))) throw new IOException(&quot;Incomplete review record&quot;);</span>
+<span class="fc" id="L149">            return repo.open(path.getObjectId(0), Constants.OBJ_BLOB).getBytes(limit);</span>
+        }
+    }
+    private static ResponseStatusException missing() {
+<span class="fc" id="L153">        return new ResponseStatusException(HttpStatus.NOT_FOUND, &quot;Catalogue review not found&quot;);</span>
+    }
+    private static ResponseStatusException conflict() {
+<span class="fc" id="L156">        return new ResponseStatusException(HttpStatus.CONFLICT, &quot;Catalogue review has changed&quot;);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

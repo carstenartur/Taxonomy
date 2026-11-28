@@ -1,0 +1,160 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RequirementReportText.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-reporting</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.reporting.render.document</a> &gt; <span class="el_source">RequirementReportText.java</span></div><h1>RequirementReportText.java</h1><pre class="source lang-java linenums">package com.taxonomy.reporting.render.document;
+
+import com.vladsch.flexmark.ast.Code;
+import com.vladsch.flexmark.ast.Emphasis;
+import com.vladsch.flexmark.ast.HardLineBreak;
+import com.vladsch.flexmark.ast.Heading;
+import com.vladsch.flexmark.ast.Image;
+import com.vladsch.flexmark.ast.ImageRef;
+import com.vladsch.flexmark.ast.InlineLinkNode;
+import com.vladsch.flexmark.ast.Link;
+import com.vladsch.flexmark.ast.LinkRef;
+import com.vladsch.flexmark.ast.ListBlock;
+import com.vladsch.flexmark.ast.OrderedList;
+import com.vladsch.flexmark.ast.Paragraph;
+import com.vladsch.flexmark.ast.RefNode;
+import com.vladsch.flexmark.ast.Reference;
+import com.vladsch.flexmark.ast.SoftLineBreak;
+import com.vladsch.flexmark.ast.StrongEmphasis;
+import com.vladsch.flexmark.ast.ThematicBreak;
+import com.vladsch.flexmark.html.HtmlRenderer;
+import com.vladsch.flexmark.html.HtmlWriter;
+import com.vladsch.flexmark.html.renderer.NodeRendererContext;
+import com.vladsch.flexmark.html.renderer.NodeRenderingHandler;
+import com.vladsch.flexmark.parser.Parser;
+import com.vladsch.flexmark.util.ast.Node;
+import com.vladsch.flexmark.util.ast.TextCollectingVisitor;
+import com.vladsch.flexmark.util.data.MutableDataSet;
+import org.apache.poi.xwpf.usermodel.XWPFParagraph;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+import java.util.Set;
+import java.util.function.Supplier;
+
+/** Presentation of authored requirement text. The source used for evidence remains untouched. */
+public final class RequirementReportText {
+<span class="fc" id="L38">    private static final Parser MARKDOWN = Parser.builder().build();</span>
+<span class="fc" id="L39">    private static final HtmlRenderer HTML = HtmlRenderer.builder(new MutableDataSet()</span>
+<span class="fc" id="L40">            .set(HtmlRenderer.ESCAPE_HTML, true)</span>
+<span class="fc" id="L41">            .set(HtmlRenderer.DO_NOT_RENDER_LINKS, true)</span>
+<span class="fc" id="L42">            .set(HtmlRenderer.RENDER_HEADER_ID, false)</span>
+<span class="fc" id="L43">            .set(HtmlRenderer.SOFT_BREAK, &quot;&lt;br&gt;\n&quot;))</span>
+<span class="fc" id="L44">            .nodeRendererFactory(options -&gt; () -&gt; Set.of(</span>
+                    new NodeRenderingHandler&lt;&gt;(Link.class, RequirementReportText::htmlLink),
+                    new NodeRenderingHandler&lt;&gt;(Image.class, RequirementReportText::htmlLink),
+                    new NodeRenderingHandler&lt;&gt;(LinkRef.class, RequirementReportText::htmlLink),
+                    new NodeRenderingHandler&lt;&gt;(ImageRef.class, RequirementReportText::htmlLink)))
+<span class="fc" id="L49">            .build();</span>
+
+    private RequirementReportText() { }
+
+<span class="fc" id="L53">    private record Block(Node content, int indentation, String prefix) { }</span>
+
+    public static String html(String source) {
+<span class="fc" id="L56">        return HTML.render(MARKDOWN.parse(Objects.toString(source, &quot;&quot;)));</span>
+    }
+
+    public static String plain(String source) {
+<span class="fc" id="L60">        return String.join(&quot;\n&quot;, blocks(source).stream()</span>
+<span class="fc" id="L61">                .map(block -&gt; block.prefix() + visibleText(block.content()).strip())</span>
+<span class="fc" id="L62">                .toList());</span>
+    }
+
+    public static void write(String source, Supplier&lt;XWPFParagraph&gt; paragraphs, int fontSize) {
+<span class="fc" id="L66">        blocks(source).forEach(block -&gt; writeBlock(block, paragraphs.get(), fontSize));</span>
+<span class="fc" id="L67">    }</span>
+
+    private static List&lt;Block&gt; blocks(String source) {
+<span class="fc" id="L70">        var result = new ArrayList&lt;Block&gt;();</span>
+<span class="fc bfc" id="L71" title="All 2 branches covered.">        for (Node block : MARKDOWN.parse(Objects.toString(source, &quot;&quot;)).getChildren())</span>
+<span class="fc" id="L72">            addBlock(result, block, 0, &quot;&quot;);</span>
+<span class="fc" id="L73">        return result;</span>
+    }
+
+    private static void addBlock(List&lt;Block&gt; blocks, Node node, int level, String prefix) {
+<span class="fc bfc" id="L77" title="All 2 branches covered.">        if (node instanceof ListBlock) {</span>
+<span class="pc bpc" id="L78" title="1 of 2 branches missed.">            int number = node instanceof OrderedList ordered ? ordered.getStartNumber() : 1;</span>
+<span class="fc bfc" id="L79" title="All 2 branches covered.">            for (Node item : node.getChildren()) {</span>
+<span class="pc bpc" id="L80" title="1 of 2 branches missed.">                String marker = node instanceof OrderedList ? number++ + &quot;. &quot; : &quot;• &quot;;</span>
+<span class="fc bfc" id="L81" title="All 2 branches covered.">                for (Node child : item.getChildren()) {</span>
+<span class="fc" id="L82">                    addBlock(blocks, child, level + 1, marker);</span>
+<span class="fc" id="L83">                    marker = &quot;&quot;;</span>
+<span class="fc" id="L84">                }</span>
+<span class="fc" id="L85">            }</span>
+<span class="pc bpc" id="L86" title="2 of 4 branches missed.">        } else if (!(node instanceof ThematicBreak) &amp;&amp; !(node instanceof Reference)) {</span>
+<span class="fc" id="L87">            blocks.add(new Block(node, level, prefix));</span>
+        }
+<span class="fc" id="L89">    }</span>
+
+    private static void writeBlock(Block block, XWPFParagraph paragraph, int fontSize) {
+<span class="fc" id="L92">        Node content = block.content();</span>
+<span class="fc" id="L93">        boolean heading = content instanceof Heading;</span>
+<span class="fc" id="L94">        paragraph.setIndentationLeft(block.indentation() * 220);</span>
+<span class="fc bfc" id="L95" title="All 2 branches covered.">        if (heading) paragraph.setKeepNext(true);</span>
+<span class="fc bfc" id="L96" title="All 2 branches covered.">        int size = heading ? fontSize + 1 : fontSize;</span>
+<span class="fc" id="L97">        run(paragraph, block.prefix(), size, false, false, false);</span>
+<span class="pc bpc" id="L98" title="1 of 4 branches missed.">        if (heading || content instanceof Paragraph) {</span>
+<span class="fc bfc" id="L99" title="All 2 branches covered.">            for (Node inline : content.getChildren()) writeInline(inline, paragraph, size, heading, false);</span>
+        } else {
+<span class="nc" id="L101">            run(paragraph, visibleText(content), size, false, false, false);</span>
+        }
+<span class="fc" id="L103">    }</span>
+
+    private static void writeInline(Node node, XWPFParagraph paragraph, int size, boolean bold, boolean italic) {
+<span class="pc bpc" id="L106" title="1 of 4 branches missed.">        if (node.hasChildren() &amp;&amp; !(node instanceof Code)) {</span>
+<span class="fc bfc" id="L107" title="All 2 branches covered.">            for (Node child : node.getChildren()) {</span>
+<span class="pc bpc" id="L108" title="2 of 8 branches missed.">                writeInline(child, paragraph, size, bold || node instanceof StrongEmphasis,</span>
+                        italic || node instanceof Emphasis);
+<span class="fc" id="L110">            }</span>
+<span class="fc" id="L111">            run(paragraph, destination(node), size, bold, italic, false);</span>
+        } else {
+<span class="fc" id="L113">            run(paragraph, visibleText(node), size, bold, italic, node instanceof Code);</span>
+        }
+<span class="fc" id="L115">    }</span>
+
+    private static String visibleText(Node node) {
+<span class="fc bfc" id="L118" title="All 4 branches covered.">        if (node instanceof SoftLineBreak || node instanceof HardLineBreak) return &quot;\n&quot;;</span>
+<span class="pc bpc" id="L119" title="1 of 2 branches missed.">        if (node instanceof Code) return text(node);</span>
+<span class="fc bfc" id="L120" title="All 2 branches covered.">        if (!node.hasChildren()) return text(node) + destination(node);</span>
+<span class="fc" id="L121">        var result = new StringBuilder();</span>
+<span class="fc bfc" id="L122" title="All 2 branches covered.">        for (Node child : node.getChildren()) result.append(visibleText(child));</span>
+<span class="fc" id="L123">        return result.append(destination(node)).toString();</span>
+    }
+
+    private static void htmlLink(Node node, NodeRendererContext context, HtmlWriter html) {
+<span class="pc bpc" id="L127" title="1 of 2 branches missed.">        if (node.hasChildren()) context.renderChildren(node);</span>
+<span class="nc" id="L128">        else html.text(text(node));</span>
+<span class="fc" id="L129">        html.text(destination(node));</span>
+<span class="fc" id="L130">    }</span>
+
+    /** Display destinations as text in every format, including authored images. */
+    private static String destination(Node node) {
+<span class="fc bfc" id="L134" title="All 3 branches covered.">        String address = switch (node) {</span>
+<span class="fc" id="L135">            case InlineLinkNode link -&gt; link.getUrl().unescape();</span>
+<span class="fc" id="L136">            case RefNode link -&gt; {</span>
+<span class="fc" id="L137">                var definition = link.getReferenceNode(link.getDocument());</span>
+<span class="pc bpc" id="L138" title="1 of 2 branches missed.">                yield definition == null ? &quot;&quot; : definition.getUrl().unescape();</span>
+            }
+<span class="fc" id="L140">            default -&gt; &quot;&quot;;</span>
+<span class="fc" id="L141">        };</span>
+<span class="fc bfc" id="L142" title="All 2 branches covered.">        return address.isBlank() ? &quot;&quot; : &quot; (&quot; + address + &quot;)&quot;;</span>
+    }
+
+    private static void run(XWPFParagraph paragraph, String value, int size,
+                            boolean bold, boolean italic, boolean code) {
+<span class="fc bfc" id="L147" title="All 2 branches covered.">        if (value.isEmpty()) return;</span>
+<span class="fc" id="L148">        var run = paragraph.createRun();</span>
+<span class="fc" id="L149">        run.setFontSize(size);</span>
+<span class="fc" id="L150">        run.setBold(bold);</span>
+<span class="fc" id="L151">        run.setItalic(italic);</span>
+<span class="pc bpc" id="L152" title="1 of 2 branches missed.">        if (code) run.setFontFamily(&quot;Consolas&quot;);</span>
+<span class="fc" id="L153">        WordDocumentWriter.writeLines(run, value);</span>
+<span class="fc" id="L154">    }</span>
+
+    private static String text(Node node) {
+<span class="fc" id="L157">        return new TextCollectingVisitor().collectAndGetText(node);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

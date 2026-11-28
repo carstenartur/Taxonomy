@@ -1,0 +1,475 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>LlmResponseParser.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.service</a> &gt; <span class="el_source">LlmResponseParser.java</span></div><h1>LlmResponseParser.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.service;
+
+import tools.jackson.core.exc.StreamReadException;
+import tools.jackson.core.StreamReadFeature;
+import com.taxonomy.analysis.assessment.ChildAssessmentContract;
+import com.taxonomy.analysis.assessment.RequirementAssessmentContract;
+import com.taxonomy.dto.RequirementNodeAssessment;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.DeserializationFeature;
+import java.math.BigDecimal;
+import com.taxonomy.dto.TaxonomyDiscrepancy;
+import com.taxonomy.dto.RootAssessment;
+import com.taxonomy.catalog.model.TaxonomyNode;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.*;
+import java.util.function.BiFunction;
+
+/**
+ * Parses LLM API responses (Gemini and OpenAI-compatible) and extracts structured
+ * score/reason data. Also provides decimal-preserving score normalization.
+ *
+ * &lt;p&gt;This class is stateless and does not depend on Spring — it can be unit-tested
+ * without a running application context.&lt;/p&gt;
+ */
+public class LlmResponseParser {
+
+<span class="fc" id="L30">    private static final Logger log = LoggerFactory.getLogger(LlmResponseParser.class);</span>
+
+<span class="fc" id="L32">    private static final Set&lt;String&gt; SCORE_FIELDS = Set.of(&quot;score&quot;, &quot;reason&quot;, &quot;assessments&quot;);</span>
+<span class="fc" id="L33">    private static final Set&lt;String&gt; ROOT_FIELDS = Set.of(&quot;status&quot;, &quot;score&quot;, &quot;reason&quot;, &quot;question&quot;);</span>
+
+    private final ObjectMapper objectMapper;
+
+<span class="fc" id="L37">    public LlmResponseParser(ObjectMapper objectMapper) {</span>
+<span class="fc" id="L38">        this.objectMapper = objectMapper;</span>
+<span class="fc" id="L39">    }</span>
+
+    // ── Response text extraction ──────────────────────────────────────────────
+
+    /**
+     * Extracts the raw LLM text from a Gemini API JSON response body, or {@code null}.
+     */
+    public String extractGeminiText(String responseBody) {
+        try {
+<span class="fc" id="L48">            Map&lt;String, Object&gt; responseMap = objectMapper.readValue(responseBody,</span>
+<span class="fc" id="L49">                    new TypeReference&lt;&gt;() {});</span>
+            @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L51">            List&lt;Map&lt;String, Object&gt;&gt; candidates =</span>
+<span class="fc" id="L52">                    (List&lt;Map&lt;String, Object&gt;&gt;) responseMap.get(&quot;candidates&quot;);</span>
+<span class="fc bfc" id="L53" title="All 4 branches covered.">            if (candidates == null || candidates.isEmpty()) return null;</span>
+            @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L55">            Map&lt;String, Object&gt; content =</span>
+<span class="fc" id="L56">                    (Map&lt;String, Object&gt;) candidates.get(0).get(&quot;content&quot;);</span>
+            @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L58">            List&lt;Map&lt;String, Object&gt;&gt; parts =</span>
+<span class="fc" id="L59">                    (List&lt;Map&lt;String, Object&gt;&gt;) content.get(&quot;parts&quot;);</span>
+<span class="pc bpc" id="L60" title="1 of 4 branches missed.">            if (parts == null || parts.isEmpty()) return null;</span>
+<span class="fc" id="L61">            return (String) parts.get(0).get(&quot;text&quot;);</span>
+<span class="fc" id="L62">        } catch (Exception e) {</span>
+<span class="fc" id="L63">            log.debug(&quot;Failed to extract text from Gemini response&quot;, e);</span>
+<span class="fc" id="L64">            return null;</span>
+        }
+    }
+
+    /**
+     * Extracts the raw LLM text from an OpenAI-compatible API JSON response body, or {@code null}.
+     */
+    public String extractOpenAiText(String responseBody) {
+        try {
+<span class="fc" id="L73">            Map&lt;String, Object&gt; responseMap = objectMapper.readValue(responseBody,</span>
+<span class="fc" id="L74">                    new TypeReference&lt;&gt;() {});</span>
+            @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L76">            List&lt;Map&lt;String, Object&gt;&gt; choices =</span>
+<span class="fc" id="L77">                    (List&lt;Map&lt;String, Object&gt;&gt;) responseMap.get(&quot;choices&quot;);</span>
+<span class="fc bfc" id="L78" title="All 4 branches covered.">            if (choices == null || choices.isEmpty()) return null;</span>
+            @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L80">            Map&lt;String, Object&gt; message =</span>
+<span class="fc" id="L81">                    (Map&lt;String, Object&gt;) choices.get(0).get(&quot;message&quot;);</span>
+<span class="pc bpc" id="L82" title="1 of 2 branches missed.">            String text = message == null ? null : (String) message.get(&quot;content&quot;);</span>
+<span class="fc" id="L83">            Object finishReason = choices.get(0).get(&quot;finish_reason&quot;);</span>
+<span class="fc bfc" id="L84" title="All 4 branches covered.">            if (finishReason != null &amp;&amp; !&quot;stop&quot;.equals(finishReason)</span>
+<span class="pc bpc" id="L85" title="1 of 2 branches missed.">                    &amp;&amp; !&quot;&quot;.equals(finishReason)) {</span>
+<span class="fc" id="L86">                throw new LlmIncompleteResponseException(text,</span>
+<span class="pc bpc" id="L87" title="1 of 2 branches missed.">                        finishReason instanceof String reason ? reason : &quot;incomplete&quot;);</span>
+            }
+<span class="fc" id="L89">            return text;</span>
+<span class="fc" id="L90">        } catch (LlmIncompleteResponseException incomplete) {</span>
+<span class="fc" id="L91">            throw incomplete;</span>
+<span class="fc" id="L92">        } catch (Exception e) {</span>
+<span class="fc" id="L93">            log.debug(&quot;Failed to extract text from OpenAI-compatible response&quot;, e);</span>
+<span class="fc" id="L94">            return null;</span>
+        }
+    }
+
+    // ── Score parsing ─────────────────────────────────────────────────────────
+
+    /**
+     * Parses a Gemini response body into scores, falling back to zero scores on failure.
+     */
+    public Map&lt;String, Double&gt; parseGeminiResponse(String responseBody,
+                                                     List&lt;TaxonomyNode&gt; nodes, double parentScore) {
+<span class="fc" id="L105">        String text = extractGeminiText(responseBody);</span>
+<span class="fc bfc" id="L106" title="All 2 branches covered.">        if (text == null) {</span>
+<span class="fc" id="L107">            log.error(&quot;Failed to parse Gemini response: {}&quot;, responseBody);</span>
+<span class="fc" id="L108">            return zeroScores(nodes);</span>
+        }
+        try {
+<span class="fc" id="L111">            return parseScoreParseResult(text, nodes, parentScore).scores();</span>
+<span class="fc" id="L112">        } catch (Exception e) {</span>
+<span class="fc" id="L113">            log.error(&quot;Failed to parse scores from Gemini response: {}&quot;, responseBody, e);</span>
+<span class="fc" id="L114">            return zeroScores(nodes);</span>
+        }
+    }
+
+    /**
+     * Parses an OpenAI-compatible response body into scores, falling back to zero scores on failure.
+     */
+    public Map&lt;String, Double&gt; parseOpenAiResponse(String responseBody,
+                                                     List&lt;TaxonomyNode&gt; nodes, double parentScore) {
+<span class="fc" id="L123">        String text = extractOpenAiText(responseBody);</span>
+<span class="fc bfc" id="L124" title="All 2 branches covered.">        if (text == null) {</span>
+<span class="fc" id="L125">            log.error(&quot;Failed to parse OpenAI-compatible response: {}&quot;, responseBody);</span>
+<span class="fc" id="L126">            return zeroScores(nodes);</span>
+        }
+        try {
+<span class="fc" id="L129">            return parseScoreParseResult(text, nodes, parentScore).scores();</span>
+<span class="nc" id="L130">        } catch (Exception e) {</span>
+<span class="nc" id="L131">            log.error(&quot;Failed to parse scores from OpenAI-compatible response: {}&quot;, responseBody, e);</span>
+<span class="nc" id="L132">            return zeroScores(nodes);</span>
+        }
+    }
+
+    /**
+     * Parses both scores and reasons from LLM response text.
+     * Supports two formats (backward-compatible):
+     * &lt;ul&gt;
+     *   &lt;li&gt;Old format: {@code {&quot;C1&quot;: 80, &quot;C2&quot;: 0}} — numeric percentage values, no reasons&lt;/li&gt;
+     *   &lt;li&gt;New format: {@code {&quot;C1&quot;: {&quot;score&quot;: 80, &quot;reason&quot;: &quot;...&quot;}, &quot;C2&quot;: {&quot;score&quot;: 0, &quot;reason&quot;: &quot;...&quot;}}}
+     * &lt;/ul&gt;
+     * &lt;p&gt;All offered IDs require explicit valid scores. Missing, foreign or malformed
+     * decisions invalidate the batch before normalization; absence is not negative evidence.
+     * &lt;p&gt;The LLM is asked to distribute exactly {@code parentScore} across child categories.
+     * If the raw sum already matches, scores are passed through without normalization.
+     * If the raw sum differs, scores are normalized as a fallback.
+     * If the raw sum &lt;em&gt;exceeds&lt;/em&gt; the parent score, a {@link TaxonomyDiscrepancy} is
+     * recorded — this signals that the LLM considers the children collectively more relevant
+     * than the parent budget allows, which is a useful taxonomy inconsistency indicator.
+     */
+    public LlmService.ScoreParseResult parseScoreParseResult(String text,
+                                                              List&lt;TaxonomyNode&gt; nodes,
+                                                              double parentScore) throws Exception {
+<span class="fc" id="L155">        return parseScoreParseResult(text, nodes, parentScore, ScoreAssessmentKind.CHILD_BUDGET);</span>
+    }
+
+    public LlmService.ScoreParseResult parseScoreParseResult(String text,
+                                                              List&lt;TaxonomyNode&gt; nodes,
+                                                              double parentScore,
+                                                              ScoreAssessmentKind kind) throws Exception {
+<span class="fc" id="L162">        return parseScoreParseResult(text, nodes, parentScore, kind, null);</span>
+    }
+
+    public LlmService.ScoreParseResult parseScoreParseResult(String text, List&lt;TaxonomyNode&gt; nodes,
+            double parentScore, ScoreAssessmentKind kind, String originalRequirement) throws Exception {
+<span class="fc" id="L167">        Objects.requireNonNull(kind);</span>
+<span class="fc" id="L168">        com.taxonomy.dto.AnalysisPercentages.require(parentScore);</span>
+<span class="pc bpc" id="L169" title="1 of 4 branches missed.">        if (kind == ScoreAssessmentKind.ROOT_RELEVANCE &amp;&amp; (nodes.size() != 1</span>
+<span class="pc bpc" id="L170" title="1 of 2 branches missed.">                || !nodes.getFirst().getCode().equals(nodes.getFirst().getTaxonomyRoot()))) {</span>
+<span class="nc" id="L171">            throw new IllegalArgumentException(&quot;Independent root relevance requires one taxonomy root&quot;);</span>
+        }
+<span class="fc" id="L173">        Map&lt;String, Object&gt; raw = parseChildAssessment(text,</span>
+<span class="fc" id="L174">                nodes.stream().map(TaxonomyNode::getCode).toList(), (code, value) -&gt; value);</span>
+
+<span class="fc bfc" id="L176" title="All 2 branches covered.">        if (kind == ScoreAssessmentKind.ROOT_RELEVANCE) {</span>
+<span class="fc" id="L177">            String code = nodes.getFirst().getCode();</span>
+<span class="fc" id="L178">            Object value = raw.get(code);</span>
+<span class="fc bfc" id="L179" title="All 4 branches covered.">            if (value instanceof Map&lt;?, ?&gt; object &amp;&amp; object.containsKey(&quot;status&quot;))</span>
+<span class="fc" id="L180">                return typedRootAssessment(code, object, originalRequirement);</span>
+        }
+
+<span class="fc" id="L183">        Map&lt;String, Double&gt; scores = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L184">        Map&lt;String, String&gt; reasons = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L185">        Map&lt;String, List&lt;RequirementNodeAssessment&gt;&gt; assessments = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L186" title="All 2 branches covered.">        for (Map.Entry&lt;String, Object&gt; entry : raw.entrySet()) {</span>
+<span class="fc" id="L187">            String code = entry.getKey();</span>
+<span class="fc" id="L188">            Object value = entry.getValue();</span>
+<span class="fc bfc" id="L189" title="All 2 branches covered.">            if (value instanceof Map&lt;?, ?&gt; object)</span>
+<span class="fc" id="L190">                readNodeAssessments(code, object, originalRequirement, assessments);</span>
+<span class="fc bfc" id="L191" title="All 2 branches covered.">            Object scoreValue = value instanceof Map&lt;?, ?&gt; object ? object.get(&quot;score&quot;) : value;</span>
+<span class="fc bfc" id="L192" title="All 2 branches covered.">            if (!(scoreValue instanceof Number number)) {</span>
+<span class="fc" id="L193">                throw new IllegalArgumentException(&quot;Category response for &quot; + code</span>
+                        + &quot; requires an explicit finite numeric percentage between 0 and 100&quot;);
+            }
+            final double score;
+            try {
+                // Validate the original decimal token before conversion to JSON numeric storage.
+<span class="fc" id="L199">                score = com.taxonomy.dto.AnalysisPercentages.require(number);</span>
+<span class="fc" id="L200">            } catch (IllegalArgumentException invalid) {</span>
+<span class="fc" id="L201">                throw new IllegalArgumentException(&quot;Category response for &quot; + code</span>
+                        + &quot; requires a finite numeric percentage between 0 and 100 (decimals allowed)&quot;, invalid);
+<span class="fc" id="L203">            }</span>
+<span class="pc bpc" id="L204" title="2 of 4 branches missed.">            if (score &lt; 0 || score &gt; 100) {</span>
+<span class="nc" id="L205">                throw new IllegalArgumentException(&quot;Category response for &quot; + code</span>
+                        + &quot; requires an explicit finite numeric percentage between 0 and 100&quot;);
+            }
+<span class="fc" id="L208">            scores.put(code, score);</span>
+<span class="pc bpc" id="L209" title="1 of 4 branches missed.">            if (value instanceof Map&lt;?, ?&gt; object &amp;&amp; object.get(&quot;reason&quot;) instanceof String reason</span>
+<span class="fc bfc" id="L210" title="All 2 branches covered.">                    &amp;&amp; !reason.isBlank()) {</span>
+<span class="fc" id="L211">                reasons.put(code, reason);</span>
+            }
+<span class="fc" id="L213">        }</span>
+
+<span class="fc bfc" id="L215" title="All 2 branches covered.">        if (kind == ScoreAssessmentKind.ROOT_RELEVANCE) {</span>
+<span class="fc" id="L216">            return new LlmService.ScoreParseResult(scores, reasons, null, Map.of(), assessments);</span>
+        }
+
+<span class="fc" id="L219">        BigDecimal decimalSum = scores.values().stream().map(BigDecimal::valueOf)</span>
+<span class="fc" id="L220">                .reduce(BigDecimal.ZERO, BigDecimal::add);</span>
+<span class="fc" id="L221">        double rawSum = decimalSum.doubleValue();</span>
+
+        // Detect discrepancy: raw child sum exceeds parent budget
+<span class="fc" id="L224">        TaxonomyDiscrepancy discrepancy = null;</span>
+<span class="fc bfc" id="L225" title="All 2 branches covered.">        if (decimalSum.compareTo(BigDecimal.valueOf(parentScore)) &gt; 0) {</span>
+<span class="fc" id="L226">            String parentCode = deriveParentCode(nodes);</span>
+<span class="fc" id="L227">            discrepancy = new TaxonomyDiscrepancy(parentCode, parentScore, rawSum);</span>
+<span class="fc" id="L228">            log.warn(&quot;Discrepancy detected: children of '{}' sum to {} but parent score is {}&quot;,</span>
+<span class="fc" id="L229">                    parentCode, rawSum, parentScore);</span>
+        }
+
+        // Only normalize if sum doesn't match parent (fallback); trust the LLM otherwise
+        Map&lt;String, Double&gt; finalScores;
+<span class="fc bfc" id="L234" title="All 2 branches covered.">        if (decimalSum.compareTo(BigDecimal.valueOf(parentScore)) == 0) {</span>
+<span class="fc" id="L235">            finalScores = scores;</span>
+        } else {
+<span class="fc" id="L237">            finalScores = normalizeToParent(scores, parentScore);</span>
+        }
+
+<span class="fc" id="L240">        log.info(&quot;LLM Scores parsed (target {}, raw sum {}): {}&quot;, parentScore, rawSum, finalScores);</span>
+<span class="fc" id="L241">        return new LlmService.ScoreParseResult(finalScores, reasons, discrepancy, Map.of(), assessments);</span>
+    }
+
+    private LlmService.ScoreParseResult typedRootAssessment(String code, Map&lt;?, ?&gt; object, String originalRequirement) {
+<span class="fc" id="L245">        var fields = new HashSet&lt;&gt;(object.keySet());</span>
+<span class="fc" id="L246">        fields.remove(&quot;assessments&quot;);</span>
+<span class="fc bfc" id="L247" title="All 2 branches covered.">        if (!fields.equals(ROOT_FIELDS)</span>
+<span class="pc bpc" id="L248" title="1 of 2 branches missed.">                || !(object.get(&quot;status&quot;) instanceof String status)</span>
+<span class="pc bpc" id="L249" title="1 of 2 branches missed.">                || !(object.get(&quot;reason&quot;) instanceof String reason)</span>
+<span class="fc bfc" id="L250" title="All 2 branches covered.">                || !(object.get(&quot;question&quot;) instanceof String question))</span>
+<span class="fc" id="L251">            throw new IllegalArgumentException(&quot;A typed root assessment requires status, score, reason and question&quot;);</span>
+<span class="fc" id="L252">        Object value = object.get(&quot;score&quot;);</span>
+<span class="fc bfc" id="L253" title="All 4 branches covered.">        if (value != null &amp;&amp; !(value instanceof Number))</span>
+<span class="fc" id="L254">            throw new IllegalArgumentException(&quot;A root assessment score must be a JSON number or null when unresolved&quot;);</span>
+<span class="fc bfc" id="L255" title="All 2 branches covered.">        Double score = value == null ? null : com.taxonomy.dto.AnalysisPercentages.require((Number) value);</span>
+<span class="fc" id="L256">        var assessment = new RootAssessment(RootAssessment.Status.valueOf(status), score, reason, question);</span>
+<span class="fc" id="L257">        var nodeAssessments = RequirementAssessmentContract.decode(object, originalRequirement);</span>
+<span class="fc bfc" id="L258" title="All 2 branches covered.">        return new LlmService.ScoreParseResult(assessment.unresolved() ? Map.of() : Map.of(code, score),</span>
+<span class="fc" id="L259">                Map.of(code, assessment.reason()), null, Map.of(code, assessment), Map.of(code, nodeAssessments));</span>
+    }
+
+    /**
+     * Parses independent concrete-product suitability scores. Unlike hierarchical category
+     * scoring, values are never normalized to the parent score. The response must contain
+     * exactly the requested product codes; scores below {@code minimumScore} are retained as
+     * explicit zeroes so downstream selection and coverage-gap detection use one contract.
+     */
+    public LlmService.ScoreParseResult parseIndependentScoreParseResult(
+            String text, List&lt;TaxonomyNode&gt; nodes, int minimumScore) throws Exception {
+<span class="fc" id="L270">        return parseIndependentScoreParseResult(text, nodes, minimumScore, null);</span>
+    }
+
+    public LlmService.ScoreParseResult parseIndependentScoreParseResult(
+            String text, List&lt;TaxonomyNode&gt; nodes, int minimumScore, String originalRequirement) throws Exception {
+<span class="fc" id="L275">        Map&lt;String, Object&gt; raw = parseChildAssessment(text,</span>
+<span class="fc" id="L276">                nodes.stream().map(TaxonomyNode::getCode).toList(), (code, value) -&gt; value);</span>
+
+<span class="fc" id="L278">        int threshold = Math.max(0, Math.min(100, minimumScore));</span>
+<span class="fc" id="L279">        Map&lt;String, Double&gt; scores = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L280">        Map&lt;String, String&gt; reasons = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L281">        Map&lt;String, List&lt;RequirementNodeAssessment&gt;&gt; assessments = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L282" title="All 2 branches covered.">        for (TaxonomyNode node : nodes) {</span>
+<span class="fc" id="L283">            Object value = raw.get(node.getCode());</span>
+<span class="pc bpc" id="L284" title="1 of 2 branches missed.">            if (!(value instanceof Map&lt;?, ?&gt; object)) {</span>
+<span class="nc" id="L285">                throw new IllegalArgumentException(</span>
+<span class="nc" id="L286">                        &quot;Independent product response for &quot; + node.getCode()</span>
+                                + &quot; must be an object containing score and reason&quot;);
+            }
+<span class="fc" id="L289">            readNodeAssessments(node.getCode(), object, originalRequirement, assessments);</span>
+<span class="fc" id="L290">            Object scoreValue = object.get(&quot;score&quot;);</span>
+<span class="fc bfc" id="L291" title="All 2 branches covered.">            if (!(scoreValue instanceof Number number)) {</span>
+<span class="fc" id="L292">                throw new IllegalArgumentException(</span>
+<span class="fc" id="L293">                        &quot;Independent product response for &quot; + node.getCode()</span>
+                                + &quot; has no numeric score&quot;);
+            }
+<span class="fc" id="L296">            Object reasonValue = object.get(&quot;reason&quot;);</span>
+<span class="pc bpc" id="L297" title="1 of 4 branches missed.">            if (!(reasonValue instanceof String reason) || reason.isBlank()) {</span>
+<span class="fc" id="L298">                throw new IllegalArgumentException(</span>
+<span class="fc" id="L299">                        &quot;Independent product response for &quot; + node.getCode()</span>
+                                + &quot; has no non-blank reason&quot;);
+            }
+            final double score;
+            try {
+<span class="fc" id="L304">                score = com.taxonomy.dto.AnalysisPercentages.require(number);</span>
+<span class="fc" id="L305">            } catch (IllegalArgumentException invalid) {</span>
+<span class="fc" id="L306">                throw new IllegalArgumentException(&quot;Independent product response for &quot; + node.getCode()</span>
+                        + &quot; requires a finite numeric percentage between 0 and 100 (decimals allowed)&quot;, invalid);
+<span class="fc" id="L308">            }</span>
+<span class="pc bpc" id="L309" title="2 of 4 branches missed.">            if (score &lt; 0 || score &gt; 100) {</span>
+<span class="nc" id="L310">                throw new IllegalArgumentException(&quot;Independent product response for &quot; + node.getCode()</span>
+                        + &quot; requires an explicit finite numeric percentage between 0 and 100&quot;);
+            }
+<span class="fc bfc" id="L313" title="All 2 branches covered.">            scores.put(node.getCode(), score &gt;= threshold ? score : 0);</span>
+<span class="fc" id="L314">            reasons.put(node.getCode(), reason);</span>
+<span class="fc" id="L315">        }</span>
+<span class="fc" id="L316">        log.info(&quot;Independent product scores parsed (threshold {}): {}&quot;, threshold, scores);</span>
+<span class="fc" id="L317">        return new LlmService.ScoreParseResult(scores, reasons, null, Map.of(), assessments);</span>
+    }
+
+    private static void readNodeAssessments(String code, Map&lt;?, ?&gt; node, String originalRequirement,
+            Map&lt;String, List&lt;RequirementNodeAssessment&gt;&gt; assessments) {
+<span class="fc bfc" id="L322" title="All 2 branches covered.">        if (!SCORE_FIELDS.containsAll(node.keySet()))</span>
+<span class="fc" id="L323">            throw new IllegalArgumentException(&quot;Unsupported field in node response for &quot; + code);</span>
+<span class="fc" id="L324">        var values = RequirementAssessmentContract.decode(node, originalRequirement);</span>
+<span class="fc bfc" id="L325" title="All 2 branches covered.">        if (!values.isEmpty()) assessments.put(code, values);</span>
+<span class="fc" id="L326">    }</span>
+
+    // ── Score normalization ───────────────────────────────────────────────────
+
+    /**
+     * Normalizes a set of scores proportionally so that their sum equals {@code target}.
+     * Retains fractional percentages; explicit zero weights remain zero.
+     */
+    public Map&lt;String, Double&gt; normalizeToParent(Map&lt;String, ? extends Number&gt; scores, double target) {
+<span class="fc" id="L335">        return com.taxonomy.dto.AnalysisPercentages.normalize(scores, target);</span>
+    }
+
+    /**
+     * Normalizes a set of scores proportionally so that their sum equals 100.
+     */
+    public Map&lt;String, Double&gt; normalizeToHundred(Map&lt;String, ? extends Number&gt; scores) {
+<span class="fc" id="L342">        return normalizeToParent(scores, 100);</span>
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    /**
+     * Shared structured child evaluation boundary. The policy interprets values; the
+     * common contract rejects missing/unknown IDs before any child is interpreted.
+     * This is used by category relevance, independent product suitability and relation
+     * assessment. Each caller retains its own semantics after complete identity validation.
+     */
+    public &lt;T&gt; Map&lt;String, T&gt; parseChildAssessment(String text, List&lt;String&gt; candidateIds,
+                                                 BiFunction&lt;String, Object, T&gt; policy) {
+<span class="fc" id="L355">        return ChildAssessmentContract.decode(candidateIds, readScoreObject(text), policy);</span>
+    }
+
+    private Map&lt;String, Object&gt; readScoreObject(String text) {
+<span class="fc" id="L359">        String jsonText = extractJson(text);</span>
+<span class="fc bfc" id="L360" title="All 2 branches covered.">        if (!jsonText.startsWith(&quot;{&quot;)) {</span>
+<span class="fc" id="L361">            throw new IllegalArgumentException(&quot;Expected a JSON object for a child assessment, but the LLM &quot;</span>
+                    + &quot;returned empty or non-JSON text. Inspect the raw response in the LLM communication log.&quot;);
+        }
+<span class="fc" id="L364">        var reader = objectMapper.readerFor(new TypeReference&lt;Map&lt;String, Object&gt;&gt;() {})</span>
+<span class="fc" id="L365">                .with(StreamReadFeature.STRICT_DUPLICATE_DETECTION)</span>
+<span class="fc" id="L366">                .with(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS)</span>
+<span class="fc" id="L367">                .with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);</span>
+        try {
+<span class="fc" id="L369">            return reader.readValue(jsonText);</span>
+<span class="fc" id="L370">        } catch (StreamReadException malformed) {</span>
+<span class="fc" id="L371">            String completed = completeOuterObject(jsonText);</span>
+<span class="fc bfc" id="L372" title="All 2 branches covered.">            if (completed != null) {</span>
+                try {
+<span class="fc" id="L374">                    Map&lt;String, Object&gt; recovered = reader.readValue(completed);</span>
+<span class="fc" id="L375">                    log.warn(&quot;Completed a missing outer JSON object delimiter in an LLM assessment; &quot;</span>
+                            + &quot;raw response and candidate/value validation are unchanged&quot;);
+<span class="fc" id="L377">                    return recovered;</span>
+<span class="fc" id="L378">                } catch (StreamReadException stillMalformed) {</span>
+                    // Keep the original diagnostic. Never complete values or nested containers.
+                }
+            }
+<span class="fc" id="L382">            var location = malformed.getLocation();</span>
+<span class="pc bpc" id="L383" title="3 of 6 branches missed.">            String position = location != null &amp;&amp; location.getLineNr() &gt; 0 &amp;&amp; location.getColumnNr() &gt; 0</span>
+<span class="fc" id="L384">                    ? &quot; at line &quot; + location.getLineNr() + &quot;, column &quot; + location.getColumnNr()</span>
+<span class="fc" id="L385">                            + &quot; of the extracted JSON&quot;</span>
+<span class="pc" id="L386">                    : &quot; (position unavailable)&quot;;</span>
+<span class="fc" id="L387">            throw new IllegalArgumentException(&quot;Invalid JSON in LLM response&quot; + position</span>
+                    + &quot;. The response could not be evaluated. Inspect the raw response in the LLM communication log.&quot;,
+                    malformed);
+        }
+    }
+
+    /**
+     * Only the outer envelope may be completed, after an already closed child object.
+     * The same strict reader must accept the entire result with exactly one added brace;
+     * the caller still validates every expected child and value. A bare number, unfinished
+     * reason, missing child delimiter or trailing comma is never guessed. A final standalone
+     * Markdown fence is presentation, while the original response remains untouched.
+     */
+    private static String completeOuterObject(String jsonText) {
+<span class="fc" id="L401">        String candidate = jsonText.stripTrailing();</span>
+<span class="fc" id="L402">        int lastLine = candidate.lastIndexOf('\n');</span>
+<span class="fc bfc" id="L403" title="All 4 branches covered.">        if (lastLine &gt;= 0 &amp;&amp; candidate.substring(lastLine + 1).strip().equals(&quot;```&quot;)) {</span>
+<span class="fc" id="L404">            candidate = candidate.substring(0, lastLine).stripTrailing();</span>
+        }
+<span class="fc bfc" id="L406" title="All 2 branches covered.">        return candidate.endsWith(&quot;}&quot;) ? candidate + &quot;}&quot; : null;</span>
+    }
+
+    /**
+     * Locates the first outer JSON container in plain text or a Markdown code block.
+     * Complete bracketed prose such as {@code [IP]} is skipped when it is not JSON.
+     * Actual arrays remain arrays so the score parser rejects a non-object root.
+     * Respect strings and escapes: brackets and code fences inside a reason are
+     * data, not delimiters. An incomplete outer container is returned intact for
+     * rejection, never replaced by a seemingly valid inner object.
+     */
+    public String extractJson(String text) {
+<span class="pc bpc" id="L418" title="1 of 2 branches missed.">        String stripped = text == null ? &quot;&quot; : text.trim();</span>
+<span class="fc" id="L419">        int start = -1;</span>
+<span class="fc" id="L420">        int depth = 0;</span>
+<span class="fc" id="L421">        boolean quoted = false;</span>
+<span class="fc" id="L422">        boolean escaped = false;</span>
+<span class="fc bfc" id="L423" title="All 2 branches covered.">        for (int i = 0; i &lt; stripped.length(); i++) {</span>
+<span class="fc" id="L424">            char character = stripped.charAt(i);</span>
+<span class="fc bfc" id="L425" title="All 2 branches covered.">            if (start &lt; 0) {</span>
+<span class="fc bfc" id="L426" title="All 4 branches covered.">                if (character != '{' &amp;&amp; character != '[') continue;</span>
+<span class="fc" id="L427">                start = i;</span>
+            }
+<span class="fc bfc" id="L429" title="All 2 branches covered.">            if (quoted) {</span>
+<span class="fc bfc" id="L430" title="All 2 branches covered.">                if (escaped) escaped = false;</span>
+<span class="fc bfc" id="L431" title="All 2 branches covered.">                else if (character == '\\') escaped = true;</span>
+<span class="fc bfc" id="L432" title="All 2 branches covered.">                else if (character == '&quot;') quoted = false;</span>
+<span class="fc bfc" id="L433" title="All 2 branches covered.">            } else if (character == '&quot;') {</span>
+<span class="fc" id="L434">                quoted = true;</span>
+<span class="fc bfc" id="L435" title="All 4 branches covered.">            } else if (character == '{' || character == '[') {</span>
+<span class="fc" id="L436">                depth++;</span>
+<span class="fc bfc" id="L437" title="All 6 branches covered.">            } else if ((character == '}' || character == ']') &amp;&amp; --depth == 0) {</span>
+<span class="fc" id="L438">                String candidate = stripped.substring(start, i + 1);</span>
+<span class="fc bfc" id="L439" title="All 2 branches covered.">                if (stripped.charAt(start) == '[') {</span>
+                    try {
+<span class="fc" id="L441">                        objectMapper.readTree(candidate);</span>
+<span class="fc" id="L442">                    } catch (StreamReadException notJson) {</span>
+                        // Skip the whole prose span, never salvage an object inside it.
+                        // Other failures, including configured read limits, must propagate.
+<span class="fc" id="L445">                        start = -1;</span>
+<span class="fc" id="L446">                        continue;</span>
+<span class="fc" id="L447">                    }</span>
+                }
+<span class="fc" id="L449">                return candidate;</span>
+            }
+        }
+<span class="fc bfc" id="L452" title="All 2 branches covered.">        return start &lt; 0 ? stripped : stripped.substring(start);</span>
+    }
+
+    /**
+     * Returns a map of zero scores for all given nodes.
+     */
+    public Map&lt;String, Double&gt; zeroScores(List&lt;TaxonomyNode&gt; nodes) {
+<span class="fc" id="L459">        Map&lt;String, Double&gt; zeros = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L460" title="All 2 branches covered.">        for (TaxonomyNode n : nodes) zeros.put(n.getCode(), 0d);</span>
+<span class="fc" id="L461">        return zeros;</span>
+    }
+
+    /**
+     * Derives the parent code from a batch of sibling nodes.
+     */
+    String deriveParentCode(List&lt;TaxonomyNode&gt; nodes) {
+<span class="fc bfc" id="L468" title="All 2 branches covered.">        if (nodes.isEmpty()) return &quot;unknown&quot;;</span>
+<span class="fc" id="L469">        String parentCode = nodes.get(0).getParentCode();</span>
+<span class="fc bfc" id="L470" title="All 4 branches covered.">        if (parentCode != null &amp;&amp; !parentCode.isBlank()) return parentCode;</span>
+<span class="fc" id="L471">        String root = nodes.get(0).getTaxonomyRoot();</span>
+<span class="fc bfc" id="L472" title="All 2 branches covered.">        return root != null ? root : &quot;unknown&quot;;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

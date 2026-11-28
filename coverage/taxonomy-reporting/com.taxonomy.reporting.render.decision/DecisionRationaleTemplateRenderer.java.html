@@ -1,0 +1,514 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DecisionRationaleTemplateRenderer.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-reporting</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.reporting.render.decision</a> &gt; <span class="el_source">DecisionRationaleTemplateRenderer.java</span></div><h1>DecisionRationaleTemplateRenderer.java</h1><pre class="source lang-java linenums">package com.taxonomy.reporting.render.decision;
+
+import com.taxonomy.reporting.render.document.RequirementReportText;
+import com.taxonomy.reporting.render.document.WordReportLayoutException;
+
+import com.taxonomy.reporting.api.decision.DecisionRationaleReport;
+import com.taxonomy.reporting.api.decision.DecisionReportOptions;
+
+import com.taxonomy.extension.api.report.ReportRenderResult;
+import com.taxonomy.reporting.templates.DecisionRationaleTemplateContract;
+import com.taxonomy.templates.api.TemplateNotFoundException;
+import com.taxonomy.templates.api.DocumentTemplates;
+import com.taxonomy.templates.api.TemplateFile;
+
+import org.apache.poi.ooxml.POIXMLProperties;
+import org.apache.poi.xwpf.usermodel.BodyElementType;
+import org.apache.poi.xwpf.usermodel.IBodyElement;
+import org.apache.poi.xwpf.usermodel.XWPFDocument;
+import org.apache.poi.xwpf.usermodel.XWPFFooter;
+import org.apache.poi.xwpf.usermodel.XWPFHeader;
+import org.apache.poi.xwpf.usermodel.XWPFParagraph;
+import com.taxonomy.reporting.templates.RepeatableWordLayout;
+import org.apache.poi.xwpf.usermodel.XWPFTable;
+import org.apache.poi.xwpf.usermodel.XWPFTableCell;
+import org.apache.poi.xwpf.usermodel.XWPFTableRow;
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTText;
+import org.springframework.stereotype.Component;
+
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
+import java.util.zip.ZipOutputStream;
+
+/**
+ * Materializes the hierarchical decision report into the currently versioned DOTX template.
+ *
+ * &lt;p&gt;The existing renderer remains the single implementation of dynamic chapters, tables,
+ * diagrams, and appendix semantics. This adapter opens the editable cover/header/footer
+ * template, replaces stable tokens, removes the body marker, and invokes those proven
+ * rendering stages through its package-level typed body writer.&lt;/p&gt;
+ */
+@Component
+public final class DecisionRationaleTemplateRenderer {
+
+    private static final String DOCX_MAIN_CONTENT_TYPE =
+            &quot;application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml&quot;;
+    private static final String WORD_NAMESPACE =
+            &quot;http://schemas.openxmlformats.org/wordprocessingml/2006/main&quot;;
+    private static final String TEMPLATE_ID_PROPERTY = &quot;Taxonomy.Template.Id&quot;;
+    private static final String TEMPLATE_COMMIT_PROPERTY = &quot;Taxonomy.Template.Commit&quot;;
+    private static final String TEMPLATE_SHA256_PROPERTY =
+            &quot;Taxonomy.Template.PackageSha256&quot;;
+    private static final String TEMPLATE_SCHEMA_VERSION_PROPERTY =
+            &quot;Taxonomy.Template.SchemaVersion&quot;;
+
+    private final DocumentTemplates templates;
+    private final DecisionRationaleTemplateContract contract;
+
+    public DecisionRationaleTemplateRenderer(
+            DocumentTemplates templates,
+<span class="fc" id="L74">            DecisionRationaleTemplateContract contract) {</span>
+<span class="fc" id="L75">        this.templates = Objects.requireNonNull(templates, &quot;templates&quot;);</span>
+<span class="fc" id="L76">        this.contract = Objects.requireNonNull(contract, &quot;contract&quot;);</span>
+<span class="fc" id="L77">    }</span>
+
+    public byte[] render(
+            DecisionRationaleDocxRenderer delegate,
+            DecisionRationaleReport report) {
+<span class="fc" id="L82">        return renderArtifact(delegate, report).bytes();</span>
+    }
+
+    ReportRenderResult renderArtifact(
+            DecisionRationaleDocxRenderer delegate,
+            DecisionRationaleReport report) {
+<span class="fc" id="L88">        Objects.requireNonNull(delegate, &quot;delegate&quot;);</span>
+<span class="fc" id="L89">        Objects.requireNonNull(report, &quot;report&quot;);</span>
+
+        TemplateFile template;
+        try {
+<span class="fc" id="L93">            template = templates.downloadCurrentValidated(</span>
+                    DecisionRationaleTemplateContract.TEMPLATE_ID);
+<span class="nc" id="L95">        } catch (TemplateNotFoundException exception) {</span>
+<span class="nc" id="L96">            throw unavailable(</span>
+                    &quot;Required template is missing. Restart Taxonomy to seed the bundled &quot;
+                            + &quot;default or upload a valid template with ID '&quot;
+                            + DecisionRationaleTemplateContract.TEMPLATE_ID + &quot;'.&quot;,
+                    exception);
+<span class="fc" id="L101">        } catch (Exception exception) {</span>
+<span class="fc" id="L102">            throw unavailable(&quot;Required template could not be validated: &quot;</span>
+<span class="fc" id="L103">                    + safeMessage(exception), exception);</span>
+<span class="fc" id="L104">        }</span>
+<span class="fc" id="L105">        return renderArtifact(delegate, report, template);</span>
+    }
+
+    ReportRenderResult renderArtifact(DecisionRationaleDocxRenderer delegate,
+            DecisionRationaleReport report, TemplateFile template) {
+<span class="pc bpc" id="L110" title="1 of 2 branches missed.">        if (!DecisionRationaleTemplateContract.TEMPLATE_ID.equals(template.manifest().templateId())) {</span>
+<span class="nc" id="L111">            throw new IllegalArgumentException(&quot;The template does not belong to the decision report family&quot;);</span>
+        }
+<span class="fc" id="L113">        DecisionReportTemplateProvenance provenance =</span>
+<span class="fc" id="L114">                DecisionReportTemplateProvenance.from(template);</span>
+<span class="fc" id="L115">        DecisionReportLabels labels = new DecisionReportLabels(report.languageTag());</span>
+<span class="fc" id="L116">        var layout = new RepeatableWordLayout();</span>
+<span class="fc" id="L117">        try (XWPFDocument document = new XWPFDocument(new ByteArrayInputStream(</span>
+<span class="fc" id="L118">                    rewriteWordPackage(template.content(), layout::extract, true)));</span>
+<span class="fc" id="L119">             ByteArrayOutputStream output = new ByteArrayOutputStream()) {</span>
+<span class="fc" id="L120">            contract.validateDocument(document);</span>
+<span class="fc bfc" id="L121" title="All 2 branches covered.">            if (&quot;taxonomy-bootstrap&quot;.equals(template.manifest().updatedBy())) {</span>
+<span class="fc" id="L122">                localizeDefaultTemplate(document, labels);</span>
+            }
+<span class="fc" id="L124">            replaceTokens(document, tokenValues(report, labels, template));</span>
+<span class="fc" id="L125">            removeBodyMarker(document, report.scope().options().includes(DecisionReportOptions.Section.TITLE_PAGE));</span>
+
+<span class="fc" id="L127">            delegate.writeReportBody(document, report, labels);</span>
+<span class="fc" id="L128">            writeTemplateProvenanceProperties(document, provenance);</span>
+
+<span class="fc" id="L130">            document.write(output);</span>
+<span class="fc" id="L131">            byte[] generated = output.toByteArray();</span>
+<span class="fc bfc" id="L132" title="All 2 branches covered.">            if (!layout.isEmpty()) generated = rewriteWordPackage(generated, xml -&gt; layout.materialize(xml, report), false);</span>
+<span class="fc" id="L133">            return new ReportRenderResult(generated, provenance.artifactMetadata());</span>
+<span class="fc" id="L134">        } catch (com.taxonomy.reporting.render.document.WordReportLayoutException exception) {</span>
+<span class="fc" id="L135">            throw exception;</span>
+<span class="fc" id="L136">        } catch (Exception exception) {</span>
+<span class="fc" id="L137">            throw unavailable(</span>
+<span class="fc" id="L138">                    &quot;Could not materialize template commit &quot; + template.commitId()</span>
+<span class="fc" id="L139">                            + &quot;: &quot; + safeMessage(exception),</span>
+                    exception);
+        }
+    }
+
+    private static Map&lt;String, String&gt; tokenValues(
+            DecisionRationaleReport report,
+            DecisionReportLabels labels,
+            TemplateFile template) {
+<span class="fc" id="L148">        Map&lt;String, String&gt; values = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L149">        values.put(DecisionRationaleTemplateContract.TITLE_TOKEN, value(report.title()));</span>
+<span class="fc" id="L150">        values.put(&quot;{{taxonomy.report.subtitle}}&quot;, labels.subtitle());</span>
+<span class="fc" id="L151">        values.put(&quot;{{taxonomy.report.status}}&quot;, statusLabel(report, labels));</span>
+<span class="fc" id="L152">        values.put(DecisionRationaleTemplateContract.REQUIREMENT_TOKEN,</span>
+<span class="fc" id="L153">                RequirementReportText.plain(report.requirement()));</span>
+<span class="fc" id="L154">        values.put(&quot;{{taxonomy.report.generatedAt}}&quot;,</span>
+<span class="fc" id="L155">                formatInstant(report.metadata().generatedAt(),</span>
+<span class="fc" id="L156">                        report.metadata().reportTimeZone(),</span>
+<span class="fc" id="L157">                        labels.german()));</span>
+<span class="fc" id="L158">        values.put(&quot;{{taxonomy.report.generatedBy}}&quot;,</span>
+<span class="fc" id="L159">                value(report.metadata().generatedBy()));</span>
+<span class="fc" id="L160">        values.put(&quot;{{taxonomy.report.taxonomyVersion}}&quot;,</span>
+<span class="fc" id="L161">                value(report.metadata().taxonomyDataVersion()));</span>
+<span class="fc" id="L162">        values.put(&quot;{{taxonomy.report.applicationVersion}}&quot;,</span>
+<span class="fc" id="L163">                value(report.metadata().taxonomyApplicationVersion()));</span>
+<span class="fc" id="L164">        values.put(&quot;{{taxonomy.report.commit}}&quot;,</span>
+<span class="fc" id="L165">                value(report.metadata().taxonomyBuildCommit()));</span>
+<span class="fc" id="L166">        values.put(&quot;{{taxonomy.report.repository}}&quot;,</span>
+<span class="fc" id="L167">                value(report.metadata().repositoryId()));</span>
+<span class="fc" id="L168">        values.put(&quot;{{taxonomy.report.workspace}}&quot;,</span>
+<span class="fc" id="L169">                value(report.metadata().workspaceId()));</span>
+<span class="fc" id="L170">        values.put(&quot;{{taxonomy.report.branch}}&quot;,</span>
+<span class="fc" id="L171">                value(report.metadata().branch()));</span>
+<span class="fc" id="L172">        values.put(&quot;{{taxonomy.report.basedOnCommit}}&quot;,</span>
+<span class="fc" id="L173">                value(report.metadata().basedOnCommit()));</span>
+<span class="fc" id="L174">        values.put(&quot;{{taxonomy.report.analysisProvider}}&quot;,</span>
+<span class="fc" id="L175">                value(report.metadata().analysisProvider()));</span>
+<span class="fc" id="L176">        values.put(&quot;{{taxonomy.template.id}}&quot;,</span>
+                DecisionRationaleTemplateContract.TEMPLATE_ID);
+<span class="fc" id="L178">        values.put(&quot;{{taxonomy.template.commit}}&quot;,</span>
+<span class="fc" id="L179">                abbreviate(template.commitId()));</span>
+<span class="fc" id="L180">        values.put(&quot;{{taxonomy.template.sha256}}&quot;,</span>
+<span class="fc" id="L181">                value(template.manifest().packageSha256()));</span>
+<span class="fc" id="L182">        return Map.copyOf(values);</span>
+    }
+
+    private static void writeTemplateProvenanceProperties(
+            XWPFDocument document,
+            DecisionReportTemplateProvenance provenance) {
+<span class="fc" id="L188">        POIXMLProperties.CustomProperties properties =</span>
+<span class="fc" id="L189">                document.getProperties().getCustomProperties();</span>
+<span class="fc" id="L190">        replaceCustomProperty(</span>
+                properties,
+                TEMPLATE_ID_PROPERTY,
+<span class="fc" id="L193">                provenance.templateId());</span>
+<span class="fc" id="L194">        replaceCustomProperty(</span>
+                properties,
+                TEMPLATE_COMMIT_PROPERTY,
+<span class="fc" id="L197">                provenance.commitId());</span>
+<span class="fc" id="L198">        replaceCustomProperty(</span>
+                properties,
+                TEMPLATE_SHA256_PROPERTY,
+<span class="fc" id="L201">                provenance.packageSha256());</span>
+<span class="fc" id="L202">        replaceCustomProperty(</span>
+                properties,
+                TEMPLATE_SCHEMA_VERSION_PROPERTY,
+<span class="fc" id="L205">                Integer.toString(provenance.schemaVersion()));</span>
+<span class="fc" id="L206">    }</span>
+
+    private static void replaceCustomProperty(
+            POIXMLProperties.CustomProperties properties,
+            String name,
+            String value) {
+<span class="fc" id="L212">        var underlying = properties.getUnderlyingProperties();</span>
+<span class="fc" id="L213">        for (int index = underlying.sizeOfPropertyArray() - 1;</span>
+<span class="fc bfc" id="L214" title="All 2 branches covered.">                index &gt;= 0;</span>
+<span class="fc" id="L215">                index--) {</span>
+<span class="pc bpc" id="L216" title="1 of 2 branches missed.">            if (name.equals(underlying.getPropertyArray(index).getName())) {</span>
+<span class="nc" id="L217">                underlying.removeProperty(index);</span>
+            }
+        }
+<span class="fc" id="L220">        properties.addProperty(name, value);</span>
+<span class="fc" id="L221">    }</span>
+
+    private static void replaceTokens(
+            XWPFDocument document,
+            Map&lt;String, String&gt; values) {
+<span class="fc" id="L226">        replaceContainer(document.getParagraphs(), document.getTables(), values);</span>
+<span class="fc bfc" id="L227" title="All 2 branches covered.">        for (XWPFHeader header : document.getHeaderList()) {</span>
+<span class="fc" id="L228">            replaceContainer(header.getParagraphs(), header.getTables(), values);</span>
+<span class="fc" id="L229">        }</span>
+<span class="fc bfc" id="L230" title="All 2 branches covered.">        for (XWPFFooter footer : document.getFooterList()) {</span>
+<span class="fc" id="L231">            replaceContainer(footer.getParagraphs(), footer.getTables(), values);</span>
+<span class="fc" id="L232">        }</span>
+<span class="fc" id="L233">    }</span>
+
+    /** Localize the seeded cover and footer without rewriting administrator-authored template wording. */
+    private static void localizeDefaultTemplate(XWPFDocument document, DecisionReportLabels labels) {
+<span class="fc bfc" id="L237" title="All 2 branches covered.">        for (int index = document.getBodyElements().size() - 1; index &gt;= 0; index--) {</span>
+<span class="fc bfc" id="L238" title="All 2 branches covered.">            if (document.getBodyElements().get(index) instanceof XWPFParagraph paragraph</span>
+<span class="fc bfc" id="L239" title="All 2 branches covered.">                    &amp;&amp; &quot;Organisation · Organisationseinheit&quot;.equals(paragraph.getText()))</span>
+<span class="fc" id="L240">                document.removeBodyElement(index);</span>
+        }
+<span class="fc" id="L242">        var coverLabels = Map.of(</span>
+<span class="fc" id="L243">                &quot;TAXONOMY · DECISION EVIDENCE&quot;, labels.evidenceEyebrow(),</span>
+<span class="fc" id="L244">                &quot;Zugrunde liegende Anforderung / Underlying requirement&quot;, labels.requirement(),</span>
+<span class="fc" id="L245">                &quot;Erzeugung und Versionsnachweis / Generation and version evidence&quot;, labels.provenance(),</span>
+<span class="fc" id="L246">                &quot;Erzeugt am / Generated at&quot;, labels.generatedAt(),</span>
+<span class="fc" id="L247">                &quot;Erzeugt durch / Generated by&quot;, labels.generatedBy(),</span>
+<span class="fc bfc" id="L248" title="All 2 branches covered.">                &quot;Taxonomieversion / Taxonomy version&quot;, labels.german() ? &quot;Taxonomieversion&quot; : &quot;Taxonomy version&quot;,</span>
+                &quot;Diese Titelseite, Kopf- und Fußzeilen sowie Organisationsangaben können in Microsoft Word angepasst werden.&quot;,
+<span class="fc bfc" id="L250" title="All 2 branches covered.">                labels.german() ? &quot;Diese Titelseite, Kopf- und Fußzeilen sowie Organisationsangaben können in Microsoft Word angepasst werden.&quot;</span>
+<span class="fc" id="L251">                        : &quot;This title page, headers, footers and organization details can be edited in Microsoft Word.&quot;);</span>
+<span class="fc bfc" id="L252" title="All 2 branches covered.">        for (var part : document.getDocument().getBody().selectPath(</span>
+                &quot;declare namespace w='&quot; + WORD_NAMESPACE + &quot;'; .//w:t&quot;)) {
+<span class="pc bpc" id="L254" title="1 of 2 branches missed.">            if (part instanceof CTText text) {</span>
+<span class="fc" id="L255">                String localized = coverLabels.get(text.getStringValue());</span>
+<span class="fc bfc" id="L256" title="All 2 branches covered.">                if (localized != null) text.setStringValue(localized);</span>
+            }
+        }
+<span class="fc bfc" id="L259" title="All 2 branches covered.">        for (var footer : document.getFooterList()) {</span>
+<span class="fc bfc" id="L260" title="All 2 branches covered.">            for (var table : footer.getTables()) widenDefaultPageCounter(table);</span>
+<span class="fc bfc" id="L261" title="All 2 branches covered.">            for (var part : footer._getHdrFtr().selectPath(</span>
+                    &quot;declare namespace w='&quot; + WORD_NAMESPACE + &quot;'; .//w:t&quot;)) {
+<span class="pc bpc" id="L263" title="1 of 2 branches missed.">                if (part instanceof CTText text) {</span>
+<span class="fc" id="L264">                    String contents = text.getStringValue();</span>
+<span class="fc bfc" id="L265" title="All 2 branches covered.">                    if (&quot;Page &quot;.equals(contents)) setWordText(text, labels.page() + &quot; &quot;);</span>
+<span class="fc bfc" id="L266" title="All 4 branches covered.">                    else if (labels.german() &amp;&amp; contents.contains(&quot; · template {{taxonomy.template.id}}&quot;))</span>
+<span class="fc" id="L267">                        text.setStringValue(contents.replace(&quot; · template &quot;, &quot; · Vorlage &quot;));</span>
+                }
+            }
+<span class="fc" id="L270">        }</span>
+<span class="fc" id="L271">    }</span>
+
+    /** Match the seeded footer before token replacement; custom layout and stored bytes are untouched. */
+    private static void widenDefaultPageCounter(XWPFTable table) {
+<span class="fc" id="L275">        var grid = table.getCTTbl().getTblGrid();</span>
+<span class="pc bpc" id="L276" title="3 of 6 branches missed.">        if (table.getNumberOfRows() != 1 || table.getRow(0).getTableCells().size() != 2</span>
+<span class="pc bpc" id="L277" title="1 of 2 branches missed.">                || grid == null || grid.sizeOfGridColArray() != 2</span>
+<span class="pc bpc" id="L278" title="1 of 2 branches missed.">                || !&quot;7600&quot;.equals(String.valueOf(grid.getGridColArray(0).getW()))</span>
+<span class="pc bpc" id="L279" title="1 of 2 branches missed.">                || !&quot;1400&quot;.equals(String.valueOf(grid.getGridColArray(1).getW()))</span>
+<span class="fc bfc" id="L280" title="All 2 branches covered.">                || !table.getRow(0).getCell(0).getText().equals(</span>
+<span class="fc" id="L281">                        &quot;{{taxonomy.report.generatedBy}} · {{taxonomy.report.applicationVersion}} · template {{taxonomy.template.id}}@{{taxonomy.template.commit}}&quot;)) return;</span>
+<span class="fc" id="L282">        var fields = table.getRow(0).getCell(1).getParagraphs().stream()</span>
+<span class="fc" id="L283">                .flatMap(paragraph -&gt; paragraph.getCTP().getFldSimpleList().stream())</span>
+<span class="fc" id="L284">                .map(field -&gt; field.getInstr().strip()).toList();</span>
+<span class="pc bpc" id="L285" title="1 of 2 branches missed.">        if (!fields.equals(List.of(&quot;PAGE&quot;, &quot;NUMPAGES&quot;))) return;</span>
+<span class="fc" id="L286">        grid.getGridColArray(0).setW(java.math.BigInteger.valueOf(7200));</span>
+<span class="fc" id="L287">        grid.getGridColArray(1).setW(java.math.BigInteger.valueOf(1800));</span>
+<span class="fc" id="L288">        table.getRow(0).getCell(0).setWidth(&quot;7200&quot;);</span>
+<span class="fc" id="L289">        table.getRow(0).getCell(1).setWidth(&quot;1800&quot;);</span>
+<span class="fc" id="L290">    }</span>
+
+    private static void replaceContainer(
+            List&lt;XWPFParagraph&gt; paragraphs,
+            List&lt;XWPFTable&gt; tables,
+            Map&lt;String, String&gt; values) {
+<span class="fc bfc" id="L296" title="All 2 branches covered.">        for (XWPFParagraph paragraph : paragraphs) {</span>
+<span class="fc" id="L297">            replaceParagraph(paragraph, values);</span>
+<span class="fc" id="L298">        }</span>
+<span class="fc bfc" id="L299" title="All 2 branches covered.">        for (XWPFTable table : tables) {</span>
+<span class="fc" id="L300">            replaceTable(table, values);</span>
+<span class="fc" id="L301">        }</span>
+<span class="fc" id="L302">    }</span>
+
+    private static void replaceTable(
+            XWPFTable table,
+            Map&lt;String, String&gt; values) {
+<span class="fc bfc" id="L307" title="All 2 branches covered.">        for (XWPFTableRow row : table.getRows()) {</span>
+<span class="fc bfc" id="L308" title="All 2 branches covered.">            for (XWPFTableCell cell : row.getTableCells()) {</span>
+<span class="fc" id="L309">                replaceContainer(cell.getParagraphs(), cell.getTables(), values);</span>
+<span class="fc" id="L310">            }</span>
+<span class="fc" id="L311">        }</span>
+<span class="fc" id="L312">    }</span>
+
+    /**
+     * Replace tokens across run boundaries while retaining the first run's formatting.
+     *
+     * &lt;p&gt;Word may split a visually contiguous placeholder into several runs after an
+     * administrator edits its formatting. Preserve text and formatting on either side
+     * and place each replacement in the first text run participating in its token.&lt;/p&gt;
+     */
+    private static void replaceParagraph(
+            XWPFParagraph paragraph,
+            Map&lt;String, String&gt; values) {
+<span class="fc" id="L324">        var texts = paragraph.getRuns().stream().flatMap(run -&gt; run.getCTR().getTList().stream()).toList();</span>
+<span class="fc" id="L325">        var pieces = texts.stream().map(org.apache.xmlbeans.XmlString::getStringValue).toList();</span>
+<span class="fc" id="L326">        var replaced = RepeatableWordLayout.replaceRuns(pieces, values);</span>
+<span class="fc bfc" id="L327" title="All 2 branches covered.">        for (int i = 0; i &lt; texts.size(); i++) {</span>
+<span class="fc bfc" id="L328" title="All 2 branches covered.">            if (!pieces.get(i).equals(replaced.get(i))) {</span>
+<span class="fc" id="L329">                setWordText(texts.get(i), replaced.get(i));</span>
+            }
+        }
+<span class="fc" id="L332">    }</span>
+
+    private static void setWordText(CTText text, String value) {
+<span class="fc" id="L335">        String[] lines = value.split(&quot;\\R&quot;, -1);</span>
+<span class="fc" id="L336">        text.setStringValue(lines[0]);</span>
+<span class="fc" id="L337">        text.setSpace(org.apache.xmlbeans.impl.xb.xmlschema.SpaceAttribute.Space.PRESERVE);</span>
+<span class="fc bfc" id="L338" title="All 2 branches covered.">        if (lines.length == 1) return;</span>
+        // Place real line breaks inside the existing styled run, ahead of any following inline content.
+<span class="fc" id="L340">        var element = text.getDomNode();</span>
+<span class="fc" id="L341">        var run = element.getParentNode();</span>
+<span class="fc" id="L342">        var next = element.getNextSibling();</span>
+<span class="fc" id="L343">        var document = element.getOwnerDocument();</span>
+<span class="fc bfc" id="L344" title="All 2 branches covered.">        for (int i = 1; i &lt; lines.length; i++) {</span>
+<span class="fc" id="L345">            run.insertBefore(document.createElementNS(WORD_NAMESPACE, &quot;w:br&quot;), next);</span>
+<span class="fc" id="L346">            var line = document.createElementNS(WORD_NAMESPACE, &quot;w:t&quot;);</span>
+<span class="fc" id="L347">            line.setAttributeNS(javax.xml.XMLConstants.XML_NS_URI, &quot;xml:space&quot;, &quot;preserve&quot;);</span>
+<span class="fc" id="L348">            line.appendChild(document.createTextNode(lines[i]));</span>
+<span class="fc" id="L349">            run.insertBefore(line, next);</span>
+        }
+<span class="fc" id="L351">    }</span>
+
+    private static void removeBodyMarker(XWPFDocument document, boolean keepCover) {
+<span class="fc" id="L354">        List&lt;IBodyElement&gt; elements = new ArrayList&lt;&gt;(document.getBodyElements());</span>
+<span class="pc bpc" id="L355" title="1 of 2 branches missed.">        for (int index = 0; index &lt; elements.size(); index++) {</span>
+<span class="fc" id="L356">            IBodyElement element = elements.get(index);</span>
+<span class="fc bfc" id="L357" title="All 2 branches covered.">            if (element.getElementType() != BodyElementType.PARAGRAPH) {</span>
+<span class="fc" id="L358">                continue;</span>
+            }
+<span class="fc" id="L360">            XWPFParagraph paragraph = (XWPFParagraph) element;</span>
+<span class="fc" id="L361">            if (DecisionRationaleTemplateContract.BODY_MARKER</span>
+<span class="fc bfc" id="L362" title="All 2 branches covered.">                    .equals(paragraph.getText().strip())) {</span>
+<span class="fc bfc" id="L363" title="All 2 branches covered.">                if (!keepCover) {</span>
+                    // The validated prefix is the cover. Keep the package (styles, headers,
+                    // footers and template provenance), removing only those body elements.
+<span class="fc" id="L366">                    var body = document.getDocument().getBody();</span>
+<span class="fc" id="L367">                    org.openxmlformats.schemas.wordprocessingml.x2006.main.CTSectPr inherited = null;</span>
+<span class="fc bfc" id="L368" title="All 2 branches covered.">                    for (int prefix = 0; prefix &lt; index; prefix++) {</span>
+<span class="fc bfc" id="L369" title="All 4 branches covered.">                        if (elements.get(prefix) instanceof XWPFParagraph p &amp;&amp; p.getCTP().isSetPPr()</span>
+<span class="pc bpc" id="L370" title="1 of 2 branches missed.">                                &amp;&amp; p.getCTP().getPPr().isSetSectPr()) {</span>
+<span class="nc" id="L371">                            var current = p.getCTP().getPPr().getSectPr();</span>
+<span class="nc bnc" id="L372" title="All 2 branches missed.">                            if (inherited == null) inherited = (org.openxmlformats.schemas.wordprocessingml.x2006.main.CTSectPr) current.copy();</span>
+                            else {
+<span class="nc bnc" id="L374" title="All 2 branches missed.">                                if (current.isSetPgSz()) inherited.setPgSz(current.getPgSz());</span>
+<span class="nc bnc" id="L375" title="All 2 branches missed.">                                if (current.isSetPgMar()) inherited.setPgMar(current.getPgMar());</span>
+<span class="nc bnc" id="L376" title="All 2 branches missed.">                                if (current.sizeOfHeaderReferenceArray() &gt; 0) inherited.setHeaderReferenceArray(current.getHeaderReferenceArray());</span>
+<span class="nc bnc" id="L377" title="All 2 branches missed.">                                if (current.sizeOfFooterReferenceArray() &gt; 0) inherited.setFooterReferenceArray(current.getFooterReferenceArray());</span>
+                            }
+                        }
+                    }
+<span class="pc bpc" id="L381" title="1 of 2 branches missed.">                    if (inherited != null) {</span>
+<span class="nc bnc" id="L382" title="All 2 branches missed.">                        var finalSection = body.isSetSectPr() ? body.getSectPr() : body.addNewSectPr();</span>
+<span class="nc bnc" id="L383" title="All 4 branches missed.">                        if (!finalSection.isSetPgSz() &amp;&amp; inherited.isSetPgSz()) finalSection.setPgSz(inherited.getPgSz());</span>
+<span class="nc bnc" id="L384" title="All 4 branches missed.">                        if (!finalSection.isSetPgMar() &amp;&amp; inherited.isSetPgMar()) finalSection.setPgMar(inherited.getPgMar());</span>
+<span class="nc bnc" id="L385" title="All 2 branches missed.">                        if (finalSection.sizeOfHeaderReferenceArray() == 0) finalSection.setHeaderReferenceArray(inherited.getHeaderReferenceArray());</span>
+<span class="nc bnc" id="L386" title="All 2 branches missed.">                        if (finalSection.sizeOfFooterReferenceArray() == 0) finalSection.setFooterReferenceArray(inherited.getFooterReferenceArray());</span>
+                    }
+<span class="fc bfc" id="L388" title="All 2 branches covered.">                    for (int prefix = index; prefix &gt;= 0; prefix--) document.removeBodyElement(prefix);</span>
+<span class="fc" id="L389">                    return;</span>
+                }
+<span class="fc" id="L391">                document.removeBodyElement(index);</span>
+                // The generated section heading owns the body page break. A trailing
+                // empty hard-break paragraph can overflow the cover and skip a page.
+                // Preserve all template content, drawings and section definitions.
+<span class="pc bpc" id="L395" title="2 of 4 branches missed.">                if (index &gt; 0 &amp;&amp; elements.get(index - 1) instanceof XWPFParagraph previous</span>
+<span class="fc bfc" id="L396" title="All 2 branches covered.">                        &amp;&amp; previous.getText().isBlank()</span>
+<span class="pc bpc" id="L397" title="3 of 4 branches missed.">                        &amp;&amp; !(previous.getCTP().isSetPPr() &amp;&amp; previous.getCTP().getPPr().isSetSectPr())</span>
+<span class="pc bpc" id="L398" title="1 of 2 branches missed.">                        &amp;&amp; previous.getRuns().stream().allMatch(run -&gt;</span>
+<span class="pc bpc" id="L399" title="2 of 4 branches missed.">                                run.getCTR().sizeOfDrawingArray() == 0 &amp;&amp; run.getCTR().sizeOfPictArray() == 0)</span>
+<span class="pc bpc" id="L400" title="1 of 2 branches missed.">                        &amp;&amp; previous.getRuns().stream().anyMatch(run -&gt; run.getCTR().getBrList().stream()</span>
+<span class="fc" id="L401">                        .anyMatch(br -&gt; org.openxmlformats.schemas.wordprocessingml.x2006.main.STBrType.PAGE.equals(br.getType())))) {</span>
+<span class="fc" id="L402">                    document.removeBodyElement(index - 1);</span>
+                }
+<span class="fc" id="L404">                return;</span>
+            }
+        }
+<span class="nc" id="L407">        throw new IllegalArgumentException(</span>
+                &quot;Required body marker &quot;
+                        + DecisionRationaleTemplateContract.BODY_MARKER
+                        + &quot; was not found&quot;);
+    }
+
+    /**
+     * A DOTX and a DOCX use the same package structure but different main-part content
+     * types. Convert before Apache POI opens the package so the emitted artifact is a
+     * genuine DOCX rather than a template with a misleading file extension.
+     */
+    private static byte[] rewriteWordPackage(byte[] archive, java.util.function.UnaryOperator&lt;byte[]&gt; mainDocument,
+                                             boolean convertTemplate) throws IOException {
+<span class="fc" id="L420">        ByteArrayOutputStream output = new ByteArrayOutputStream(archive.length);</span>
+<span class="fc" id="L421">        boolean contentTypeChanged = false;</span>
+<span class="fc" id="L422">        try (ZipInputStream input = new ZipInputStream(new ByteArrayInputStream(archive));</span>
+<span class="fc" id="L423">             ZipOutputStream zip = new ZipOutputStream(output)) {</span>
+            ZipEntry entry;
+<span class="fc bfc" id="L425" title="All 2 branches covered.">            while ((entry = input.getNextEntry()) != null) {</span>
+<span class="fc" id="L426">                byte[] content = input.readAllBytes();</span>
+<span class="fc bfc" id="L427" title="All 2 branches covered.">                if (&quot;word/document.xml&quot;.equals(entry.getName())) content = mainDocument.apply(content);</span>
+<span class="fc bfc" id="L428" title="All 4 branches covered.">                if (convertTemplate &amp;&amp; &quot;[Content_Types].xml&quot;.equals(entry.getName())) {</span>
+<span class="fc" id="L429">                    String xml = new String(content, StandardCharsets.UTF_8);</span>
+<span class="pc bpc" id="L430" title="1 of 2 branches missed.">                    if (!xml.contains(com.taxonomy.templates.api.OoxmlTemplateMediaTypes.DOTX_MAIN_CONTENT_TYPE)) {</span>
+<span class="nc" id="L431">                        throw new IOException(</span>
+                                &quot;Template package does not declare the DOTX main content type&quot;);
+                    }
+<span class="fc" id="L434">                    xml = xml.replace(</span>
+                            com.taxonomy.templates.api.OoxmlTemplateMediaTypes.DOTX_MAIN_CONTENT_TYPE,
+                            DOCX_MAIN_CONTENT_TYPE);
+<span class="fc" id="L437">                    content = xml.getBytes(StandardCharsets.UTF_8);</span>
+<span class="fc" id="L438">                    contentTypeChanged = true;</span>
+                }
+<span class="fc" id="L440">                ZipEntry copy = new ZipEntry(entry.getName());</span>
+<span class="pc bpc" id="L441" title="1 of 2 branches missed.">                if (entry.getComment() != null) {</span>
+<span class="nc" id="L442">                    copy.setComment(entry.getComment());</span>
+                }
+<span class="fc" id="L444">                zip.putNextEntry(copy);</span>
+<span class="pc bpc" id="L445" title="1 of 2 branches missed.">                if (!entry.isDirectory()) {</span>
+<span class="fc" id="L446">                    zip.write(content);</span>
+                }
+<span class="fc" id="L448">                zip.closeEntry();</span>
+<span class="fc" id="L449">                input.closeEntry();</span>
+<span class="fc" id="L450">            }</span>
+        }
+<span class="pc bpc" id="L452" title="1 of 4 branches missed.">        if (convertTemplate &amp;&amp; !contentTypeChanged) {</span>
+<span class="nc" id="L453">            throw new IOException(&quot;Template package is missing [Content_Types].xml&quot;);</span>
+        }
+<span class="fc" id="L455">        return output.toByteArray();</span>
+    }
+
+    private static String statusLabel(
+            DecisionRationaleReport report,
+            DecisionReportLabels labels) {
+<span class="pc bpc" id="L461" title="1 of 4 branches missed.">        return switch (report.status()) {</span>
+<span class="fc" id="L462">            case FINAL -&gt; labels.finalStatus();</span>
+<span class="fc" id="L463">            case FINAL_WITH_WARNINGS -&gt; labels.finalWarnings();</span>
+<span class="fc" id="L464">            case DRAFT_INCOMPLETE -&gt; labels.draft();</span>
+<span class="nc" id="L465">            case NO_RESULT -&gt; labels.noResult();</span>
+        };
+    }
+
+    private static String formatInstant(
+            Instant instant,
+            String zoneId,
+            boolean german) {
+<span class="pc bpc" id="L473" title="1 of 2 branches missed.">        if (instant == null) {</span>
+<span class="nc" id="L474">            return &quot;unknown&quot;;</span>
+        }
+        ZoneId zone;
+        try {
+<span class="fc" id="L478">            zone = ZoneId.of(value(zoneId));</span>
+<span class="nc" id="L479">        } catch (RuntimeException exception) {</span>
+<span class="nc" id="L480">            zone = ZoneOffset.UTC;</span>
+<span class="fc" id="L481">        }</span>
+<span class="fc" id="L482">        DateTimeFormatter formatter = DateTimeFormatter.ofPattern(</span>
+<span class="fc bfc" id="L483" title="All 2 branches covered.">                german ? &quot;dd.MM.yyyy HH:mm z&quot; : &quot;yyyy-MM-dd HH:mm z&quot;,</span>
+<span class="fc bfc" id="L484" title="All 2 branches covered.">                german ? Locale.GERMAN : Locale.ENGLISH);</span>
+<span class="fc" id="L485">        return formatter.withZone(zone).format(instant);</span>
+    }
+
+    private static String value(String value) {
+<span class="pc bpc" id="L489" title="2 of 4 branches missed.">        return value == null || value.isBlank() ? &quot;unknown&quot; : value.strip();</span>
+    }
+
+    private static String abbreviate(String value) {
+<span class="fc" id="L493">        String normalized = value(value);</span>
+<span class="pc bpc" id="L494" title="1 of 2 branches missed.">        return normalized.length() &lt;= 12 ? normalized : normalized.substring(0, 12);</span>
+    }
+
+    private static IllegalStateException unavailable(
+            String detail,
+            Exception cause) {
+<span class="fc" id="L500">        return new IllegalStateException(</span>
+                &quot;Decision report template '&quot;
+                        + DecisionRationaleTemplateContract.TEMPLATE_ID
+                        + &quot;' is unavailable: &quot; + detail,
+                cause);
+    }
+
+    private static String safeMessage(Exception exception) {
+<span class="fc" id="L508">        String message = exception.getMessage();</span>
+<span class="pc bpc" id="L509" title="2 of 4 branches missed.">        return message == null || message.isBlank()</span>
+<span class="nc" id="L510">                ? exception.getClass().getSimpleName()</span>
+<span class="fc" id="L511">                : message;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

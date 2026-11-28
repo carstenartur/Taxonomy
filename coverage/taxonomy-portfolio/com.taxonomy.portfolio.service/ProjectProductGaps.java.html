@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ProjectProductGaps.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-portfolio</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.service</a> &gt; <span class="el_source">ProjectProductGaps.java</span></div><h1>ProjectProductGaps.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.service;
+
+import com.taxonomy.dto.AnalysisCoverage;
+import com.taxonomy.dto.ProductCoverageGap;
+import com.taxonomy.portfolio.repository.ProductGapSnapshotRow;
+
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+
+/** Collects confirmed product gaps from the selected project's retained analyses. */
+<span class="fc" id="L15">public final class ProjectProductGaps {</span>
+<span class="fc" id="L16">    public record Candidate(String code, Double assessedScore, double recordedScore, String reason) { }</span>
+<span class="fc" id="L17">    public record Observation(String snapshotId, Long requirementId, String requirementKey, Long requirementVersionId,</span>
+                              int requirementVersion, String catalogueFingerprint, Integer minimumSuitabilityScore,
+                              double familyScore, String reason, List&lt;Candidate&gt; candidates) { }
+<span class="fc" id="L20">    public record Family(String familyCode, String familyName, String catalogueFingerprint, List&lt;Observation&gt; observations) {</span>
+        public String reviewKey() {
+<span class="pc bpc" id="L22" title="2 of 4 branches missed.">            String source = catalogueFingerprint == null || catalogueFingerprint.isBlank()</span>
+<span class="pc" id="L23">                    ? &quot;snapshot:&quot; + observations.getFirst().snapshotId() : &quot;catalogue:&quot; + catalogueFingerprint;</span>
+<span class="fc" id="L24">            return com.taxonomy.identity.StableIdentityHash.sha256(familyCode.length() + &quot;:&quot; + familyCode + source);</span>
+        }
+
+        public String evidenceFingerprint() {
+<span class="fc" id="L28">            StringBuilder identity = new StringBuilder(reviewKey());</span>
+<span class="fc" id="L29">            observations.stream().map(Observation::snapshotId).sorted()</span>
+<span class="fc" id="L30">                    .forEach(id -&gt; identity.append(id.length()).append(':').append(id));</span>
+<span class="fc" id="L31">            return com.taxonomy.identity.StableIdentityHash.sha256(identity.toString());</span>
+        }
+    }
+<span class="fc" id="L34">    private record Key(String family, String catalogue, String unpinnedSnapshot) { }</span>
+
+    /** Read only the evidence fields from a saved snapshot; old payloads used scores as their score map. */
+    @com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
+<span class="fc" id="L38">    public record Evidence(List&lt;ProductCoverageGap&gt; productCoverageGaps, Map&lt;String, Double&gt; rawScores,</span>
+                           Map&lt;String, Double&gt; scores, Map&lt;String, String&gt; reasons, AnalysisCoverage analysisCoverage) { }
+
+<span class="fc" id="L41">    private record Group(String name, Map&lt;String, Observation&gt; bySnapshot) { }</span>
+<span class="fc" id="L42">    private final Map&lt;Key, Group&gt; groups = new LinkedHashMap&lt;&gt;();</span>
+
+    public void include(ProductGapSnapshotRow source, Evidence evidence) {
+<span class="pc bpc" id="L45" title="1 of 4 branches missed.">        if (evidence == null || evidence.productCoverageGaps() == null) return;</span>
+<span class="fc bfc" id="L46" title="All 2 branches covered.">        var scores = evidence.rawScores() == null ? evidence.scores() : evidence.rawScores();</span>
+<span class="pc bpc" id="L47" title="1 of 2 branches missed.">        if (scores == null) return;</span>
+<span class="fc bfc" id="L48" title="All 2 branches covered.">        for (var gap : evidence.productCoverageGaps()) {</span>
+<span class="pc bpc" id="L49" title="3 of 6 branches missed.">            if (gap == null || gap.productFamilyCode() == null || gap.productFamilyCode().isBlank()</span>
+<span class="pc bpc" id="L50" title="2 of 4 branches missed.">                    || gap.reason() == null || gap.reason().isBlank()</span>
+<span class="pc bpc" id="L51" title="2 of 4 branches missed.">                    || gap.candidateCodes().isEmpty() || gap.familyScore() &lt;= 0</span>
+<span class="pc bpc" id="L52" title="1 of 2 branches missed.">                    || !Objects.equals(scores.get(gap.productFamilyCode()), gap.familyScore())) continue;</span>
+<span class="fc" id="L53">            var candidates = new ArrayList&lt;Candidate&gt;();</span>
+<span class="fc bfc" id="L54" title="All 2 branches covered.">            for (var code : gap.candidateCodes().stream().distinct().sorted().toList()) {</span>
+<span class="fc bfc" id="L55" title="All 2 branches covered.">                if (!Objects.equals(scores.get(code), 0d)) break;</span>
+<span class="fc bfc" id="L56" title="All 2 branches covered.">                if (evidence.analysisCoverage() != null) {</span>
+<span class="fc" id="L57">                    var assessment = evidence.analysisCoverage().nodes().get(code);</span>
+<span class="pc bpc" id="L58" title="2 of 4 branches missed.">                    if (assessment == null || assessment.state() != AnalysisCoverage.State.NOT_RELEVANT) break;</span>
+                }
+<span class="fc" id="L60">                candidates.add(new Candidate(code, gap.assessedProductScores().get(code), scores.get(code),</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">                        evidence.reasons() == null ? null : evidence.reasons().get(code)));</span>
+<span class="fc" id="L62">            }</span>
+<span class="fc bfc" id="L63" title="All 2 branches covered.">            if (candidates.size() != gap.candidateCodes().size()) continue;</span>
+<span class="fc" id="L64">            String fingerprint = source.taxonomyFingerprint();</span>
+<span class="fc" id="L65">            var key = new Key(gap.productFamilyCode(), fingerprint,</span>
+<span class="pc bpc" id="L66" title="1 of 4 branches missed.">                    fingerprint == null || fingerprint.isBlank() ? source.id() : null);</span>
+<span class="fc" id="L67">            var group = groups.computeIfAbsent(key, ignored -&gt; new Group(gap.productFamilyName(), new LinkedHashMap&lt;&gt;()));</span>
+<span class="fc" id="L68">            group.bySnapshot().putIfAbsent(source.id(), new Observation(source.id(), source.requirementId(), source.requirementKey(),</span>
+<span class="fc" id="L69">                    source.requirementVersionId(), source.requirementVersionNumber(), fingerprint,</span>
+<span class="fc" id="L70">                    gap.minimumSuitabilityScore(), gap.familyScore(), gap.reason(), List.copyOf(candidates)));</span>
+<span class="fc" id="L71">        }</span>
+<span class="fc" id="L72">    }</span>
+
+    public List&lt;Family&gt; families() {
+<span class="fc" id="L75">        return groups.entrySet().stream().map(entry -&gt; new Family(entry.getKey().family(), entry.getValue().name(),</span>
+<span class="fc" id="L76">                        entry.getKey().catalogue(), List.copyOf(entry.getValue().bySnapshot().values())))</span>
+<span class="fc" id="L77">                .sorted(Comparator.comparing(Family::familyCode)</span>
+<span class="fc" id="L78">                        .thenComparing(Family::catalogueFingerprint, Comparator.nullsLast(Comparator.naturalOrder())))</span>
+<span class="fc" id="L79">                .toList();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.taxonomy.AutomaticCatalogueWorkloadTest
+-------------------------------------------------------------------------------
+Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 46.46 s -- in com.taxonomy.AutomaticCatalogueWorkloadTest

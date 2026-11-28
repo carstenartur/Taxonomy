@@ -1,0 +1,280 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PortfolioSnapshotEvidenceReader.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-portfolio</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.service</a> &gt; <span class="el_source">PortfolioSnapshotEvidenceReader.java</span></div><h1>PortfolioSnapshotEvidenceReader.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.service;
+
+import com.taxonomy.dto.AnalysisResult;
+import com.taxonomy.dto.ArchitectureRecommendation;
+import com.taxonomy.dto.GapAnalysisView;
+import com.taxonomy.dto.PatternDetectionView;
+import com.taxonomy.exchange.backup.PortableJsonPayloads.PayloadReader;
+import com.taxonomy.portfolio.payload.PortfolioAnalysisPayloads;
+import jakarta.persistence.EntityManager;
+import org.hibernate.Session;
+import org.hibernate.SessionFactory;
+import org.hibernate.type.StandardBasicTypes;
+import org.springframework.stereotype.Repository;
+
+import java.io.FilterReader;
+import java.io.IOException;
+import java.io.Reader;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.nio.CharBuffer;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.sql.Clob;
+import java.util.LinkedHashMap;
+import java.util.Objects;
+import java.util.Optional;
+
+/** Reads complete immutable evidence while its caller's transaction still owns the CLOB locators. */
+@Repository
+public class PortfolioSnapshotEvidenceReader {
+    private static final int MAX_CONTINUATION_ENTRIES = 16;
+    private static final long MAX_CONTINUATION_BYTES = 2L * 1024 * 1024;
+    private static final int FINGERPRINT_BUFFER_CHARACTERS = 8192;
+    private static final String SELECT = &quot;&quot;&quot;
+            select s.analysis_payload as analysis_payload, s.gap_payload as gap_payload,
+                   s.pattern_payload as pattern_payload, s.recommendation_payload as recommendation_payload
+              from req_analysis_snapshot s
+             where s.id = :id and s.project_id = :projectId and s.scope_key = :scopeKey
+            &quot;&quot;&quot;;
+    private static final String SELECT_ANALYSIS = &quot;&quot;&quot;
+            select s.id as snapshot_id, s.analysis_payload as analysis_payload
+              from req_analysis_snapshot s
+             where s.id = :id and s.project_id = :projectId and s.scope_key = :scopeKey
+               and s.job_id = :jobId and s.requirement_id = :requirementId
+               and s.requirement_version_id = :requirementVersionId
+            &quot;&quot;&quot;;
+
+<span class="fc" id="L48">    public record Evidence(AnalysisResult analysis, GapAnalysisView gapAnalysis,</span>
+                           PatternDetectionView patternDetection, ArchitectureRecommendation recommendation) { }
+    /** The wrapper preserves an existing row whose recorded analysis payload is null. */
+<span class="fc" id="L51">    public record AnalysisEvidence(AnalysisResult analysis) { }</span>
+<span class="fc" id="L52">    record ContinuationEvidence(ContinuationPolicyInputs inputs) { }</span>
+
+    private final EntityManager entityManager;
+    private final PortfolioJsonCodec jsonCodec;
+<span class="fc" id="L56">    private final LinkedHashMap&lt;ContinuationKey, MemoEntry&gt; validatedInputs = new LinkedHashMap&lt;&gt;(16, 0.75f, true);</span>
+    private long retainedContinuationBytes;
+
+<span class="fc" id="L59">    public PortfolioSnapshotEvidenceReader(EntityManager entityManager, PortfolioJsonCodec jsonCodec) {</span>
+<span class="fc" id="L60">        this.entityManager = entityManager;</span>
+<span class="fc" id="L61">        this.jsonCodec = jsonCodec;</span>
+<span class="fc" id="L62">    }</span>
+
+    public Optional&lt;Evidence&gt; read(Long projectId, String snapshotId, String scopeKey) {
+<span class="fc" id="L65">        Object[] row = entityManager.unwrap(Session.class).createNativeQuery(SELECT, Object[].class)</span>
+<span class="fc" id="L66">                .addScalar(&quot;analysis_payload&quot;, StandardBasicTypes.CLOB)</span>
+<span class="fc" id="L67">                .addScalar(&quot;gap_payload&quot;, StandardBasicTypes.CLOB)</span>
+<span class="fc" id="L68">                .addScalar(&quot;pattern_payload&quot;, StandardBasicTypes.CLOB)</span>
+<span class="fc" id="L69">                .addScalar(&quot;recommendation_payload&quot;, StandardBasicTypes.CLOB)</span>
+<span class="fc" id="L70">                .setParameter(&quot;id&quot;, snapshotId).setParameter(&quot;projectId&quot;, projectId).setParameter(&quot;scopeKey&quot;, scopeKey)</span>
+<span class="fc" id="L71">                .getSingleResultOrNull();</span>
+<span class="fc bfc" id="L72" title="All 2 branches covered.">        if (row == null) return Optional.empty();</span>
+<span class="fc" id="L73">        Clob analysis = (Clob) row[0], gap = (Clob) row[1], pattern = (Clob) row[2], recommendation = (Clob) row[3];</span>
+        // Register every locator before opening any stream: even unopened payloads must be freed on failure.
+<span class="fc" id="L75">        try (AutoCloseable analysisLocator = locator(analysis); AutoCloseable gapLocator = locator(gap);</span>
+<span class="fc" id="L76">             AutoCloseable patternLocator = locator(pattern); AutoCloseable recommendationLocator = locator(recommendation)) {</span>
+<span class="fc" id="L77">            return Optional.of(new Evidence(parse(analysis, this::parseAnalysis),</span>
+<span class="fc" id="L78">                    parse(gap, input -&gt; jsonCodec.read(input, GapAnalysisView.class)),</span>
+<span class="fc" id="L79">                    parse(pattern, input -&gt; jsonCodec.read(input, PatternDetectionView.class)),</span>
+<span class="fc" id="L80">                    parse(recommendation, input -&gt; jsonCodec.read(input, ArchitectureRecommendation.class))));</span>
+<span class="fc" id="L81">        } catch (RuntimeException exception) {</span>
+<span class="fc" id="L82">            throw exception;</span>
+<span class="fc" id="L83">        } catch (Exception exception) {</span>
+<span class="fc" id="L84">            throw PortfolioException.analysisFailed(&quot;Could not read portfolio snapshot evidence&quot;, exception);</span>
+        }
+    }
+
+    public Optional&lt;AnalysisEvidence&gt; readAnalysis(Long projectId, String snapshotId, String scopeKey,
+                                                 String jobId, Long requirementId, Long requirementVersionId) {
+<span class="fc" id="L90">        Object[] row = entityManager.unwrap(Session.class).createNativeQuery(SELECT_ANALYSIS, Object[].class)</span>
+<span class="fc" id="L91">                .addScalar(&quot;snapshot_id&quot;, StandardBasicTypes.STRING)</span>
+<span class="fc" id="L92">                .addScalar(&quot;analysis_payload&quot;, StandardBasicTypes.CLOB)</span>
+<span class="fc" id="L93">                .setParameter(&quot;id&quot;, snapshotId).setParameter(&quot;projectId&quot;, projectId).setParameter(&quot;scopeKey&quot;, scopeKey)</span>
+<span class="fc" id="L94">                .setParameter(&quot;jobId&quot;, jobId).setParameter(&quot;requirementId&quot;, requirementId)</span>
+<span class="fc" id="L95">                .setParameter(&quot;requirementVersionId&quot;, requirementVersionId).getSingleResultOrNull();</span>
+<span class="fc bfc" id="L96" title="All 2 branches covered.">        if (row == null) return Optional.empty();</span>
+<span class="fc" id="L97">        Clob clob = (Clob) row[1];</span>
+<span class="fc" id="L98">        try (AutoCloseable locator = locator(clob)) {</span>
+<span class="fc" id="L99">            return Optional.of(new AnalysisEvidence(parse(clob, this::parseAnalysis)));</span>
+<span class="fc" id="L100">        } catch (RuntimeException exception) {</span>
+<span class="fc" id="L101">            throw exception;</span>
+<span class="fc" id="L102">        } catch (Exception exception) {</span>
+<span class="fc" id="L103">            throw PortfolioException.analysisFailed(&quot;Could not read portfolio snapshot evidence&quot;, exception);</span>
+        }
+    }
+
+    Optional&lt;ContinuationEvidence&gt; readContinuation(Long projectId, String snapshotId, String scopeKey,
+                                                    String jobId, Long requirementId, Long requirementVersionId) {
+<span class="fc" id="L109">        Session session = entityManager.unwrap(Session.class);</span>
+<span class="fc" id="L110">        var key = new ContinuationKey(session.getSessionFactory(), projectId, snapshotId, scopeKey, jobId,</span>
+                requirementId, requirementVersionId);
+        MemoEntry cached;
+<span class="fc" id="L113">        synchronized (validatedInputs) {</span>
+<span class="fc" id="L114">            cached = validatedInputs.get(key);</span>
+<span class="fc" id="L115">        }</span>
+<span class="fc" id="L116">        Object[] row = selectContinuation(session, key);</span>
+<span class="fc bfc" id="L117" title="All 2 branches covered.">        if (row == null) return Optional.empty();</span>
+<span class="fc" id="L118">        Clob clob = (Clob) row[1];</span>
+<span class="fc bfc" id="L119" title="All 2 branches covered.">        if (clob == null) return Optional.of(new ContinuationEvidence(null));</span>
+        try {
+<span class="fc bfc" id="L121" title="All 2 branches covered.">            if (cached != null) {</span>
+<span class="fc" id="L122">                var comparison = readContinuationPass(clob, false);</span>
+<span class="fc bfc" id="L123" title="All 2 branches covered.">                if (cached.validated().fingerprint().matches(comparison.fingerprint())) {</span>
+<span class="fc" id="L124">                    return Optional.of(new ContinuationEvidence(cached.validated().inputs()));</span>
+                }
+                // Read a fresh scoped locator after releasing the comparison locator. Only the
+                // full validation pass can associate its fingerprint with newly bound inputs.
+<span class="fc" id="L128">                row = selectContinuation(session, key);</span>
+<span class="pc bpc" id="L129" title="1 of 2 branches missed.">                if (row == null) return Optional.empty();</span>
+<span class="fc" id="L130">                clob = (Clob) row[1];</span>
+<span class="pc bpc" id="L131" title="1 of 2 branches missed.">                if (clob == null) return Optional.of(new ContinuationEvidence(null));</span>
+            }
+<span class="fc" id="L133">            var validated = readContinuationPass(clob, true);</span>
+<span class="fc" id="L134">            remember(key, validated);</span>
+<span class="fc" id="L135">            return Optional.of(new ContinuationEvidence(validated.inputs()));</span>
+<span class="fc" id="L136">        } catch (RuntimeException exception) {</span>
+<span class="fc" id="L137">            throw exception;</span>
+<span class="fc" id="L138">        } catch (Exception exception) {</span>
+<span class="fc" id="L139">            throw PortfolioException.analysisFailed(&quot;Could not read portfolio snapshot evidence&quot;, exception);</span>
+        }
+    }
+
+    private static Object[] selectContinuation(Session session, ContinuationKey key) {
+<span class="fc" id="L144">        return session.createNativeQuery(SELECT_ANALYSIS, Object[].class)</span>
+<span class="fc" id="L145">                .addScalar(&quot;snapshot_id&quot;, StandardBasicTypes.STRING)</span>
+<span class="fc" id="L146">                .addScalar(&quot;analysis_payload&quot;, StandardBasicTypes.CLOB)</span>
+<span class="fc" id="L147">                .setParameter(&quot;id&quot;, key.snapshotId()).setParameter(&quot;projectId&quot;, key.projectId())</span>
+<span class="fc" id="L148">                .setParameter(&quot;scopeKey&quot;, key.scopeKey()).setParameter(&quot;jobId&quot;, key.jobId())</span>
+<span class="fc" id="L149">                .setParameter(&quot;requirementId&quot;, key.requirementId())</span>
+<span class="fc" id="L150">                .setParameter(&quot;requirementVersionId&quot;, key.requirementVersionId()).getSingleResultOrNull();</span>
+    }
+
+    private ValidatedPass readContinuationPass(Clob clob, boolean bind) throws Exception {
+<span class="fc" id="L154">        try (AutoCloseable locator = locator(clob);</span>
+<span class="fc" id="L155">             var input = new FingerprintingReader(sha256(), JdbcClobReaders.open(clob))) {</span>
+            // The memo compares the stored characters. Only a validation pass decodes for binding.
+<span class="fc bfc" id="L157" title="All 2 branches covered.">            AnalysisResult analysis = bind ? parseAnalysis(input) : null;</span>
+<span class="fc" id="L158">            return new ValidatedPass(input.finish(), ContinuationPolicyInputs.from(analysis));</span>
+        }
+    }
+
+    private void remember(ContinuationKey key, ValidatedPass validated) {
+<span class="fc bfc" id="L163" title="All 2 branches covered.">        long bytes = key.retainedBytes() + (validated.inputs() == null ? 0 : validated.inputs().retainedBytes());</span>
+<span class="fc" id="L164">        synchronized (validatedInputs) {</span>
+<span class="fc" id="L165">            var previous = validatedInputs.remove(key);</span>
+<span class="fc bfc" id="L166" title="All 2 branches covered.">            if (previous != null) retainedContinuationBytes -= previous.retainedBytes();</span>
+<span class="fc bfc" id="L167" title="All 2 branches covered.">            if (bytes &gt; MAX_CONTINUATION_BYTES) return;</span>
+<span class="fc bfc" id="L168" title="All 4 branches covered.">            while (validatedInputs.size() &gt;= MAX_CONTINUATION_ENTRIES</span>
+                    || retainedContinuationBytes + bytes &gt; MAX_CONTINUATION_BYTES) {
+<span class="fc" id="L170">                retainedContinuationBytes -= validatedInputs.pollFirstEntry().getValue().retainedBytes();</span>
+            }
+<span class="fc" id="L172">            validatedInputs.put(key, new MemoEntry(validated, bytes));</span>
+<span class="fc" id="L173">            retainedContinuationBytes += bytes;</span>
+<span class="fc" id="L174">        }</span>
+<span class="fc" id="L175">    }</span>
+
+<span class="fc" id="L177">    private record ContinuationKey(SessionFactory factory, Long projectId, String snapshotId, String scopeKey,</span>
+                                   String jobId, Long requirementId, Long requirementVersionId) {
+        @Override public boolean equals(Object value) {
+<span class="pc bpc" id="L180" title="1 of 2 branches missed.">            return value instanceof ContinuationKey other &amp;&amp; factory == other.factory</span>
+<span class="pc bpc" id="L181" title="2 of 4 branches missed.">                    &amp;&amp; Objects.equals(projectId, other.projectId) &amp;&amp; Objects.equals(snapshotId, other.snapshotId)</span>
+<span class="pc bpc" id="L182" title="2 of 4 branches missed.">                    &amp;&amp; Objects.equals(scopeKey, other.scopeKey) &amp;&amp; Objects.equals(jobId, other.jobId)</span>
+<span class="pc bpc" id="L183" title="1 of 2 branches missed.">                    &amp;&amp; Objects.equals(requirementId, other.requirementId)</span>
+<span class="pc bpc" id="L184" title="2 of 4 branches missed.">                    &amp;&amp; Objects.equals(requirementVersionId, other.requirementVersionId);</span>
+        }
+
+        @Override public int hashCode() {
+<span class="fc" id="L188">            return Objects.hash(System.identityHashCode(factory), projectId, snapshotId, scopeKey, jobId,</span>
+                    requirementId, requirementVersionId);
+        }
+
+        long retainedBytes() {
+            // Includes map entry, key, boxed IDs, memo records and digest storage.
+<span class="fc" id="L194">            return 512L + ContinuationPolicyInputs.stringBytes(snapshotId)</span>
+<span class="fc" id="L195">                    + ContinuationPolicyInputs.stringBytes(scopeKey) + ContinuationPolicyInputs.stringBytes(jobId);</span>
+        }
+    }
+
+<span class="fc" id="L199">    private record MemoEntry(ValidatedPass validated, long retainedBytes) { }</span>
+<span class="fc" id="L200">    private record ValidatedPass(Fingerprint fingerprint, ContinuationPolicyInputs inputs) { }</span>
+<span class="fc" id="L201">    private record Fingerprint(long characters, byte[] digest) {</span>
+        boolean matches(Fingerprint other) {
+<span class="fc bfc" id="L203" title="All 4 branches covered.">            return characters == other.characters &amp;&amp; MessageDigest.isEqual(digest, other.digest);</span>
+        }
+    }
+
+    private static MessageDigest sha256() {
+        try {
+<span class="fc" id="L209">            return MessageDigest.getInstance(&quot;SHA-256&quot;);</span>
+<span class="nc" id="L210">        } catch (NoSuchAlgorithmException unavailable) {</span>
+<span class="nc" id="L211">            throw new IllegalStateException(&quot;SHA-256 is unavailable&quot;, unavailable);</span>
+        }
+    }
+
+    /** Hashes raw UTF-16 code units, including unpaired surrogates, as the parser reads them. */
+    private static final class FingerprintingReader extends FilterReader {
+        private final MessageDigest digest;
+<span class="fc" id="L218">        private final byte[] bytes = new byte[2 * FINGERPRINT_BUFFER_CHARACTERS];</span>
+<span class="fc" id="L219">        private final CharBuffer codeUnits = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).asCharBuffer();</span>
+        private long characters;
+        private boolean exhausted;
+
+        FingerprintingReader(MessageDigest digest, Reader input) {
+<span class="fc" id="L224">            super(input);</span>
+<span class="fc" id="L225">            this.digest = digest;</span>
+<span class="fc" id="L226">        }</span>
+
+        @Override public int read() throws IOException {
+<span class="fc bfc" id="L229" title="All 2 branches covered.">            if (exhausted) return -1;</span>
+<span class="fc" id="L230">            int unit = super.read();</span>
+<span class="fc bfc" id="L231" title="All 2 branches covered.">            if (unit &lt; 0) exhausted = true;</span>
+            else {
+<span class="fc" id="L233">                digest.update((byte) unit);</span>
+<span class="fc" id="L234">                digest.update((byte) (unit &gt;&gt;&gt; 8));</span>
+<span class="fc" id="L235">                characters++;</span>
+            }
+<span class="fc" id="L237">            return unit;</span>
+        }
+
+        @Override public int read(char[] buffer, int offset, int count) throws IOException {
+<span class="pc bpc" id="L241" title="1 of 2 branches missed.">            if (count == 0) return 0;</span>
+<span class="fc bfc" id="L242" title="All 2 branches covered.">            if (exhausted) return -1;</span>
+<span class="fc" id="L243">            int length = super.read(buffer, offset, count);</span>
+<span class="fc bfc" id="L244" title="All 2 branches covered.">            if (length &lt; 0) exhausted = true;</span>
+            else {
+<span class="fc bfc" id="L246" title="All 2 branches covered.">                for (int copied = 0; copied &lt; length;) {</span>
+<span class="fc" id="L247">                    int batch = Math.min(length - copied, codeUnits.capacity());</span>
+<span class="fc" id="L248">                    codeUnits.clear().put(buffer, offset + copied, batch);</span>
+<span class="fc" id="L249">                    digest.update(bytes, 0, 2 * batch);</span>
+<span class="fc" id="L250">                    copied += batch;</span>
+<span class="fc" id="L251">                }</span>
+<span class="fc" id="L252">                characters += length;</span>
+            }
+<span class="fc" id="L254">            return length;</span>
+        }
+
+        Fingerprint finish() throws IOException {
+<span class="fc bfc" id="L258" title="All 2 branches covered.">            if (!exhausted) {</span>
+<span class="fc" id="L259">                char[] tail = new char[FINGERPRINT_BUFFER_CHARACTERS];</span>
+<span class="fc bfc" id="L260" title="All 2 branches covered.">                while (read(tail) != -1) { }</span>
+            }
+<span class="fc" id="L262">            return new Fingerprint(characters, digest.digest());</span>
+        }
+    }
+
+    private AnalysisResult parseAnalysis(Reader input) throws IOException {
+<span class="fc" id="L267">        return PortfolioAnalysisPayloads.read(input, json -&gt; jsonCodec.read(json, AnalysisResult.class));</span>
+    }
+
+    private static &lt;T&gt; T parse(Clob clob, PayloadReader&lt;T&gt; parser) throws Exception {
+<span class="fc bfc" id="L271" title="All 2 branches covered.">        try (Reader input = clob == null ? null : JdbcClobReaders.open(clob)) {</span>
+<span class="fc" id="L272">            return parser.read(input);</span>
+        }
+    }
+
+    private static AutoCloseable locator(Clob clob) {
+<span class="fc bfc" id="L277" title="All 2 branches covered.">        return () -&gt; { if (clob != null) clob.free(); };</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

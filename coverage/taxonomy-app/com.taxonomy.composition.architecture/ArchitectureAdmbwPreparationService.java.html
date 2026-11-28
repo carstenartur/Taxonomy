@@ -1,0 +1,286 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchitectureAdmbwPreparationService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.composition.architecture</a> &gt; <span class="el_source">ArchitectureAdmbwPreparationService.java</span></div><h1>ArchitectureAdmbwPreparationService.java</h1><pre class="source lang-java linenums">package com.taxonomy.composition.architecture;
+
+import com.taxonomy.dsl.admbw.AdmbwFffmlvProfile;
+import com.taxonomy.dsl.admbw.AdmbwPreparation;
+import com.taxonomy.dsl.command.ArchitectureDslCommands;
+import com.taxonomy.dsl.command.ArchitectureSemanticPatch;
+import com.taxonomy.dsl.model.CanonicalArchitectureModel;
+import com.taxonomy.dsl.model.CatalogueDefinitionResolver;
+import com.taxonomy.dsl.model.CatalogueDefinitionResolver.Node;
+import com.taxonomy.dsl.model.CatalogueReference;
+import com.taxonomy.editor.ArchitectureCommandPort.Context;
+import com.taxonomy.editor.ArchitectureCommandPort.Metadata;
+import com.taxonomy.editor.ArchitectureEditorService;
+import com.taxonomy.extension.api.integration.AdmbwQeaExport;
+import com.taxonomy.extension.api.integration.IntegrationConnectorExtension;
+import com.taxonomy.extension.api.plugin.ExtensionCatalog;
+import com.taxonomy.extension.api.plugin.ExtensionUnavailableException;
+import com.taxonomy.identity.StableIdentityHash;
+import com.taxonomy.workspace.service.RepositoryContext;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
+
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HexFormat;
+import java.util.List;
+import java.util.Objects;
+import java.util.Set;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+
+import static com.taxonomy.composition.architecture.ArchitectureLifecycleService.*;
+
+/** Reviewed native-reference choices join the existing durable architecture operation, then checkpoint. */
+@Service
+@com.taxonomy.shared.features.ConditionalOnFeature(&quot;portfolio&quot;)
+public class ArchitectureAdmbwPreparationService {
+<span class="fc" id="L43">    private static final Set&lt;String&gt; SERVICE_TYPES = Set.of(&quot;CoreService&quot;, &quot;COIService&quot;);</span>
+<span class="fc" id="L44">    private static final Pattern WHITESPACE = Pattern.compile(&quot;\\s+&quot;, Pattern.UNICODE_CHARACTER_CLASS);</span>
+    private final ArchitectureEditorService editor;
+    private final ArchitectureLifecycleService lifecycle;
+    private final ExtensionCatalog extensions;
+    private final TransactionTemplate transactions;
+<span class="fc" id="L49">    private CatalogueDefinitionResolver catalogues = CatalogueDefinitionResolver.standard();</span>
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setCatalogueDefinitionResolver(CatalogueDefinitionResolver catalogues) {
+<span class="fc" id="L53">        this.catalogues = Objects.requireNonNull(catalogues);</span>
+<span class="fc" id="L54">    }</span>
+
+    public ArchitectureAdmbwPreparationService(ArchitectureEditorService editor, ArchitectureLifecycleService lifecycle,
+<span class="fc" id="L57">            ExtensionCatalog extensions, PlatformTransactionManager transactions) {</span>
+<span class="fc" id="L58">        this.editor = editor;</span>
+<span class="fc" id="L59">        this.lifecycle = lifecycle;</span>
+<span class="fc" id="L60">        this.extensions = extensions;</span>
+<span class="fc" id="L61">        this.transactions = new TransactionTemplate(transactions);</span>
+<span class="fc" id="L62">    }</span>
+
+    public record Request(Context context, Metadata metadata, AdmbwPreparation.Selection selection,
+                          String basisSha256, String previewFingerprint,
+                          boolean relationshipReviewed, boolean derivationReviewed) {
+<span class="fc" id="L67">        public Request {</span>
+<span class="fc" id="L68">            Objects.requireNonNull(context, &quot;context&quot;);</span>
+<span class="fc" id="L69">            Objects.requireNonNull(metadata, &quot;metadata&quot;);</span>
+<span class="fc" id="L70">            Objects.requireNonNull(selection, &quot;selection&quot;);</span>
+<span class="pc bpc" id="L71" title="2 of 4 branches missed.">            if (basisSha256 == null || !basisSha256.matches(&quot;[a-f0-9]{64}&quot;))</span>
+<span class="nc" id="L72">                throw new IllegalArgumentException(&quot;Inspect the exact QEA basis before preparing a delivery&quot;);</span>
+<span class="fc" id="L73">        }</span>
+    }
+
+<span class="fc" id="L76">    public record Preview(Context context, String fingerprint, String viewId, String requirementId,</span>
+                          int requirementVersion, String requirementContentHash, String basisSha256,
+                          List&lt;String&gt; notes, AdmbwFffmlvProfile.Report assessment,
+                          List&lt;AdmbwFffmlvProfile.Issue&gt; qeaIssues, List&lt;ArchitectureSemanticPatch.BlockChange&gt; changes) { }
+
+<span class="nc" id="L81">    public record InspectedBasis(String sha256, String projectGuid, List&lt;AdmbwQeaExport.Root&gt; roots,</span>
+                                 List&lt;AdmbwQeaExport.Reference&gt; references, Long revision,
+                                 List&lt;ServiceTypeEvidence&gt; serviceTypeEvidence) { }
+<span class="fc" id="L84">    public record ServiceTypeEvidence(String serviceId, String catalogueUuid, AdmbwQeaExport.ServiceSpecification specification) { }</span>
+
+    public InspectedBasis inspect(RepositoryContext context, byte[] bytes) throws IOException {
+<span class="nc" id="L87">        lifecycle.authorize(context, true);</span>
+<span class="nc" id="L88">        var basis = inspect(bytes);</span>
+<span class="nc bnc" id="L89" title="All 2 branches missed.">        if (basis.serviceSpecifications().isEmpty()) {</span>
+<span class="nc" id="L90">            return new InspectedBasis(basis.sha256(), basis.projectGuid(), basis.roots(), basis.references(), null, List.of());</span>
+        }
+<span class="nc" id="L92">        var document = editor.read(context, null);</span>
+<span class="nc bnc" id="L93" title="All 2 branches missed.">        var evidence = &quot;READY&quot;.equals(document.projectionState())</span>
+<span class="nc" id="L94">                ? serviceTypeEvidence(new ArchitectureDslCommands().model(document.dsl()), catalogues, basis.serviceSpecifications())</span>
+<span class="nc" id="L95">                : List.&lt;ServiceTypeEvidence&gt;of();</span>
+<span class="nc" id="L96">        return new InspectedBasis(basis.sha256(), basis.projectGuid(), basis.roots(), basis.references(), document.context().revision(), evidence);</span>
+    }
+
+    /** An exact name and explicit source can corroborate the stereotype; the IDs stay distinct. */
+    static List&lt;ServiceTypeEvidence&gt; serviceTypeEvidence(CanonicalArchitectureModel model, CatalogueDefinitionResolver catalogues,
+            List&lt;AdmbwQeaExport.ServiceSpecification&gt; specifications) {
+<span class="pc bpc" id="L102" title="1 of 4 branches missed.">        if (model.getCatalogueRevision() == null || model.getCatalogueRevision().isBlank()) return List.of();</span>
+<span class="fc" id="L103">        var nodes = catalogues.catalogueNodes(model);</span>
+<span class="pc bpc" id="L104" title="1 of 2 branches missed.">        if (nodes.isEmpty()) return List.of();</span>
+<span class="fc" id="L105">        var definition = catalogues.forModel(model);</span>
+<span class="fc" id="L106">        var catalogueNames = nodes.stream()</span>
+<span class="pc bpc" id="L107" title="2 of 4 branches missed.">                .filter(node -&gt; isServiceType(definition.typeFor(node.root())) &amp;&amp; !normalized(node.nameEn()).isEmpty())</span>
+<span class="fc" id="L108">                .collect(Collectors.groupingBy(node -&gt; normalized(node.nameEn())));</span>
+<span class="pc bpc" id="L109" title="1 of 2 branches missed.">        var nativeNames = specifications.stream().filter(spec -&gt; !normalized(spec.name()).isEmpty())</span>
+<span class="fc" id="L110">                .collect(Collectors.groupingBy(spec -&gt; normalized(spec.name()),</span>
+<span class="fc" id="L111">                        Collectors.groupingBy(AdmbwQeaExport.ServiceSpecification::rootGuid)));</span>
+<span class="fc" id="L112">        var evidence = new ArrayList&lt;ServiceTypeEvidence&gt;();</span>
+<span class="fc bfc" id="L113" title="All 2 branches covered.">        for (var element : model.getElements()) {</span>
+<span class="pc bpc" id="L114" title="1 of 2 branches missed.">            if (!isServiceType(element.getType())) continue;</span>
+<span class="fc" id="L115">            String title = normalized(element.getTitle());</span>
+<span class="fc" id="L116">            List&lt;Node&gt; candidates = catalogueNames.getOrDefault(title, List.of());</span>
+<span class="fc bfc" id="L117" title="All 2 branches covered.">            if (candidates.size() != 1) continue;</span>
+<span class="fc" id="L118">            Node node = candidates.getFirst();</span>
+<span class="pc bpc" id="L119" title="1 of 4 branches missed.">            if (!node.code().equals(element.getId()) || !element.getType().equals(definition.typeFor(node.root()))</span>
+<span class="pc bpc" id="L120" title="2 of 4 branches missed.">                    || element.getTaxonomy() != null &amp;&amp; !node.root().equals(element.getTaxonomy())) continue;</span>
+<span class="fc" id="L121">            var reference = CatalogueReference.from(node.uuid(), null, null);</span>
+<span class="fc" id="L122">            String suppliedUuid = element.getExtensions().get(CatalogueReference.UUID_PROPERTY);</span>
+<span class="pc bpc" id="L123" title="2 of 6 branches missed.">            if (reference == null || suppliedUuid != null &amp;&amp; !reference.uuid().equalsIgnoreCase(suppliedUuid)) continue;</span>
+<span class="fc" id="L124">            var byRoot = nativeNames.get(title);</span>
+<span class="pc bpc" id="L125" title="1 of 2 branches missed.">            if (byRoot == null) continue;</span>
+<span class="fc bfc" id="L126" title="All 2 branches covered.">            for (var matches : byRoot.values()) {</span>
+<span class="fc bfc" id="L127" title="All 2 branches covered.">                if (matches.size() != 1) continue;</span>
+<span class="fc" id="L128">                var specification = matches.getFirst();</span>
+<span class="fc bfc" id="L129" title="All 2 branches covered.">                if (&quot;NATO C3 Taxonomy&quot;.equals(specification.source())) {</span>
+<span class="fc" id="L130">                    evidence.add(new ServiceTypeEvidence(element.getId(), reference.uuid(), specification));</span>
+                }
+<span class="fc" id="L132">            }</span>
+<span class="fc" id="L133">        }</span>
+<span class="fc" id="L134">        evidence.sort(Comparator.comparing(ServiceTypeEvidence::serviceId)</span>
+<span class="pc" id="L135">                .thenComparing(item -&gt; item.specification().rootGuid()));</span>
+<span class="fc" id="L136">        return List.copyOf(evidence);</span>
+    }
+
+<span class="pc bpc" id="L139" title="2 of 4 branches missed.">    private static boolean isServiceType(String value) { return value != null &amp;&amp; SERVICE_TYPES.contains(value); }</span>
+
+    private static String normalized(String value) {
+<span class="pc bpc" id="L142" title="1 of 2 branches missed.">        return value == null ? &quot;&quot; : WHITESPACE.matcher(value).replaceAll(&quot; &quot;).strip();</span>
+    }
+
+    public Preview preview(RepositoryContext context, Request request, byte[] bytes) throws IOException {
+<span class="fc" id="L146">        lifecycle.authorize(context, true);</span>
+<span class="fc" id="L147">        requireContext(context, request.context());</span>
+<span class="fc" id="L148">        var document = editor.read(context, null);</span>
+<span class="fc" id="L149">        requireStand(request.context(), document.context());</span>
+<span class="pc bpc" id="L150" title="1 of 2 branches missed.">        if (!&quot;READY&quot;.equals(document.projectionState()))</span>
+<span class="nc" id="L151">            throw problem(&quot;VERSION_CHANGED&quot;, &quot;Refresh or reconcile the current architecture before preparing a delivery&quot;);</span>
+<span class="fc" id="L152">        var basis = basis(request, bytes);</span>
+<span class="fc" id="L153">        var prepared = prepare(document.dsl(), request, basis);</span>
+<span class="fc" id="L154">        return new Preview(document.context(), previewFingerprint(request, prepared), prepared.viewId(),</span>
+<span class="fc" id="L155">                prepared.requirementId(), prepared.requirementVersion(), prepared.requirementContentHash(),</span>
+<span class="fc" id="L156">                prepared.basisSha256(), prepared.notes(), prepared.assessment(), ArchitectureEditorExportController.qeaIssues(prepared.assessment()),</span>
+<span class="fc" id="L157">                ArchitectureSemanticPatch.between(document.dsl(), prepared.dsl()));</span>
+    }
+
+    public Publication accept(RepositoryContext context, Request request, byte[] bytes) throws IOException {
+<span class="fc" id="L161">        lifecycle.authorize(context, true);</span>
+<span class="fc" id="L162">        requireContext(context, request.context());</span>
+<span class="fc bfc" id="L163" title="All 4 branches covered.">        if (!request.relationshipReviewed() || !request.derivationReviewed())</span>
+<span class="fc" id="L164">            throw problem(&quot;ADMBW_REVIEW_REQUIRED&quot;, &quot;Review both the service/capability relationship and the requirement derivation&quot;);</span>
+<span class="pc bpc" id="L165" title="2 of 4 branches missed.">        if (request.previewFingerprint() == null || !request.previewFingerprint().matches(&quot;[a-f0-9]{64}&quot;))</span>
+<span class="nc" id="L166">            throw problem(&quot;PREVIEW_CHANGED&quot;, &quot;Preview the exact selected architecture and references before accepting&quot;);</span>
+        // The byte identity is part of the durable request fingerprint. A retry after a successful
+        // commit does not need to open the plugin or reapply a plan to a newer source revision.
+<span class="fc" id="L169">        requireBasisHash(request, bytes);</span>
+<span class="fc" id="L170">        String intent = fingerprint(&quot;admbw-preparation-v1&quot;, request.context(), request.metadata(), selectionFingerprint(request.selection()),</span>
+<span class="fc" id="L171">                request.basisSha256(), request.previewFingerprint(), request.relationshipReviewed(), request.derivationReviewed());</span>
+<span class="fc" id="L172">        Metadata checkpoint = checkpointMetadata(request.metadata());</span>
+        Context accepted;
+        try {
+<span class="fc" id="L175">            accepted = transactions.execute(status -&gt; {</span>
+                try {
+<span class="fc" id="L177">                    return editor.acceptIntegration(context, request.context(), request.metadata(), intent, List.of(), source -&gt; {</span>
+<span class="fc" id="L178">                        var prepared = prepare(source, request, basis(request, bytes));</span>
+<span class="fc bfc" id="L179" title="All 2 branches covered.">                        if (!Objects.equals(request.previewFingerprint(), previewFingerprint(request, prepared)))</span>
+<span class="fc" id="L180">                            throw problem(&quot;PREVIEW_CHANGED&quot;, &quot;The source, choices or evidence changed; review a fresh preview&quot;);</span>
+<span class="fc" id="L181">                        return prepared.dsl();</span>
+                    }, checkpoint);
+<span class="nc" id="L183">                } catch (IOException failure) { throw new UncheckedIOException(failure); }</span>
+            });
+<span class="pc" id="L185">        } catch (UncheckedIOException failure) { throw failure.getCause(); }</span>
+<span class="fc" id="L186">        return lifecycle.finish(context, accepted, checkpoint);</span>
+    }
+
+<span class="fc" id="L189">    public record Recovery(Publication publication, AdmbwPreparation.DeliveryIdentity delivery,</span>
+                           AdmbwFffmlvProfile.Report assessment, List&lt;AdmbwFffmlvProfile.Issue&gt; qeaIssues) {}
+
+    public Recovery recover(RepositoryContext context, String operationId) throws IOException {
+<span class="fc" id="L193">        lifecycle.authorize(context, true);</span>
+<span class="fc" id="L194">        String id = java.util.UUID.fromString(operationId).toString();</span>
+<span class="fc" id="L195">        String checkpointId = checkpointId(id);</span>
+<span class="fc" id="L196">        var entry = editor.integrationReceipt(context, id, checkpointId);</span>
+<span class="fc bfc" id="L197" title="All 2 branches covered.">        var delivery = entry == null ? null : AdmbwPreparation.deliveryForOperation(entry.source(), id);</span>
+<span class="fc bfc" id="L198" title="All 2 branches covered.">        if (delivery == null) throw problem(&quot;NOT_FOUND&quot;, &quot;The selected workspace has no personal delivery receipt for this operation&quot;);</span>
+<span class="fc" id="L199">        var receipt = entry.checkpoint();</span>
+<span class="pc bpc" id="L200" title="1 of 4 branches missed.">        if (receipt == null &amp;&amp; entry.pending())</span>
+<span class="fc" id="L201">            return new Recovery(new Publication(entry.accepted(), &quot;CHECKPOINT_PENDING&quot;, null, null, null), delivery, null, List.of());</span>
+<span class="pc bpc" id="L202" title="1 of 2 branches missed.">        if (receipt != null) {</span>
+<span class="fc" id="L203">            try { editor.read(context, receipt.commitId()); }</span>
+<span class="nc" id="L204">            catch (ArchitectureDslCommands.CommandProblem unavailable) {</span>
+<span class="nc bnc" id="L205" title="All 2 branches missed.">                if (!&quot;NOT_FOUND&quot;.equals(unavailable.code())) throw unavailable;</span>
+<span class="nc" id="L206">                receipt = null;</span>
+<span class="fc" id="L207">            }</span>
+        }
+<span class="pc bpc" id="L209" title="1 of 2 branches missed.">        if (receipt == null) receipt = editor.integrationCheckpointForOperation(context, id).orElse(null);</span>
+<span class="pc bpc" id="L210" title="1 of 2 branches missed.">        if (receipt == null) return new Recovery(new Publication(entry.accepted(), &quot;RECONCILIATION_REQUIRED&quot;, null,</span>
+<span class="nc" id="L211">                &quot;VERSION_CHANGED&quot;, &quot;Reconcile the retained delivery before downloading it&quot;), delivery, null, List.of());</span>
+<span class="fc" id="L212">        var document = editor.read(context, receipt.commitId());</span>
+<span class="pc bpc" id="L213" title="1 of 2 branches missed.">        if (!delivery.equals(AdmbwPreparation.deliveryForOperation(document.dsl(), id)))</span>
+<span class="nc" id="L214">            throw problem(&quot;VERSION_CHANGED&quot;, &quot;The checkpoint no longer contains this reviewed delivery&quot;);</span>
+<span class="fc" id="L215">        var report = new AdmbwFffmlvProfile().assess(document.dsl(), delivery.projectCode(), delivery.viewId());</span>
+<span class="fc" id="L216">        return new Recovery(new Publication(receipt.context(), &quot;CHECKPOINTED&quot;, receipt, null, null), delivery,</span>
+<span class="fc" id="L217">                report, ArchitectureEditorExportController.qeaIssues(report));</span>
+    }
+
+    public Recovery resume(RepositoryContext context, String operationId) throws IOException {
+<span class="fc" id="L221">        var recovery = recover(context, operationId);</span>
+<span class="fc bfc" id="L222" title="All 2 branches covered.">        if (!&quot;CHECKPOINT_PENDING&quot;.equals(recovery.publication().state())) return recovery;</span>
+<span class="fc" id="L223">        String id = java.util.UUID.fromString(operationId).toString();</span>
+        try {
+<span class="fc" id="L225">            editor.resumeCheckpoint(context, checkpointId(id));</span>
+<span class="nc" id="L226">        } catch (ArchitectureDslCommands.CommandProblem changed) {</span>
+<span class="nc bnc" id="L227" title="All 2 branches missed.">            if (!&quot;NOT_FOUND&quot;.equals(changed.code())) throw changed;</span>
+            // A concurrent resume may already have published the original checkpoint.
+<span class="fc" id="L229">        }</span>
+<span class="fc" id="L230">        return recover(context, id);</span>
+    }
+
+    private AdmbwPreparation.Prepared prepare(String source, Request request, AdmbwQeaExport.Basis basis) {
+<span class="pc bpc" id="L234" title="1 of 2 branches missed.">        if (basis.roots().stream().noneMatch(root -&gt; root.guid().equalsIgnoreCase(request.selection().rootPackageGuid())))</span>
+<span class="nc" id="L235">            throw problem(&quot;ADMBW_REFERENCE_MISSING&quot;, &quot;Select an actual model root from this QEA basis&quot;);</span>
+<span class="fc" id="L236">        var references = basis.references().stream().map(ref -&gt; new AdmbwPreparation.Reference(ref.guid(), ref.stereotype(),</span>
+<span class="fc" id="L237">                ref.name(), ref.notes(), ref.packagePath(), ref.rootGuid(), ref.ownerGuid())).toList();</span>
+<span class="fc" id="L238">        return new AdmbwPreparation(catalogues).prepare(source, request.selection(),</span>
+<span class="fc" id="L239">                new AdmbwPreparation.Basis(basis.sha256(), basis.projectGuid(), references), request.metadata().commandId());</span>
+    }
+
+    private static String previewFingerprint(Request request, AdmbwPreparation.Prepared prepared) {
+<span class="fc" id="L243">        return fingerprint(&quot;admbw-preparation-preview-v1&quot;, request.context(), selectionFingerprint(request.selection()), request.basisSha256(),</span>
+<span class="fc" id="L244">                request.metadata().rationale(), StableIdentityHash.sha256(prepared.dsl()));</span>
+    }
+
+    // Free text may contain Java record delimiters. Hash each field with its own length.
+    private static String selectionFingerprint(AdmbwPreparation.Selection choice) {
+<span class="fc" id="L249">        return fingerprint(choice.projectCode(), choice.rootPackageGuid(), choice.serviceId(), choice.capabilityGuid(),</span>
+<span class="fc" id="L250">                choice.requirementId(), choice.requirementType(), choice.subjectGuid(), choice.constraintText(), choice.evidenceQuote());</span>
+    }
+
+    private AdmbwQeaExport.Basis basis(Request request, byte[] bytes) {
+<span class="fc" id="L254">        requireBasisHash(request, bytes);</span>
+<span class="fc" id="L255">        return inspect(bytes);</span>
+    }
+
+    private static void requireBasisHash(Request request, byte[] bytes) {
+<span class="fc bfc" id="L259" title="All 2 branches covered.">        if (!request.basisSha256().equals(hash(bytes)))</span>
+<span class="fc" id="L260">            throw problem(&quot;ADMBW_BASIS_CHANGED&quot;, &quot;The uploaded QEA basis changed; inspect it and preview again&quot;);</span>
+<span class="fc" id="L261">    }</span>
+
+    private AdmbwQeaExport.Basis inspect(byte[] bytes) {
+<span class="fc" id="L264">        String hash = hash(bytes);</span>
+<span class="fc" id="L265">        try (var lease = extensions.acquire(AdmbwQeaExport.KEY, IntegrationConnectorExtension.class)) {</span>
+<span class="pc bpc" id="L266" title="1 of 4 branches missed.">            if (!(lease.extension() instanceof AdmbwQeaExport inspector) || !inspector.supportsBasisInspection())</span>
+<span class="fc" id="L267">                throw unavailable();</span>
+<span class="fc" id="L268">            var basis = inspector.inspectAdmbwBasis(bytes);</span>
+<span class="pc bpc" id="L269" title="2 of 4 branches missed.">            if (basis == null || !hash.equals(basis.sha256()))</span>
+<span class="nc" id="L270">                throw problem(&quot;ADMBW_BASIS_CHANGED&quot;, &quot;The QEA inspection does not describe the uploaded bytes&quot;);</span>
+<span class="fc" id="L271">            return basis;</span>
+<span class="nc" id="L272">        } catch (ExtensionUnavailableException unavailable) { throw unavailable(); }</span>
+    }
+
+    private static com.taxonomy.dsl.command.ArchitectureDslCommands.CommandProblem unavailable() {
+<span class="fc" id="L276">        return problem(&quot;ADMBW_INSPECTOR_UNAVAILABLE&quot;, &quot;Install a Sparx plugin with ADMBw basis inspection support&quot;);</span>
+    }
+
+    private static String hash(byte[] bytes) {
+<span class="pc bpc" id="L280" title="3 of 6 branches missed.">        if (bytes == null || bytes.length == 0 || bytes.length &gt; AdmbwQeaExport.MAX_BASIS_BYTES)</span>
+<span class="nc" id="L281">            throw new IllegalArgumentException(&quot;Supply a nonempty QEA basis up to 32 MiB&quot;);</span>
+<span class="fc" id="L282">        try { return HexFormat.of().formatHex(MessageDigest.getInstance(&quot;SHA-256&quot;).digest(bytes)); }</span>
+<span class="nc" id="L283">        catch (NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

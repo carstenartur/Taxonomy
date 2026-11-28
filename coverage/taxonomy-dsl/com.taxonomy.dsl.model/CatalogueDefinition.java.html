@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>CatalogueDefinition.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-dsl</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dsl.model</a> &gt; <span class="el_source">CatalogueDefinition.java</span></div><h1>CatalogueDefinition.java</h1><pre class="source lang-java linenums">package com.taxonomy.dsl.model;
+
+import com.taxonomy.dsl.validation.RelationMetamodel;
+import com.taxonomy.dsl.validation.RelationMetamodel.DomainState;
+import com.taxonomy.dsl.validation.RelationMetamodel.RelationDomain;
+import com.taxonomy.dsl.validation.RelationMetamodel.TargetDomain;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
+import java.util.TreeSet;
+
+/** The workbook's ordered sheet identities, DSL element types and directed relation domains. */
+public final class CatalogueDefinition {
+    public record Root(String sheet, String code, String type) {
+<span class="fc" id="L21">        public Root {</span>
+<span class="pc bpc" id="L22" title="4 of 8 branches missed.">            if (sheet == null || sheet.isBlank() || !sheet.equals(sheet.strip())</span>
+<span class="pc bpc" id="L23" title="2 of 4 branches missed.">                    || code == null || !code.matches(&quot;[A-Z][A-Z0-9_]{0,63}&quot;)</span>
+<span class="pc bpc" id="L24" title="1 of 2 branches missed.">                    || type == null || !type.matches(&quot;[A-Z][A-Za-z0-9_]{0,63}&quot;))</span>
+<span class="nc" id="L25">                throw new IllegalArgumentException(&quot;Invalid catalogue sheet, root code or DSL type&quot;);</span>
+<span class="fc" id="L26">        }</span>
+    }
+<span class="fc" id="L28">    public record Direction(String source, String relation, String target) {}</span>
+
+<span class="fc" id="L30">    private static final List&lt;Root&gt; STANDARD_ROOTS = List.of(</span>
+            new Root(&quot;Business Processes&quot;, &quot;BP&quot;, &quot;Process&quot;),
+            new Root(&quot;Business Roles&quot;, &quot;BR&quot;, &quot;BusinessRole&quot;),
+            new Root(&quot;Capabilities&quot;, &quot;CP&quot;, &quot;Capability&quot;),
+            new Root(&quot;COI Services&quot;, &quot;CI&quot;, &quot;COIService&quot;),
+            new Root(&quot;Communications Services&quot;, &quot;CO&quot;, &quot;CommunicationsService&quot;),
+            new Root(&quot;Core Services&quot;, &quot;CR&quot;, &quot;CoreService&quot;),
+            new Root(&quot;Information Products&quot;, &quot;IP&quot;, &quot;InformationProduct&quot;),
+            new Root(&quot;User Applications&quot;, &quot;UA&quot;, &quot;UserApplication&quot;));
+<span class="fc" id="L39">    private static final TargetDomain FORBIDDEN = new TargetDomain(DomainState.FORBIDDEN, Set.of());</span>
+<span class="fc" id="L40">    private static final CatalogueDefinition STANDARD = new CatalogueDefinition(</span>
+<span class="fc" id="L41">            &quot;standard-v1&quot;, true, List.of(), List.of());</span>
+
+    public record Spec(String version, boolean extendsStandard, List&lt;Root&gt; roots, List&lt;Direction&gt; directions) {
+<span class="fc" id="L44">        public Spec {</span>
+<span class="fc" id="L45">            roots = List.copyOf(roots);</span>
+<span class="fc" id="L46">            directions = List.copyOf(directions);</span>
+<span class="fc" id="L47">        }</span>
+
+        public CatalogueDefinition definition() {
+<span class="fc" id="L50">            return new CatalogueDefinition(version, extendsStandard, roots, directions);</span>
+        }
+    }
+
+    private final Spec spec;
+    private final List&lt;Root&gt; roots;
+    private final Set&lt;String&gt; rootCodes;
+    private final Map&lt;String, String&gt; types;
+    private final Map&lt;String, String&gt; typeRoots;
+    private final Map&lt;String, RelationDomain&gt; domains;
+
+    public CatalogueDefinition(String version, boolean extendsStandard, List&lt;Root&gt; declaredRoots,
+<span class="fc" id="L62">                               List&lt;Direction&gt; directions) {</span>
+<span class="pc bpc" id="L63" title="3 of 6 branches missed.">        if (version == null || version.isBlank() || version.length() &gt; 128)</span>
+<span class="nc" id="L64">            throw new IllegalArgumentException(&quot;A catalogue definition needs a version&quot;);</span>
+<span class="fc" id="L65">        this.spec = new Spec(version, extendsStandard, declaredRoots, directions);</span>
+<span class="fc" id="L66">        var combined = new ArrayList&lt;Root&gt;();</span>
+<span class="fc bfc" id="L67" title="All 2 branches covered.">        if (extendsStandard) combined.addAll(STANDARD_ROOTS);</span>
+<span class="fc" id="L68">        combined.addAll(declaredRoots);</span>
+<span class="pc bpc" id="L69" title="1 of 2 branches missed.">        if (combined.isEmpty()) throw new IllegalArgumentException(&quot;A catalogue definition needs a root&quot;);</span>
+<span class="fc" id="L70">        this.roots = List.copyOf(combined);</span>
+
+<span class="fc" id="L72">        var rootToType = new LinkedHashMap&lt;String, String&gt;();</span>
+<span class="fc" id="L73">        var typeToRoot = new LinkedHashMap&lt;String, String&gt;();</span>
+<span class="fc" id="L74">        var sheets = new TreeSet&lt;&gt;(String.CASE_INSENSITIVE_ORDER);</span>
+<span class="fc bfc" id="L75" title="All 2 branches covered.">        for (Root root : roots) {</span>
+<span class="pc bpc" id="L76" title="1 of 4 branches missed.">            if (!sheets.add(root.sheet()) || !register(root.code(), root.type(), rootToType, typeToRoot))</span>
+<span class="fc" id="L77">                throw new IllegalArgumentException(&quot;Duplicate catalogue sheet, root code or DSL type: &quot; + root);</span>
+<span class="fc" id="L78">        }</span>
+<span class="fc" id="L79">        this.rootCodes = Collections.unmodifiableSet(new LinkedHashSet&lt;&gt;(rootToType.keySet()));</span>
+        // C4-only element types belong to the architecture metamodel, not to an imported sheet.
+<span class="pc bpc" id="L81" title="2 of 4 branches missed.">        if (!register(&quot;SY&quot;, &quot;System&quot;, rootToType, typeToRoot) || !register(&quot;CM&quot;, &quot;Component&quot;, rootToType, typeToRoot))</span>
+<span class="nc" id="L82">            throw new IllegalArgumentException(&quot;Catalogue root collides with a C4 architecture type&quot;);</span>
+<span class="fc" id="L83">        this.types = Collections.unmodifiableMap(rootToType);</span>
+<span class="fc" id="L84">        this.typeRoots = Collections.unmodifiableMap(typeToRoot);</span>
+<span class="fc" id="L85">        var result = new TreeMap&lt;String, RelationDomain&gt;();</span>
+<span class="fc bfc" id="L86" title="All 2 branches covered.">        if (extendsStandard) result.putAll(RelationMetamodel.relationDomains());</span>
+<span class="fc" id="L87">        var seen = new LinkedHashSet&lt;Direction&gt;();</span>
+<span class="fc bfc" id="L88" title="All 2 branches covered.">        for (Direction direction : directions) {</span>
+<span class="pc bpc" id="L89" title="2 of 4 branches missed.">            if (!types.containsKey(direction.source()) || !types.containsKey(direction.target())</span>
+<span class="pc bpc" id="L90" title="1 of 4 branches missed.">                    || !RelationMetamodel.relationTypes().contains(direction.relation()) || !seen.add(direction))</span>
+<span class="fc" id="L91">                throw new IllegalArgumentException(&quot;Invalid or duplicate catalogue relation direction: &quot; + direction);</span>
+<span class="fc" id="L92">            var domain = result.getOrDefault(direction.relation(), new RelationDomain(FORBIDDEN, Map.of()));</span>
+<span class="fc" id="L93">            var bySource = new TreeMap&lt;&gt;(domain.sourceDomains());</span>
+<span class="fc" id="L94">            var current = bySource.getOrDefault(direction.source(), domain.defaultDomain());</span>
+<span class="pc bpc" id="L95" title="1 of 2 branches missed.">            if (current.allows(direction.target())) continue;</span>
+<span class="fc" id="L96">            var targets = new TreeSet&lt;&gt;(current.roots());</span>
+<span class="fc" id="L97">            targets.add(direction.target());</span>
+<span class="fc" id="L98">            bySource.put(direction.source(), new TargetDomain(DomainState.RESTRICTED, targets));</span>
+<span class="fc" id="L99">            result.put(direction.relation(), new RelationDomain(domain.defaultDomain(), bySource));</span>
+<span class="fc" id="L100">        }</span>
+<span class="fc" id="L101">        this.domains = Collections.unmodifiableMap(result);</span>
+<span class="fc" id="L102">    }</span>
+
+    private static boolean register(String code, String type, Map&lt;String, String&gt; byCode, Map&lt;String, String&gt; byType) {
+<span class="pc bpc" id="L105" title="2 of 4 branches missed.">        if (byCode.containsKey(type) || byType.containsKey(code)</span>
+<span class="pc bpc" id="L106" title="1 of 4 branches missed.">                || byCode.containsKey(code) || byType.containsKey(type)) return false;</span>
+<span class="fc" id="L107">        byCode.put(code, type);</span>
+<span class="fc" id="L108">        byType.put(type, code);</span>
+<span class="fc" id="L109">        return true;</span>
+    }
+
+<span class="fc" id="L112">    public static CatalogueDefinition standard() { return STANDARD; }</span>
+<span class="fc" id="L113">    public String version() { return spec.version(); }</span>
+<span class="fc" id="L114">    public Spec spec() { return spec; }</span>
+<span class="fc" id="L115">    public List&lt;Root&gt; roots() { return roots; }</span>
+<span class="fc" id="L116">    public Set&lt;String&gt; rootCodes() { return rootCodes; }</span>
+<span class="fc" id="L117">    public Map&lt;String, String&gt; rootTypes() { return types; }</span>
+<span class="fc" id="L118">    public Map&lt;String, String&gt; typeRoots() { return typeRoots; }</span>
+<span class="fc" id="L119">    public String typeFor(String root) { return types.get(root); }</span>
+<span class="fc bfc" id="L120" title="All 2 branches covered.">    public String rootFor(String type) { return types.containsKey(type) ? type : typeRoots.get(type); }</span>
+    public String rootFromId(String id) {
+<span class="pc bpc" id="L122" title="1 of 2 branches missed.">        if (id == null) return null;</span>
+<span class="fc" id="L123">        int dash = id.indexOf('-');</span>
+<span class="fc bfc" id="L124" title="All 2 branches covered.">        String prefix = dash &lt; 1 ? id : id.substring(0, dash);</span>
+<span class="fc bfc" id="L125" title="All 2 branches covered.">        return types.containsKey(prefix) ? prefix : null;</span>
+    }
+<span class="fc" id="L127">    public Map&lt;String, RelationDomain&gt; relationDomains() { return domains; }</span>
+
+    public TargetDomain targetDomain(String source, String relation) {
+<span class="pc bpc" id="L130" title="1 of 6 branches missed.">        if (relation == null || source != null &amp;&amp; !types.containsKey(source)) return FORBIDDEN;</span>
+<span class="fc" id="L131">        var domain = domains.get(relation);</span>
+<span class="fc bfc" id="L132" title="All 2 branches covered.">        if (domain == null) return FORBIDDEN;</span>
+<span class="pc bpc" id="L133" title="1 of 2 branches missed.">        return source == null ? domain.defaultDomain() : domain.sourceDomains().getOrDefault(source, domain.defaultDomain());</span>
+    }
+
+    public boolean allows(String source, String relation, String target) {
+<span class="pc bpc" id="L137" title="2 of 8 branches missed.">        return source != null &amp;&amp; target != null &amp;&amp; types.containsKey(target) &amp;&amp; targetDomain(source, relation).allows(target);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

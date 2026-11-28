@@ -1,0 +1,362 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>LocalEmbeddingIndexRebuilder.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-knowledge</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.search</a> &gt; <span class="el_source">LocalEmbeddingIndexRebuilder.java</span></div><h1>LocalEmbeddingIndexRebuilder.java</h1><pre class="source lang-java linenums">package com.taxonomy.search;
+
+import com.taxonomy.catalog.model.TaxonomyNode;
+import com.taxonomy.catalog.model.TaxonomyRelation;
+import com.taxonomy.catalog.service.AppInitializationStateService;
+import com.taxonomy.catalog.service.CatalogueIndexInitializer;
+import com.taxonomy.catalog.snapshot.CatalogueRuntimePolicy;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.EntityManagerFactory;
+import jakarta.persistence.LockModeType;
+import org.hibernate.search.mapper.orm.Search;
+import org.hibernate.search.mapper.pojo.massindexing.MassIndexingMonitor;
+import org.hibernate.search.mapper.pojo.work.IndexingPlanSynchronizationStrategy;
+import org.hibernate.search.util.common.SearchException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import java.util.HashSet;
+import java.util.Set;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
+import java.util.TreeSet;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.BiConsumer;
+import java.util.function.Function;
+
+/**
+ * Validates and repairs catalogue text indexes, and refreshes their optional
+ * vectors in bounded batches without taking existing full-text search offline.
+ *
+ * &lt;p&gt;Keeping nodes and relations explicit is intentional: node semantic search
+ * is the user-facing readiness boundary and must not wait behind relation or
+ * unrelated indexed entity types selected through an {@code Object.class}
+ * scope.&lt;/p&gt;
+ */
+@Service
+public class LocalEmbeddingIndexRebuilder implements CatalogueIndexInitializer {
+<span class="fc" id="L47">    private static final Logger log = LoggerFactory.getLogger(LocalEmbeddingIndexRebuilder.class);</span>
+
+    private final EntityManagerFactory entityManagerFactory;
+    private final int loaderThreads;
+    private final int batchSize;
+
+<span class="fc" id="L53">    @Autowired</span>
+<span class="fc" id="L54">    private CatalogueRuntimePolicy catalogueRuntimePolicy = CatalogueRuntimePolicy.fullCatalogue();</span>
+
+    public LocalEmbeddingIndexRebuilder(
+            EntityManagerFactory entityManagerFactory,
+            @Value(&quot;${embedding.index.loader-threads:2}&quot;) int loaderThreads,
+<span class="fc" id="L59">            @Value(&quot;${embedding.index.batch-size:16}&quot;) int batchSize) {</span>
+<span class="fc" id="L60">        this.entityManagerFactory = entityManagerFactory;</span>
+<span class="fc" id="L61">        this.loaderThreads = Math.max(1, loaderThreads);</span>
+<span class="fc" id="L62">        this.batchSize = Math.max(1, batchSize);</span>
+<span class="fc" id="L63">    }</span>
+
+    public void rebuildNodeIndex() throws InterruptedException {
+<span class="nc" id="L66">        rebuildNodeIndex((processed, total) -&gt; { });</span>
+<span class="nc" id="L67">    }</span>
+
+    public void rebuildRelationIndex() throws InterruptedException {
+<span class="nc" id="L70">        rebuildRelationIndex((processed, total) -&gt; { });</span>
+<span class="nc" id="L71">    }</span>
+
+    public void rebuildNodeIndex(BiConsumer&lt;Long, Long&gt; progress) throws InterruptedException {
+<span class="fc" id="L74">        rebuild(TaxonomyNode.class, &quot;select count(n) from TaxonomyNode n&quot;, progress);</span>
+<span class="fc" id="L75">    }</span>
+
+    public void rebuildRelationIndex(BiConsumer&lt;Long, Long&gt; progress) throws InterruptedException {
+<span class="fc" id="L78">        rebuild(TaxonomyRelation.class, &quot;select count(r) from TaxonomyRelation r&quot;, progress);</span>
+<span class="fc" id="L79">    }</span>
+
+    public void refreshNodeEmbeddings(BiConsumer&lt;Long, Long&gt; progress) throws InterruptedException {
+<span class="fc" id="L82">        refreshEmbeddings(TaxonomyNode.class, &quot;select n.id from TaxonomyNode n order by n.id&quot;,</span>
+                &quot;select n from TaxonomyNode n where n.id in :ids&quot;, progress);
+<span class="fc" id="L84">    }</span>
+
+    public void refreshRelationEmbeddings(BiConsumer&lt;Long, Long&gt; progress) throws InterruptedException {
+<span class="fc" id="L87">        refreshEmbeddings(TaxonomyRelation.class, &quot;select r.id from TaxonomyRelation r order by r.id&quot;,</span>
+                &quot;select r from TaxonomyRelation r join fetch r.sourceNode join fetch r.targetNode where r.id in :ids&quot;,
+                progress);
+<span class="fc" id="L90">    }</span>
+
+    /**
+     * Replace existing documents in bounded batches while preserving the complete
+     * full-text index. A mass indexer purges first (and its non-purge mode adds
+     * duplicate Lucene documents), which would invalidate full-text readiness
+     * during this optional vector phase.
+     */
+    private void refreshEmbeddings(Class&lt;?&gt; type, String idQuery, String entityQuery,
+            BiConsumer&lt;Long, Long&gt; progress) throws InterruptedException {
+<span class="fc" id="L100">        catalogueRuntimePolicy.requireGlobalIndexAllowed();</span>
+        List&lt;Long&gt; identifiers;
+<span class="fc" id="L102">        try (var manager = entityManagerFactory.createEntityManager()) {</span>
+<span class="fc" id="L103">            identifiers = manager.createQuery(idQuery, Long.class).getResultList();</span>
+        }
+<span class="fc" id="L105">        long total = identifiers.size();</span>
+<span class="fc" id="L106">        progress.accept(0L, total);</span>
+<span class="pc bpc" id="L107" title="1 of 2 branches missed.">        if (identifiers.isEmpty()) return;</span>
+<span class="fc" id="L108">        var nextBatch = new AtomicInteger();</span>
+<span class="fc" id="L109">        var completed = new AtomicLong();</span>
+<span class="fc" id="L110">        var tasks = new ArrayList&lt;Future&lt;?&gt;&gt;();</span>
+        // Same loader/connection budget as mass indexing; the joining startup
+        // worker holds no EntityManager or connection of its own.
+<span class="fc" id="L113">        try (var workers = Executors.newFixedThreadPool(Math.min(loaderThreads, identifiers.size()),</span>
+<span class="fc" id="L114">                Thread.ofPlatform().daemon(true).name(&quot;embedding-refresh-&quot;, 0).factory())) {</span>
+<span class="fc bfc" id="L115" title="All 2 branches covered.">            for (int worker = 0; worker &lt; Math.min(loaderThreads, identifiers.size()); worker++) {</span>
+<span class="fc" id="L116">                tasks.add(workers.submit(() -&gt; {</span>
+                    int offset;
+<span class="pc bpc" id="L118" title="1 of 2 branches missed.">                    while (!Thread.currentThread().isInterrupted()</span>
+<span class="fc bfc" id="L119" title="All 2 branches covered.">                            &amp;&amp; (offset = nextBatch.getAndAdd(batchSize)) &lt; identifiers.size()) {</span>
+<span class="fc" id="L120">                        var batchIds = identifiers.subList(offset, Math.min(offset + batchSize, identifiers.size()));</span>
+                        // PostgreSQL needs a transaction to materialize the catalogue LOBs.
+                        // Close it before inference so the worker releases its JDBC connection.
+<span class="fc" id="L123">                        var snapshots = entityManagerFactory.callInTransaction(manager -&gt;</span>
+<span class="fc" id="L124">                                manager.createQuery(entityQuery, type)</span>
+<span class="fc" id="L125">                                        .setParameter(&quot;ids&quot;, batchIds)</span>
+<span class="fc" id="L126">                                        .getResultList());</span>
+<span class="fc" id="L127">                        var vectors = new HashMap&lt;String, EmbeddingBridgeSupport.PreparedEmbedding&gt;();</span>
+<span class="fc" id="L128">                        var endpointIds = new TreeSet&lt;Long&gt;();</span>
+<span class="fc bfc" id="L129" title="All 2 branches covered.">                        for (Object snapshot : snapshots) {</span>
+<span class="fc" id="L130">                            var vector = EmbeddingBridgeSupport.prepare(snapshot);</span>
+<span class="fc" id="L131">                            vectors.put(vector.contentKey(), vector);</span>
+<span class="fc bfc" id="L132" title="All 2 branches covered.">                            if (snapshot instanceof TaxonomyRelation relation) {</span>
+<span class="fc" id="L133">                                endpointIds.add(relation.getSourceNode().getId());</span>
+<span class="fc" id="L134">                                endpointIds.add(relation.getTargetNode().getId());</span>
+                            }
+<span class="fc" id="L136">                        }</span>
+<span class="pc bpc" id="L137" title="1 of 2 branches missed.">                        if (Thread.currentThread().isInterrupted()) break;</span>
+<span class="fc" id="L138">                        applyPreparedEmbeddings(type, batchIds, endpointIds, vectors);</span>
+<span class="fc" id="L139">                        synchronized (completed) {</span>
+<span class="fc" id="L140">                            progress.accept(completed.addAndGet(batchIds.size()), total);</span>
+<span class="fc" id="L141">                        }</span>
+<span class="fc" id="L142">                    }</span>
+<span class="pc bpc" id="L143" title="1 of 2 branches missed.">                    if (Thread.currentThread().isInterrupted()) {</span>
+<span class="nc" id="L144">                        throw new IllegalStateException(&quot;Embedding refresh worker was interrupted&quot;);</span>
+                    }
+<span class="fc" id="L146">                }));</span>
+            }
+            try {
+<span class="fc bfc" id="L149" title="All 2 branches covered.">                for (Future&lt;?&gt; task : tasks) task.get();</span>
+<span class="nc" id="L150">            } catch (InterruptedException interruption) {</span>
+<span class="nc" id="L151">                tasks.forEach(task -&gt; task.cancel(true));</span>
+<span class="nc" id="L152">                workers.shutdownNow();</span>
+<span class="nc" id="L153">                throw interruption;</span>
+<span class="nc" id="L154">            } catch (ExecutionException failure) {</span>
+<span class="nc" id="L155">                tasks.forEach(task -&gt; task.cancel(true));</span>
+<span class="nc" id="L156">                workers.shutdownNow();</span>
+<span class="nc" id="L157">                throw new IllegalStateException(&quot;Embedding refresh failed&quot;, failure.getCause());</span>
+<span class="fc" id="L158">            }</span>
+        }
+<span class="fc" id="L160">    }</span>
+
+    /**
+     * Keep slow inference outside transactions, then serialize the short document
+     * replacement with ordinary ORM writes. A fresh fingerprint rejects edits or
+     * deletions that committed during inference instead of restoring old content.
+     */
+    private void applyPreparedEmbeddings(Class&lt;?&gt; type, List&lt;Long&gt; identifiers, Set&lt;Long&gt; endpointIds,
+            Map&lt;String, EmbeddingBridgeSupport.PreparedEmbedding&gt; vectors) {
+<span class="fc" id="L169">        try (var manager = entityManagerFactory.createEntityManager()) {</span>
+<span class="fc" id="L170">            var transaction = manager.getTransaction();</span>
+<span class="fc" id="L171">            transaction.begin();</span>
+            try {
+<span class="fc" id="L173">                Set&lt;Long&gt; lockedEndpoints = new HashSet&lt;&gt;();</span>
+<span class="pc bpc" id="L174" title="1 of 4 branches missed.">                if (type == TaxonomyRelation.class &amp;&amp; !endpointIds.isEmpty()) {</span>
+                    // Shared endpoints are locked in a stable order across workers.
+<span class="fc" id="L176">                    var endpoints = manager.createQuery(</span>
+                                    &quot;select n from TaxonomyNode n where n.id in :ids order by n.id&quot;, TaxonomyNode.class)
+<span class="fc" id="L178">                            .setParameter(&quot;ids&quot;, endpointIds).setLockMode(LockModeType.PESSIMISTIC_WRITE).getResultList();</span>
+<span class="fc bfc" id="L179" title="All 2 branches covered.">                    for (TaxonomyNode endpoint : endpoints) {</span>
+<span class="fc" id="L180">                        manager.refresh(endpoint);</span>
+<span class="fc" id="L181">                        lockedEndpoints.add(endpoint.getId());</span>
+<span class="fc" id="L182">                    }</span>
+                }
+<span class="fc bfc" id="L184" title="All 2 branches covered.">                String entityName = type == TaxonomyNode.class ? &quot;TaxonomyNode&quot; : &quot;TaxonomyRelation&quot;;</span>
+<span class="fc" id="L185">                var current = manager.createQuery(&quot;select row from &quot; + entityName</span>
+                                + &quot; row where row.id in :ids order by row.id&quot;, type)
+<span class="fc" id="L187">                        .setParameter(&quot;ids&quot;, identifiers).setLockMode(LockModeType.PESSIMISTIC_WRITE).getResultList();</span>
+<span class="fc" id="L188">                var search = Search.session(manager);</span>
+<span class="fc" id="L189">                search.indexingPlanSynchronizationStrategy(IndexingPlanSynchronizationStrategy.sync());</span>
+<span class="fc bfc" id="L190" title="All 2 branches covered.">                search.indexingPlanFilter(filter -&gt; filter.exclude(type == TaxonomyNode.class</span>
+<span class="fc" id="L191">                        ? TaxonomyRelation.class : TaxonomyNode.class));</span>
+<span class="fc bfc" id="L192" title="All 2 branches covered.">                for (Object entity : current) {</span>
+                    // Some MVCC databases can return pre-wait values from SELECT FOR UPDATE.
+                    // Reread after the row lock is held, before checking its content identity.
+<span class="fc" id="L195">                    manager.refresh(entity);</span>
+<span class="fc bfc" id="L196" title="All 2 branches covered.">                    if (entity instanceof TaxonomyRelation relation</span>
+<span class="pc bpc" id="L197" title="1 of 2 branches missed.">                            &amp;&amp; (!lockedEndpoints.contains(relation.getSourceNode().getId())</span>
+<span class="fc bfc" id="L198" title="All 2 branches covered.">                            || !lockedEndpoints.contains(relation.getTargetNode().getId()))) continue;</span>
+<span class="fc bfc" id="L199" title="All 2 branches covered.">                    if (vectors.containsKey(EmbeddingBridgeSupport.contentKey(entity))) {</span>
+<span class="fc" id="L200">                        search.indexingPlan().addOrUpdate(entity);</span>
+                    }
+<span class="fc" id="L202">                }</span>
+                // Synchronous backend completion precedes lock release at commit.
+<span class="fc" id="L204">                EmbeddingBridgeSupport.withPrepared(vectors, () -&gt; search.indexingPlan().execute());</span>
+<span class="fc" id="L205">                transaction.commit();</span>
+<span class="nc" id="L206">            } catch (RuntimeException | Error failure) {</span>
+<span class="nc bnc" id="L207" title="All 2 branches missed.">                if (transaction.isActive()) transaction.rollback();</span>
+<span class="nc" id="L208">                throw failure;</span>
+<span class="fc" id="L209">            }</span>
+        }
+<span class="fc" id="L211">    }</span>
+
+    private void rebuild(Class&lt;?&gt; type, String countQuery, BiConsumer&lt;Long, Long&gt; progress)
+            throws InterruptedException {
+<span class="fc" id="L215">        catalogueRuntimePolicy.requireGlobalIndexAllowed();</span>
+        long total;
+<span class="fc" id="L217">        try (var manager = entityManagerFactory.createEntityManager()) {</span>
+<span class="fc" id="L218">            total = manager.createQuery(countQuery, Long.class).getSingleResult();</span>
+        }
+        // Do not hold a JDBC connection while the bounded mass indexer borrows its own.
+<span class="fc" id="L221">        var completed = new AtomicLong();</span>
+<span class="fc" id="L222">        progress.accept(0L, total);</span>
+<span class="fc" id="L223">        Search.mapping(entityManagerFactory)</span>
+<span class="fc" id="L224">                .scope(type)</span>
+<span class="fc" id="L225">                .massIndexer()</span>
+<span class="fc" id="L226">                .typesToIndexInParallel(1)</span>
+<span class="fc" id="L227">                .threadsToLoadObjects(loaderThreads)</span>
+<span class="fc" id="L228">                .batchSizeToLoadObjects(batchSize)</span>
+<span class="fc" id="L229">                .monitor(new MassIndexingMonitor() {</span>
+                    @Override public void documentsAdded(long count) {
+<span class="fc" id="L231">                        synchronized (completed) {</span>
+<span class="fc" id="L232">                            progress.accept(completed.addAndGet(count), total);</span>
+<span class="fc" id="L233">                        }</span>
+<span class="fc" id="L234">                    }</span>
+<span class="fc" id="L235">                    @Override public void documentsBuilt(long count) { }</span>
+<span class="fc" id="L236">                    @Override public void entitiesLoaded(long count) { }</span>
+<span class="fc" id="L237">                    @Override public void indexingCompleted() { }</span>
+                })
+<span class="fc" id="L239">                .startAndWait();</span>
+<span class="fc" id="L240">    }</span>
+
+    /** Full-text readiness is verified separately from optional semantic readiness. */
+    @Override
+    public void ensureCatalogueIndexes(AppInitializationStateService state) throws InterruptedException {
+<span class="fc" id="L245">        catalogueRuntimePolicy.requireGlobalIndexAllowed();</span>
+<span class="fc" id="L246">        Search.mapping(entityManagerFactory).scope(java.util.List.of(TaxonomyNode.class, TaxonomyRelation.class))</span>
+<span class="fc" id="L247">                .workspace().refresh();</span>
+<span class="fc" id="L248">        state.updateProgress(AppInitializationStateService.State.BUILDING_INDEX, &quot;CHECKING_NODE_INDEX&quot;,</span>
+                &quot;Checking taxonomy-node search index&quot;, 0, -1);
+<span class="fc bfc" id="L250" title="All 2 branches covered.">        if (!isNodeIndexCurrent()) {</span>
+<span class="fc" id="L251">            rebuildNodeIndex((processed, total) -&gt; state.updateProgress(</span>
+                    AppInitializationStateService.State.BUILDING_INDEX, &quot;INDEXING_NODES&quot;,
+<span class="fc" id="L253">                    &quot;Building taxonomy-node search index&quot;, processed, total));</span>
+<span class="fc bfc" id="L254" title="All 2 branches covered.">            if (!isNodeIndexCurrent()) throw new IllegalStateException(&quot;Node search index validation failed&quot;);</span>
+        }
+<span class="fc" id="L256">        state.updateProgress(AppInitializationStateService.State.BUILDING_INDEX, &quot;CHECKING_RELATION_INDEX&quot;,</span>
+                &quot;Checking taxonomy-relation search index&quot;, 0, -1);
+<span class="fc bfc" id="L258" title="All 2 branches covered.">        if (!isRelationIndexCurrent()) {</span>
+<span class="fc" id="L259">            rebuildRelationIndex((processed, total) -&gt; state.updateProgress(</span>
+                    AppInitializationStateService.State.BUILDING_INDEX, &quot;INDEXING_RELATIONS&quot;,
+<span class="fc" id="L261">                    &quot;Building taxonomy-relation search index&quot;, processed, total));</span>
+<span class="pc bpc" id="L262" title="1 of 2 branches missed.">            if (!isRelationIndexCurrent()) throw new IllegalStateException(&quot;Relation search index validation failed&quot;);</span>
+        }
+<span class="fc" id="L264">    }</span>
+
+    public boolean isNodeIndexCurrent() {
+<span class="fc" id="L267">        return contentMatches(TaxonomyNode.class, CatalogueIndexFingerprint.NODE_ROWS,</span>
+                CatalogueIndexFingerprint::nodeRow, null);
+    }
+
+    public boolean isRelationIndexCurrent() {
+<span class="fc" id="L272">        return contentMatches(TaxonomyRelation.class, CatalogueIndexFingerprint.RELATION_ROWS,</span>
+                CatalogueIndexFingerprint::relationRow, null);
+    }
+
+    public boolean isNodeEmbeddingIndexCurrent(String modelKey) {
+<span class="pc bpc" id="L277" title="2 of 6 branches missed.">        return modelKey != null &amp;&amp; !modelKey.isBlank() &amp;&amp; contentMatches(TaxonomyNode.class,</span>
+                CatalogueIndexFingerprint.NODE_ROWS, CatalogueIndexFingerprint::nodeRow, modelKey);
+    }
+
+    public boolean isRelationEmbeddingIndexCurrent(String modelKey) {
+<span class="pc bpc" id="L282" title="2 of 6 branches missed.">        return modelKey != null &amp;&amp; !modelKey.isBlank() &amp;&amp; contentMatches(TaxonomyRelation.class,</span>
+                CatalogueIndexFingerprint.RELATION_ROWS, CatalogueIndexFingerprint::relationRow, modelKey);
+    }
+
+    private boolean contentMatches(Class&lt;?&gt; type, String rowQuery,
+            Function&lt;Object[], String&gt; fingerprint, String modelKey) {
+<span class="fc" id="L288">        catalogueRuntimePolicy.requireGlobalIndexAllowed();</span>
+<span class="fc" id="L289">        try (var manager = entityManagerFactory.createEntityManager()) {</span>
+<span class="fc" id="L290">            Set&lt;String&gt; expected = entityManagerFactory.callInTransaction(</span>
+<span class="fc" id="L291">                    rows -&gt; databaseFingerprints(rows, rowQuery, fingerprint));</span>
+<span class="pc bpc" id="L292" title="1 of 4 branches missed.">            if (type == TaxonomyNode.class &amp;&amp; expected.isEmpty()) return false;</span>
+<span class="fc" id="L293">            var search = Search.session(manager).search(type);</span>
+<span class="fc" id="L294">            long documentCount = search.where(f -&gt; f.matchAll()).fetchTotalHitCount();</span>
+<span class="fc bfc" id="L295" title="All 2 branches covered.">            if (documentCount != expected.size()) return false;</span>
+<span class="fc" id="L296">            Set&lt;String&gt; remaining = new HashSet&lt;&gt;(expected);</span>
+<span class="fc" id="L297">            try (var documents = search.select(f -&gt; f.field(CatalogueIndexFingerprint.FIELD, String.class))</span>
+<span class="fc bfc" id="L298" title="All 2 branches covered.">                    .where(f -&gt; modelKey == null ? f.matchAll() : f.match().field(&quot;embeddingModel&quot;).matching(modelKey))</span>
+<span class="fc" id="L299">                    .scroll(256)) {</span>
+<span class="fc bfc" id="L300" title="All 2 branches covered.">                for (var page = documents.next(); page.hasHits(); page = documents.next()) {</span>
+<span class="fc bfc" id="L301" title="All 2 branches covered.">                    for (String fingerprintValue : page.hits()) {</span>
+<span class="fc bfc" id="L302" title="All 2 branches covered.">                        if (!remaining.remove(fingerprintValue)) return false;</span>
+<span class="fc" id="L303">                    }</span>
+                }
+<span class="pc bpc" id="L305" title="1 of 2 branches missed.">            }</span>
+<span class="fc bfc" id="L306" title="All 2 branches covered.">            return remaining.isEmpty()</span>
+                    // A concurrent catalogue/tenant mutation must not validate an older
+                    // projection merely because its row count happens to be unchanged.
+<span class="pc bpc" id="L309" title="1 of 2 branches missed.">                    &amp;&amp; expected.equals(entityManagerFactory.callInTransaction(</span>
+<span class="fc" id="L310">                            rows -&gt; databaseFingerprints(rows, rowQuery, fingerprint)));</span>
+<span class="pc bpc" id="L311" title="4 of 6 branches missed.">        } catch (SearchException failure) {</span>
+<span class="nc" id="L312">            log.warn(&quot;Catalogue search validation requires rebuilding {} (code=INDEX_VALIDATION_FAILED)&quot;,</span>
+<span class="nc" id="L313">                    type.getSimpleName());</span>
+<span class="nc" id="L314">            return false;</span>
+        }
+    }
+
+    private Set&lt;String&gt; databaseFingerprints(EntityManager manager, String query,
+            Function&lt;Object[], String&gt; fingerprint) {
+<span class="fc" id="L320">        Set&lt;String&gt; values = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L321">        long after = 0;</span>
+        while (true) {
+<span class="fc" id="L323">            var page = manager.createQuery(query, Object[].class).setParameter(&quot;after&quot;, after)</span>
+<span class="fc" id="L324">                    .setMaxResults(256).getResultList();</span>
+<span class="fc bfc" id="L325" title="All 2 branches covered.">            if (page.isEmpty()) return values;</span>
+<span class="fc bfc" id="L326" title="All 2 branches covered.">            for (Object[] row : page) values.add(fingerprint.apply(row));</span>
+<span class="fc" id="L327">            after = ((Number) page.getLast()[0]).longValue();</span>
+<span class="fc" id="L328">        }</span>
+    }
+
+    /** A successful mass-indexer run can still contain documents whose embedding bridge failed. */
+    public void verifyNodeEmbeddingCoverage(String modelKey) {
+<span class="fc" id="L333">        verifyEmbeddingCoverage(TaxonomyNode.class, &quot;select count(n) from TaxonomyNode n&quot;, modelKey);</span>
+<span class="pc bpc" id="L334" title="1 of 2 branches missed.">        if (!isNodeEmbeddingIndexCurrent(modelKey)) throw new IllegalStateException(&quot;Node embedding projection is stale&quot;);</span>
+<span class="fc" id="L335">    }</span>
+
+    public void verifyRelationEmbeddingCoverage(String modelKey) {
+<span class="fc" id="L338">        verifyEmbeddingCoverage(TaxonomyRelation.class, &quot;select count(r) from TaxonomyRelation r&quot;, modelKey);</span>
+<span class="pc bpc" id="L339" title="1 of 2 branches missed.">        if (!isRelationEmbeddingIndexCurrent(modelKey)) throw new IllegalStateException(&quot;Relation embedding projection is stale&quot;);</span>
+<span class="fc" id="L340">    }</span>
+
+    private void verifyEmbeddingCoverage(Class&lt;?&gt; entityType, String countQuery, String modelKey) {
+<span class="fc" id="L343">        catalogueRuntimePolicy.requireGlobalIndexAllowed();</span>
+<span class="pc bpc" id="L344" title="2 of 4 branches missed.">        if (modelKey == null || modelKey.isBlank()) {</span>
+<span class="nc" id="L345">            throw new IllegalArgumentException(&quot;Embedding coverage requires the active model identity&quot;);</span>
+        }
+        // A concurrent ordinary write may have won with write-sync: committed
+        // documents must become reader-visible before deciding semantic readiness.
+<span class="fc" id="L349">        Search.mapping(entityManagerFactory).scope(entityType).workspace().refresh();</span>
+<span class="fc" id="L350">        try (var manager = entityManagerFactory.createEntityManager()) {</span>
+<span class="fc" id="L351">            long expected = manager.createQuery(countQuery, Long.class).getSingleResult();</span>
+<span class="fc" id="L352">            long searchable = Search.session(manager).search(entityType)</span>
+<span class="fc" id="L353">                    .where(f -&gt; f.match().field(&quot;embeddingModel&quot;).matching(modelKey))</span>
+<span class="fc" id="L354">                    .fetchTotalHitCount();</span>
+<span class="fc bfc" id="L355" title="All 2 branches covered.">            if (searchable != expected) {</span>
+<span class="fc" id="L356">                throw new IllegalStateException(&quot;Embedding index coverage is incomplete for &quot;</span>
+<span class="fc" id="L357">                        + entityType.getSimpleName() + &quot;: expected=&quot; + expected + &quot;, searchable=&quot; + searchable);</span>
+            }
+        }
+<span class="fc" id="L360">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

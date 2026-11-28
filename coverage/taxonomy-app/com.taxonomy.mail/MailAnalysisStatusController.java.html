@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>MailAnalysisStatusController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.mail</a> &gt; <span class="el_source">MailAnalysisStatusController.java</span></div><h1>MailAnalysisStatusController.java</h1><pre class="source lang-java linenums">package com.taxonomy.mail;
+
+import com.taxonomy.shared.features.ConditionalOnFeature;
+import io.swagger.v3.oas.annotations.Operation;
+import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Controller;
+import org.springframework.ui.Model;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.ResponseBody;
+import org.springframework.web.server.ResponseStatusException;
+
+import java.util.regex.Pattern;
+
+/** The token grants read-only access to one job's operational status. */
+@Controller
+@RequestMapping(&quot;/mail-analysis/jobs&quot;)
+@ConditionalOnProperty(name = &quot;taxonomy.mail.enabled&quot;, havingValue = &quot;true&quot;)
+@ConditionalOnFeature({&quot;analysis&quot;, &quot;architecture&quot;, &quot;reporting&quot;})
+class MailAnalysisStatusController {
+
+<span class="fc" id="L26">    static final Pattern TOKEN = Pattern.compile(&quot;[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}&quot;);</span>
+    private final MailAnalysisQueue queue;
+
+<span class="fc" id="L29">    MailAnalysisStatusController(MailAnalysisQueue queue) {</span>
+<span class="fc" id="L30">        this.queue = queue;</span>
+<span class="fc" id="L31">    }</span>
+
+    @GetMapping(&quot;/{token}&quot;)
+    String page(@PathVariable String token, Model model, HttpServletResponse response) {
+<span class="fc" id="L35">        privateStatusHeaders(response);</span>
+<span class="fc bfc" id="L36" title="All 2 branches covered.">        if (TOKEN.matcher(token).matches()) {</span>
+<span class="fc" id="L37">            var status = queue.status(token);</span>
+<span class="fc bfc" id="L38" title="All 2 branches covered.">            if (status.isPresent()) {</span>
+<span class="fc" id="L39">                model.addAttribute(&quot;status&quot;, status.get());</span>
+<span class="fc" id="L40">                model.addAttribute(&quot;jobToken&quot;, token);</span>
+<span class="fc" id="L41">                return &quot;mail-analysis-status&quot;;</span>
+            }
+        }
+<span class="fc" id="L44">        response.setStatus(HttpStatus.NOT_FOUND.value());</span>
+<span class="fc" id="L45">        return &quot;mail-analysis-link-unavailable&quot;;</span>
+    }
+
+    @GetMapping(&quot;/{token}/status&quot;)
+    @ResponseBody
+    @Operation(summary = &quot;Read the status of an email analysis job&quot;,
+            description = &quot;Returns the receipt job, current queue counts and anonymous active jobs with classified analysis settings. &quot;
+                    + &quot;The estimated wait uses recent measured analysis times and is null when unavailable. &quot;
+                    + &quot;No-store responses include no mail contents, addresses, attachments or bearer tokens. &quot;
+                    + &quot;Invalid, unknown, expired or rejected tokens return HTTP 404. Available when mail analysis is enabled.&quot;)
+    MailAnalysisQueue.Snapshot status(@PathVariable String token, HttpServletResponse response) {
+<span class="fc" id="L56">        privateStatusHeaders(response);</span>
+<span class="fc bfc" id="L57" title="All 2 branches covered.">        if (!TOKEN.matcher(token).matches()) throw new ResponseStatusException(HttpStatus.NOT_FOUND);</span>
+<span class="pc" id="L58">        return queue.snapshot(token).orElseThrow(() -&gt; new ResponseStatusException(HttpStatus.NOT_FOUND));</span>
+    }
+
+    private static void privateStatusHeaders(HttpServletResponse response) {
+<span class="fc" id="L62">        response.setHeader(HttpHeaders.CACHE_CONTROL, &quot;no-store&quot;);</span>
+<span class="fc" id="L63">        response.setHeader(&quot;Referrer-Policy&quot;, &quot;no-referrer&quot;);</span>
+<span class="fc" id="L64">        response.setHeader(&quot;X-Robots-Tag&quot;, &quot;noindex, nofollow&quot;);</span>
+<span class="fc" id="L65">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

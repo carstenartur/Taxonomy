@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>WorkspaceAccessService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.service</a> &gt; <span class="el_source">WorkspaceAccessService.java</span></div><h1>WorkspaceAccessService.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.service;
+
+import com.taxonomy.workspace.repository.UserWorkspaceRepository;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+/**
+ * Resolves whether workspace metadata may be disclosed to an authenticated
+ * principal. The lookup deliberately returns only a scalar count so callers
+ * cannot accidentally expose or materialize a foreign workspace after an
+ * authorization decision.
+ */
+@Service
+public class WorkspaceAccessService {
+
+    private final UserWorkspaceRepository workspaceRepository;
+
+    private final WorkspaceActorAccess actors;
+
+<span class="fc" id="L20">    public WorkspaceAccessService(UserWorkspaceRepository workspaceRepository, WorkspaceActorAccess actors) {</span>
+<span class="fc" id="L21">        this.actors = actors;</span>
+<span class="fc" id="L22">        this.workspaceRepository = workspaceRepository;</span>
+<span class="fc" id="L23">    }</span>
+
+    @Transactional(readOnly = true)
+    public boolean canReadWorkspaceMetadata(String workspaceId, String username) {
+<span class="fc bfc" id="L27" title="All 6 branches covered.">        if (workspaceId == null || workspaceId.isBlank()</span>
+<span class="fc bfc" id="L28" title="All 2 branches covered.">                || username == null || username.isBlank()) {</span>
+<span class="fc" id="L29">            return false;</span>
+        }
+        try {
+<span class="fc" id="L32">            String principal = actors.currentNavigationPrincipal(username).map(java.util.UUID::toString).orElse(null);</span>
+<span class="fc bfc" id="L33" title="All 2 branches covered.">            return workspaceRepository.countVisibleWorkspaceMetadata(workspaceId.strip(), username.strip(), principal) &gt; 0;</span>
+<span class="nc" id="L34">        } catch (org.springframework.security.access.AccessDeniedException denied) {</span>
+<span class="nc" id="L35">            return false;</span>
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public boolean canUsePrivateWorkspace(RepositoryContext context) {
+<span class="pc bpc" id="L41" title="2 of 4 branches missed.">        if (context == null || context.scope() != RepositoryScope.WORKSPACE) return false;</span>
+        try {
+<span class="fc" id="L43">            String principal = actors.currentNavigationPrincipal(context.username()).map(java.util.UUID::toString).orElse(null);</span>
+<span class="fc bfc" id="L44" title="All 2 branches covered.">            return workspaceRepository.countOwnedPrivateWorkspace(context.workspaceId(), context.username(), context.repositoryId(), principal) == 1;</span>
+<span class="fc" id="L45">        } catch (org.springframework.security.access.AccessDeniedException denied) {</span>
+<span class="fc" id="L46">            return false;</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

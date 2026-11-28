@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>WorkspaceNavigation.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.service</a> &gt; <span class="el_source">WorkspaceNavigation.java</span></div><h1>WorkspaceNavigation.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.service;
+
+import com.taxonomy.dto.ContextHistoryEntry;
+import com.taxonomy.dto.ContextMode;
+import com.taxonomy.dto.ContextRef;
+
+import java.time.Instant;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Deque;
+import java.util.List;
+import java.util.UUID;
+
+/** One navigation cursor, with no projection or operation state. */
+public final class WorkspaceNavigation {
+    private final int maxHistory;
+
+    // Context navigation state
+    private volatile NavigationSelection navigation;
+<span class="fc" id="L20">    private final Deque&lt;ContextHistoryEntry&gt; history = new ArrayDeque&lt;&gt;();</span>
+<span class="fc" id="L21">    private final Deque&lt;ContextRef&gt; previousContexts = new ArrayDeque&lt;&gt;();</span>
+
+<span class="fc" id="L23">    public record NavigationSelection(ContextRef current, ContextRef origin) {}</span>
+
+<span class="fc" id="L25">    WorkspaceNavigation(int maxHistory, String branch) {</span>
+<span class="fc" id="L26">        this.maxHistory = maxHistory;</span>
+<span class="fc" id="L27">        ContextRef current = new ContextRef(</span>
+<span class="fc" id="L28">                UUID.randomUUID().toString(),</span>
+<span class="pc bpc" id="L29" title="1 of 4 branches missed.">                branch == null || branch.isBlank() ? &quot;draft&quot; : branch,</span>
+                null,
+<span class="fc" id="L31">                Instant.now(),</span>
+                ContextMode.EDITABLE,
+                null, null, null, null, null, false
+        );
+<span class="fc" id="L35">        this.navigation = new NavigationSelection(current, null);</span>
+<span class="fc" id="L36">    }</span>
+
+    synchronized WorkspaceNavigation copy() {
+<span class="fc" id="L39">        var result = new WorkspaceNavigation(maxHistory, navigation.current().branch());</span>
+<span class="fc" id="L40">        result.navigation = navigation;</span>
+<span class="fc" id="L41">        result.history.addAll(history);</span>
+<span class="fc" id="L42">        result.previousContexts.addAll(previousContexts);</span>
+<span class="fc" id="L43">        return result;</span>
+    }
+
+    // ── Context navigation ──────────────────────────────────────────
+
+    public ContextRef getCurrentContext() {
+<span class="fc" id="L49">        return navigation.current();</span>
+    }
+
+    /** Read the current selection and its recorded origin together. */
+    public NavigationSelection getNavigationSelection() {
+<span class="fc" id="L54">        return navigation;</span>
+    }
+
+    public synchronized void setCurrentContext(ContextRef ctx) {
+<span class="fc" id="L58">        ContextRef previous = navigation.current();</span>
+<span class="fc bfc" id="L59" title="All 2 branches covered.">        ContextRef origin = previous.contextId().equals(ctx.originContextId()) ? previous : null;</span>
+<span class="fc bfc" id="L60" title="All 2 branches covered.">        if (origin == null) {</span>
+<span class="fc" id="L61">            previousContexts.clear();</span>
+        } else {
+<span class="fc" id="L63">            previousContexts.addLast(origin);</span>
+<span class="pc bpc" id="L64" title="1 of 2 branches missed.">            while (previousContexts.size() &gt; Math.max(1, maxHistory)) previousContexts.removeFirst();</span>
+        }
+<span class="fc" id="L66">        this.navigation = new NavigationSelection(ctx, origin);</span>
+<span class="fc" id="L67">    }</span>
+
+    /** Restore the prior selection under a fresh identity for request fencing. */
+    public synchronized ContextRef restorePreviousContext() {
+<span class="fc" id="L71">        ContextRef previous = previousContexts.pollLast();</span>
+<span class="fc bfc" id="L72" title="All 2 branches covered.">        if (previous == null) return navigation.current();</span>
+<span class="fc" id="L73">        ContextRef origin = previousContexts.peekLast();</span>
+<span class="fc" id="L74">        ContextRef restored = new ContextRef(UUID.randomUUID().toString(), previous.branch(), previous.commitId(),</span>
+<span class="fc bfc" id="L75" title="All 2 branches covered.">                Instant.now(), previous.mode(), origin == null ? null : origin.contextId(),</span>
+<span class="fc bfc" id="L76" title="All 4 branches covered.">                origin == null ? null : origin.branch(), origin == null ? null : origin.commitId(),</span>
+<span class="fc" id="L77">                previous.openedFromSearch(), previous.matchedElementId(), previous.dirty());</span>
+<span class="fc" id="L78">        this.navigation = new NavigationSelection(restored, origin);</span>
+<span class="fc" id="L79">        return restored;</span>
+    }
+
+    public synchronized List&lt;ContextHistoryEntry&gt; getHistory() {
+<span class="fc" id="L83">        return new ArrayList&lt;&gt;(history);</span>
+    }
+
+    public synchronized void addHistoryEntry(ContextHistoryEntry entry) {
+<span class="fc" id="L87">        history.addLast(entry);</span>
+<span class="fc bfc" id="L88" title="All 2 branches covered.">        while (history.size() &gt; maxHistory) {</span>
+<span class="fc" id="L89">            history.pollFirst();</span>
+        }
+<span class="fc" id="L91">    }</span>
+
+    public synchronized ContextHistoryEntry pollLastHistory() {
+<span class="fc" id="L94">        return history.pollLast();</span>
+    }
+
+    public synchronized boolean isHistoryEmpty() {
+<span class="fc" id="L98">        return history.isEmpty();</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

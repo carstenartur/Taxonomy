@@ -1,0 +1,194 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DiagramEdgeRouting.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-export</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.export</a> &gt; <span class="el_source">DiagramEdgeRouting.java</span></div><h1>DiagramEdgeRouting.java</h1><pre class="source lang-java linenums">package com.taxonomy.export;
+
+import com.taxonomy.diagram.DiagramScene;
+import com.taxonomy.diagram.DiagramSceneEdge;
+import com.taxonomy.diagram.DiagramSceneNode;
+
+import java.awt.Shape;
+import java.awt.geom.Line2D;
+import java.awt.geom.Path2D;
+import java.awt.geom.PathIterator;
+import java.awt.geom.Rectangle2D;
+import java.util.*;
+
+/** Render-time detours for the fixed side ports and gutters of a layered scene. */
+public final class DiagramEdgeRouting {
+    private static final double CARD_CLEARANCE = 4;
+    private static final double ENDPOINT_INSET = .25;
+    private static final double CANVAS_CLEARANCE = 4;
+    private static final double TRACK_SPACING = 8;
+
+<span class="fc" id="L21">    public record Point(double x, double y) { }</span>
+    public record Detour(List&lt;Point&gt; points) {
+<span class="fc" id="L23">        public Detour { points = List.copyOf(points); }</span>
+
+        public Point labelAnchor() {
+<span class="fc" id="L26">            Point a = points.get(2), b = points.get(3);</span>
+<span class="fc" id="L27">            return new Point((a.x() + b.x()) / 2, a.y());</span>
+        }
+
+        public Path2D.Double shape() {
+<span class="fc" id="L31">            var path = new Path2D.Double();</span>
+<span class="fc" id="L32">            path.moveTo(points.getFirst().x(), points.getFirst().y());</span>
+<span class="fc bfc" id="L33" title="All 2 branches covered.">            for (int i = 1; i &lt; points.size(); i++) path.lineTo(points.get(i).x(), points.get(i).y());</span>
+<span class="fc" id="L34">            return path;</span>
+        }
+    }
+
+<span class="fc" id="L38">    private record Track(double from, double to) {</span>
+        boolean overlaps(Track other) {
+<span class="fc bfc" id="L40" title="All 2 branches covered.">            return Math.min(to, other.to) - Math.max(from, other.from) &gt; TRACK_SPACING;</span>
+        }
+    }
+
+<span class="fc" id="L44">    private record Card(String id, Rectangle2D box, Rectangle2D interior) {</span>
+        Rectangle2D obstacle(DiagramSceneEdge edge) {
+<span class="fc bfc" id="L46" title="All 4 branches covered.">            return id.equals(edge.sourceId()) || id.equals(edge.targetId()) ? interior : box;</span>
+        }
+    }
+
+<span class="fc" id="L50">    private record Pair(String a, String b) {</span>
+        static Pair of(DiagramSceneEdge edge) {
+<span class="fc" id="L52">            String source = edge.sourceId(), target = edge.targetId();</span>
+<span class="fc bfc" id="L53" title="All 2 branches covered.">            return source.compareTo(target) &lt;= 0 ? new Pair(source, target) : new Pair(target, source);</span>
+        }
+    }
+
+    private final DiagramScene scene;
+<span class="fc" id="L58">    private final Map&lt;String, DiagramSceneNode&gt; byId = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L59">    private final Map&lt;String, Double&gt; lanes = new HashMap&lt;&gt;();</span>
+    private final List&lt;Card&gt; cards;
+    private final List&lt;Double&gt; tracks;
+<span class="fc" id="L62">    private final NavigableMap&lt;Double, List&lt;Track&gt;&gt; occupiedTracks = new TreeMap&lt;&gt;();</span>
+<span class="fc" id="L63">    private final Map&lt;DiagramSceneEdge, Optional&lt;Detour&gt;&gt; lineRoutes = new HashMap&lt;&gt;();</span>
+
+<span class="fc" id="L65">    public DiagramEdgeRouting(DiagramScene scene) {</span>
+<span class="fc" id="L66">        this.scene = scene;</span>
+<span class="fc" id="L67">        var candidates = new TreeSet&lt;Double&gt;();</span>
+<span class="fc" id="L68">        cards = scene.nodes().stream().map(node -&gt; {</span>
+<span class="fc" id="L69">            byId.put(node.id(), node);</span>
+<span class="fc" id="L70">            candidates.add(node.y() - 12);</span>
+<span class="fc" id="L71">            candidates.add(node.y() + node.height() + 16);</span>
+<span class="fc" id="L72">            return new Card(node.id(), cardBounds(node, CARD_CLEARANCE), cardBounds(node, -ENDPOINT_INSET));</span>
+<span class="fc" id="L73">        }).toList();</span>
+<span class="fc" id="L74">        tracks = List.copyOf(candidates);</span>
+<span class="fc" id="L75">        var byPair = new LinkedHashMap&lt;Pair, List&lt;DiagramSceneEdge&gt;&gt;();</span>
+<span class="fc" id="L76">        scene.edges().forEach(edge -&gt; byPair.computeIfAbsent(Pair.of(edge), ignored -&gt; new ArrayList&lt;&gt;()).add(edge));</span>
+<span class="fc bfc" id="L77" title="All 2 branches covered.">        for (var group : byPair.values()) {</span>
+<span class="fc bfc" id="L78" title="All 2 branches covered.">            for (int i = 0; i &lt; group.size(); i++) lanes.put(group.get(i).id(), i - (group.size() - 1) / 2.0);</span>
+<span class="fc" id="L79">        }</span>
+<span class="fc" id="L80">    }</span>
+
+    /** Try the middle first, then look along a clear straight segment for space beside the edge. */
+    static List&lt;Point&gt; captionAnchors(DiagramSceneEdge edge, Detour detour) {
+<span class="fc bfc" id="L84" title="All 2 branches covered.">        Point start = detour == null ? new Point(edge.sourceX(), edge.sourceY()) : detour.points().get(2);</span>
+<span class="fc bfc" id="L85" title="All 2 branches covered.">        Point end = detour == null ? new Point(edge.targetX(), edge.targetY()) : detour.points().get(3);</span>
+<span class="fc" id="L86">        double dx = end.x() - start.x(), dy = end.y() - start.y();</span>
+<span class="fc" id="L87">        double centerX = start.x() + dx / 2, centerY = start.y() + dy / 2;</span>
+<span class="fc" id="L88">        var anchors = new ArrayList&lt;Point&gt;();</span>
+<span class="fc" id="L89">        anchors.add(new Point(centerX, centerY));</span>
+<span class="fc" id="L90">        int intervals = Math.min(32, (int) Math.ceil(Math.hypot(dx, dy) / 48));</span>
+<span class="fc bfc" id="L91" title="All 2 branches covered.">        for (int i = 1; i &lt; intervals; i++) {</span>
+<span class="fc" id="L92">            double fraction = .5 * i / intervals;</span>
+<span class="fc" id="L93">            anchors.add(new Point(centerX + dx * fraction, centerY + dy * fraction));</span>
+<span class="fc" id="L94">            anchors.add(new Point(centerX - dx * fraction, centerY - dy * fraction));</span>
+        }
+<span class="fc" id="L96">        return anchors;</span>
+    }
+
+    public Detour detourForLine(DiagramSceneEdge edge) {
+<span class="fc" id="L100">        return lineRoutes.computeIfAbsent(edge, this::allocateLineRoute).orElse(null);</span>
+    }
+
+    private Optional&lt;Detour&gt; allocateLineRoute(DiagramSceneEdge edge) {
+<span class="fc" id="L104">        var original = new Line2D.Double(edge.sourceX(), edge.sourceY(), edge.targetX(), edge.targetY());</span>
+<span class="fc" id="L105">        var route = detour(edge, original);</span>
+<span class="fc bfc" id="L106" title="All 2 branches covered.">        var points = route == null ? flatten(original) : route.points();</span>
+<span class="fc bfc" id="L107" title="All 2 branches covered.">        for (int i = 1; i &lt; points.size(); i++) {</span>
+<span class="fc" id="L108">            var start = points.get(i - 1);</span>
+<span class="fc" id="L109">            var end = points.get(i);</span>
+<span class="fc bfc" id="L110" title="All 4 branches covered.">            if (start.y() == end.y() &amp;&amp; Math.abs(start.x() - end.x()) &gt; TRACK_SPACING)</span>
+<span class="fc" id="L111">                occupiedTracks.computeIfAbsent(start.y(), ignored -&gt; new ArrayList&lt;&gt;()).add(track(start, end));</span>
+        }
+<span class="fc" id="L113">        return Optional.ofNullable(route);</span>
+    }
+
+    /** Returns null when the original path is clear or no supported gutter reaches the saved ports. */
+    public Detour detour(DiagramSceneEdge edge, Shape original) {
+<span class="fc" id="L118">        var source = byId.get(edge.sourceId());</span>
+<span class="fc" id="L119">        var target = byId.get(edge.targetId());</span>
+<span class="pc bpc" id="L120" title="2 of 4 branches missed.">        if (source == null || target == null) return null;</span>
+<span class="fc" id="L121">        var originalPoints = flatten(original);</span>
+<span class="fc bfc" id="L122" title="All 4 branches covered.">        if (clear(edge, originalPoints) &amp;&amp; separated(originalPoints)) return null;</span>
+<span class="fc" id="L123">        Point start = new Point(edge.sourceX(), edge.sourceY()), end = new Point(edge.targetX(), edge.targetY());</span>
+<span class="fc" id="L124">        double lane = lanes.getOrDefault(edge.id(), 0d);</span>
+<span class="fc" id="L125">        double stagger = lane / (Math.abs(lane) + 2);</span>
+<span class="fc" id="L126">        double stub = 12 + 5 * stagger;</span>
+<span class="fc" id="L127">        double from = outside(start.x(), source, stub), to = outside(end.x(), target, stub);</span>
+<span class="pc bpc" id="L128" title="3 of 6 branches missed.">        if (from &lt; CANVAS_CLEARANCE || from &gt; scene.width() - CANVAS_CLEARANCE</span>
+<span class="pc bpc" id="L129" title="1 of 2 branches missed.">                || to &lt; CANVAS_CLEARANCE || to &gt; scene.width() - CANVAS_CLEARANCE) return null;</span>
+<span class="fc" id="L130">        double center = (start.y() + end.y()) / 2 + 45 * stagger;</span>
+<span class="fc" id="L131">        var candidates = tracks.stream().map(y -&gt; y + 6 * stagger)</span>
+<span class="pc bpc" id="L132" title="2 of 4 branches missed.">                .filter(y -&gt; y &gt;= CANVAS_CLEARANCE &amp;&amp; y &lt;= scene.height() - CANVAS_CLEARANCE)</span>
+<span class="fc" id="L133">                .sorted(Comparator.&lt;Double&gt;comparingDouble(y -&gt; Math.abs(y - start.y()) + Math.abs(y - end.y())</span>
+<span class="fc" id="L134">                        + Math.abs(y - center)).thenComparing(Comparator.reverseOrder())).toList();</span>
+        // The authored grid has a 24-unit horizontal gutter and a 34-unit row gutter.
+<span class="fc" id="L136">        Detour fallback = null;</span>
+<span class="fc bfc" id="L137" title="All 2 branches covered.">        for (double offset : new double[]{0, TRACK_SPACING, -TRACK_SPACING}) {</span>
+<span class="fc bfc" id="L138" title="All 2 branches covered.">            for (double candidate : candidates) {</span>
+<span class="fc" id="L139">                double y = candidate + offset;</span>
+<span class="pc bpc" id="L140" title="2 of 4 branches missed.">                if (y &lt; CANVAS_CLEARANCE || y &gt; scene.height() - CANVAS_CLEARANCE) continue;</span>
+<span class="fc" id="L141">                var points = List.of(start, new Point(from, start.y()), new Point(from, y),</span>
+<span class="fc" id="L142">                        new Point(to, y), new Point(to, end.y()), end);</span>
+<span class="fc bfc" id="L143" title="All 2 branches covered.">                if (!clear(edge, points)) continue;</span>
+<span class="fc bfc" id="L144" title="All 2 branches covered.">                if (separated(points.subList(2, 4))) return new Detour(points);</span>
+<span class="fc bfc" id="L145" title="All 2 branches covered.">                if (fallback == null) fallback = new Detour(points);</span>
+<span class="fc" id="L146">            }</span>
+        }
+<span class="fc" id="L148">        return fallback;</span>
+    }
+
+    private boolean separated(List&lt;Point&gt; points) {
+<span class="fc bfc" id="L152" title="All 2 branches covered.">        for (int i = 1; i &lt; points.size(); i++) {</span>
+<span class="fc" id="L153">            Point a = points.get(i - 1), b = points.get(i);</span>
+<span class="fc bfc" id="L154" title="All 2 branches covered.">            if (a.y() == b.y() &amp;&amp; occupiedTracks.subMap(a.y() - TRACK_SPACING, false, a.y() + TRACK_SPACING, false)</span>
+<span class="fc bfc" id="L155" title="All 2 branches covered.">                    .values().stream().flatMap(List::stream).anyMatch(track(a, b)::overlaps)) return false;</span>
+        }
+<span class="fc" id="L157">        return true;</span>
+    }
+
+    private static Track track(Point a, Point b) {
+<span class="fc" id="L161">        return new Track(Math.min(a.x(), b.x()), Math.max(a.x(), b.x()));</span>
+    }
+
+    private boolean clear(DiagramSceneEdge edge, List&lt;Point&gt; points) {
+<span class="fc bfc" id="L165" title="All 2 branches covered.">        for (int i = 1; i &lt; points.size(); i++) {</span>
+<span class="fc" id="L166">            Point a = points.get(i - 1), b = points.get(i);</span>
+<span class="fc bfc" id="L167" title="All 2 branches covered.">            for (var card : cards) {</span>
+<span class="fc bfc" id="L168" title="All 2 branches covered.">                if (card.obstacle(edge).intersectsLine(a.x(), a.y(), b.x(), b.y())) return false;</span>
+<span class="fc" id="L169">            }</span>
+        }
+<span class="fc" id="L171">        return true;</span>
+    }
+
+    private static List&lt;Point&gt; flatten(Shape path) {
+<span class="fc" id="L175">        var points = new ArrayList&lt;Point&gt;();</span>
+<span class="fc" id="L176">        double[] coordinates = new double[6];</span>
+<span class="fc bfc" id="L177" title="All 2 branches covered.">        for (var iterator = path.getPathIterator(null, .25); !iterator.isDone(); iterator.next()) {</span>
+<span class="fc" id="L178">            int segment = iterator.currentSegment(coordinates);</span>
+<span class="pc bpc" id="L179" title="1 of 4 branches missed.">            if (segment == PathIterator.SEG_MOVETO || segment == PathIterator.SEG_LINETO)</span>
+<span class="fc" id="L180">                points.add(new Point(coordinates[0], coordinates[1]));</span>
+        }
+<span class="fc" id="L182">        return points;</span>
+    }
+
+    private static double outside(double x, DiagramSceneNode node, double stub) {
+<span class="fc bfc" id="L186" title="All 2 branches covered.">        return x &lt; node.x() + node.width() / 2 ? x - stub : x + stub;</span>
+    }
+
+    private static Rectangle2D cardBounds(DiagramSceneNode node, double padding) {
+<span class="fc" id="L190">        return new Rectangle2D.Double(node.x() - padding, node.y() - padding,</span>
+<span class="fc" id="L191">                node.width() + 2 * padding, node.height() + 2 * padding);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>WorkspaceBranchSyncState.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.model</a> &gt; <span class="el_source">WorkspaceBranchSyncState.java</span></div><h1>WorkspaceBranchSyncState.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.model;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.ForeignKey;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.Table;
+import org.hibernate.annotations.OnDelete;
+import org.hibernate.annotations.OnDeleteAction;
+
+/** Branch-owned progress. Older rows in sync_state retain their original, unproven branch. */
+@Entity
+@Table(name = &quot;workspace_branch_sync&quot;)
+public class WorkspaceBranchSyncState extends WorkspaceSyncProgress {
+    @Id
+    @Column(name = &quot;scope_key&quot;, length = 64)
+    private String scopeKey;
+    @Column(nullable = false)
+    private String username;
+    @Column(name = &quot;repository_id&quot;, nullable = false)
+    private String repositoryId;
+    @Column(name = &quot;workspace_id&quot;)
+    private String workspaceId;
+
+    // A physical foreign key also fences a delayed first writer after its private working copy was removed.
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = &quot;workspace_id&quot;, referencedColumnName = &quot;workspace_id&quot;, insertable = false, updatable = false,
+            foreignKey = @ForeignKey(name = &quot;fk_ws_branch_sync_workspace&quot;))
+    @OnDelete(action = OnDeleteAction.CASCADE)
+    private UserWorkspace workspace;
+
+    @Column(name = &quot;sync_branch&quot;, nullable = false)
+    private String branch;
+
+<span class="fc" id="L38">    protected WorkspaceBranchSyncState() { }</span>
+
+<span class="fc" id="L40">    public WorkspaceBranchSyncState(WorkspaceSyncScope scope) {</span>
+<span class="fc" id="L41">        scopeKey = scope.key();</span>
+<span class="fc" id="L42">        username = scope.username();</span>
+<span class="fc" id="L43">        repositoryId = scope.repositoryId();</span>
+<span class="fc" id="L44">        workspaceId = scope.workspaceId();</span>
+<span class="fc" id="L45">        branch = scope.branch();</span>
+<span class="fc" id="L46">    }</span>
+
+    public SyncState view() {
+<span class="fc" id="L49">        var view = new SyncState();</span>
+<span class="fc" id="L50">        view.setUsername(username);</span>
+<span class="fc" id="L51">        view.setWorkspaceId(workspaceId);</span>
+<span class="fc" id="L52">        view.setObservationScope(new WorkspaceSyncScope(username, repositoryId, workspaceId, branch));</span>
+<span class="fc" id="L53">        copyProgressTo(view);</span>
+<span class="fc" id="L54">        return view;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

@@ -1,0 +1,230 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>VisioEvidencePages.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-export</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.export</a> &gt; <span class="el_source">VisioEvidencePages.java</span></div><h1>VisioEvidencePages.java</h1><pre class="source lang-java linenums">package com.taxonomy.export;
+
+import com.taxonomy.visio.*;
+import com.taxonomy.visio.converter.VisioPropertyLabels;
+
+import java.awt.Font;
+import java.util.*;
+
+/** Readable, mandatory evidence pages supplement the compact native graph. */
+final class VisioEvidencePages {
+<span class="fc" id="L11">    private static final Font FONT = new Font(Font.SANS_SERIF, Font.PLAIN, 10);</span>
+    private static final int LINES_PER_PAGE = 54;
+    private static final double WIDTH = 7.5;
+    private static final double LINE_HEIGHT = .185;
+<span class="fc" id="L15">    private static final List&lt;String&gt; SUMMARY_FIELDS = List.of(&quot;taxonomy.evidence1quote&quot;, &quot;taxonomy.evidence1contribution&quot;,</span>
+            &quot;taxonomy.evidence1condition&quot;, &quot;taxonomy.evidence1rationale&quot;, &quot;taxonomy.decisionRationale&quot;);
+<span class="fc" id="L17">    private static final Map&lt;String, String&gt; REASON_FIELDS = reasonFields();</span>
+
+    private VisioEvidencePages() { }
+
+    static void append(VisioDocument document, VisioPage overview) {
+<span class="fc" id="L22">        boolean german = document.isGerman();</span>
+<span class="fc" id="L23">        var entries = new ArrayList&lt;Entry&gt;();</span>
+<span class="fc bfc" id="L24" title="All 2 branches covered.">        for (var node : overview.getShapes()) {</span>
+<span class="fc" id="L25">            var values = node.getProperties();</span>
+<span class="fc" id="L26">            var reasons = reasons(values, german);</span>
+<span class="fc" id="L27">            String label = value(values, &quot;taxonomy.label&quot;);</span>
+<span class="fc" id="L28">            String id = value(values, &quot;taxonomy.id&quot;);</span>
+<span class="fc" id="L29">            String key = value(values, &quot;taxonomy.displayKey&quot;);</span>
+<span class="fc" id="L30">            String identity = key + &quot; | &quot; + id;</span>
+<span class="fc" id="L31">            String unitName = value(values, &quot;taxonomy.responsibilityName&quot;);</span>
+<span class="fc" id="L32">            boolean assigned = values.containsKey(&quot;taxonomy.responsibilityUnitId&quot;);</span>
+<span class="fc bfc" id="L33" title="All 2 branches covered.">            boolean clipped = !VisioPresentation.display(label, 24, 3).replace(&quot;\n&quot;, &quot;&quot;).equals(label.replace(&quot;\n&quot;, &quot;&quot;))</span>
+<span class="fc bfc" id="L34" title="All 4 branches covered.">                    || !VisioPresentation.display(identity, 24, 1).replace(&quot;\n&quot;, &quot;&quot;).equals(identity.replace(&quot;\n&quot;, &quot;&quot;))</span>
+<span class="fc" id="L35">                    || (assigned &amp;&amp; !VisioPresentation.nodeFooter(&quot;&quot;, unitName, 24, german)</span>
+<span class="pc bpc" id="L36" title="1 of 2 branches missed.">                        .equals(VisioPresentation.unitLabel(unitName, german)));</span>
+<span class="fc bfc" id="L37" title="All 4 branches covered.">            if (reasons.isEmpty() &amp;&amp; !clipped) continue;</span>
+<span class="fc" id="L38">            var fields = new ArrayList&lt;String&gt;();</span>
+<span class="fc" id="L39">            fields.add(key + &quot; · &quot; + id + &quot; · &quot; + label);</span>
+<span class="pc bpc" id="L40" title="1 of 2 branches missed.">            if (assigned) {</span>
+<span class="nc bnc" id="L41" title="All 2 branches missed.">                fields.add((german ? &quot;Zuständige Einheit: &quot; : &quot;Responsible unit: &quot;) + unitName + &quot; (&quot;</span>
+<span class="nc" id="L42">                        + value(values, &quot;taxonomy.responsibilityUnitId&quot;) + &quot;)&quot;);</span>
+<span class="nc bnc" id="L43" title="All 2 branches missed.">                fields.add((german ? &quot;Quelle der Zuständigkeit: &quot; : &quot;Assignment source: &quot;)</span>
+<span class="nc" id="L44">                        + value(values, &quot;taxonomy.responsibilitySourceId&quot;));</span>
+            }
+<span class="fc" id="L46">            fields.addAll(reasons);</span>
+<span class="fc" id="L47">            entries.add(new Entry(key, fields, values));</span>
+<span class="fc" id="L48">        }</span>
+<span class="fc bfc" id="L49" title="All 2 branches covered.">        for (var relation : overview.getConnects()) {</span>
+<span class="fc" id="L50">            var values = relation.getProperties();</span>
+<span class="fc" id="L51">            var reasons = reasons(values, german);</span>
+<span class="fc" id="L52">            boolean clipped = !VisioPresentation.display(relation.getRelationType(), 52, 4).replace(&quot;\n&quot;, &quot;&quot;)</span>
+<span class="fc bfc" id="L53" title="All 2 branches covered.">                    .equals(relation.getRelationType().replace(&quot;\n&quot;, &quot;&quot;));</span>
+<span class="fc bfc" id="L54" title="All 4 branches covered.">            if (reasons.isEmpty() &amp;&amp; !clipped) continue;</span>
+<span class="fc" id="L55">            String key = value(values, &quot;taxonomy.displayKey&quot;);</span>
+<span class="fc" id="L56">            var fields = new ArrayList&lt;String&gt;();</span>
+<span class="fc" id="L57">            fields.add(key + &quot; · &quot; + value(values, &quot;taxonomy.id&quot;) + &quot; · &quot;</span>
+<span class="fc" id="L58">                    + value(values, &quot;taxonomy.sourceId&quot;) + &quot; → &quot; + value(values, &quot;taxonomy.targetId&quot;));</span>
+<span class="fc bfc" id="L59" title="All 2 branches covered.">            fields.add(german ? &quot;Typ: &quot; + VisioPresentation.relationLabel(relation.getRelationType(), true)</span>
+<span class="fc" id="L60">                    : &quot;Type: &quot; + relation.getRelationType());</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">            if (values.containsKey(&quot;taxonomy.provenanceStatus&quot;)) fields.add(&quot;Status: &quot;</span>
+<span class="fc" id="L62">                    + VisioPresentation.statusLabel(value(values, &quot;taxonomy.provenanceStatus&quot;), german));</span>
+<span class="fc" id="L63">            fields.addAll(reasons);</span>
+<span class="fc" id="L64">            entries.add(new Entry(key, fields, values));</span>
+<span class="fc" id="L65">        }</span>
+<span class="fc bfc" id="L66" title="All 2 branches covered.">        if (entries.isEmpty()) return;</span>
+<span class="fc bfc" id="L67" title="All 2 branches covered.">        appendTextPages(document, entries, german ? &quot;Nachweise &quot; : &quot;Evidence &quot;,</span>
+<span class="fc bfc" id="L68" title="All 2 branches covered.">                german ? &quot;Vollständige Nachweise · &quot; : &quot;Full recorded evidence · &quot;,</span>
+<span class="fc bfc" id="L69" title="All 2 branches covered.">                german ? &quot; · N = Knoten, R = Beziehung&quot; : &quot; · N = node, R = relationship&quot;);</span>
+
+<span class="fc" id="L71">        var links = new HashMap&lt;String, VisioProperty&gt;();</span>
+<span class="fc" id="L72">        entries.forEach(entry -&gt; links.put(entry.key(), entry.properties().get(&quot;taxonomy.evidencePage&quot;)));</span>
+        // Impact pages contain independent copies of native graph shapes; their evidence links agree.
+<span class="fc bfc" id="L74" title="All 2 branches covered.">        for (var page : document.getPages()) {</span>
+<span class="fc" id="L75">            page.getShapes().forEach(shape -&gt; copyLink(shape.getProperties(), links));</span>
+<span class="fc" id="L76">            page.getConnects().forEach(relation -&gt; copyLink(relation.getProperties(), links));</span>
+<span class="fc" id="L77">        }</span>
+<span class="fc bfc" id="L78" title="All 2 branches covered.">        String notice = german ? &quot;Vollständige Begründungen und Bezeichnungen auf den Nachweisseiten (Kürzel N/R).&quot;</span>
+<span class="fc" id="L79">                : &quot;Full recorded reasons and labels: Evidence pages, matched by N/R keys.&quot;;</span>
+<span class="fc" id="L80">        var legend = overview.getLegend();</span>
+<span class="fc" id="L81">        double top = overview.getShapes().stream().mapToDouble(shape -&gt; shape.getY() + shape.getHeight() / 2).max().orElse(0);</span>
+<span class="fc" id="L82">        top = Math.max(top, overview.getConnects().stream()</span>
+<span class="pc bpc" id="L83" title="1 of 4 branches missed.">                .filter(connect -&gt; connect.getTextBox() != null &amp;&amp; !connect.getTextBox().text().isBlank())</span>
+<span class="fc" id="L84">                .mapToDouble(connect -&gt; connect.getTextBox().y() + connect.getTextBox().height() / 2).max().orElse(0));</span>
+<span class="fc bfc" id="L85" title="All 2 branches covered.">        if (legend == null) {</span>
+<span class="fc" id="L86">            overview.setLegend(new VisioTextBox(notice, 5.5, top + .7, 10, .6));</span>
+        } else {
+<span class="fc" id="L88">            double y = Math.max(legend.y(), top + .4 + legend.height() / 2);</span>
+<span class="fc" id="L89">            overview.setLegend(new VisioTextBox(legend.text() + &quot;\n&quot; + notice, legend.x(), y, legend.width(), legend.height()));</span>
+        }
+<span class="fc" id="L91">        document.getLosses().add(new VisioLoss(&quot;document&quot;, &quot;&quot;, &quot;visibleEvidence&quot;, &quot;MAPPED&quot;,</span>
+                &quot;Full recorded reasons and long labels are readable on Evidence pages, identified by the overview N/R keys. Text continues onto following pages without shortening.&quot;));
+<span class="fc" id="L93">    }</span>
+
+    static void appendTreeReasons(VisioDocument document, int firstDecisionPage, boolean german) {
+<span class="fc" id="L96">        var entries = new ArrayList&lt;Entry&gt;();</span>
+<span class="fc bfc" id="L97" title="All 2 branches covered.">        for (var page : document.getPages().subList(firstDecisionPage, document.getPages().size())) {</span>
+<span class="fc bfc" id="L98" title="All 2 branches covered.">            for (var shape : page.getShapes()) {</span>
+<span class="fc" id="L99">                var values = shape.getProperties();</span>
+<span class="fc" id="L100">                var reason = values.get(&quot;taxonomy.presenceReason&quot;);</span>
+<span class="pc bpc" id="L101" title="1 of 4 branches missed.">                if (reason == null || reason.value().isBlank()) continue;</span>
+<span class="fc" id="L102">                String id = value(values, &quot;taxonomy.id&quot;);</span>
+<span class="fc" id="L103">                var fields = List.of(id + &quot; · &quot; + value(values, &quot;taxonomy.label&quot;), reason.value());</span>
+<span class="fc" id="L104">                entries.add(new Entry(id, fields, values));</span>
+<span class="fc" id="L105">            }</span>
+<span class="fc" id="L106">        }</span>
+<span class="pc bpc" id="L107" title="1 of 2 branches missed.">        if (!entries.isEmpty()) {</span>
+<span class="pc bpc" id="L108" title="1 of 2 branches missed.">            appendTextPages(document, entries, german ? &quot;Entscheidungsgründe &quot; : &quot;Decision reasons &quot;, &quot;&quot;, &quot;&quot;);</span>
+        }
+<span class="fc" id="L110">    }</span>
+
+    /** Show the most useful recorded values beside a single native relationship; link to their complete record. */
+    static VisioShape relationExcerpt(String shapeId, VisioConnect relation, boolean german) {
+<span class="fc" id="L114">        var values = relation.getProperties();</span>
+<span class="fc" id="L115">        var evidencePage = values.get(&quot;taxonomy.evidencePage&quot;);</span>
+<span class="pc bpc" id="L116" title="1 of 2 branches missed.">        if (evidencePage == null) return null;</span>
+
+<span class="fc" id="L118">        double width = 10;</span>
+<span class="fc" id="L119">        var lines = new ArrayList&lt;String&gt;();</span>
+<span class="pc bpc" id="L120" title="1 of 2 branches missed.">        lines.add(german ? &quot;Beziehungsbeleg · &quot; + value(values, &quot;taxonomy.displayKey&quot;)</span>
+<span class="nc" id="L121">                : &quot;Relationship evidence · &quot; + value(values, &quot;taxonomy.displayKey&quot;));</span>
+<span class="fc" id="L122">        var shown = new LinkedHashSet&lt;String&gt;();</span>
+<span class="fc bfc" id="L123" title="All 2 branches covered.">        for (String field : SUMMARY_FIELDS) {</span>
+<span class="fc" id="L124">            String recorded = value(values, field);</span>
+<span class="pc bpc" id="L125" title="1 of 4 branches missed.">            if (recorded.isBlank() || !shown.add(recorded)) continue;</span>
+<span class="fc" id="L126">            var wrapped = DiagramTextWrapper.wrapMeasured(VisioPropertyLabels.label(field, german) + &quot;: &quot; + recorded.strip(),</span>
+                    FONT, (width * 72 - 20) / 1.15, 6, &quot;…&quot;);
+<span class="fc" id="L128">            lines.add(&quot;&quot;);</span>
+<span class="fc" id="L129">            lines.addAll(wrapped);</span>
+<span class="fc" id="L130">        }</span>
+<span class="pc bpc" id="L131" title="1 of 2 branches missed.">        if (shown.isEmpty()) return null;</span>
+<span class="fc" id="L132">        lines.add(&quot;&quot;);</span>
+<span class="pc bpc" id="L133" title="1 of 2 branches missed.">        lines.add((german ? &quot;Vollständige Nachweise: &quot; : &quot;Complete evidence: &quot;) + evidencePage.value());</span>
+<span class="fc" id="L134">        double height = .45 + lines.size() * LINE_HEIGHT;</span>
+<span class="fc" id="L135">        var shape = new VisioShape(shapeId, String.join(&quot;\n&quot;, lines), 5.5, .5 + height / 2,</span>
+                width, height, &quot;Evidence&quot;, false);
+<span class="fc" id="L137">        shape.getProperties().put(&quot;taxonomy.presentationOnly&quot;, VisioProperty.bool(true));</span>
+<span class="fc" id="L138">        shape.getProperties().put(&quot;taxonomy.evidencePage&quot;, evidencePage);</span>
+<span class="fc" id="L139">        return shape;</span>
+    }
+
+    private static void appendTextPages(VisioDocument document, List&lt;Entry&gt; entries, String prefix,
+                                        String titlePrefix, String titleSuffix) {
+
+<span class="fc" id="L145">        var pages = new ArrayList&lt;List&lt;String&gt;&gt;();</span>
+<span class="fc" id="L146">        var current = new ArrayList&lt;String&gt;();</span>
+<span class="fc bfc" id="L147" title="All 2 branches covered.">        for (var entry : entries) {</span>
+<span class="fc" id="L148">            var lines = new ArrayList&lt;String&gt;();</span>
+<span class="fc bfc" id="L149" title="All 2 branches covered.">            for (String field : entry.fields()) {</span>
+                // A conservative allowance protects the readable 10pt size if Visio substitutes fonts.
+<span class="fc" id="L151">                lines.addAll(DiagramTextWrapper.wrapMeasured(field, FONT, (WIDTH * 72 - 20) / 1.15,</span>
+                        Integer.MAX_VALUE, &quot;&quot;));
+<span class="fc" id="L153">            }</span>
+<span class="fc bfc" id="L154" title="All 4 branches covered.">            if (!current.isEmpty() &amp;&amp; LINES_PER_PAGE - current.size() &lt; Math.min(3, lines.size())) {</span>
+<span class="fc" id="L155">                pages.add(List.copyOf(current)); current.clear();</span>
+            }
+<span class="fc" id="L157">            entry.properties().put(&quot;taxonomy.evidencePage&quot;, VisioProperty.text(prefix + (pages.size() + 1)));</span>
+<span class="fc bfc" id="L158" title="All 2 branches covered.">            for (String line : lines) {</span>
+<span class="fc bfc" id="L159" title="All 2 branches covered.">                if (current.size() == LINES_PER_PAGE) { pages.add(List.copyOf(current)); current.clear(); }</span>
+<span class="fc" id="L160">                current.add(line);</span>
+<span class="fc" id="L161">            }</span>
+<span class="fc bfc" id="L162" title="All 2 branches covered.">            if (current.size() &lt; LINES_PER_PAGE) current.add(&quot;&quot;);</span>
+<span class="fc" id="L163">        }</span>
+<span class="pc bpc" id="L164" title="1 of 2 branches missed.">        if (!current.isEmpty()) pages.add(List.copyOf(current));</span>
+<span class="fc" id="L165">        long existingEvidence = document.getPages().stream().filter(VisioPage::isEvidencePage).count();</span>
+<span class="pc bpc" id="L166" title="1 of 2 branches missed.">        if (existingEvidence + pages.size() &gt; VisioPackageValidator.MAX_EVIDENCE_PAGES</span>
+<span class="pc bpc" id="L167" title="1 of 2 branches missed.">                || document.getPages().size() + pages.size() &gt; VisioPackageValidator.MAX_PAGES) {</span>
+<span class="nc" id="L168">            throw new IllegalArgumentException(&quot;Complete readable Visio evidence exceeds the &quot;</span>
+                    + VisioPackageValidator.MAX_EVIDENCE_PAGES
+                    + &quot;-page evidence capacity; select fewer elements. No reasons were truncated.&quot;);
+        }
+<span class="fc" id="L172">        int count = 0;</span>
+<span class="fc bfc" id="L173" title="All 2 branches covered.">        for (var lines : pages) {</span>
+<span class="fc" id="L174">            String name = prefix + (++count);</span>
+<span class="fc" id="L175">            var page = new VisioPage(Integer.toString(document.getPages().size()), name);</span>
+<span class="fc" id="L176">            page.setEvidencePage(true);</span>
+<span class="fc" id="L177">            double height = .2 + lines.size() * LINE_HEIGHT;</span>
+<span class="fc" id="L178">            var text = new VisioShape(&quot;1&quot;, String.join(&quot;\n&quot;, lines), 4.15, 10.65 - height / 2,</span>
+                    WIDTH, height, &quot;Evidence&quot;, false);
+<span class="fc" id="L180">            text.getProperties().put(&quot;taxonomy.presentationOnly&quot;, VisioProperty.bool(true));</span>
+<span class="fc" id="L181">            page.getShapes().add(text);</span>
+<span class="fc" id="L182">            page.setLegend(new VisioTextBox(titlePrefix + name + &quot; / &quot; + pages.size() + titleSuffix, 4.15, 11.05, WIDTH, .4));</span>
+<span class="fc" id="L183">            document.getPages().add(page);</span>
+<span class="fc" id="L184">        }</span>
+<span class="fc" id="L185">        int existingEvidencePages = Integer.parseInt(document.getProperties()</span>
+<span class="fc" id="L186">                .getOrDefault(&quot;taxonomy.evidencePages&quot;, VisioProperty.number(0)).value());</span>
+<span class="fc" id="L187">        document.getProperties().put(&quot;taxonomy.evidencePages&quot;, VisioProperty.number(existingEvidencePages + pages.size()));</span>
+<span class="fc" id="L188">    }</span>
+
+    private static void copyLink(Map&lt;String, VisioProperty&gt; values, Map&lt;String, VisioProperty&gt; links) {
+<span class="fc" id="L191">        var link = links.get(value(values, &quot;taxonomy.displayKey&quot;));</span>
+<span class="fc bfc" id="L192" title="All 2 branches covered.">        if (link != null) values.put(&quot;taxonomy.evidencePage&quot;, link);</span>
+<span class="fc" id="L193">    }</span>
+
+    private static List&lt;String&gt; reasons(Map&lt;String, VisioProperty&gt; values, boolean german) {
+<span class="fc" id="L196">        var grouped = new LinkedHashMap&lt;String, List&lt;String&gt;&gt;();</span>
+<span class="fc bfc" id="L197" title="All 2 branches covered.">        for (var entry : values.entrySet()) {</span>
+<span class="fc" id="L198">            String label = REASON_FIELDS.get(entry.getKey());</span>
+<span class="fc bfc" id="L199" title="All 4 branches covered.">            if (label == null &amp;&amp; entry.getKey().matches(&quot;taxonomy\\.evidence[0-9]+.+&quot;)) {</span>
+<span class="fc" id="L200">                label = entry.getKey().substring(&quot;taxonomy.&quot;.length());</span>
+            }
+<span class="pc bpc" id="L202" title="1 of 6 branches missed.">            if (label != null &amp;&amp; entry.getValue() != null &amp;&amp; !entry.getValue().value().isBlank()) {</span>
+<span class="fc bfc" id="L203" title="All 2 branches covered.">                if (german) label = VisioPropertyLabels.label(entry.getKey(), true);</span>
+<span class="fc" id="L204">                grouped.computeIfAbsent(entry.getValue().value(), ignored -&gt; new ArrayList&lt;&gt;()).add(label);</span>
+            }
+<span class="fc" id="L206">        }</span>
+<span class="fc" id="L207">        return grouped.entrySet().stream().map(entry -&gt; String.join(&quot; / &quot;, entry.getValue()) + &quot;: &quot; + entry.getKey()).toList();</span>
+    }
+
+    private static String value(Map&lt;String, VisioProperty&gt; values, String key) {
+<span class="fc" id="L211">        var value = values.get(key);</span>
+<span class="fc bfc" id="L212" title="All 2 branches covered.">        return value == null ? &quot;&quot; : value.value();</span>
+    }
+
+    private static Map&lt;String, String&gt; reasonFields() {
+<span class="fc" id="L216">        var fields = new LinkedHashMap&lt;String, String&gt;();</span>
+<span class="fc" id="L217">        fields.put(&quot;taxonomy.presenceReason&quot;, &quot;Presence reason&quot;);</span>
+<span class="fc" id="L218">        fields.put(&quot;taxonomy.selectionReason&quot;, &quot;Selection reason&quot;);</span>
+<span class="fc" id="L219">        fields.put(&quot;taxonomy.includedBecause&quot;, &quot;Included because&quot;);</span>
+<span class="fc" id="L220">        fields.put(&quot;taxonomy.derivationReason&quot;, &quot;Derivation reason&quot;);</span>
+<span class="fc" id="L221">        fields.put(&quot;taxonomy.decisionRationale&quot;, &quot;Review rationale&quot;);</span>
+<span class="fc" id="L222">        fields.put(&quot;taxonomy.actionEvidence&quot;, &quot;Action evidence&quot;);</span>
+<span class="fc" id="L223">        fields.put(&quot;taxonomy.reason&quot;, &quot;Reason&quot;);</span>
+<span class="fc" id="L224">        fields.put(&quot;taxonomy.rationale&quot;, &quot;Rationale&quot;);</span>
+<span class="fc" id="L225">        return Collections.unmodifiableMap(fields);</span>
+    }
+
+<span class="fc" id="L228">    private record Entry(String key, List&lt;String&gt; fields, Map&lt;String, VisioProperty&gt; properties) { }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>SmtpMailAnalysisDelivery.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.mail</a> &gt; <span class="el_source">SmtpMailAnalysisDelivery.java</span></div><h1>SmtpMailAnalysisDelivery.java</h1><pre class="source lang-java linenums">package com.taxonomy.mail;
+
+import jakarta.activation.DataHandler;
+import jakarta.mail.Message;
+import jakarta.mail.MessagingException;
+import jakarta.mail.Session;
+import jakarta.mail.internet.InternetAddress;
+import jakarta.mail.internet.MimeBodyPart;
+import jakarta.mail.internet.MimeMessage;
+import jakarta.mail.internet.MimeMultipart;
+import jakarta.mail.util.ByteArrayDataSource;
+
+import java.nio.charset.StandardCharsets;
+import java.util.Date;
+import java.util.List;
+import java.util.Properties;
+
+final class SmtpMailAnalysisDelivery implements MailAnalysisDelivery {
+
+<span class="fc" id="L20">    private static final String UTF_8 = StandardCharsets.UTF_8.name();</span>
+
+    private final MailTransportProperties.Smtp connection;
+    private final MailTransportProperties properties;
+    private final String from;
+    private final Session session;
+
+<span class="fc" id="L27">    SmtpMailAnalysisDelivery(MailTransportProperties properties) {</span>
+<span class="fc" id="L28">        connection = properties.smtp();</span>
+<span class="fc" id="L29">        this.properties = properties;</span>
+<span class="fc" id="L30">        from = MailRequestParser.canonicalAddress(connection.from());</span>
+<span class="fc" id="L31">        Properties protocol = connectionProperties(&quot;smtp&quot;);</span>
+<span class="fc" id="L32">        protocol.setProperty(&quot;mail.smtp.auth&quot;, &quot;true&quot;);</span>
+<span class="fc bfc" id="L33" title="All 2 branches covered.">        if (connection.implicitTls()) {</span>
+<span class="fc" id="L34">            protocol.setProperty(&quot;mail.smtp.ssl.enable&quot;, &quot;true&quot;);</span>
+        } else {
+<span class="fc" id="L36">            protocol.setProperty(&quot;mail.smtp.starttls.enable&quot;, &quot;true&quot;);</span>
+<span class="fc" id="L37">            protocol.setProperty(&quot;mail.smtp.starttls.required&quot;, &quot;true&quot;);</span>
+        }
+<span class="fc" id="L39">        session = Session.getInstance(protocol);</span>
+<span class="fc" id="L40">    }</span>
+
+    static Properties connectionProperties(String protocol) {
+<span class="fc" id="L43">        var settings = new Properties();</span>
+<span class="fc" id="L44">        String prefix = &quot;mail.&quot; + protocol + &quot;.&quot;;</span>
+<span class="fc" id="L45">        settings.setProperty(prefix + &quot;connectiontimeout&quot;, &quot;10000&quot;);</span>
+<span class="fc" id="L46">        settings.setProperty(prefix + &quot;timeout&quot;, &quot;30000&quot;);</span>
+<span class="fc" id="L47">        settings.setProperty(prefix + &quot;writetimeout&quot;, &quot;30000&quot;);</span>
+<span class="fc" id="L48">        settings.setProperty(prefix + &quot;ssl.checkserveridentity&quot;, &quot;true&quot;);</span>
+<span class="fc" id="L49">        return settings;</span>
+    }
+
+    void sendReceipt(String recipient, String subject, String jobToken, Integer queuePosition) {
+<span class="pc bpc" id="L53" title="2 of 4 branches missed.">        String position = queuePosition == null || queuePosition &lt; 1</span>
+<span class="nc" id="L54">                ? &quot;Der Auftrag wird bearbeitet oder ist bereits abgeschlossen.&quot;</span>
+<span class="fc" id="L55">                : &quot;Position in der Warteschlange bei Eingang: &quot; + queuePosition + &quot;.&quot;;</span>
+<span class="fc" id="L56">        send(recipient, &quot;Taxonomy · Auftrag eingegangen&quot;, subject,</span>
+<span class="fc" id="L57">                position + &quot;\n\nLive-Status Ihres Auftrags:\n&quot; + properties.statusLink(jobToken), List.of());</span>
+<span class="fc" id="L58">    }</span>
+
+    void sendRejection(String recipient, String subject, String message) {
+<span class="fc" id="L61">        send(recipient, &quot;Taxonomy · Auftrag nicht angenommen&quot;, subject, message, List.of());</span>
+<span class="fc" id="L62">    }</span>
+
+    @Override
+    public void sendResult(String recipient, String subject, String summary, List&lt;MailAnalysisAttachment&gt; attachments) {
+<span class="fc" id="L66">        send(recipient, &quot;Taxonomy · Ergebnis&quot;, subject, summary, attachments);</span>
+<span class="fc" id="L67">    }</span>
+
+    @Override
+    public void sendFailure(String recipient, String subject, String message) {
+<span class="nc" id="L71">        send(recipient, &quot;Taxonomy · Auftrag fehlgeschlagen&quot;, subject, message, List.of());</span>
+<span class="nc" id="L72">    }</span>
+
+    private void send(String recipient, String title, String originalSubject, String text,
+                      List&lt;MailAnalysisAttachment&gt; attachments) {
+<span class="fc" id="L76">        try (var transport = session.getTransport(&quot;smtp&quot;)) {</span>
+<span class="fc" id="L77">            MimeMessage reply = buildReply(recipient, title, originalSubject, text, attachments);</span>
+<span class="fc" id="L78">            transport.connect(connection.host(), connection.port(), connection.username(), connection.password());</span>
+<span class="fc" id="L79">            transport.sendMessage(reply, reply.getAllRecipients());</span>
+<span class="nc" id="L80">        } catch (MessagingException failed) {</span>
+<span class="nc" id="L81">            throw new MailDeliveryException(failed);</span>
+<span class="fc" id="L82">        }</span>
+<span class="fc" id="L83">    }</span>
+
+    MimeMessage buildReply(String recipient, String title, String originalSubject, String text,
+                           List&lt;MailAnalysisAttachment&gt; attachments) throws MessagingException {
+<span class="fc" id="L87">        var reply = new MimeMessage(session);</span>
+<span class="fc" id="L88">        reply.setFrom(new InternetAddress(from, true));</span>
+<span class="fc" id="L89">        reply.setRecipient(Message.RecipientType.TO, new InternetAddress(MailRequestParser.canonicalAddress(recipient), true));</span>
+<span class="pc bpc" id="L90" title="1 of 2 branches missed.">        String cleanSubject = originalSubject == null ? &quot;&quot; : originalSubject.replaceAll(&quot;[\\p{Cntrl}]&quot;, &quot; &quot;).strip();</span>
+<span class="pc bpc" id="L91" title="1 of 2 branches missed.">        if (cleanSubject.length() &gt; 180) {</span>
+<span class="nc" id="L92">            cleanSubject = cleanSubject.substring(0, 180) + &quot;…&quot;;</span>
+        }
+<span class="pc bpc" id="L94" title="1 of 2 branches missed.">        reply.setSubject(cleanSubject.isEmpty() ? title : title + &quot; — &quot; + cleanSubject, UTF_8);</span>
+<span class="fc" id="L95">        reply.setSentDate(new Date());</span>
+<span class="fc" id="L96">        reply.setHeader(&quot;Auto-Submitted&quot;, &quot;auto-replied&quot;);</span>
+<span class="fc" id="L97">        reply.setHeader(&quot;X-Auto-Response-Suppress&quot;, &quot;All&quot;);</span>
+<span class="pc bpc" id="L98" title="2 of 4 branches missed.">        String message = text == null || text.isBlank() ? &quot;Der Auftrag konnte nicht verarbeitet werden.&quot; : text;</span>
+<span class="fc bfc" id="L99" title="All 2 branches covered.">        if (attachments.isEmpty()) {</span>
+<span class="fc" id="L100">            reply.setText(message, UTF_8);</span>
+        } else {
+<span class="fc" id="L102">            var contents = new MimeMultipart(&quot;mixed&quot;);</span>
+<span class="fc" id="L103">            var body = new MimeBodyPart();</span>
+<span class="fc" id="L104">            body.setText(message, UTF_8);</span>
+<span class="fc" id="L105">            contents.addBodyPart(body);</span>
+<span class="fc bfc" id="L106" title="All 2 branches covered.">            for (MailAnalysisAttachment result : attachments) {</span>
+<span class="fc" id="L107">                var file = new MimeBodyPart();</span>
+<span class="fc" id="L108">                file.setDataHandler(new DataHandler(new ByteArrayDataSource(result.content(), result.contentType())));</span>
+<span class="fc" id="L109">                file.setFileName(MailRequestParser.cleanFilename(result.filename()));</span>
+<span class="fc" id="L110">                contents.addBodyPart(file);</span>
+<span class="fc" id="L111">            }</span>
+<span class="fc" id="L112">            reply.setContent(contents);</span>
+        }
+<span class="fc" id="L114">        reply.saveChanges();</span>
+<span class="fc" id="L115">        return reply;</span>
+    }
+
+    static final class MailDeliveryException extends RuntimeException {
+        MailDeliveryException(MessagingException cause) {
+<span class="nc" id="L120">            super(&quot;Taxonomy mail delivery failed&quot;, cause);</span>
+<span class="nc" id="L121">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

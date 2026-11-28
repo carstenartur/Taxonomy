@@ -1,0 +1,304 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>VerifiedLegacyOwnerMigration.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.security.service</a> &gt; <span class="el_source">VerifiedLegacyOwnerMigration.java</span></div><h1>VerifiedLegacyOwnerMigration.java</h1><pre class="source lang-java linenums">package com.taxonomy.security.service;
+
+import com.taxonomy.backup.IdentityBinding;
+import com.taxonomy.backup.PrincipalId;
+import com.taxonomy.security.keycloak.PrincipalJwtAuthenticationToken;
+import com.taxonomy.security.keycloak.PrincipalOidcUser;
+import com.taxonomy.security.model.PrincipalBinding;
+import com.taxonomy.security.model.PrincipalUserDetails;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
+
+import javax.sql.DataSource;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.HexFormat;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+import java.util.UUID;
+
+/**
+ * Explicit, all-or-nothing mapping of disabled historical ownership scopes to verified
+ * OIDC issuer/subject identities. It is deliberately not a login or self-service API:
+ * an operator must verify the external ownership and retain the approval evidence.
+ */
+@Service
+public final class VerifiedLegacyOwnerMigration {
+    private static final int MAX_PREVIEW = 256;
+    private static final int MAX_APPLY = 4096;
+    private static final String UNRESOLVED = &quot;&quot;&quot;
+            from app_principal p
+            where p.enabled=0
+              and not exists (select 1 from principal_binding b where b.principal_id=p.principal_id)
+            &quot;&quot;&quot;;
+
+<span class="fc" id="L49">    public record UnresolvedOwner(PrincipalId principal, String legacyScope) { }</span>
+
+    /** Fingerprint covers every unresolved row, even when the visible page is truncated. */
+    public record Preview(long total, List&lt;UnresolvedOwner&gt; owners, String fingerprint, boolean truncated) {
+<span class="fc" id="L53">        public Preview { owners = List.copyOf(owners); }</span>
+    }
+
+    /**
+     * A mapping is approved out of band against the exact immutable provider subject.
+     * evidenceReference identifies that approval; its raw value is never put in the audit.
+     */
+<span class="fc" id="L60">    public record VerifiedMapping(PrincipalId reservedPrincipal, String exactLegacyScope,</span>
+                                  String issuer, String subject, String evidenceReference) { }
+
+    private final JdbcTemplate jdbc;
+    private final PrincipalIdentityService identities;
+    private final TransactionTemplate transaction;
+    private final String registryLock;
+
+<span class="fc" id="L68">    public VerifiedLegacyOwnerMigration(DataSource database, PrincipalIdentityService identities) {</span>
+<span class="fc" id="L69">        this.jdbc = new JdbcTemplate(database);</span>
+<span class="fc" id="L70">        this.identities = Objects.requireNonNull(identities);</span>
+<span class="fc" id="L71">        this.transaction = new TransactionTemplate(new DataSourceTransactionManager(database));</span>
+<span class="fc" id="L72">        transaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);</span>
+<span class="fc" id="L73">        transaction.setTimeout(30);</span>
+<span class="fc" id="L74">        try (var connection = database.getConnection()) {</span>
+<span class="fc" id="L75">            registryLock = connection.getMetaData().getDatabaseProductName().toLowerCase(Locale.ROOT)</span>
+<span class="pc bpc" id="L76" title="1 of 2 branches missed.">                    .contains(&quot;microsoft&quot;)</span>
+<span class="nc" id="L77">                    ? &quot;select installation_id from principal_installation with (updlock, holdlock) where registry_key='local'&quot;</span>
+<span class="fc" id="L78">                    : &quot;select installation_id from principal_installation where registry_key='local' for update&quot;;</span>
+<span class="nc" id="L79">        } catch (java.sql.SQLException error) {</span>
+<span class="nc" id="L80">            throw new IllegalStateException(&quot;Cannot inspect identity database&quot;, error);</span>
+<span class="fc" id="L81">        }</span>
+<span class="fc" id="L82">    }</span>
+
+    /** Privileged bounded preview. The count and fingerprint include rows beyond the page. */
+    public Preview preview(Authentication administrator, int limit) {
+<span class="fc bfc" id="L86" title="All 4 branches covered.">        if (limit &lt; 1 || limit &gt; MAX_PREVIEW) throw new IllegalArgumentException(&quot;Invalid preview limit&quot;);</span>
+<span class="fc" id="L87">        return transaction.execute(status -&gt; {</span>
+<span class="fc" id="L88">            lockRegistry();</span>
+<span class="fc" id="L89">            requireAdministrator(administrator);</span>
+<span class="fc" id="L90">            return snapshot(limit);</span>
+        });
+    }
+
+<span class="fc" id="L94">    public record ReservationStatus(LegacyOwnerMigrationReadiness.Inventory inventory, Preview reservations) { }</span>
+
+    /** Return the readiness counts and a bounded page of disabled reservations to the same operator. */
+    public ReservationStatus reservationStatus(Authentication administrator, int limit) {
+<span class="pc bpc" id="L98" title="2 of 4 branches missed.">        if (limit &lt; 1 || limit &gt; MAX_PREVIEW) throw new IllegalArgumentException(&quot;Invalid preview limit&quot;);</span>
+<span class="fc" id="L99">        return transaction.execute(status -&gt; {</span>
+<span class="fc" id="L100">            lockRegistry();</span>
+<span class="fc" id="L101">            requireAdministrator(administrator);</span>
+<span class="fc" id="L102">            return new ReservationStatus(LegacyOwnerMigrationReadiness.inspect(jdbc), snapshot(limit));</span>
+        });
+    }
+
+    /** Reserve observed scopes as disabled principals. This does not link an identity or grant access. */
+    public int reserveMissing(Authentication administrator) {
+<span class="fc" id="L108">        return transaction.execute(status -&gt; {</span>
+<span class="fc" id="L109">            lockRegistry();</span>
+<span class="fc" id="L110">            var actor = requireAdministrator(administrator);</span>
+<span class="fc" id="L111">            var missing = LegacyOwnerMigrationReadiness.missingScopes(jdbc, MAX_APPLY);</span>
+<span class="fc bfc" id="L112" title="All 2 branches covered.">            for (String scope : missing) {</span>
+<span class="fc" id="L113">                var principal = PrincipalId.create();</span>
+<span class="fc" id="L114">                jdbc.update(&quot;insert into app_principal (principal_id, scope_key, enabled) values (?, ?, 0)&quot;,</span>
+<span class="fc" id="L115">                        principal.value().toString(), scope);</span>
+<span class="fc" id="L116">                jdbc.update(&quot;insert into principal_access_audit values (?, ?, ?, ?, ?, ?)&quot;,</span>
+<span class="fc" id="L117">                        UUID.randomUUID().toString(), actor.value().toString(), principal.value().toString(),</span>
+<span class="fc" id="L118">                        &quot;RESERVE_LEGACY_OWNER&quot;, &quot;Unbound historical ownership&quot;, Instant.now().toEpochMilli());</span>
+<span class="fc" id="L119">            }</span>
+<span class="fc" id="L120">            return missing.size();</span>
+        });
+    }
+
+    /**
+     * Apply a COMPLETE verified plan against the preview revision. Any missing/extra owner,
+     * stale preview, reused subject, ambiguous scope or failed audit rolls back every link.
+     * Only historical reserved principals are eligible; no new ownership is invented.
+     */
+    public void linkVerified(Authentication administrator, String expectedFingerprint,
+                             List&lt;VerifiedMapping&gt; proposed) {
+<span class="fc" id="L131">        Objects.requireNonNull(proposed, &quot;proposed&quot;);</span>
+<span class="fc" id="L132">        transaction.executeWithoutResult(status -&gt; {</span>
+<span class="fc" id="L133">            lockRegistry();</span>
+<span class="fc" id="L134">            PrincipalId actor = requireAdministrator(administrator);</span>
+            // V3 ran once: a LEGACY writer may have inserted new ownership afterwards.
+            // Never accept an apparently complete approved plan while such rows are absent
+            // from the reserved-principal inventory.
+<span class="fc bfc" id="L138" title="All 2 branches covered.">            if (LegacyOwnerMigrationReadiness.inspect(jdbc).missingReservations() != 0) {</span>
+<span class="fc" id="L139">                throw new IllegalStateException(&quot;New historical owners lack reserved principal identities&quot;);</span>
+            }
+<span class="fc" id="L141">            var current = snapshot(MAX_APPLY);</span>
+<span class="pc bpc" id="L142" title="1 of 4 branches missed.">            if (current.total() == 0 || current.total() &gt; MAX_APPLY</span>
+<span class="fc bfc" id="L143" title="All 2 branches covered.">                    || !current.fingerprint().equals(expectedFingerprint)</span>
+<span class="fc bfc" id="L144" title="All 2 branches covered.">                    || proposed.size() != current.total()) {</span>
+<span class="fc" id="L145">                throw new IllegalStateException(&quot;Verified legacy mapping plan is incomplete or stale&quot;);</span>
+            }
+<span class="fc" id="L147">            Map&lt;PrincipalId, VerifiedMapping&gt; byPrincipal = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L148">            HashSet&lt;String&gt; bindingKeys = new HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L149" title="All 2 branches covered.">            for (var entry : proposed) {</span>
+<span class="pc bpc" id="L150" title="3 of 6 branches missed.">                if (entry == null || entry.reservedPrincipal() == null || entry.exactLegacyScope() == null</span>
+<span class="pc bpc" id="L151" title="2 of 4 branches missed.">                        || entry.exactLegacyScope().isBlank() || entry.exactLegacyScope().length() &gt; 255</span>
+<span class="pc bpc" id="L152" title="2 of 6 branches missed.">                        || entry.issuer() == null || entry.issuer().isBlank() || entry.issuer().length() &gt; 2048</span>
+<span class="pc bpc" id="L153" title="3 of 6 branches missed.">                        || entry.subject() == null || entry.subject().isBlank() || entry.subject().length() &gt; 1024</span>
+<span class="pc bpc" id="L154" title="1 of 4 branches missed.">                        || entry.evidenceReference() == null || entry.evidenceReference().isBlank()</span>
+<span class="pc bpc" id="L155" title="1 of 2 branches missed.">                        || entry.evidenceReference().length() &gt; 256) {</span>
+<span class="fc" id="L156">                    throw new IllegalArgumentException(&quot;Exact verified mapping and approval reference required&quot;);</span>
+                }
+<span class="fc" id="L158">                var binding = new IdentityBinding(IdentityBinding.Kind.OIDC, entry.issuer(), entry.subject());</span>
+<span class="fc" id="L159">                String key = PrincipalBinding.key(binding);</span>
+<span class="fc bfc" id="L160" title="All 2 branches covered.">                if (byPrincipal.putIfAbsent(entry.reservedPrincipal(), entry) != null</span>
+<span class="fc bfc" id="L161" title="All 2 branches covered.">                        || !bindingKeys.add(key)) {</span>
+<span class="fc" id="L162">                    throw new IllegalArgumentException(&quot;Duplicate principal or OIDC subject&quot;);</span>
+                }
+                // Even disabled/tombstoned bindings may not silently be reassigned.
+<span class="fc bfc" id="L165" title="All 2 branches covered.">                if (jdbc.queryForObject(&quot;select count(*) from principal_binding where binding_key=?&quot;,</span>
+                        Integer.class, key) != 0) {
+<span class="fc" id="L167">                    throw new IllegalStateException(&quot;OIDC subject already belongs to another binding&quot;);</span>
+                }
+<span class="fc" id="L169">            }</span>
+<span class="fc bfc" id="L170" title="All 2 branches covered.">            for (var owner : current.owners()) {</span>
+<span class="fc" id="L171">                var mapping = byPrincipal.remove(owner.principal());</span>
+<span class="fc bfc" id="L172" title="All 4 branches covered.">                if (mapping == null || !owner.legacyScope().equals(mapping.exactLegacyScope())) {</span>
+<span class="fc" id="L173">                    throw new IllegalStateException(&quot;Mapping does not match the exact historical owner&quot;);</span>
+                }
+<span class="fc" id="L175">                var binding = new IdentityBinding(IdentityBinding.Kind.OIDC, mapping.issuer(), mapping.subject());</span>
+<span class="fc" id="L176">                String id = owner.principal().value().toString();</span>
+<span class="pc bpc" id="L177" title="1 of 2 branches missed.">                if (jdbc.update(&quot;update app_principal set enabled=1 where principal_id=? and scope_key=? and enabled=0&quot;,</span>
+<span class="fc" id="L178">                        id, owner.legacyScope()) != 1) {</span>
+<span class="nc" id="L179">                    throw new IllegalStateException(&quot;Historical owner changed during mapping&quot;);</span>
+                }
+<span class="fc" id="L181">                jdbc.update(&quot;insert into principal_binding values (?, ?, 'OIDC', ?, ?, 1)&quot;,</span>
+<span class="fc" id="L182">                        PrincipalBinding.key(binding), id, mapping.issuer(), mapping.subject());</span>
+<span class="fc" id="L183">                audit(actor, owner.principal(), &quot;LINK_LEGACY_OIDC&quot;, mapping.evidenceReference());</span>
+<span class="fc" id="L184">            }</span>
+<span class="pc bpc" id="L185" title="2 of 4 branches missed.">            if (!byPrincipal.isEmpty() || unresolvedCount() != 0) {</span>
+<span class="nc" id="L186">                throw new IllegalStateException(&quot;Unresolved historical owners remain&quot;);</span>
+            }
+<span class="fc" id="L188">        });</span>
+<span class="fc" id="L189">    }</span>
+
+    /**
+     * Revoke a particular verified link, preserving its binding tombstone and the historical
+     * ownership key. A revoked subject cannot self-register again under a fresh principal.
+     */
+    public void unlinkVerified(Authentication administrator, PrincipalId historicalPrincipal,
+                               String issuer, String subject, String evidenceReference) {
+<span class="pc bpc" id="L197" title="3 of 10 branches missed.">        if (historicalPrincipal == null || issuer == null || issuer.isBlank() || issuer.length() &gt; 2048</span>
+<span class="pc bpc" id="L198" title="2 of 6 branches missed.">                || subject == null || subject.isBlank() || subject.length() &gt; 1024</span>
+<span class="pc bpc" id="L199" title="1 of 4 branches missed.">                || evidenceReference == null || evidenceReference.isBlank() || evidenceReference.length() &gt; 256) {</span>
+<span class="fc" id="L200">            throw new IllegalArgumentException(&quot;Exact mapping and approval reference required&quot;);</span>
+        }
+<span class="fc" id="L202">        transaction.executeWithoutResult(status -&gt; {</span>
+<span class="fc" id="L203">            lockRegistry();</span>
+<span class="fc" id="L204">            PrincipalId actor = requireAdministrator(administrator);</span>
+<span class="fc" id="L205">            String id = historicalPrincipal.value().toString();</span>
+            // Do not accidentally turn this migration-specific operation into a generic
+            // OIDC principal deletion API. Only principals linked by this workflow qualify.
+<span class="fc bfc" id="L208" title="All 2 branches covered.">            if (jdbc.queryForObject(&quot;select count(*) from principal_access_audit where target_principal=? and decision_kind='LINK_LEGACY_OIDC'&quot;,</span>
+                    Integer.class, id) &lt; 1) {
+<span class="fc" id="L210">                throw new AccessDeniedException(&quot;Previously verified legacy link required&quot;);</span>
+            }
+<span class="fc" id="L212">            var binding = new IdentityBinding(IdentityBinding.Kind.OIDC, issuer, subject);</span>
+<span class="fc" id="L213">            var bindings = jdbc.query(&quot;select binding_key, binding_kind, issuer, subject_id, enabled from principal_binding where principal_id=?&quot;,</span>
+<span class="fc" id="L214">                    (rs, index) -&gt; new BindingRow(rs.getString(1), rs.getString(2), rs.getString(3),</span>
+<span class="fc bfc" id="L215" title="All 2 branches covered.">                            rs.getString(4), rs.getInt(5) == 1), id);</span>
+<span class="pc bpc" id="L216" title="1 of 4 branches missed.">            if (bindings.size() != 1 || !bindings.getFirst().active()</span>
+<span class="fc bfc" id="L217" title="All 2 branches covered.">                    || !bindings.getFirst().key().equals(PrincipalBinding.key(binding))</span>
+<span class="pc bpc" id="L218" title="1 of 2 branches missed.">                    || !&quot;OIDC&quot;.equals(bindings.getFirst().kind())</span>
+<span class="pc bpc" id="L219" title="1 of 2 branches missed.">                    || !issuer.equals(bindings.getFirst().issuer())</span>
+<span class="pc bpc" id="L220" title="1 of 2 branches missed.">                    || !subject.equals(bindings.getFirst().subject())) {</span>
+<span class="fc" id="L221">                throw new AccessDeniedException(&quot;Verified current OIDC link required&quot;);</span>
+            }
+<span class="pc bpc" id="L223" title="1 of 2 branches missed.">            if (jdbc.update(&quot;update principal_binding set enabled=0 where binding_key=? and principal_id=? and enabled=1&quot;,</span>
+<span class="fc" id="L224">                    PrincipalBinding.key(binding), id) != 1</span>
+<span class="pc bpc" id="L225" title="1 of 2 branches missed.">                    || jdbc.update(&quot;update app_principal set enabled=0 where principal_id=? and enabled=1&quot;, id) != 1) {</span>
+<span class="nc" id="L226">                throw new IllegalStateException(&quot;Current principal changed during unlink&quot;);</span>
+            }
+<span class="fc" id="L228">            audit(actor, historicalPrincipal, &quot;UNLINK_LEGACY_OIDC&quot;, evidenceReference);</span>
+<span class="fc" id="L229">        });</span>
+<span class="fc" id="L230">    }</span>
+
+    private Preview snapshot(int limit) {
+<span class="fc" id="L233">        long total = unresolvedCount();</span>
+<span class="fc" id="L234">        var digest = digest();</span>
+<span class="fc" id="L235">        var owners = new ArrayList&lt;UnresolvedOwner&gt;();</span>
+<span class="fc" id="L236">        jdbc.query(&quot;select p.principal_id,p.scope_key &quot; + UNRESOLVED + &quot; order by p.scope_key,p.principal_id&quot;,</span>
+                (org.springframework.jdbc.core.RowCallbackHandler) row -&gt; {
+<span class="fc" id="L238">                    String id = row.getString(1);</span>
+<span class="fc" id="L239">                    String scope = row.getString(2);</span>
+<span class="fc" id="L240">                    addDigestField(digest, id);</span>
+<span class="fc" id="L241">                    addDigestField(digest, scope);</span>
+<span class="fc bfc" id="L242" title="All 2 branches covered.">                    if (owners.size() &lt; limit) {</span>
+<span class="fc" id="L243">                        owners.add(new UnresolvedOwner(new PrincipalId(UUID.fromString(id)), scope));</span>
+                    }
+<span class="fc" id="L245">                });</span>
+<span class="fc bfc" id="L246" title="All 2 branches covered.">        return new Preview(total, owners, HexFormat.of().formatHex(digest.digest()), total &gt; limit);</span>
+    }
+
+    private long unresolvedCount() {
+<span class="fc" id="L250">        return jdbc.queryForObject(&quot;select count(*) &quot; + UNRESOLVED, Long.class);</span>
+    }
+
+    private PrincipalId requireAdministrator(Authentication authentication) {
+<span class="fc" id="L254">        PrincipalId actor = identities.requireCurrent(authentication);</span>
+<span class="fc bfc" id="L255" title="All 2 branches covered.">        if (authentication.getAuthorities().stream().noneMatch(a -&gt; &quot;ROLE_ADMIN&quot;.equals(a.getAuthority()))) {</span>
+<span class="fc" id="L256">            throw new AccessDeniedException(&quot;Current administrator authority required&quot;);</span>
+        }
+<span class="fc bfc" id="L258" title="All 2 branches covered.">        if (authentication.getPrincipal() instanceof PrincipalUserDetails) {</span>
+<span class="fc" id="L259">            int current = jdbc.queryForObject(&quot;&quot;&quot;</span>
+                    select count(*) from app_user u join user_roles ur on ur.user_id=u.id
+                    join app_role r on r.id=ur.role_id
+                    where u.principal_id=? and u.enabled=? and r.name='ROLE_ADMIN'
+<span class="fc" id="L263">                    &quot;&quot;&quot;, Integer.class, actor.value().toString(), true);</span>
+<span class="pc bpc" id="L264" title="1 of 2 branches missed.">            if (current != 1) throw new AccessDeniedException(&quot;Current administrator authority required&quot;);</span>
+<span class="fc" id="L265">        } else {</span>
+            Instant expiresAt;
+<span class="fc bfc" id="L267" title="All 2 branches covered.">            if (authentication instanceof PrincipalJwtAuthenticationToken jwt) {</span>
+<span class="fc" id="L268">                expiresAt = jwt.getToken().getExpiresAt();</span>
+<span class="pc bpc" id="L269" title="1 of 2 branches missed.">            } else if (authentication instanceof OAuth2AuthenticationToken</span>
+<span class="pc bpc" id="L270" title="1 of 2 branches missed.">                    &amp;&amp; authentication.getPrincipal() instanceof PrincipalOidcUser oidc) {</span>
+<span class="fc" id="L271">                expiresAt = oidc.getIdToken().getExpiresAt();</span>
+            } else {
+<span class="nc" id="L273">                throw new AccessDeniedException(&quot;Verified administrator login required&quot;);</span>
+            }
+<span class="pc bpc" id="L275" title="2 of 4 branches missed.">            if (expiresAt == null || !expiresAt.isAfter(Instant.now())) {</span>
+<span class="fc" id="L276">                throw new AccessDeniedException(&quot;A fresh administrator login is required&quot;);</span>
+            }
+        }
+<span class="fc" id="L279">        return actor;</span>
+    }
+
+<span class="fc" id="L282">    private void lockRegistry() { jdbc.queryForObject(registryLock, String.class); }</span>
+
+    private void audit(PrincipalId actor, PrincipalId target, String decision, String evidence) {
+<span class="fc" id="L285">        jdbc.update(&quot;insert into principal_access_audit values (?, ?, ?, ?, ?, ?)&quot;,</span>
+<span class="fc" id="L286">                UUID.randomUUID().toString(), actor.value().toString(), target.value().toString(),</span>
+<span class="fc" id="L287">                decision, &quot;approval-sha256:&quot; + HexFormat.of().formatHex(digest().digest(</span>
+<span class="fc" id="L288">                        evidence.getBytes(StandardCharsets.UTF_8))), Instant.now().toEpochMilli());</span>
+<span class="fc" id="L289">    }</span>
+
+    private static MessageDigest digest() {
+<span class="fc" id="L292">        try { return MessageDigest.getInstance(&quot;SHA-256&quot;); }</span>
+<span class="nc" id="L293">        catch (NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }</span>
+    }
+
+    private static void addDigestField(MessageDigest digest, String value) {
+<span class="fc" id="L297">        byte[] bytes = value.getBytes(StandardCharsets.UTF_8);</span>
+<span class="fc" id="L298">        digest.update(ByteBuffer.allocate(4).putInt(bytes.length).array());</span>
+<span class="fc" id="L299">        digest.update(bytes);</span>
+<span class="fc" id="L300">    }</span>
+
+<span class="fc" id="L302">    private record BindingRow(String key, String kind, String issuer, String subject, boolean active) { }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

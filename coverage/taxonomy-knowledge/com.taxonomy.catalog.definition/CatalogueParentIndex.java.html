@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>CatalogueParentIndex.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-knowledge</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.catalog.definition</a> &gt; <span class="el_source">CatalogueParentIndex.java</span></div><h1>CatalogueParentIndex.java</h1><pre class="source lang-java linenums">package com.taxonomy.catalog.definition;
+
+import com.taxonomy.catalog.provenance.CatalogueSourceBytes;
+import com.taxonomy.catalog.provenance.CatalogueSourceJournal;
+import com.taxonomy.catalog.service.CatalogueOverlayService;
+import com.taxonomy.catalog.service.TaxonomyService;
+import com.taxonomy.dsl.model.CanonicalArchitectureModel;
+import com.taxonomy.dsl.model.CatalogueDefinition;
+import com.taxonomy.dsl.model.CatalogueDefinitionResolver.Node;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.springframework.core.io.ClassPathResource;
+import org.springframework.stereotype.Component;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+/** Restores omitted catalogue ancestry without importing any reference node into the architecture. */
+@Component
+public class CatalogueParentIndex {
+    private final CatalogueSourceJournal sources;
+    private final CatalogueOverlayService overlays;
+<span class="fc" id="L26">    record Entry(Node node, String descriptionEn, String descriptionDe) {}</span>
+<span class="fc" id="L27">    private record IndexedNode(Entry entry, int level) {</span>
+<span class="fc" id="L28">        Node node() { return entry.node(); }</span>
+    }
+    private String cachedRevision;
+    private Map&lt;String, IndexedNode&gt; cached;
+
+<span class="fc" id="L33">    public CatalogueParentIndex(CatalogueSourceJournal sources, CatalogueOverlayService overlays) {</span>
+<span class="fc" id="L34">        this.sources = sources;</span>
+<span class="fc" id="L35">        this.overlays = overlays;</span>
+<span class="fc" id="L36">    }</span>
+
+    public synchronized Map&lt;String, String&gt; parentsFor(CanonicalArchitectureModel model) {
+<span class="fc" id="L39">        var elementIds = model.allElementIds();</span>
+<span class="fc" id="L40">        boolean needsLookup = model.getElements().stream().anyMatch(element -&gt; {</span>
+<span class="fc" id="L41">            String parent = element.getExtensions().get(&quot;x-catalogue-parent&quot;);</span>
+<span class="fc bfc" id="L42" title="All 6 branches covered.">            return element.getTaxonomy() != null &amp;&amp; !element.getTaxonomy().equals(parent) &amp;&amp; !elementIds.contains(parent);</span>
+        });
+<span class="fc bfc" id="L44" title="All 2 branches covered.">        if (!needsLookup) return Map.of();</span>
+<span class="fc" id="L45">        return parentsFor(model, model.getCatalogueRevision(), null);</span>
+    }
+
+    /** Read an exact catalogue even if only one assigned ancestor exists in the architecture. */
+    public synchronized Map&lt;String, String&gt; parentsFor(CanonicalArchitectureModel model, String revision,
+                                                       CatalogueDefinition definition) {
+<span class="fc" id="L51">        var nodes = index(revision);</span>
+<span class="fc" id="L52">        Map&lt;String, String&gt; parents = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L53">        nodes.forEach((id, entry) -&gt; {</span>
+<span class="fc bfc" id="L54" title="All 2 branches covered.">            if (entry.node().parentCode() != null) parents.put(id, entry.node().parentCode());</span>
+<span class="fc" id="L55">        });</span>
+<span class="fc bfc" id="L56" title="All 2 branches covered.">        for (var element : model.getElements()) {</span>
+<span class="fc" id="L57">            var entry = nodes.get(element.getId());</span>
+<span class="pc bpc" id="L58" title="1 of 2 branches missed.">            if (entry == null) continue;</span>
+<span class="fc" id="L59">            var candidate = entry.node();</span>
+            // Analysis adoption carries the catalogue ID and DSL type but may omit the taxonomy field.
+<span class="fc bfc" id="L61" title="All 2 branches covered.">            boolean sameRoot = candidate.root().equals(element.getTaxonomy())</span>
+<span class="pc bpc" id="L62" title="1 of 4 branches missed.">                    || element.getTaxonomy() == null &amp;&amp; definition != null</span>
+<span class="pc bpc" id="L63" title="2 of 4 branches missed.">                    &amp;&amp; element.getType() != null &amp;&amp; element.getType().equals(definition.typeFor(candidate.root()));</span>
+<span class="fc bfc" id="L64" title="All 2 branches covered.">            if (!sameRoot) parents.remove(element.getId());</span>
+<span class="fc" id="L65">        }</span>
+<span class="fc" id="L66">        return parents;</span>
+    }
+
+    public synchronized List&lt;Node&gt; catalogueNodes(String revision) {
+<span class="fc" id="L70">        return index(revision).values().stream().sorted(Comparator.comparingInt(IndexedNode::level)</span>
+<span class="fc" id="L71">                .thenComparing(entry -&gt; entry.node().code())).map(IndexedNode::node).toList();</span>
+    }
+
+    public synchronized boolean contains(String revision, String code) {
+<span class="fc" id="L75">        return index(revision).containsKey(code);</span>
+    }
+
+    synchronized Map&lt;String, Entry&gt; sourceEntries(String revision) {
+<span class="fc" id="L79">        Map&lt;String, Entry&gt; entries = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L80">        index(revision).forEach((code, indexed) -&gt; entries.put(code, indexed.entry()));</span>
+<span class="fc" id="L81">        return entries;</span>
+    }
+
+    private Map&lt;String, IndexedNode&gt; index(String revision) {
+<span class="pc bpc" id="L85" title="1 of 4 branches missed.">        if (cached == null || !java.util.Objects.equals(revision, cachedRevision)) {</span>
+<span class="fc" id="L86">            cached = read(revision);</span>
+<span class="fc" id="L87">            cachedRevision = revision;</span>
+        }
+<span class="fc" id="L89">        return cached;</span>
+    }
+
+    private Map&lt;String, IndexedNode&gt; read(String revision) {
+        try {
+<span class="fc bfc" id="L94" title="All 2 branches covered.">            if (revision == null) {</span>
+                // Pre-pin C3 exports contain codes and roots but no parent links.
+<span class="fc" id="L96">                var workbook = new ClassPathResource(&quot;data/C3_Taxonomy_Catalogue_25AUG2025.xlsx&quot;);</span>
+<span class="fc" id="L97">                var overlay = new ClassPathResource(&quot;data/nato-taxonomy.json&quot;);</span>
+<span class="fc" id="L98">                try (var input = workbook.getInputStream(); var patches = overlay.getInputStream()) {</span>
+<span class="fc" id="L99">                    return read(input, CatalogueSourceBytes.read(patches));</span>
+                }
+            }
+<span class="fc" id="L102">            var retained = sources.findRevision(revision).orElseThrow();</span>
+<span class="pc bpc" id="L103" title="1 of 2 branches missed.">            if (retained.workbook().use() != CatalogueSourceJournal.Use.APPLIED) return Map.of();</span>
+<span class="pc bpc" id="L104" title="1 of 2 branches missed.">            if (retained.overlay().use() != CatalogueSourceJournal.Use.APPLIED</span>
+<span class="nc bnc" id="L105" title="All 2 branches missed.">                    &amp;&amp; retained.overlay().use() != CatalogueSourceJournal.Use.NOT_USED) return Map.of();</span>
+<span class="pc bpc" id="L106" title="1 of 2 branches missed.">            var overlay = retained.overlay().use() == CatalogueSourceJournal.Use.APPLIED</span>
+<span class="pc" id="L107">                    ? sources.retainedInput(retained.overlay()) : null;</span>
+<span class="fc" id="L108">            try (var input = sources.retainedWorkbook(retained.workbook()).openStream()) {</span>
+<span class="fc" id="L109">                return read(input, overlay);</span>
+            }
+<span class="nc" id="L111">        } catch (IOException e) {</span>
+<span class="nc" id="L112">            throw new IllegalStateException(&quot;Cannot read the catalogue hierarchy for the selected model&quot;, e);</span>
+        }
+    }
+
+    private Map&lt;String, IndexedNode&gt; read(InputStream input, CatalogueSourceBytes overlay) throws IOException {
+<span class="fc" id="L117">        try (var workbook = new XSSFWorkbook(input)) {</span>
+<span class="fc" id="L118">            var hierarchy = TaxonomyService.readWorkbookNodes(workbook);</span>
+<span class="fc" id="L119">            overlays.applyRetainedHierarchy(hierarchy.nodes(), hierarchy.uuidToCode(), overlay);</span>
+<span class="fc" id="L120">            Map&lt;String, IndexedNode&gt; result = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L121">            hierarchy.nodes().forEach((id, node) -&gt; result.put(id, new IndexedNode(</span>
+<span class="fc" id="L122">                    new Entry(new Node(id, node.getTaxonomyRoot(), node.getParentCode(), node.getNameEn(), node.getNameDe(),</span>
+<span class="fc" id="L123">                            node.getSortOrder(), node.getUuid()), node.getDescriptionEn(), node.getDescriptionDe()), node.getLevel())));</span>
+<span class="fc" id="L124">            return Map.copyOf(result);</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

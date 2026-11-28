@@ -1,0 +1,159 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AppInitializationStateService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-knowledge</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.catalog.service</a> &gt; <span class="el_source">AppInitializationStateService.java</span></div><h1>AppInitializationStateService.java</h1><pre class="source lang-java linenums">package com.taxonomy.catalog.service;
+
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.context.ApplicationEventPublisherAware;
+import org.springframework.stereotype.Service;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.time.Instant;
+import java.util.Objects;
+import java.util.concurrent.atomic.AtomicReference;
+
+/**
+ * Centralises application initialisation state tracking.
+ *
+ * &lt;p&gt;The state machine follows this happy path:
+ * {@code STARTING} → {@code LOADING_TAXONOMY} → {@code BUILDING_INDEX} → {@code READY}
+ *
+ * &lt;p&gt;Any phase can transition to {@code FAILED} via {@link #fail(String, Throwable)}.
+ *
+ * &lt;p&gt;All mutable fields are wrapped in an immutable {@link StateSnapshot} and stored in a
+ * single {@link AtomicReference} to guarantee a consistent view across threads.
+ */
+@Service
+<span class="fc" id="L25">public class AppInitializationStateService</span>
+        implements ApplicationEventPublisherAware {
+<span class="fc" id="L27">    private static final Logger log = LoggerFactory.getLogger(AppInitializationStateService.class);</span>
+
+<span class="fc" id="L29">    public enum State {</span>
+<span class="fc" id="L30">        STARTING,</span>
+<span class="fc" id="L31">        LOADING_TAXONOMY,</span>
+<span class="fc" id="L32">        BUILDING_INDEX,</span>
+<span class="fc" id="L33">        READY,</span>
+<span class="fc" id="L34">        FAILED</span>
+    }
+
+    /** Immutable snapshot of the current initialisation state. */
+<span class="fc" id="L38">    public record StateSnapshot(</span>
+            State state,
+            String message,
+            Instant updatedAt,
+            String error,
+            String phase,
+            long processed,
+            long total) {
+        public StateSnapshot(State state, String message, Instant updatedAt, String error) {
+<span class="fc" id="L47">            this(state, message, updatedAt, error, defaultPhase(state), 0, -1);</span>
+<span class="fc" id="L48">        }</span>
+    }
+
+    /** Emitted synchronously after the application enters the READY state. */
+    public record InitializationReadyEvent(StateSnapshot snapshot) {
+<span class="fc" id="L53">        public InitializationReadyEvent {</span>
+<span class="fc" id="L54">            snapshot = Objects.requireNonNull(snapshot, &quot;snapshot&quot;);</span>
+<span class="fc" id="L55">        }</span>
+    }
+
+    /** Terminal failure signal; dependent startup tasks must not poll or infer success. */
+    public record InitializationFailedEvent(StateSnapshot snapshot) {
+<span class="fc" id="L60">        public InitializationFailedEvent {</span>
+<span class="fc" id="L61">            snapshot = Objects.requireNonNull(snapshot, &quot;snapshot&quot;);</span>
+<span class="fc" id="L62">        }</span>
+    }
+
+<span class="fc" id="L65">    private final AtomicReference&lt;StateSnapshot&gt; snapshot =</span>
+            new AtomicReference&lt;&gt;(new StateSnapshot(
+                    State.STARTING,
+                    &quot;Starting application&quot;,
+<span class="fc" id="L69">                    Instant.now(),</span>
+                    null));
+
+    private volatile ApplicationEventPublisher eventPublisher;
+
+    @Override
+    public void setApplicationEventPublisher(
+            ApplicationEventPublisher applicationEventPublisher) {
+<span class="fc" id="L77">        this.eventPublisher = Objects.requireNonNull(</span>
+                applicationEventPublisher,
+                &quot;applicationEventPublisher&quot;);
+<span class="fc" id="L80">    }</span>
+
+    public State getState() {
+<span class="fc" id="L83">        return snapshot.get().state();</span>
+    }
+
+    /** One consistent observation for status responses; total=-1 means indeterminate work. */
+    public StateSnapshot getSnapshot() {
+<span class="fc" id="L88">        return snapshot.get();</span>
+    }
+
+    public String getMessage() {
+<span class="fc" id="L92">        return snapshot.get().message();</span>
+    }
+
+    public Instant getUpdatedAt() {
+<span class="fc" id="L96">        return snapshot.get().updatedAt();</span>
+    }
+
+    public String getError() {
+<span class="fc" id="L100">        return snapshot.get().error();</span>
+    }
+
+    public boolean isReady() {
+<span class="fc bfc" id="L104" title="All 2 branches covered.">        return snapshot.get().state() == State.READY;</span>
+    }
+
+    public void update(State newState, String newMessage) {
+<span class="fc" id="L108">        updateProgress(newState, defaultPhase(newState), newMessage, 0, -1);</span>
+<span class="fc" id="L109">    }</span>
+
+    public void updateProgress(State newState, String phase, String newMessage, long processed, long total) {
+<span class="pc bpc" id="L112" title="2 of 4 branches missed.">        if (processed &lt; 0 || total &lt; -1) {</span>
+<span class="nc" id="L113">            throw new IllegalArgumentException(&quot;Initialization progress cannot be negative&quot;);</span>
+        }
+<span class="fc" id="L115">        StateSnapshot updated = new StateSnapshot(</span>
+<span class="fc" id="L116">                Objects.requireNonNull(newState),</span>
+                newMessage,
+<span class="fc" id="L118">                Instant.now(),</span>
+<span class="fc" id="L119">                null, Objects.requireNonNull(phase), processed, total);</span>
+<span class="fc" id="L120">        snapshot.set(updated);</span>
+
+<span class="fc bfc" id="L122" title="All 2 branches covered.">        if (newState == State.READY) {</span>
+<span class="fc" id="L123">            publish(new InitializationReadyEvent(updated));</span>
+        }
+<span class="fc" id="L125">    }</span>
+
+    public void fail(String newMessage, Throwable t) {
+<span class="fc" id="L128">        StateSnapshot previous = snapshot.get();</span>
+<span class="fc" id="L129">        StateSnapshot failed = new StateSnapshot(</span>
+                State.FAILED,
+                newMessage,
+<span class="fc" id="L132">                Instant.now(),</span>
+<span class="fc bfc" id="L133" title="All 2 branches covered.">                t == null ? null : &quot;INITIALIZATION_FAILED&quot;,</span>
+<span class="fc" id="L134">                previous.phase(), previous.processed(), previous.total());</span>
+<span class="fc" id="L135">        snapshot.set(failed);</span>
+<span class="fc" id="L136">        publish(new InitializationFailedEvent(failed));</span>
+<span class="fc" id="L137">    }</span>
+
+    private void publish(Object event) {
+<span class="fc" id="L140">        ApplicationEventPublisher publisher = eventPublisher;</span>
+<span class="fc bfc" id="L141" title="All 2 branches covered.">        if (publisher == null) return;</span>
+        try {
+<span class="fc" id="L143">            publisher.publishEvent(event);</span>
+<span class="fc" id="L144">        } catch (RuntimeException exception) {</span>
+            // Catalogue/index readiness is already decided. A dependent listener cannot
+            // turn a verified index into FAILED or disclose private exception messages.
+<span class="fc" id="L147">            log.error(&quot;Initialization completion listener failed (code=INITIALIZATION_LISTENER_FAILED)&quot;);</span>
+<span class="fc" id="L148">        }</span>
+<span class="fc" id="L149">    }</span>
+
+    private static String defaultPhase(State state) {
+<span class="fc bfc" id="L152" title="All 3 branches covered.">        return switch (state) {</span>
+<span class="fc" id="L153">            case LOADING_TAXONOMY -&gt; &quot;LOADING_CATALOGUE&quot;;</span>
+<span class="fc" id="L154">            case BUILDING_INDEX -&gt; &quot;CHECKING_NODE_INDEX&quot;;</span>
+<span class="fc" id="L155">            default -&gt; state.name();</span>
+        };
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

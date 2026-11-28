@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PortfolioAnalysisPayloads.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-portfolio</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.payload</a> &gt; <span class="el_source">PortfolioAnalysisPayloads.java</span></div><h1>PortfolioAnalysisPayloads.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.payload;
+
+import com.taxonomy.exchange.backup.PortableJsonPayloads;
+import com.taxonomy.exchange.backup.PortableJsonPayloads.PayloadReader;
+import com.taxonomy.portfolio.service.PortfolioException;
+
+import java.io.FilterReader;
+import java.io.IOException;
+import java.io.PushbackReader;
+import java.io.Reader;
+
+/** Handles the physical analysis payload in either its legacy JSON or portable frame representation. */
+public final class PortfolioAnalysisPayloads {
+    private static final String FRAME_FAMILY = &quot;taxonomy-json-payload:&quot;;
+<span class="fc" id="L15">    private static final char[] FRAME_FAMILY_UNITS = FRAME_FAMILY.toCharArray();</span>
+    private static final int MAX_FRAME_CHARACTERS = 24_000_000;
+
+    private PortfolioAnalysisPayloads() { }
+
+    /** Optionally pack the exact serialized JSON within the storage frame limit. */
+    public static String store(String original, boolean packedWrites) {
+<span class="fc bfc" id="L22" title="All 6 branches covered.">        if (!packedWrites || original == null || original.length() &gt; MAX_FRAME_CHARACTERS) return original;</span>
+        try {
+<span class="fc" id="L24">            return PortableJsonPayloads.packFast(original, MAX_FRAME_CHARACTERS);</span>
+<span class="nc" id="L25">        } catch (IOException failure) {</span>
+<span class="nc" id="L26">            throw PortfolioException.analysisFailed(&quot;Could not encode portfolio analysis payload&quot;, failure);</span>
+        }
+    }
+
+    /** Return the exact JSON exposed by the compatibility accessors. */
+    public static String plain(String stored) {
+<span class="fc bfc" id="L32" title="All 4 branches covered.">        if (stored == null || !stored.startsWith(FRAME_FAMILY)) return stored;</span>
+        try {
+<span class="fc" id="L34">            return PortableJsonPayloads.unpack(stored, MAX_FRAME_CHARACTERS);</span>
+<span class="fc" id="L35">        } catch (IOException failure) {</span>
+<span class="fc" id="L36">            throw PortfolioException.analysisFailed(&quot;Could not decode portfolio analysis payload&quot;, failure);</span>
+        }
+    }
+
+    /** Parse stored evidence while leaving the stored reader with its caller. */
+    public static &lt;T&gt; T read(Reader stored, PayloadReader&lt;T&gt; parser) throws IOException {
+<span class="fc bfc" id="L42" title="All 2 branches covered.">        if (stored == null) return parser.read(null);</span>
+<span class="fc" id="L43">        try (var input = new PushbackReader(new FilterReader(stored) {</span>
+<span class="fc" id="L44">            @Override public void close() { }</span>
+        }, FRAME_FAMILY_UNITS.length)) {
+<span class="fc bfc" id="L46" title="All 2 branches covered.">            for (int matched = 0; matched &lt; FRAME_FAMILY_UNITS.length; matched++) {</span>
+<span class="fc" id="L47">                int next = input.read();</span>
+<span class="fc bfc" id="L48" title="All 2 branches covered.">                if (next != FRAME_FAMILY_UNITS[matched]) {</span>
+<span class="fc bfc" id="L49" title="All 2 branches covered.">                    if (next != -1) input.unread(next);</span>
+<span class="fc" id="L50">                    input.unread(FRAME_FAMILY_UNITS, 0, matched);</span>
+<span class="fc" id="L51">                    return parser.read(input);</span>
+                }
+            }
+
+<span class="fc" id="L55">            return PortableJsonPayloads.read(readFrame(input), MAX_FRAME_CHARACTERS, parser);</span>
+<span class="fc" id="L56">        }</span>
+    }
+
+    private static String readFrame(Reader input) throws IOException {
+<span class="fc" id="L60">        var frame = new StringBuilder(FRAME_FAMILY);</span>
+<span class="fc" id="L61">        char[] buffer = new char[8192];</span>
+        while (true) {
+<span class="fc" id="L63">            int remaining = MAX_FRAME_CHARACTERS - frame.length();</span>
+<span class="fc" id="L64">            int count = input.read(buffer, 0, Math.min(buffer.length, remaining + 1));</span>
+<span class="fc bfc" id="L65" title="All 2 branches covered.">            if (count == -1) return frame.toString();</span>
+<span class="fc bfc" id="L66" title="All 2 branches covered.">            if (count &gt; remaining) throw new IOException(&quot;Portfolio analysis payload exceeds the stored frame limit&quot;);</span>
+<span class="fc" id="L67">            frame.append(buffer, 0, count);</span>
+<span class="fc" id="L68">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

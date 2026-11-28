@@ -1,0 +1,185 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RelationApiController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-knowledge</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.relations.controller</a> &gt; <span class="el_source">RelationApiController.java</span></div><h1>RelationApiController.java</h1><pre class="source lang-java linenums">package com.taxonomy.relations.controller;
+
+import com.taxonomy.dto.TaxonomyRelationDto;
+import com.taxonomy.model.RelationType;
+import com.taxonomy.relations.service.RelationBranchProjectionReadinessService.ReadinessState;
+import com.taxonomy.relations.service.RelationProjectionReadService;
+import com.taxonomy.relations.service.RelationProjectionReadService.CountResult;
+import com.taxonomy.relations.service.RelationProjectionReadService.ReadModel;
+import com.taxonomy.relations.service.RelationProjectionReadService.ReadResult;
+import com.taxonomy.relations.service.RelationProjectionReadService.RelationProjectionUnavailableException;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import com.taxonomy.workspace.service.WorkspaceDslReadPort;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+
+@RestController
+@RequestMapping(&quot;/api&quot;)
+@Tag(name = &quot;Relations&quot;)
+public class RelationApiController {
+
+    public static final String READ_MODEL_HEADER =
+            &quot;X-Taxonomy-Relation-Read-Model&quot;;
+    public static final String PROJECTION_STATE_HEADER =
+            &quot;X-Taxonomy-Relation-Projection-State&quot;;
+    public static final String PENDING_RECOVERY_HEADER =
+            &quot;X-Taxonomy-Relation-Pending-Recovery&quot;;
+
+    private final RelationProjectionReadService relationReadService;
+    private final WorkspaceResolver workspaceResolver;
+
+    public RelationApiController(
+            RelationProjectionReadService relationReadService,
+<span class="fc" id="L51">            WorkspaceResolver workspaceResolver) {</span>
+<span class="fc" id="L52">        this.relationReadService = relationReadService;</span>
+<span class="fc" id="L53">        this.workspaceResolver = workspaceResolver;</span>
+<span class="fc" id="L54">    }</span>
+
+    @Operation(
+            summary = &quot;List relations&quot;,
+            description = &quot;Returns the complete relation projection for the selected repository/workspace, optionally filtered by type&quot;)
+    @GetMapping(&quot;/relations&quot;)
+    public ResponseEntity&lt;List&lt;TaxonomyRelationDto&gt;&gt; getRelations(
+            @Parameter(description = &quot;Filter by relation type&quot;)
+            @RequestParam(required = false) String type,
+            @RequestParam(required = false) String commitId) {
+<span class="fc" id="L64">        RepositoryContext context = workspaceResolver</span>
+<span class="fc" id="L65">                .resolveUnambiguousRepositoryForRead();</span>
+        try {
+            ReadResult result;
+<span class="pc bpc" id="L68" title="1 of 4 branches missed.">            if (type != null &amp;&amp; !type.isBlank()) {</span>
+                RelationType relationType;
+                try {
+<span class="fc" id="L71">                    relationType = RelationType.valueOf(</span>
+<span class="fc" id="L72">                            type.strip().toUpperCase(Locale.ROOT));</span>
+<span class="nc" id="L73">                } catch (IllegalArgumentException exception) {</span>
+<span class="nc" id="L74">                    return ResponseEntity.badRequest().build();</span>
+<span class="fc" id="L75">                }</span>
+<span class="fc" id="L76">                result = relationReadService.readByType(context, relationType);</span>
+<span class="fc" id="L77">            } else {</span>
+<span class="fc" id="L78">                result = relationReadService.readAll(context);</span>
+            }
+<span class="fc" id="L80">            return selectedResponse(context, commitId, result.readModel(), result.readinessState(),</span>
+<span class="fc" id="L81">                    result.authoritativeCommitId(), result.relations());</span>
+<span class="fc" id="L82">        } catch (RelationProjectionUnavailableException error) {</span>
+<span class="fc" id="L83">            return unavailable(error).build();</span>
+        }
+    }
+
+    @Operation(
+            summary = &quot;Get node relations&quot;,
+            description = &quot;Returns complete incoming and outgoing projected relations for one node in the selected repository/workspace&quot;)
+    @GetMapping(&quot;/node/{code}/relations&quot;)
+    public ResponseEntity&lt;List&lt;TaxonomyRelationDto&gt;&gt; getRelationsForNode(
+            @PathVariable String code, @RequestParam(required = false) String commitId) {
+<span class="fc" id="L93">        RepositoryContext context = workspaceResolver</span>
+<span class="fc" id="L94">                .resolveUnambiguousRepositoryForRead();</span>
+        try {
+<span class="fc" id="L96">            var result = relationReadService.readForNode(context, code);</span>
+<span class="fc" id="L97">            return selectedResponse(context, commitId, result.readModel(), result.readinessState(),</span>
+<span class="fc" id="L98">                    result.authoritativeCommitId(), result.relations());</span>
+<span class="nc" id="L99">        } catch (IllegalArgumentException error) {</span>
+<span class="nc" id="L100">            return ResponseEntity.badRequest().build();</span>
+<span class="nc" id="L101">        } catch (RelationProjectionUnavailableException error) {</span>
+<span class="nc" id="L102">            return unavailable(error).build();</span>
+        }
+    }
+
+    /**
+     * The historic DB-first write route is deliberately retired. Git-authoritative
+     * callers use PUT /api/architecture/relations/{source}/{type}/{target} with
+     * If-Match/If-None-Match and Idempotency-Key.
+     */
+    @Deprecated(forRemoval = true)
+    @Operation(
+            summary = &quot;Retired DB-first create route&quot;,
+            description = &quot;Use the Git-authoritative architecture relation command endpoint&quot;)
+    @PostMapping(&quot;/relations&quot;)
+    public ResponseEntity&lt;TaxonomyRelationDto&gt; createRelation(
+            @RequestBody(required = false) Map&lt;String, String&gt; ignored) {
+<span class="fc" id="L118">        return ResponseEntity.status(HttpStatus.GONE).build();</span>
+    }
+
+    /**
+     * Projection row IDs are rebuild-local and cannot be authoritative mutation
+     * identities. Call the Git-authoritative identity-based DELETE endpoint.
+     */
+    @Deprecated(forRemoval = true)
+    @Operation(
+            summary = &quot;Retired DB-first delete route&quot;,
+            description = &quot;Use DELETE /api/architecture/relations/{source}/{type}/{target}&quot;)
+    @DeleteMapping(&quot;/relations/{id}&quot;)
+    public ResponseEntity&lt;Void&gt; deleteRelation(@PathVariable Long id) {
+<span class="fc" id="L131">        return ResponseEntity.status(HttpStatus.GONE).build();</span>
+    }
+
+    @Operation(
+            summary = &quot;Count relations&quot;,
+            description = &quot;Returns the size of the same complete relation projection used by list and node reads without materializing DTOs&quot;)
+    @GetMapping(&quot;/relations/count&quot;)
+    public ResponseEntity&lt;Map&lt;String, Long&gt;&gt; countRelations(@RequestParam(required = false) String commitId) {
+<span class="fc" id="L139">        RepositoryContext context = workspaceResolver</span>
+<span class="fc" id="L140">                .resolveUnambiguousRepositoryForRead();</span>
+        try {
+<span class="fc" id="L142">            CountResult result = relationReadService.count(context);</span>
+<span class="fc" id="L143">            return selectedResponse(context, commitId, result.readModel(), result.readinessState(),</span>
+<span class="fc" id="L144">                    result.authoritativeCommitId(), Map.of(&quot;count&quot;, result.count()));</span>
+<span class="nc" id="L145">        } catch (RelationProjectionUnavailableException error) {</span>
+<span class="nc" id="L146">            return unavailable(error).build();</span>
+        }
+    }
+
+    private static &lt;T&gt; ResponseEntity&lt;T&gt; selectedResponse(RepositoryContext context, String pin, ReadModel model,
+            ReadinessState state, String head, T data) {
+<span class="fc bfc" id="L152" title="All 2 branches covered.">        if (pin != null) {</span>
+            try {
+<span class="fc bfc" id="L154" title="All 2 branches covered.">                if (!WorkspaceDslReadPort.normalizeCommitId(pin).equals(head)) {</span>
+<span class="fc" id="L155">                    return sourceHeaders(HttpStatus.CONFLICT, context, ReadinessState.STALE, head).build();</span>
+                }
+<span class="fc" id="L157">            } catch (IllegalArgumentException invalid) {</span>
+<span class="fc" id="L158">                return ResponseEntity.badRequest().build();</span>
+<span class="fc" id="L159">            }</span>
+        }
+<span class="fc" id="L161">        return sourceHeaders(HttpStatus.OK, context, state, head).header(READ_MODEL_HEADER, model.name()).body(data);</span>
+    }
+
+    private static ResponseEntity.BodyBuilder sourceHeaders(HttpStatus status, RepositoryContext context,
+            ReadinessState state, String head) {
+<span class="fc" id="L166">        var response = ResponseEntity.status(status).header(PROJECTION_STATE_HEADER, state.name())</span>
+<span class="fc" id="L167">                .header(HttpHeaders.CACHE_CONTROL, &quot;no-store&quot;)</span>
+<span class="fc" id="L168">                .header(&quot;X-Taxonomy-Repository&quot;, context.repositoryId())</span>
+<span class="fc" id="L169">                .header(&quot;X-Taxonomy-Workspace-Id&quot;, Objects.toString(context.workspaceId(), &quot;&quot;))</span>
+<span class="fc" id="L170">                .header(&quot;X-Taxonomy-Branch&quot;, context.branch());</span>
+<span class="pc bpc" id="L171" title="1 of 2 branches missed.">        if (head != null) response.header(&quot;X-Taxonomy-Commit&quot;, head).eTag(GitHttpPrecondition.etag(head));</span>
+<span class="fc" id="L172">        return response;</span>
+    }
+
+    private static ResponseEntity.BodyBuilder unavailable(RelationProjectionUnavailableException error) {
+<span class="fc" id="L176">        var state = error.getReadinessState();</span>
+<span class="pc bpc" id="L177" title="1 of 2 branches missed.">        var status = state == ReadinessState.BRANCH_MISSING ? HttpStatus.NOT_FOUND : HttpStatus.CONFLICT;</span>
+<span class="fc" id="L178">        var response = sourceHeaders(status, error.getContext(), state, error.getCurrentHeadCommit());</span>
+<span class="fc bfc" id="L179" title="All 2 branches covered.">        if (error.getPendingRecoveryCount() &gt; 0) {</span>
+<span class="fc" id="L180">            response.header(PENDING_RECOVERY_HEADER, String.valueOf(error.getPendingRecoveryCount()));</span>
+        }
+<span class="fc" id="L182">        return response;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

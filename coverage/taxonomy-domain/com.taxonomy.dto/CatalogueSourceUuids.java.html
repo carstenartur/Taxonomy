@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>CatalogueSourceUuids.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-domain</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dto</a> &gt; <span class="el_source">CatalogueSourceUuids.java</span></div><h1>CatalogueSourceUuids.java</h1><pre class="source lang-java linenums">package com.taxonomy.dto;
+
+import java.util.ArrayDeque;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.regex.Pattern;
+
+/** Catalogue row identities recorded in a particular analysis, independent of exchange-tool IDs. */
+public final class CatalogueSourceUuids {
+<span class="fc" id="L13">    private static final Pattern COMPACT_UUID = Pattern.compile(</span>
+            &quot;([0-9A-Fa-f]{8})([0-9A-Fa-f]{4})([0-9A-Fa-f]{4})([0-9A-Fa-f]{4})([0-9A-Fa-f]{12})&quot;);
+    private CatalogueSourceUuids() { }
+
+    public static String normalize(String raw) {
+<span class="fc bfc" id="L18" title="All 2 branches covered.">        if (raw == null) return null;</span>
+<span class="fc" id="L19">        String text = raw.strip();</span>
+<span class="pc bpc" id="L20" title="1 of 4 branches missed.">        if (text.startsWith(&quot;{&quot;) &amp;&amp; text.endsWith(&quot;}&quot;)) text = text.substring(1, text.length() - 1);</span>
+<span class="fc bfc" id="L21" title="All 2 branches covered.">        if (text.length() == 32) text = COMPACT_UUID.matcher(text).replaceFirst(&quot;$1-$2-$3-$4-$5&quot;);</span>
+<span class="fc bfc" id="L22" title="All 2 branches covered.">        if (text.length() != 36) return null;</span>
+        try {
+<span class="fc" id="L24">            UUID parsed = UUID.fromString(text);</span>
+<span class="pc bpc" id="L25" title="1 of 4 branches missed.">            if (parsed.getMostSignificantBits() == 0 &amp;&amp; parsed.getLeastSignificantBits() == 0) return null;</span>
+<span class="fc" id="L26">            String canonical = parsed.toString();</span>
+<span class="pc bpc" id="L27" title="1 of 2 branches missed.">            return canonical.equalsIgnoreCase(text) ? canonical : null;</span>
+<span class="nc" id="L28">        } catch (IllegalArgumentException invalid) {</span>
+<span class="nc" id="L29">            return null;</span>
+        }
+    }
+
+    /** Suppress ambiguous rows in either direction and ignore synthetic level-zero sheet roots. */
+    public static Map&lt;String, String&gt; fromTree(List&lt;TaxonomyNodeDto&gt; roots) {
+<span class="fc bfc" id="L35" title="All 4 branches covered.">        if (roots == null || roots.isEmpty()) return Map.of();</span>
+<span class="fc" id="L36">        var pending = new ArrayDeque&lt;TaxonomyNodeDto&gt;();</span>
+<span class="fc" id="L37">        roots.stream().filter(java.util.Objects::nonNull).forEach(pending::addLast);</span>
+<span class="fc" id="L38">        var visited = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap&lt;TaxonomyNodeDto, Boolean&gt;());</span>
+<span class="fc" id="L39">        var byCode = new HashMap&lt;String, String&gt;();</span>
+<span class="fc" id="L40">        var byUuid = new HashMap&lt;String, String&gt;();</span>
+<span class="fc" id="L41">        var ambiguous = new HashSet&lt;String&gt;();</span>
+<span class="fc bfc" id="L42" title="All 2 branches covered.">        while (!pending.isEmpty()) {</span>
+<span class="fc" id="L43">            var node = pending.removeFirst();</span>
+<span class="pc bpc" id="L44" title="1 of 2 branches missed.">            if (!visited.add(node)) continue;</span>
+<span class="pc bpc" id="L45" title="1 of 2 branches missed.">            if (node.getChildren() != null)</span>
+<span class="fc" id="L46">                node.getChildren().stream().filter(java.util.Objects::nonNull).forEach(pending::addLast);</span>
+<span class="fc" id="L47">            String code = node.getCode();</span>
+<span class="pc bpc" id="L48" title="2 of 6 branches missed.">            if (node.getLevel() &lt;= 0 || code == null || code.isBlank()) continue;</span>
+<span class="fc" id="L49">            String uuid = normalize(node.getUuid());</span>
+<span class="fc bfc" id="L50" title="All 2 branches covered.">            if (uuid == null) continue;</span>
+<span class="fc" id="L51">            String previousUuid = byCode.putIfAbsent(code, uuid);</span>
+<span class="pc bpc" id="L52" title="1 of 4 branches missed.">            if (previousUuid != null &amp;&amp; !previousUuid.equals(uuid)) ambiguous.add(code);</span>
+<span class="fc" id="L53">            String owner = byUuid.putIfAbsent(uuid, code);</span>
+<span class="pc bpc" id="L54" title="1 of 4 branches missed.">            if (owner != null &amp;&amp; !owner.equals(code)) {</span>
+<span class="fc" id="L55">                ambiguous.add(code);</span>
+<span class="fc" id="L56">                ambiguous.add(owner);</span>
+            }
+<span class="fc" id="L58">        }</span>
+<span class="fc" id="L59">        ambiguous.forEach(byCode::remove);</span>
+<span class="fc" id="L60">        return Map.copyOf(byCode);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

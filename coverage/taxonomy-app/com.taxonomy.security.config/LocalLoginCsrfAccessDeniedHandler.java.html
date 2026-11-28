@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>LocalLoginCsrfAccessDeniedHandler.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.security.config</a> &gt; <span class="el_source">LocalLoginCsrfAccessDeniedHandler.java</span></div><h1>LocalLoginCsrfAccessDeniedHandler.java</h1><pre class="source lang-java linenums">package com.taxonomy.security.config;
+
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authentication.AuthenticationTrustResolverImpl;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.web.DefaultRedirectStrategy;
+import org.springframework.security.web.access.AccessDeniedHandler;
+import org.springframework.security.web.access.AccessDeniedHandlerImpl;
+import org.springframework.security.web.csrf.CsrfException;
+
+import java.io.IOException;
+
+/** Recover a rejected local login form without processing its credentials again. */
+final class LocalLoginCsrfAccessDeniedHandler implements AccessDeniedHandler {
+<span class="fc" id="L19">    private final AccessDeniedHandler fallback = new AccessDeniedHandlerImpl();</span>
+<span class="fc" id="L20">    private final AuthenticationTrustResolverImpl trust = new AuthenticationTrustResolverImpl();</span>
+<span class="fc" id="L21">    private final DefaultRedirectStrategy redirect = new DefaultRedirectStrategy();</span>
+
+<span class="fc" id="L23">    LocalLoginCsrfAccessDeniedHandler() {</span>
+<span class="fc" id="L24">        redirect.setStatusCode(HttpStatus.SEE_OTHER);</span>
+<span class="fc" id="L25">    }</span>
+
+    @Override
+    public void handle(HttpServletRequest request, HttpServletResponse response,
+                       AccessDeniedException exception) throws IOException, ServletException {
+<span class="fc" id="L30">        var authentication = SecurityContextHolder.getContext().getAuthentication();</span>
+<span class="fc" id="L31">        boolean authenticated = trust.isAuthenticated(authentication);</span>
+<span class="fc bfc" id="L32" title="All 2 branches covered.">        if (!(exception instanceof CsrfException)</span>
+<span class="fc bfc" id="L33" title="All 2 branches covered.">                || !&quot;POST&quot;.equals(request.getMethod())</span>
+<span class="fc bfc" id="L34" title="All 2 branches covered.">                || !&quot;/login&quot;.equals(SecurityConfig.protocolPath(request))) {</span>
+<span class="fc" id="L35">            fallback.handle(request, response, exception);</span>
+<span class="fc" id="L36">            return;</span>
+        }
+        // A successful login rotates the token. A repeated old form can therefore
+        // be rejected while its browser session is already authenticated.
+<span class="fc" id="L40">        redirect.sendRedirect(request, response,</span>
+<span class="fc bfc" id="L41" title="All 2 branches covered.">                authenticated ? &quot;/&quot; : &quot;/login?expired&quot;);</span>
+<span class="fc" id="L42">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

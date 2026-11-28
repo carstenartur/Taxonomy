@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>CommitIndexSearchRebuilder.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.versioning.service</a> &gt; <span class="el_source">CommitIndexSearchRebuilder.java</span></div><h1>CommitIndexSearchRebuilder.java</h1><pre class="source lang-java linenums">package com.taxonomy.versioning.service;
+
+import com.taxonomy.versioning.model.ArchitectureCommitIndex;
+import jakarta.persistence.EntityManagerFactory;
+import org.hibernate.search.mapper.orm.Search;
+import org.springframework.stereotype.Service;
+
+import java.util.HashMap;
+import java.util.Map;
+
+/** Rebuilds only the Hibernate Search index owned by commit-history projections. */
+@Service
+public class CommitIndexSearchRebuilder {
+
+    private final EntityManagerFactory entityManagerFactory;
+
+<span class="fc" id="L17">    public CommitIndexSearchRebuilder(EntityManagerFactory entityManagerFactory) {</span>
+<span class="fc" id="L18">        this.entityManagerFactory = entityManagerFactory;</span>
+<span class="fc" id="L19">    }</span>
+
+    /**
+     * Every persisted row must have exactly one document with the same scope and text.
+     * A second database observation rejects source changes made during verification.
+     * Older indexes without fingerprints are incomplete and are rebuilt once.
+     */
+    public boolean hasCompleteCoverage(long expectedCount) {
+<span class="fc" id="L27">        Map&lt;Long, String&gt; expected = databaseFingerprints();</span>
+<span class="pc bpc" id="L28" title="1 of 2 branches missed.">        if (expected.size() != expectedCount) return false;</span>
+<span class="fc" id="L29">        Map&lt;Long, String&gt; remaining = new HashMap&lt;&gt;(expected);</span>
+<span class="fc" id="L30">        try (var manager = entityManagerFactory.createEntityManager();</span>
+<span class="fc" id="L31">             var documents = Search.session(manager).search(ArchitectureCommitIndex.class)</span>
+<span class="fc" id="L32">                     .select(f -&gt; f.composite(IndexedFingerprint::new,</span>
+<span class="fc" id="L33">                             f.id(Long.class), f.field(&quot;searchFingerprint&quot;, String.class)))</span>
+<span class="fc" id="L34">                     .where(f -&gt; f.matchAll()).scroll(256)) {</span>
+<span class="fc bfc" id="L35" title="All 2 branches covered.">            for (var page = documents.next(); page.hasHits(); page = documents.next()) {</span>
+<span class="fc bfc" id="L36" title="All 2 branches covered.">                for (var document : page.hits()) {</span>
+<span class="fc" id="L37">                    String fingerprint = remaining.remove(document.id());</span>
+<span class="fc bfc" id="L38" title="All 4 branches covered.">                    if (fingerprint == null || !fingerprint.equals(document.fingerprint())) return false;</span>
+<span class="fc" id="L39">                }</span>
+            }
+<span class="pc bpc" id="L41" title="2 of 4 branches missed.">        }</span>
+<span class="pc bpc" id="L42" title="1 of 4 branches missed.">        return remaining.isEmpty() &amp;&amp; expected.equals(databaseFingerprints());</span>
+    }
+
+    private Map&lt;Long, String&gt; databaseFingerprints() {
+<span class="fc" id="L46">        Map&lt;Long, String&gt; result = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L47">        try (var manager = entityManagerFactory.createEntityManager()) {</span>
+<span class="fc" id="L48">            long after = 0;</span>
+            while (true) {
+<span class="fc" id="L50">                var page = manager.createQuery(&quot;&quot;&quot;</span>
+                        select row from ArchitectureCommitIndex row where row.id &gt; :after order by row.id
+<span class="fc" id="L52">                        &quot;&quot;&quot;, ArchitectureCommitIndex.class).setParameter(&quot;after&quot;, after).setMaxResults(256).getResultList();</span>
+<span class="fc bfc" id="L53" title="All 2 branches covered.">                if (page.isEmpty()) return result;</span>
+<span class="fc bfc" id="L54" title="All 2 branches covered.">                for (var row : page) result.put(row.getId(), row.getSearchFingerprint());</span>
+<span class="fc" id="L55">                after = page.getLast().getId();</span>
+<span class="fc" id="L56">                manager.clear();</span>
+<span class="fc" id="L57">            }</span>
+        }
+    }
+
+<span class="fc" id="L61">    private record IndexedFingerprint(Long id, String fingerprint) { }</span>
+
+    /**
+     * Purge stale Lucene documents and reindex every currently persisted,
+     * tenant-aware commit projection.
+     */
+    public void rebuildAll() throws InterruptedException {
+<span class="fc" id="L68">        Search.mapping(entityManagerFactory)</span>
+<span class="fc" id="L69">                .scope(ArchitectureCommitIndex.class)</span>
+<span class="fc" id="L70">                .massIndexer()</span>
+<span class="fc" id="L71">                .purgeAllOnStart(true)</span>
+<span class="fc" id="L72">                .typesToIndexInParallel(1)</span>
+<span class="fc" id="L73">                .threadsToLoadObjects(1)</span>
+<span class="fc" id="L74">                .batchSizeToLoadObjects(25)</span>
+<span class="fc" id="L75">                .startAndWait();</span>
+<span class="fc" id="L76">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

@@ -1,0 +1,690 @@
+{
+  "schemaVersion": 1,
+  "shard": "spring-context-a",
+  "commit": "bb3733c0cddd706a0b536c2c66a2bd98a03935d9",
+  "sourceTree": "8200951c1aa7eb1a2a8fa07e1ce6c610c9d5b201",
+  "buildId": "46110305090.1.spring-context-a",
+  "reports": [
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.AnalysisRelationGeneratorTests.xml",
+      "className": "com.taxonomy.AnalysisRelationGeneratorTests",
+      "sha256": "391ec7eb85c1af09a1137add71d3fe2d6f503595da012ebc60be639b6e1c581a",
+      "tests": 14,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.ArchiMateWorkspaceImportTests.xml",
+      "className": "com.taxonomy.ArchiMateWorkspaceImportTests",
+      "sha256": "1bf473844d75748ccffe67f40448ebc2a942bfeb64cf4dc5504691ab868bbce1",
+      "tests": 12,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.ArchitectureViewTests.xml",
+      "className": "com.taxonomy.ArchitectureViewTests",
+      "sha256": "0e363e70947174176c96e66f567317131ce8f1bd677d8ee1eb14c11beaa0bebf",
+      "tests": 23,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.CsvRelationsIntegrationTest.xml",
+      "className": "com.taxonomy.CsvRelationsIntegrationTest",
+      "sha256": "dfc6e3d859c0072268777b051c450d02dcac56ea15fccfd6a4d7f4b3c9f777aa",
+      "tests": 3,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.DecisionRationaleReportTests.xml",
+      "className": "com.taxonomy.DecisionRationaleReportTests",
+      "sha256": "faaf37906c85f978f7f5e41f21881e2cffa67171c2eb17a68459ce28f77abaf0",
+      "tests": 9,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.DefaultArchitectureAnalysisTest.xml",
+      "className": "com.taxonomy.DefaultArchitectureAnalysisTest",
+      "sha256": "b160b12c7344bfed801e452803e193d7103e2764fce993498f8238d4c32be601",
+      "tests": 4,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.GraphQueryTests.xml",
+      "className": "com.taxonomy.GraphQueryTests",
+      "sha256": "a722d7f72b36feb51d06f0762df889f6d5f971d04729435ac8cd77874a9e1900",
+      "tests": 30,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.GraphSearchTests.xml",
+      "className": "com.taxonomy.GraphSearchTests",
+      "sha256": "e8f9624c969f7d82de525cddb37f57e30bd012cf13e32e86359df6e03af485d3",
+      "tests": 17,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.MermaidExportTests.xml",
+      "className": "com.taxonomy.MermaidExportTests",
+      "sha256": "c94c13829894cb257c090f01e94e3869e8d3fb71a9e804ad62598c49e69d8727",
+      "tests": 17,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.OnnxEmbeddingServiceTest.xml",
+      "className": "com.taxonomy.OnnxEmbeddingServiceTest",
+      "sha256": "8fd527644d5e6c1e49e49f1edf063262764e4e2f314444fc9f7abeaef77aa5eb",
+      "tests": 4,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.PromptTemplateTests.xml",
+      "className": "com.taxonomy.PromptTemplateTests",
+      "sha256": "5d87e5c7485375b0f2331f533d75da4fab02f51c51322bb2196757b0c4d05f20",
+      "tests": 32,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.ReadmeShowcaseDriftTest.xml",
+      "className": "com.taxonomy.ReadmeShowcaseDriftTest",
+      "sha256": "bd79af3183a337477cb063a6986929cc7efbc20fb7bbcb45b0f9096a6b0b1b32",
+      "tests": 1,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.RelationProposalTests.xml",
+      "className": "com.taxonomy.RelationProposalTests",
+      "sha256": "d50b468a8bd7af21a7fb2779fd155d3616a9a41e60d985032d9b18b456739b6b",
+      "tests": 26,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.ScenarioPublicationFixtureTest.xml",
+      "className": "com.taxonomy.ScenarioPublicationFixtureTest",
+      "sha256": "0c45440814595f47814c0756a21804ae1ea1bb952452429272602024ed1863e3",
+      "tests": 1,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.SemanticSearchTests.xml",
+      "className": "com.taxonomy.SemanticSearchTests",
+      "sha256": "5b367d474e408ab471b3807855bd6cfe01e5c0e0e97acf9c6d52c4024469f2a8",
+      "tests": 26,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.SwaggerPrivateSecurityTest.xml",
+      "className": "com.taxonomy.SwaggerPrivateSecurityTest",
+      "sha256": "d6151755312d3804992c4d4fe880a1754f9a57f03de1d99b9dd8877937439e37",
+      "tests": 2,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.TaxonomyRelationTests.xml",
+      "className": "com.taxonomy.TaxonomyRelationTests",
+      "sha256": "f33231073fb9c6a15dd976ac4b6fa2f9ae79b649afadf92faa07a753e76ae746",
+      "tests": 12,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.VisioDiagramTests.xml",
+      "className": "com.taxonomy.VisioDiagramTests",
+      "sha256": "0f2b4ab755732958cd7869c5198cf13576830da49caf2a4f0267ce0ee1ad5d76",
+      "tests": 17,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.catalog.service.importer.ImportApiControllerTest.xml",
+      "className": "com.taxonomy.catalog.service.importer.ImportApiControllerTest",
+      "sha256": "c23c8ce3d474fe68f6b27cb6ba5ea38dde9bf8aca982c0f19e6102305fbc1a88",
+      "tests": 8,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.composition.architecture.ArchitectureAdmbwPreparationServiceTest.xml",
+      "className": "com.taxonomy.composition.architecture.ArchitectureAdmbwPreparationServiceTest",
+      "sha256": "fe497ce61fdb9659cd0122fbd1b984bca25834df7c70718bce395328d14c9490",
+      "tests": 11,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.composition.architecture.ArchitectureLifecycleCreationRecoveryTest.xml",
+      "className": "com.taxonomy.composition.architecture.ArchitectureLifecycleCreationRecoveryTest",
+      "sha256": "6d0e28455890603cc31bf03d2c334cd585c81ca5a977c813d31522f3c7456050",
+      "tests": 14,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.composition.architecture.ArchitectureLifecyclePublicationProofTest.xml",
+      "className": "com.taxonomy.composition.architecture.ArchitectureLifecyclePublicationProofTest",
+      "sha256": "c03233bffdfe6cc0c5ce39302d7510b67d11758a18f90fd07d6ec68a53ee8702",
+      "tests": 2,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.composition.architecture.GitNativeSyncPortfolioAtomicityTest.xml",
+      "className": "com.taxonomy.composition.architecture.GitNativeSyncPortfolioAtomicityTest",
+      "sha256": "633f863077949efc67ca04dede012768bc0ea22e6365a02853148ab323db75bc",
+      "tests": 12,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.composition.architecture.RepositoryAuthorizationFreshnessTest.xml",
+      "className": "com.taxonomy.composition.architecture.RepositoryAuthorizationFreshnessTest",
+      "sha256": "1f05ee04437565f24c664087e2048c9a208492447a72977b9f2d81cff8524f78",
+      "tests": 3,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.composition.architecture.RequirementLifecycleIntegrationTest.xml",
+      "className": "com.taxonomy.composition.architecture.RequirementLifecycleIntegrationTest",
+      "sha256": "018cd19d54867aa048173ea258e3f45658c9ea7e0f25b535ce972f74dc660a76",
+      "tests": 1,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.composition.demo.ProductDemoAuthorityRegressionTest.xml",
+      "className": "com.taxonomy.composition.demo.ProductDemoAuthorityRegressionTest",
+      "sha256": "c36a45698545378d56f7042deee4a9ace46a2ba91a0833672aa48e271c395efd",
+      "tests": 21,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.dsl.CommitIndexHibernateSearchTest.xml",
+      "className": "com.taxonomy.dsl.CommitIndexHibernateSearchTest",
+      "sha256": "a3c54d7d15ef49361848c630409d30c58bb93914331ba2d2e22d150671f6c00a",
+      "tests": 8,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.dsl.DslMaterializeServiceTest.xml",
+      "className": "com.taxonomy.dsl.DslMaterializeServiceTest",
+      "sha256": "bb51308fb343bb04740460e469b05a64a25afeefb1aa87e5c6f8da0cc74da953",
+      "tests": 5,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.dsl.DslMaterializeWorkspaceCommitReproductionTest.xml",
+      "className": "com.taxonomy.dsl.DslMaterializeWorkspaceCommitReproductionTest",
+      "sha256": "53ce777d1982fed88836e9e700089520e742e8f9c5905776732d185c3f1c71ab",
+      "tests": 1,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.dsl.HypothesisSelectedSourceHttpTest.xml",
+      "className": "com.taxonomy.dsl.HypothesisSelectedSourceHttpTest",
+      "sha256": "efe52272435782e0acfc4b7636afd7f1b35e949eed771a899f4fb69c38346ed5",
+      "tests": 1,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.dsl.export.DslMaterializeProvisioningBoundaryTest.xml",
+      "className": "com.taxonomy.dsl.export.DslMaterializeProvisioningBoundaryTest",
+      "sha256": "9ccc22b396af58e5d145fecc703cadb4de64ff7341bd6efec8c44e6d8e4266aa",
+      "tests": 1,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.interop.publication.IntegrationPublicationConcurrencyTest.xml",
+      "className": "com.taxonomy.interop.publication.IntegrationPublicationConcurrencyTest",
+      "sha256": "41e633927ee9ed56e36453cdbf57a4cc765089181d7676507f89843438b45bd1",
+      "tests": 1,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.portfolio.PortfolioInputValidationIntegrationTest.xml",
+      "className": "com.taxonomy.portfolio.PortfolioInputValidationIntegrationTest",
+      "sha256": "f56b5cb30d371e0d37e84f3f006f434293942bc77e3774a3b6eb40f4d83b7d8a",
+      "tests": 3,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.portfolio.ProjectPortfolioServiceTest.xml",
+      "className": "com.taxonomy.portfolio.ProjectPortfolioServiceTest",
+      "sha256": "a0ef28a13ba7717f8188995409c6d699440b36543e8da7e26aaf610dbbf5756d",
+      "tests": 11,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.provenance.DocumentImportControllerTest.xml",
+      "className": "com.taxonomy.provenance.DocumentImportControllerTest",
+      "sha256": "40d29c02f7febfa9eaa6c2a65b83c3c068b27cf2682362d54a16602d714cb4a8",
+      "tests": 12,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.relations.service.GitAuthoritativeHypothesisIdentityBindingTest.xml",
+      "className": "com.taxonomy.relations.service.GitAuthoritativeHypothesisIdentityBindingTest",
+      "sha256": "489b366dadb7a86e138c3a353db78972527ffb1359210f7b080a135e15898353",
+      "tests": 1,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.relations.service.RelationQualityRepositoryIsolationTests.xml",
+      "className": "com.taxonomy.relations.service.RelationQualityRepositoryIsolationTests",
+      "sha256": "12ee9379e945afcd76f8935a5c81d6557c912cfaaf34cc090e11c0dd6ccd77d8",
+      "tests": 3,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.security.PasswordChangeEnforcementTest.xml",
+      "className": "com.taxonomy.security.PasswordChangeEnforcementTest",
+      "sha256": "d75055020736fcdb37b54d9a0953e0fa1248d0ada4e2e0fc8095e208bcf798df",
+      "tests": 5,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.security.config.ActuatorAdminTokenSecurityTests.xml",
+      "className": "com.taxonomy.security.config.ActuatorAdminTokenSecurityTests",
+      "sha256": "8b06c68623817764b6dc5dec55996bec06e942a8f8cb0d4d1d3f95bb23105c7a",
+      "tests": 9,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.security.config.KeycloakApplicationBearerTest.xml",
+      "className": "com.taxonomy.security.config.KeycloakApplicationBearerTest",
+      "sha256": "ea865bafd1a6ba6d8a6bc4ff6db5118f5940daccbb43435bc7ac6f2c77a4b0c4",
+      "tests": 25,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.security.controller.ChangePasswordControllerTest.xml",
+      "className": "com.taxonomy.security.controller.ChangePasswordControllerTest",
+      "sha256": "2eb3e2f81cded4ec67c422c762bca0b6517f95213b94cef49031ad684ca2d0bc",
+      "tests": 4,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.shared.controller.HelpControllerTest.xml",
+      "className": "com.taxonomy.shared.controller.HelpControllerTest",
+      "sha256": "5c2a303c276440cd0f139d4a04c3c56ccd6e2809ee640cd031787b4c3761050d",
+      "tests": 19,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.shared.controller.MultiuserHelpControllerTest.xml",
+      "className": "com.taxonomy.shared.controller.MultiuserHelpControllerTest",
+      "sha256": "1ef0077281d20ec2283a7f7273dd08b40c7ea3358bc982813f24b058ee7344be",
+      "tests": 1,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.templates.DefaultDocumentTemplateBootstrapIntegrationTest.xml",
+      "className": "com.taxonomy.templates.DefaultDocumentTemplateBootstrapIntegrationTest",
+      "sha256": "b92f454f68ef2805802b471249439c4e39131111257c52cbcbc6987a66e95e24",
+      "tests": 1,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.versioning.controller.ContextNavigationControllerTest.xml",
+      "className": "com.taxonomy.versioning.controller.ContextNavigationControllerTest",
+      "sha256": "1d8eaa70dae9bb50acac742411be89d5dcec8d9934f4196cf662f4e943c02539",
+      "tests": 15,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.versioning.controller.GitStateControllerTest.xml",
+      "className": "com.taxonomy.versioning.controller.GitStateControllerTest",
+      "sha256": "67a47873469c2ba0898b83a25ddbc1effc8d23bb58de086244e8645e8f807419",
+      "tests": 6,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.versioning.controller.ViewContextIntegrationTest.xml",
+      "className": "com.taxonomy.versioning.controller.ViewContextIntegrationTest",
+      "sha256": "b28c5900c5f2303a420323ab3b016211d341d082196283854b4ac0f179823941",
+      "tests": 6,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.workspace.controller.ExternalSyncControllerTest.xml",
+      "className": "com.taxonomy.workspace.controller.ExternalSyncControllerTest",
+      "sha256": "a67ceb699635698e581c2ecfb02114a19523cf36a1680931e950b7526cd09f56",
+      "tests": 14,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    }
+  ],
+  "coverage": {
+    "path": "coverage.exec",
+    "sha256": "488a0b94cd6d284dc8858e7631fffc057263a370a3147b4c18dae467151d0fb7"
+  },
+  "timing": {
+    "durationSeconds": 1204.33,
+    "suites": [
+      {
+        "className": "com.taxonomy.security.config.KeycloakApplicationBearerTest",
+        "durationSeconds": 35.111
+      },
+      {
+        "className": "com.taxonomy.composition.demo.ProductDemoAuthorityRegressionTest",
+        "durationSeconds": 31.927
+      },
+      {
+        "className": "com.taxonomy.ArchitectureViewTests",
+        "durationSeconds": 30.867
+      },
+      {
+        "className": "com.taxonomy.DecisionRationaleReportTests",
+        "durationSeconds": 30.724
+      },
+      {
+        "className": "com.taxonomy.DefaultArchitectureAnalysisTest",
+        "durationSeconds": 28.829
+      },
+      {
+        "className": "com.taxonomy.AnalysisRelationGeneratorTests",
+        "durationSeconds": 28.248
+      },
+      {
+        "className": "com.taxonomy.ScenarioPublicationFixtureTest",
+        "durationSeconds": 26.857
+      },
+      {
+        "className": "com.taxonomy.composition.architecture.GitNativeSyncPortfolioAtomicityTest",
+        "durationSeconds": 26.845
+      },
+      {
+        "className": "com.taxonomy.VisioDiagramTests",
+        "durationSeconds": 26.626
+      },
+      {
+        "className": "com.taxonomy.composition.architecture.ArchitectureAdmbwPreparationServiceTest",
+        "durationSeconds": 26.623
+      },
+      {
+        "className": "com.taxonomy.versioning.controller.ContextNavigationControllerTest",
+        "durationSeconds": 26.522
+      },
+      {
+        "className": "com.taxonomy.SwaggerPrivateSecurityTest",
+        "durationSeconds": 26.447
+      },
+      {
+        "className": "com.taxonomy.security.PasswordChangeEnforcementTest",
+        "durationSeconds": 26.323
+      },
+      {
+        "className": "com.taxonomy.composition.architecture.RequirementLifecycleIntegrationTest",
+        "durationSeconds": 25.465
+      },
+      {
+        "className": "com.taxonomy.versioning.controller.ViewContextIntegrationTest",
+        "durationSeconds": 25.426
+      },
+      {
+        "className": "com.taxonomy.dsl.DslMaterializeWorkspaceCommitReproductionTest",
+        "durationSeconds": 25.15
+      },
+      {
+        "className": "com.taxonomy.security.controller.ChangePasswordControllerTest",
+        "durationSeconds": 25.068
+      },
+      {
+        "className": "com.taxonomy.composition.architecture.ArchitectureLifecycleCreationRecoveryTest",
+        "durationSeconds": 25.057
+      },
+      {
+        "className": "com.taxonomy.GraphQueryTests",
+        "durationSeconds": 24.901
+      },
+      {
+        "className": "com.taxonomy.security.config.ActuatorAdminTokenSecurityTests",
+        "durationSeconds": 24.764
+      },
+      {
+        "className": "com.taxonomy.GraphSearchTests",
+        "durationSeconds": 24.592
+      },
+      {
+        "className": "com.taxonomy.dsl.DslMaterializeServiceTest",
+        "durationSeconds": 24.529
+      },
+      {
+        "className": "com.taxonomy.ArchiMateWorkspaceImportTests",
+        "durationSeconds": 24.485
+      },
+      {
+        "className": "com.taxonomy.versioning.controller.GitStateControllerTest",
+        "durationSeconds": 24.456
+      },
+      {
+        "className": "com.taxonomy.RelationProposalTests",
+        "durationSeconds": 24.413
+      },
+      {
+        "className": "com.taxonomy.shared.controller.HelpControllerTest",
+        "durationSeconds": 24.363
+      },
+      {
+        "className": "com.taxonomy.SemanticSearchTests",
+        "durationSeconds": 24.177
+      },
+      {
+        "className": "com.taxonomy.composition.architecture.ArchitectureLifecyclePublicationProofTest",
+        "durationSeconds": 24.171
+      },
+      {
+        "className": "com.taxonomy.relations.service.RelationQualityRepositoryIsolationTests",
+        "durationSeconds": 23.963
+      },
+      {
+        "className": "com.taxonomy.OnnxEmbeddingServiceTest",
+        "durationSeconds": 23.838
+      },
+      {
+        "className": "com.taxonomy.relations.service.GitAuthoritativeHypothesisIdentityBindingTest",
+        "durationSeconds": 23.768
+      },
+      {
+        "className": "com.taxonomy.interop.publication.IntegrationPublicationConcurrencyTest",
+        "durationSeconds": 23.691
+      },
+      {
+        "className": "com.taxonomy.catalog.service.importer.ImportApiControllerTest",
+        "durationSeconds": 23.587
+      },
+      {
+        "className": "com.taxonomy.TaxonomyRelationTests",
+        "durationSeconds": 23.289
+      },
+      {
+        "className": "com.taxonomy.dsl.HypothesisSelectedSourceHttpTest",
+        "durationSeconds": 23.251
+      },
+      {
+        "className": "com.taxonomy.CsvRelationsIntegrationTest",
+        "durationSeconds": 23.126
+      },
+      {
+        "className": "com.taxonomy.shared.controller.MultiuserHelpControllerTest",
+        "durationSeconds": 23.105
+      },
+      {
+        "className": "com.taxonomy.dsl.CommitIndexHibernateSearchTest",
+        "durationSeconds": 23.084
+      },
+      {
+        "className": "com.taxonomy.PromptTemplateTests",
+        "durationSeconds": 23.065
+      },
+      {
+        "className": "com.taxonomy.provenance.DocumentImportControllerTest",
+        "durationSeconds": 23.005
+      },
+      {
+        "className": "com.taxonomy.workspace.controller.ExternalSyncControllerTest",
+        "durationSeconds": 22.876
+      },
+      {
+        "className": "com.taxonomy.portfolio.ProjectPortfolioServiceTest",
+        "durationSeconds": 22.842
+      },
+      {
+        "className": "com.taxonomy.templates.DefaultDocumentTemplateBootstrapIntegrationTest",
+        "durationSeconds": 22.715
+      },
+      {
+        "className": "com.taxonomy.dsl.export.DslMaterializeProvisioningBoundaryTest",
+        "durationSeconds": 22.64
+      },
+      {
+        "className": "com.taxonomy.ReadmeShowcaseDriftTest",
+        "durationSeconds": 22.504
+      },
+      {
+        "className": "com.taxonomy.composition.architecture.RepositoryAuthorizationFreshnessTest",
+        "durationSeconds": 22.5
+      },
+      {
+        "className": "com.taxonomy.portfolio.PortfolioInputValidationIntegrationTest",
+        "durationSeconds": 22.339
+      },
+      {
+        "className": "com.taxonomy.MermaidExportTests",
+        "durationSeconds": 22.176
+      }
+    ]
+  }
+}

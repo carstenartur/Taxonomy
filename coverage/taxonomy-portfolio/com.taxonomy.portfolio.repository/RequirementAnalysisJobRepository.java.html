@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RequirementAnalysisJobRepository.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-portfolio</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.repository</a> &gt; <span class="el_source">RequirementAnalysisJobRepository.java</span></div><h1>RequirementAnalysisJobRepository.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.repository;
+
+import com.taxonomy.portfolio.model.RequirementAnalysisJob;
+import jakarta.persistence.LockModeType;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+
+import java.util.Collection;
+import java.util.List;
+import java.util.Optional;
+
+public interface RequirementAnalysisJobRepository extends JpaRepository&lt;RequirementAnalysisJob, String&gt; {
+
+    String JOB_ITEM_READ = &quot;&quot;&quot;
+            select new com.taxonomy.portfolio.repository.AnalysisJobReadRow(
+                job.id, job.projectId, job.status, job.idempotencyKey, job.provider,
+                job.maxArchitectureNodes, job.requestedBy, job.workspaceId,
+                job.createdAt, job.startedAt, job.completedAt,
+                job.totalItems, job.successfulItems, job.partialItems, job.failedItems, job.errorSummary,
+                job.providerPluginId, job.providerPluginVersion, job.providerPluginSha256,
+                job.providerConfigRevision, job.analysisReasonLength, job.analysisLanguage,
+                item.id, item.requirementId, requirement.requirementKey, item.requirementVersionId,
+                admittedVersion.versionNumber, item.status, item.snapshotId, item.attempt,
+                item.startedAt, item.completedAt, item.errorMessage)
+              from RequirementAnalysisJob job
+              left join RequirementAnalysisJobItem item
+                on item.jobId = job.id and item.projectId = job.projectId and item.scopeKey = job.scopeKey
+              left join item.requirement requirement
+              left join item.requirementVersion admittedVersion
+            &quot;&quot;&quot;;
+
+    @Query(JOB_ITEM_READ + &quot;&quot;&quot;
+             where job.id = :id and job.projectId = :projectId and job.scopeKey = :scopeKey
+             order by requirement.requirementKey asc
+            &quot;&quot;&quot;)
+    List&lt;AnalysisJobReadRow&gt; findReadRowsByIdAndProjectIdAndScopeKey(
+            @Param(&quot;id&quot;) String id, @Param(&quot;projectId&quot;) Long projectId, @Param(&quot;scopeKey&quot;) String scopeKey);
+
+    @Query(JOB_ITEM_READ + &quot;&quot;&quot;
+             where job.projectId = :projectId and job.scopeKey = :scopeKey
+             order by job.createdAt desc, requirement.requirementKey asc
+            &quot;&quot;&quot;)
+    List&lt;AnalysisJobReadRow&gt; findReadRowsByProjectIdAndScopeKey(
+            @Param(&quot;projectId&quot;) Long projectId, @Param(&quot;scopeKey&quot;) String scopeKey);
+
+    @Query(JOB_ITEM_READ + &quot;&quot;&quot;
+             where job.projectId = :projectId and job.scopeKey = :scopeKey and job.id in :ids
+             order by job.createdAt desc, requirement.requirementKey asc
+            &quot;&quot;&quot;)
+    List&lt;AnalysisJobReadRow&gt; findReadRowsByIdsAndProjectIdAndScopeKey(
+            @Param(&quot;ids&quot;) Collection&lt;String&gt; ids, @Param(&quot;projectId&quot;) Long projectId, @Param(&quot;scopeKey&quot;) String scopeKey);
+
+<span class="fc" id="L55">    record OperationKeyCandidate(String id, String idempotencyKey) {}</span>
+
+    @Query(&quot;&quot;&quot;
+            select new com.taxonomy.portfolio.repository.RequirementAnalysisJobRepository$OperationKeyCandidate(
+                job.id, job.idempotencyKey)
+              from RequirementAnalysisJob job
+             where job.projectId = :projectId and job.scopeKey = :scopeKey and job.idempotencyKey in :keys
+            &quot;&quot;&quot;)
+    List&lt;OperationKeyCandidate&gt; findCanonicalOperationKeyCandidates(
+            @Param(&quot;projectId&quot;) Long projectId, @Param(&quot;scopeKey&quot;) String scopeKey, @Param(&quot;keys&quot;) List&lt;String&gt; keys);
+
+    @Query(&quot;&quot;&quot;
+            select new com.taxonomy.portfolio.repository.RequirementAnalysisJobRepository$OperationKeyCandidate(
+                job.id, job.idempotencyKey)
+              from RequirementAnalysisJob job
+             where job.projectId = :projectId and job.scopeKey = :scopeKey
+               and locate(:operationId, job.idempotencyKey) &gt; 0
+            &quot;&quot;&quot;)
+    List&lt;OperationKeyCandidate&gt; findLiteralOperationKeyCandidates(
+            @Param(&quot;projectId&quot;) Long projectId, @Param(&quot;scopeKey&quot;) String scopeKey, @Param(&quot;operationId&quot;) String operationId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query(&quot;select job from RequirementAnalysisJob job where job.id = :id &quot;
+            + &quot;and job.projectId = :projectId and job.scopeKey = :scopeKey&quot;)
+    Optional&lt;RequirementAnalysisJob&gt; findByIdAndProjectIdAndScopeKeyForUpdate(
+            @Param(&quot;id&quot;) String id, @Param(&quot;projectId&quot;) Long projectId, @Param(&quot;scopeKey&quot;) String scopeKey);
+
+    Optional&lt;RequirementAnalysisJob&gt; findByIdAndProjectIdAndScopeKey(
+            String id, Long projectId, String scopeKey);
+
+    Optional&lt;RequirementAnalysisJob&gt; findByProjectIdAndScopeKeyAndIdempotencyKey(
+            Long projectId, String scopeKey, String idempotencyKey);
+
+    List&lt;RequirementAnalysisJob&gt; findByProjectIdAndScopeKeyOrderByCreatedAtDesc(
+            Long projectId, String scopeKey);
+
+    /** Compatibility signatures retained until all tests and extensions migrate. */
+    @Deprecated(forRemoval = false)
+    Optional&lt;RequirementAnalysisJob&gt; findByIdAndProjectId(String id, Long projectId);
+
+    @Deprecated(forRemoval = false)
+    Optional&lt;RequirementAnalysisJob&gt; findByProjectIdAndIdempotencyKey(
+            Long projectId, String idempotencyKey);
+
+    @Deprecated(forRemoval = false)
+    List&lt;RequirementAnalysisJob&gt; findByProjectIdOrderByCreatedAtDesc(Long projectId);
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

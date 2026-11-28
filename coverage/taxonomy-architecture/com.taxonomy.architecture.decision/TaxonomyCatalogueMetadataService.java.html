@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>TaxonomyCatalogueMetadataService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-architecture</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.architecture.decision</a> &gt; <span class="el_source">TaxonomyCatalogueMetadataService.java</span></div><h1>TaxonomyCatalogueMetadataService.java</h1><pre class="source lang-java linenums">package com.taxonomy.architecture.decision;
+
+import com.taxonomy.catalog.service.CatalogueOverlayService;
+import com.taxonomy.catalog.service.TaxonomyService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.Resource;
+import org.springframework.core.io.ResourceLoader;
+import org.springframework.stereotype.Service;
+
+import java.security.MessageDigest;
+import java.util.HexFormat;
+import java.util.Locale;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+/**
+ * Supplies stable catalogue identity for report provenance.
+ *
+ * &lt;p&gt;The human-readable version is derived from the bundled catalogue filename.
+ * The effective SHA-256 digest combines the exact Excel bytes, the versioned JSON
+ * overlay bytes and its mapping version, so provenance changes whenever either
+ * catalogue layer changes.&lt;/p&gt;
+ */
+@Service
+public class TaxonomyCatalogueMetadataService {
+
+<span class="fc" id="L29">    private static final Logger log = LoggerFactory.getLogger(TaxonomyCatalogueMetadataService.class);</span>
+<span class="fc" id="L30">    private static final Pattern VERSION_PATTERN = Pattern.compile(&quot;([0-9]{1,2}[A-Z]{3}[0-9]{4})&quot;);</span>
+
+    private final ResourceLoader resourceLoader;
+    private final CatalogueOverlayService overlayService;
+    private final String catalogueResource;
+    private final TaxonomyService taxonomy;
+
+    public TaxonomyCatalogueMetadataService(
+            ResourceLoader resourceLoader,
+            TaxonomyService taxonomy,
+            CatalogueOverlayService overlayService,
+            @Value(&quot;${taxonomy.catalogue.resource:classpath:data/bilingual/C3_Taxonomy_Catalogue_25AUG2025.xlsx}&quot;)
+<span class="fc" id="L42">            String catalogueResource) {</span>
+<span class="fc" id="L43">        this.resourceLoader = resourceLoader;</span>
+<span class="fc" id="L44">        this.taxonomy = taxonomy;</span>
+<span class="fc" id="L45">        this.overlayService = overlayService;</span>
+<span class="fc" id="L46">        this.catalogueResource = catalogueResource;</span>
+<span class="fc" id="L47">    }</span>
+
+    public CatalogueMetadata getMetadata() {
+<span class="fc" id="L50">        Resource resource = resourceLoader.getResource(catalogueResource);</span>
+<span class="pc bpc" id="L51" title="1 of 2 branches missed.">        String filename = resource.getFilename() != null</span>
+<span class="pc" id="L52">                ? resource.getFilename() : catalogueResource;</span>
+<span class="fc" id="L53">        String version = extractVersion(filename);</span>
+<span class="fc" id="L54">        String baseSha256 = taxonomy.appliedWorkbookSha256().orElse(null);</span>
+
+<span class="fc" id="L56">        CatalogueOverlayService.OverlayMetadata overlay = overlayService.getOverlayMetadata();</span>
+<span class="pc bpc" id="L57" title="1 of 2 branches missed.">        String overlaySha256 = overlay.sha256() != null ? overlay.sha256() : &quot;disabled&quot;;</span>
+<span class="pc bpc" id="L58" title="1 of 2 branches missed.">        String effectiveSha256 = baseSha256 == null ? &quot;unavailable&quot; : compositeDigest(</span>
+<span class="fc" id="L59">                baseSha256, overlaySha256, overlay.mappingVersion());</span>
+<span class="fc" id="L60">        return new CatalogueMetadata(</span>
+                filename,
+                version,
+                effectiveSha256,
+<span class="pc bpc" id="L64" title="1 of 2 branches missed.">                overlay.enabled()</span>
+<span class="fc" id="L65">                        ? &quot;C3 Taxonomy Catalogue + versioned JSON overlay&quot;</span>
+<span class="pc" id="L66">                        : &quot;C3 Taxonomy Catalogue&quot;,</span>
+                baseSha256,
+<span class="fc" id="L68">                overlay.resource(),</span>
+<span class="fc" id="L69">                overlay.mappingVersion(),</span>
+<span class="fc" id="L70">                overlay.sha256());</span>
+    }
+
+    private String compositeDigest(String baseSha256, String overlaySha256, String mappingVersion) {
+        try {
+<span class="fc" id="L75">            MessageDigest digest = MessageDigest.getInstance(&quot;SHA-256&quot;);</span>
+<span class="fc" id="L76">            String material = baseSha256 + &quot;:&quot; + overlaySha256 + &quot;:&quot;</span>
+<span class="pc bpc" id="L77" title="1 of 2 branches missed.">                    + (mappingVersion != null ? mappingVersion : &quot;unspecified&quot;);</span>
+<span class="fc" id="L78">            return HexFormat.of().formatHex(</span>
+<span class="fc" id="L79">                    digest.digest(material.getBytes(java.nio.charset.StandardCharsets.UTF_8)));</span>
+<span class="nc" id="L80">        } catch (Exception exception) {</span>
+<span class="nc" id="L81">            log.warn(&quot;Could not compute effective catalogue digest: {}&quot;, exception.getMessage());</span>
+<span class="nc" id="L82">            return baseSha256;</span>
+        }
+    }
+
+    private String extractVersion(String filename) {
+<span class="fc" id="L87">        Matcher matcher = VERSION_PATTERN.matcher(filename.toUpperCase(Locale.ROOT));</span>
+<span class="pc bpc" id="L88" title="1 of 2 branches missed.">        return matcher.find() ? matcher.group(1) : &quot;unspecified&quot;;</span>
+    }
+
+<span class="fc" id="L91">    public record CatalogueMetadata(</span>
+            String filename,
+            String version,
+            String sha256,
+            String source,
+            String baseSha256,
+            String overlayResource,
+            String overlayMappingVersion,
+            String overlaySha256) {
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

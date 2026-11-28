@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ReformulationAdoptionRepository.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-portfolio</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.reformulation</a> &gt; <span class="el_source">ReformulationAdoptionRepository.java</span></div><h1>ReformulationAdoptionRepository.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.reformulation;
+import org.springframework.data.jpa.repository.EntityGraph;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import java.util.List;
+import java.util.Optional;
+public interface ReformulationAdoptionRepository extends JpaRepository&lt;ReformulationAdoption,String&gt; {
+<span class="fc" id="L8">    record EvidenceSource(String proposalId, String previewId, String scopeKey, Long requirementId, Long targetVersionId,</span>
+                          String receiptPayload, String previewPayload, String previewHash,
+                          String targetScope, Integer targetVersion, String targetHash,
+                          Long actualRequirementId, String requirementScope, String requirementKey,
+                          String projectScope, String projectKey) { }
+
+    // Composite-key associations can initialize proposals and large analysis snapshots even when marked lazy.
+    // Keep broken joins visible so the evidence codec can reject incomplete or inconsistent rows.
+    String EVIDENCE_SOURCE = &quot;&quot;&quot;
+            select new com.taxonomy.portfolio.reformulation.ReformulationAdoptionRepository$EvidenceSource(
+                a.proposalId, a.previewId, a.scopeKey, a.requirementId, a.targetVersionId,
+                a.payload, preview.payload, preview.contentHash, target.scopeKey, target.versionNumber,
+                target.contentHash, requirement.id, requirement.scopeKey, requirement.requirementKey,
+                project.scopeKey, project.projectKey)
+            from ReformulationAdoption a
+            left join a.preview preview
+            left join a.version target
+            left join target.requirement requirement
+            left join requirement.project project
+            where a.scopeKey = :scopeKey
+            &quot;&quot;&quot;;
+
+    Optional&lt;ReformulationAdoption&gt; findByIdAndProposalIdAndRequirementIdAndScopeKey(
+            String id, String proposalId, Long requirementId, String scopeKey);
+    boolean existsByPreviewId(String previewId);
+    List&lt;ReformulationAdoption&gt; findByProposalIdAndScopeKeyOrderByCreatedAtDesc(String proposalId,String scopeKey);
+    @EntityGraph(attributePaths = {&quot;preview&quot;, &quot;version&quot;, &quot;version.requirement&quot;, &quot;version.requirement.project&quot;})
+    List&lt;ReformulationAdoption&gt; findByRequirementIdAndTargetVersionIdAndScopeKey(Long requirementId,Long targetVersionId,String scopeKey);
+    @Query(EVIDENCE_SOURCE + &quot;order by a.createdAt asc&quot;)
+    List&lt;EvidenceSource&gt; findEvidenceByScopeKey(String scopeKey);
+
+    @Query(EVIDENCE_SOURCE + &quot;and a.requirementId = :requirementId and a.targetVersionId = :targetVersionId&quot;)
+    List&lt;EvidenceSource&gt; findEvidenceByRequirementVersion(Long requirementId, Long targetVersionId, String scopeKey);
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>WorkspaceProvisioningFenceImpl.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.repository</a> &gt; <span class="el_source">WorkspaceProvisioningFenceImpl.java</span></div><h1>WorkspaceProvisioningFenceImpl.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.repository;
+
+import com.taxonomy.workspace.model.UserWorkspace;
+import com.taxonomy.workspace.model.WorkspaceProvisioningStatus;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
+
+import java.io.IOException;
+import java.time.Instant;
+
+/** Repository fragment shared by working-copy creation and leased retry. */
+public class WorkspaceProvisioningFenceImpl implements WorkspaceProvisioningFence {
+    private final EntityManager entities;
+
+<span class="fc" id="L17">    public WorkspaceProvisioningFenceImpl(EntityManager entities) {</span>
+<span class="fc" id="L18">        this.entities = entities;</span>
+<span class="fc" id="L19">    }</span>
+
+    @Override
+    public UserWorkspace withProvisioningLease(UserWorkspace selected, String worker, ProvisioningStep step) throws IOException {
+<span class="fc" id="L23">        var current = entities.createQuery(&quot;&quot;&quot;</span>
+                select w from UserWorkspace w where w.workspaceId = :id and w.username = :owner
+                  and w.archived = false and w.shared = false and w.provisioningStatus = :running
+                  and w.provisioningLeaseOwner = :worker and w.provisioningLeaseUntil &gt; :now
+<span class="fc" id="L27">                &quot;&quot;&quot;, UserWorkspace.class).setParameter(&quot;id&quot;, selected.getWorkspaceId())</span>
+<span class="fc" id="L28">                .setParameter(&quot;owner&quot;, selected.getUsername()).setParameter(&quot;running&quot;, WorkspaceProvisioningStatus.PROVISIONING)</span>
+<span class="fc" id="L29">                .setParameter(&quot;worker&quot;, worker).setParameter(&quot;now&quot;, Instant.now())</span>
+<span class="fc" id="L30">                .setLockMode(LockModeType.PESSIMISTIC_WRITE).getResultList();</span>
+<span class="fc bfc" id="L31" title="All 2 branches covered.">        if (current.isEmpty()) {</span>
+<span class="fc" id="L32">            throw unavailable();</span>
+        }
+        // Bulk claims bypass the persistence context. A joined caller may already hold an older
+        // managed instance; refresh only this locked row, preserving its other pending work.
+<span class="fc" id="L36">        var workspace = current.getFirst();</span>
+<span class="fc" id="L37">        entities.refresh(workspace, LockModeType.PESSIMISTIC_WRITE);</span>
+<span class="pc bpc" id="L38" title="1 of 2 branches missed.">        if (!workspace.getProvisioningLeaseUntil().isAfter(Instant.now())) {</span>
+<span class="nc" id="L39">            throw unavailable();</span>
+        }
+<span class="fc" id="L41">        step.apply(workspace);</span>
+<span class="fc" id="L42">        return workspace;</span>
+    }
+
+    private static ResponseStatusException unavailable() {
+<span class="fc" id="L46">        return new ResponseStatusException(HttpStatus.CONFLICT, &quot;Workspace provisioning was claimed or its lifecycle changed&quot;);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

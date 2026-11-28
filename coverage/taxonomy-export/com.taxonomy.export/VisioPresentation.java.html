@@ -1,0 +1,352 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>VisioPresentation.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-export</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.export</a> &gt; <span class="el_source">VisioPresentation.java</span></div><h1>VisioPresentation.java</h1><pre class="source lang-java linenums">package com.taxonomy.export;
+
+import com.taxonomy.diagram.VisioDrawingOptions;
+import com.taxonomy.visio.*;
+
+import java.util.*;
+
+/** Bounded presentation policy for native Visio shapes; canonical data stays on the overview. */
+final class VisioPresentation {
+<span class="fc" id="L10">    private static final MermaidLabels ENGLISH = MermaidLabels.english();</span>
+<span class="fc" id="L11">    private static final MermaidLabels GERMAN = MermaidLabels.german();</span>
+
+    private VisioPresentation() { }
+
+    static void apply(VisioDocument document) {
+<span class="fc" id="L16">        apply(document, null, null);</span>
+<span class="fc" id="L17">    }</span>
+
+    static void apply(VisioDocument document, VisioDecisionTree decisionTree, VisioDrawingOptions options) {
+<span class="fc" id="L20">        document.getPages().forEach(VisioContainers::fit);</span>
+<span class="fc" id="L21">        VisioPage overview = document.getPages().getFirst();</span>
+<span class="fc" id="L22">        Map&lt;String, VisioShape&gt; nodes = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L23" title="All 2 branches covered.">        for (var shape : overview.getShapes()) nodes.put(shape.getId(), shape);</span>
+<span class="fc" id="L24">        Map&lt;String, String&gt; relationKeys = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L25">        int ordinal = 0;</span>
+<span class="fc bfc" id="L26" title="All 2 branches covered.">        for (var connect : overview.getConnects()) relationKeys.put(id(connect), &quot;R&quot; + (++ordinal));</span>
+<span class="fc" id="L27">        boolean dense = usesCompactKeys(overview.getShapes().size(), overview.getConnects().size());</span>
+<span class="fc" id="L28">        boolean german = document.isGerman();</span>
+<span class="fc" id="L29">        int unplaced = 0;</span>
+<span class="fc" id="L30">        boolean shortenedOverviewType = false;</span>
+<span class="fc bfc" id="L31" title="All 2 branches covered.">        for (var page : document.getPages()) {</span>
+            // Container fitting can shift each page independently, including impact subsets.
+<span class="fc" id="L33">            Map&lt;String, VisioShape&gt; pageNodes = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L34">            page.getShapes().forEach(shape -&gt; pageNodes.put(shape.getId(), shape));</span>
+<span class="fc" id="L35">            var occupied = new Occupancy();</span>
+<span class="fc bfc" id="L36" title="All 4 branches covered.">            var columns = options != null || !dense ? new VisioConnectionPoints.Columns(page.getShapes()) : null;</span>
+<span class="fc bfc" id="L37" title="All 2 branches covered.">            for (var shape : page.getShapes()) {</span>
+                // A container's interior is intentionally occupied by members;
+                // only its title blocks captions. Avoid huge spatial bucket
+                // allocations for a container around a large graph.
+<span class="fc bfc" id="L41" title="All 2 branches covered.">                if (VisioNativeShape.isContainer(shape)) {</span>
+<span class="fc" id="L42">                    double header = Math.min(shape.getHeight(), VisioContainers.HEADER_HEIGHT);</span>
+<span class="fc" id="L43">                    occupied.add(new Box(shape.getX(), shape.getY() + shape.getHeight() / 2 - header / 2,</span>
+<span class="fc" id="L44">                            Math.min(shape.getWidth(), 20) + .12, header + .12));</span>
+<span class="fc" id="L45">                } else occupied.add(new Box(shape.getX(), shape.getY(), shape.getWidth() + .12, shape.getHeight() + .12));</span>
+<span class="fc" id="L46">            }</span>
+<span class="fc bfc" id="L47" title="All 2 branches covered.">            for (var connect : page.getConnects()) {</span>
+<span class="fc" id="L48">                String key = relationKeys.get(id(connect));</span>
+<span class="fc" id="L49">                connect.getProperties().put(&quot;taxonomy.displayKey&quot;, VisioProperty.text(key));</span>
+<span class="fc bfc" id="L50" title="All 2 branches covered.">                String fullCaption = key + &quot; &quot; + (german ? relationLabel(connect.getRelationType(), true) : connect.getRelationType())</span>
+<span class="fc bfc" id="L51" title="All 2 branches covered.">                        + (connect.getProperties().containsKey(&quot;taxonomy.provenanceStatus&quot;) ? &quot; | &quot;</span>
+<span class="fc" id="L52">                        + statusLabel(connect.getProperties().get(&quot;taxonomy.provenanceStatus&quot;).value(), german) : &quot;&quot;);</span>
+<span class="fc bfc" id="L53" title="All 2 branches covered.">                String text = dense ? key : display(fullCaption, 24, 2);</span>
+<span class="fc bfc" id="L54" title="All 2 branches covered.">                if (options != null) {</span>
+<span class="fc" id="L55">                    fullCaption = relationLabel(connect.getRelationType(), german);</span>
+<span class="fc" id="L56">                    text = display(fullCaption, 22, 2);</span>
+                }
+<span class="fc bfc" id="L58" title="All 6 branches covered.">                boolean shortened = (options != null || !dense) &amp;&amp; shortened(fullCaption, text);</span>
+<span class="pc bpc" id="L59" title="1 of 4 branches missed.">                if (shortened &amp;&amp; page == overview) {</span>
+<span class="fc" id="L60">                    shortenedOverviewType = true;</span>
+<span class="fc" id="L61">                    document.getLosses().add(new VisioLoss(&quot;relationship&quot;, id(connect), &quot;overviewType&quot;, &quot;TRUNCATED&quot;,</span>
+<span class="pc bpc" id="L62" title="1 of 2 branches missed.">                            options == null ? &quot;Overview type shortened; consult native relationship details and full taxonomy.type.&quot;</span>
+<span class="pc" id="L63">                                    : &quot;Overview type shortened; full relation type retained in taxonomy.type.&quot;));</span>
+                }
+<span class="fc bfc" id="L65" title="All 4 branches covered.">                double width = dense ? .7 : 2.0, height = dense ? .3 : .5;</span>
+<span class="fc bfc" id="L66" title="All 2 branches covered.">                if (options != null) {</span>
+<span class="fc" id="L67">                    int longest = text.lines().mapToInt(String::length).max().orElse(1);</span>
+<span class="fc" id="L68">                    width = Math.min(2, Math.max(.55, .13 + longest * .09));</span>
+<span class="pc bpc" id="L69" title="1 of 2 branches missed.">                    height = text.contains(&quot;\n&quot;) ? .46 : .30;</span>
+                }
+<span class="fc" id="L71">                var from = pageNodes.get(connect.getFromShape()); var to = pageNodes.get(connect.getToShape());</span>
+<span class="fc bfc" id="L72" title="All 2 branches covered.">                var route = columns == null ? null : columns.route(connect, from, to);</span>
+<span class="fc bfc" id="L73" title="All 6 branches covered.">                Box position = route != null &amp;&amp; (options != null || route.lowerClearance() != null)</span>
+<span class="fc" id="L74">                        ? placeOnRoute(occupied, route, width, height) : null;</span>
+<span class="fc bfc" id="L75" title="All 2 branches covered.">                if (position == null) position = place(occupied, from, to, width, height);</span>
+<span class="fc bfc" id="L76" title="All 2 branches covered.">                if (position == null) {</span>
+                    // An omitted caption is explicit; its canonical connector is never omitted.
+<span class="fc" id="L78">                    text = &quot;&quot;;</span>
+<span class="fc" id="L79">                    position = new Box((from.getX() + to.getX()) / 2, (from.getY() + to.getY()) / 2, width, height);</span>
+<span class="pc bpc" id="L80" title="1 of 2 branches missed.">                    connect.getProperties().put(&quot;taxonomy.captionDisposition&quot;, VisioProperty.text(options == null ? &quot;DETAIL_REQUIRED&quot; : &quot;SHAPE_DATA&quot;));</span>
+<span class="fc bfc" id="L81" title="All 2 branches covered.">                    if (page == overview) unplaced++;</span>
+                } else {
+<span class="fc" id="L83">                    occupied.add(position);</span>
+<span class="fc bfc" id="L84" title="All 6 branches covered.">                    connect.getProperties().put(&quot;taxonomy.captionDisposition&quot;, VisioProperty.text(options != null ? &quot;TYPE&quot; : dense ? &quot;COMPACT_KEY&quot; : shortened ? &quot;TYPE_TRUNCATED&quot; : &quot;KEY_AND_TYPE&quot;));</span>
+                }
+<span class="fc" id="L86">                connect.setTextBox(new VisioTextBox(text, position.x, position.y, width, height));</span>
+<span class="fc" id="L87">            }</span>
+<span class="fc" id="L88">        }</span>
+<span class="fc bfc" id="L89" title="All 2 branches covered.">        if (unplaced &gt; 0) document.getLosses().add(new VisioLoss(&quot;document&quot;, &quot;&quot;, &quot;overviewCaptions&quot;, &quot;OMITTED&quot;,</span>
+<span class="pc bpc" id="L90" title="1 of 2 branches missed.">                unplaced + (options == null</span>
+<span class="fc" id="L91">                        ? &quot; overview captions could not be placed without collision. Native connectors/data remain; consult relationship details.&quot;</span>
+<span class="pc" id="L92">                        : &quot; overview captions could not be placed without collision. Native connectors and their type remain available in Shape Data.&quot;)));</span>
+        // Mandatory readable evidence reserves page capacity before optional diagram details.
+<span class="fc bfc" id="L94" title="All 4 branches covered.">        boolean appendix = options == null || options.appendix();</span>
+<span class="fc bfc" id="L95" title="All 4 branches covered.">        boolean contextOnDrawings = options == null &amp;&amp; decisionTree == null;</span>
+<span class="fc bfc" id="L96" title="All 2 branches covered.">        if (appendix) {</span>
+<span class="fc" id="L97">            VisioEvidencePages.append(document, overview);</span>
+<span class="fc" id="L98">            VisioContextPages.append(document, contextOnDrawings);</span>
+        }
+<span class="fc bfc" id="L100" title="All 2 branches covered.">        if (decisionTree != null) decisionTree.appendTo(document, options);</span>
+<span class="fc bfc" id="L101" title="All 8 branches covered.">        if (appendix &amp;&amp; (dense || unplaced &gt; 0 || shortenedOverviewType)) {</span>
+<span class="pc bpc" id="L102" title="1 of 4 branches missed.">            addDetails(document, overview, nodes, contextOnDrawings &amp;&amp; VisioContextPages.hasContext(document));</span>
+        }
+<span class="fc bfc" id="L104" title="All 2 branches covered.">        if (contextOnDrawings) VisioContextPages.decorateDiagrams(document);</span>
+<span class="fc" id="L105">    }</span>
+
+    /** Start with the actual native path, including the vertical segment of a routed gutter. */
+    private static Box placeOnRoute(Occupancy occupied, VisioConnectionPoints.Route route, double width, double height) {
+<span class="fc" id="L109">        var start = route.endpoints().source();</span>
+<span class="fc" id="L110">        var end = route.endpoints().target();</span>
+<span class="fc" id="L111">        double dx = end.x() - start.x(), dy = end.y() - start.y();</span>
+<span class="pc bpc" id="L112" title="1 of 2 branches missed.">        for (double fraction : new double[]{.5, .30, .70, .15, .85}) {</span>
+<span class="pc bpc" id="L113" title="1 of 2 branches missed.">            double x = start.x() + dx * (route.gutterFraction() == null ? fraction : route.gutterFraction());</span>
+<span class="fc bfc" id="L114" title="All 2 branches covered.">            double y = route.lowerClearance() == null ? start.y() + dy * fraction : route.lowerLaneY();</span>
+<span class="fc" id="L115">            var candidate = new Box(x, y, width, height);</span>
+<span class="pc bpc" id="L116" title="3 of 6 branches missed.">            if (candidate.left() &gt;= .1 &amp;&amp; candidate.bottom() &gt;= .1 &amp;&amp; !occupied.intersects(candidate)) return candidate;</span>
+        }
+<span class="nc" id="L118">        return null;</span>
+    }
+
+    static boolean usesCompactKeys(int nodes, int edges) {
+<span class="fc bfc" id="L122" title="All 4 branches covered.">        return edges &gt; 6 || nodes &gt; 12;</span>
+    }
+
+    private static Box place(Occupancy occupied, VisioShape from, VisioShape to, double width, double height) {
+        // Try the stroke across its length before moving a caption away from its connector.
+<span class="fc bfc" id="L127" title="All 2 branches covered.">        for (double offset : new double[]{0, .4, -.4, .8, -.8, 1.2, -1.2}) {</span>
+<span class="fc bfc" id="L128" title="All 2 branches covered.">            for (double fraction : new double[]{.5, .25, .75, .35, .65, .2, .8}) {</span>
+<span class="fc" id="L129">                Box candidate = new Box(from.getX() + fraction * (to.getX() - from.getX()),</span>
+<span class="fc" id="L130">                        from.getY() + fraction * (to.getY() - from.getY()) + offset, width, height);</span>
+<span class="pc bpc" id="L131" title="2 of 6 branches missed.">                if (candidate.left() &gt;= .1 &amp;&amp; candidate.bottom() &gt;= .1 &amp;&amp; !occupied.intersects(candidate)) return candidate;</span>
+            }
+        }
+<span class="fc" id="L134">        return null;</span>
+    }
+
+    private static void addDetails(VisioDocument document, VisioPage overview, Map&lt;String, VisioShape&gt; nodes,
+                                   boolean contextOnDrawings) {
+<span class="fc bfc" id="L139" title="All 2 branches covered.">        int shapes = document.getPages().stream().mapToInt(p -&gt; p.getShapes().size() + (p.getLegend() == null ? 0 : 1)).sum();</span>
+<span class="fc" id="L140">        int connectors = document.getPages().stream().mapToInt(p -&gt; p.getConnects().size()).sum();</span>
+<span class="fc" id="L141">        int covered = 0;</span>
+<span class="fc bfc" id="L142" title="All 2 branches covered.">        int contextShapesPerDetail = contextOnDrawings ? 1 : 0;</span>
+<span class="fc bfc" id="L143" title="All 2 branches covered.">        int diagramPages = (int) document.getPages().stream().filter(page -&gt; !page.isEvidencePage()).count();</span>
+<span class="fc bfc" id="L144" title="All 4 branches covered.">        while (covered &lt; overview.getConnects().size() &amp;&amp; diagramPages &lt; VisioPackageValidator.MAX_DIAGRAM_PAGES) {</span>
+<span class="fc" id="L145">            List&lt;VisioConnect&gt; batch = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L146">            var endpoints = new TreeSet&lt;String&gt;(Comparator.comparingLong(Long::parseLong));</span>
+<span class="fc bfc" id="L147" title="All 4 branches covered.">            for (int next = covered; next &lt; overview.getConnects().size() &amp;&amp; batch.size() &lt; 6; next++) {</span>
+<span class="fc" id="L148">                var c = overview.getConnects().get(next);</span>
+<span class="fc" id="L149">                var candidate = new HashSet&lt;&gt;(endpoints); candidate.add(c.getFromShape()); candidate.add(c.getToShape());</span>
+<span class="fc bfc" id="L150" title="All 2 branches covered.">                if (candidate.size() &gt; 6) break;</span>
+<span class="fc" id="L151">                endpoints.addAll(candidate); batch.add(c);</span>
+            }
+<span class="fc" id="L153">            boolean german = document.isGerman();</span>
+<span class="pc bpc" id="L154" title="1 of 6 branches missed.">            boolean compact = contextOnDrawings &amp;&amp; batch.size() == 1 &amp;&amp; endpoints.size() == 2</span>
+<span class="pc bpc" id="L155" title="1 of 2 branches missed.">                    &amp;&amp; batch.getFirst().getRelationType().length() &lt;= 24;</span>
+<span class="fc bfc" id="L156" title="All 2 branches covered.">            var excerpt = compact ? VisioEvidencePages.relationExcerpt(</span>
+<span class="fc" id="L157">                    Long.toString(1 + Long.parseLong(endpoints.last())), batch.getFirst(), german) : null;</span>
+<span class="fc bfc" id="L158" title="All 2 branches covered.">            int addedShapes = endpoints.size() + contextShapesPerDetail + (excerpt == null ? 0 : 1);</span>
+<span class="pc bpc" id="L159" title="1 of 4 branches missed.">            if (shapes + addedShapes &gt; 20_000 || connectors + batch.size() &gt; 60_000) break;</span>
+<span class="fc bfc" id="L160" title="All 2 branches covered.">            double compactRow = 1.25 + (excerpt == null ? 0 : excerpt.getHeight() + .35);</span>
+<span class="fc" id="L161">            String start = key(batch.getFirst());</span>
+<span class="fc bfc" id="L162" title="All 2 branches covered.">            String range = batch.size() == 1 ? start : start + &quot;–&quot; + key(batch.getLast());</span>
+<span class="fc" id="L163">            VisioPage page = new VisioPage(Integer.toString(document.getPages().size()),</span>
+<span class="fc bfc" id="L164" title="All 2 branches covered.">                    (german ? &quot;Beziehungen &quot; : &quot;Relationships &quot;) + range);</span>
+<span class="fc" id="L165">            page.setRelationshipDetail(true);</span>
+<span class="fc" id="L166">            int row = 0;</span>
+<span class="fc bfc" id="L167" title="All 2 branches covered.">            for (String endpoint : endpoints) {</span>
+<span class="fc" id="L168">                var source = nodes.get(endpoint);</span>
+                // Six unique endpoints at generous fixed positions; captions occupy a separate rail.
+<span class="fc bfc" id="L170" title="All 4 branches covered.">                double x = compact ? (endpoint.equals(batch.getFirst().getFromShape()) ? 2.2 : 8.0)</span>
+<span class="fc bfc" id="L171" title="All 2 branches covered.">                        : row % 2 == 0 ? 2.2 : 6.2;</span>
+<span class="fc bfc" id="L172" title="All 2 branches covered.">                double y = compact ? compactRow : 9.4 - (row / 2) * 3.3;</span>
+<span class="fc" id="L173">                String label = source.getProperties().get(&quot;taxonomy.label&quot;).value();</span>
+<span class="fc" id="L174">                String text = source.getProperties().get(&quot;taxonomy.displayKey&quot;).value() + &quot; | &quot;</span>
+<span class="fc" id="L175">                        + display(source.getProperties().get(&quot;taxonomy.id&quot;).value(), 26, 1) + &quot;\n&quot; + display(label, 32, 3)</span>
+<span class="fc" id="L176">                        + &quot;\n&quot; + nodeFooter(source.getProperties().get(&quot;taxonomy.depth&quot;).value(),</span>
+<span class="fc" id="L177">                                Optional.ofNullable(source.getProperties().get(&quot;taxonomy.responsibilityName&quot;))</span>
+<span class="fc" id="L178">                                        .map(VisioProperty::value).orElse(null), 32, german);</span>
+<span class="fc" id="L179">                var shape = new VisioShape(source.getId(), text, x, y, 3.2, 1.4, source.getType(), source.isAnchor());</span>
+<span class="fc" id="L180">                shape.getProperties().putAll(source.getProperties()); page.getShapes().add(shape); row++;</span>
+<span class="fc" id="L181">            }</span>
+<span class="fc" id="L182">            row = 0;</span>
+<span class="fc bfc" id="L183" title="All 2 branches covered.">            for (var source : batch) {</span>
+<span class="fc" id="L184">                var connect = new VisioConnect(source.getFromShape(), source.getToShape(), source.getRelationType());</span>
+<span class="fc" id="L185">                connect.getProperties().putAll(source.getProperties());</span>
+<span class="fc" id="L186">                String direction = nodes.get(source.getFromShape()).getProperties().get(&quot;taxonomy.displayKey&quot;).value()</span>
+<span class="fc" id="L187">                        + &quot; → &quot; + nodes.get(source.getToShape()).getProperties().get(&quot;taxonomy.displayKey&quot;).value();</span>
+<span class="fc bfc" id="L188" title="All 2 branches covered.">                String sourceType = german ? relationLabel(source.getRelationType(), true) : source.getRelationType();</span>
+<span class="fc" id="L189">                String type = display(sourceType, 52, 4);</span>
+<span class="fc" id="L190">                String text = key(source) + &quot;  &quot; + direction + &quot;\n&quot; + type</span>
+<span class="fc bfc" id="L191" title="All 2 branches covered.">                        + (source.getProperties().containsKey(&quot;taxonomy.provenanceStatus&quot;) ? &quot;\n&quot;</span>
+<span class="fc" id="L192">                        + statusLabel(source.getProperties().get(&quot;taxonomy.provenanceStatus&quot;).value(), german) : &quot;&quot;);</span>
+<span class="fc bfc" id="L193" title="All 2 branches covered.">                connect.setTextBox(compact ? new VisioTextBox(text, 5.1, compactRow + .65, 2.5, .85)</span>
+<span class="fc" id="L194">                        : new VisioTextBox(text, 11.3, 10 - row * 1.65, 5.2, 1.25));</span>
+<span class="fc bfc" id="L195" title="All 2 branches covered.">                connect.getProperties().put(&quot;taxonomy.captionDisposition&quot;, VisioProperty.text(shortened(sourceType, type) ? &quot;TYPE_TRUNCATED&quot; : &quot;READABLE_DETAIL&quot;));</span>
+<span class="fc" id="L196">                page.getConnects().add(connect); row++;</span>
+<span class="fc" id="L197">            }</span>
+<span class="fc bfc" id="L198" title="All 2 branches covered.">            if (excerpt != null) page.getShapes().add(excerpt);</span>
+<span class="fc" id="L199">            shapes += addedShapes; connectors += batch.size(); covered += batch.size();</span>
+<span class="fc" id="L200">            VisioContainers.fit(page);</span>
+<span class="fc" id="L201">            document.getPages().add(page); diagramPages++;</span>
+<span class="fc" id="L202">        }</span>
+<span class="fc" id="L203">        updateDetailCoverage(document, &quot;page/node/connector capacity&quot;);</span>
+<span class="fc" id="L204">    }</span>
+
+    static void updateDetailCoverage(VisioDocument document, String capacity) {
+<span class="fc" id="L207">        int covered = document.getPages().stream().filter(VisioPage::isRelationshipDetail).mapToInt(p -&gt; p.getConnects().size()).sum();</span>
+<span class="fc" id="L208">        int total = document.getPages().getFirst().getConnects().size();</span>
+<span class="fc" id="L209">        document.getProperties().put(&quot;taxonomy.detailRelationshipsCovered&quot;, VisioProperty.number(covered));</span>
+<span class="fc" id="L210">        document.getProperties().put(&quot;taxonomy.detailRelationshipsTotal&quot;, VisioProperty.number(total));</span>
+<span class="fc" id="L211">        document.getLosses().removeIf(l -&gt; l.field().equals(&quot;relationshipDetailCoverage&quot;));</span>
+<span class="fc bfc" id="L212" title="All 2 branches covered.">        String range = covered == 0 ? &quot;none&quot; : &quot;R1–R&quot; + covered;</span>
+<span class="fc bfc" id="L213" title="All 2 branches covered.">        document.getLosses().add(new VisioLoss(&quot;document&quot;, &quot;&quot;, &quot;relationshipDetailCoverage&quot;, covered == total ? &quot;MAPPED&quot; : &quot;TRUNCATED&quot;,</span>
+                &quot;Native relationship detail coverage &quot; + covered + &quot;/&quot; + total + &quot;; covered keys &quot; + range + &quot;. &quot;
+<span class="fc bfc" id="L215" title="All 2 branches covered.">                        + (covered == total ? &quot;All relationships have a detail caption (long types explicitly marked if shortened).&quot;</span>
+                        : &quot;Optional detail &quot; + capacity + &quot; exhausted (32 diagram pages / 128 additional evidence pages / 20000 nodes / 60000 connectors / 32 MiB uncompressed package bytes). Remaining keys R&quot; + (covered + 1)
+<span class="fc" id="L217">                        + &quot;–R&quot; + total + &quot; remain complete in overview native shape data. Inspect taxonomy.id/type/sourceId/targetId or the complete report inventory.&quot;)));</span>
+<span class="fc" id="L218">    }</span>
+
+    static String display(String source, int columns, int lines) {
+<span class="fc" id="L221">        Objects.requireNonNull(source, &quot;Canonical label required&quot;);</span>
+<span class="fc" id="L222">        StringBuilder text = new StringBuilder();</span>
+<span class="fc" id="L223">        int used = 0, line = 1, lineStart = 0;</span>
+<span class="fc bfc" id="L224" title="All 2 branches covered.">        for (int offset = 0; offset &lt; source.length();) {</span>
+<span class="fc" id="L225">            int cp = source.codePointAt(offset);</span>
+<span class="fc" id="L226">            int weight = glyphUnits(cp);</span>
+<span class="pc bpc" id="L227" title="1 of 4 branches missed.">            if (cp == '\n' || used + weight &gt; columns) {</span>
+<span class="fc bfc" id="L228" title="All 2 branches covered.">                if (line == lines) return text + &quot;…&quot;;</span>
+<span class="fc" id="L229">                int space = text.lastIndexOf(&quot; &quot;);</span>
+<span class="pc bpc" id="L230" title="1 of 6 branches missed.">                if (cp != '\n' &amp;&amp; space &gt;= lineStart &amp;&amp; space + 1 &lt; text.length()) {</span>
+                    // Keep source spaces and prefer complete words; long unbroken
+                    // Unicode strings still receive bounded code-point wrapping.
+<span class="fc" id="L233">                    text.insert(space + 1, '\n');</span>
+<span class="fc" id="L234">                    lineStart = space + 2;</span>
+<span class="fc" id="L235">                    used = text.substring(lineStart).codePoints().map(VisioPresentation::glyphUnits).sum();</span>
+                } else {
+<span class="fc" id="L237">                    text.append('\n'); used = 0; lineStart = text.length();</span>
+                }
+<span class="fc" id="L239">                line++;</span>
+<span class="pc bpc" id="L240" title="1 of 2 branches missed.">                if (cp == '\n') { offset++; continue; }</span>
+            }
+<span class="fc" id="L242">            text.appendCodePoint(cp); used += weight; offset += Character.charCount(cp);</span>
+<span class="fc" id="L243">        }</span>
+<span class="fc" id="L244">        return text.toString();</span>
+    }
+
+    static String drawingNodeCaption(String code, String score, String title, String owner, String reason,
+                                     VisioDrawingOptions options) {
+<span class="fc" id="L249">        String caption = code + &quot; · &quot; + score + &quot;\n&quot; + title + drawingOwnerCaption(owner, options);</span>
+<span class="pc bpc" id="L250" title="1 of 6 branches missed.">        if (options.showsShortReasons() &amp;&amp; reason != null &amp;&amp; !reason.isBlank()) {</span>
+<span class="fc" id="L251">            caption += &quot;\n&quot; + display(reason.strip().replaceAll(&quot;\\s+&quot;, &quot; &quot;), 40, 2);</span>
+        }
+<span class="fc" id="L253">        return caption;</span>
+    }
+
+    static String drawingOwnerCaption(String owner, VisioDrawingOptions options) {
+<span class="pc bpc" id="L257" title="1 of 4 branches missed.">        if (owner == null || owner.isBlank()) return &quot;&quot;;</span>
+<span class="fc bfc" id="L258" title="All 2 branches covered.">        int columns = options.mode() == VisioDrawingOptions.Mode.WALL ? 40 : 46;</span>
+<span class="fc bfc" id="L259" title="All 2 branches covered.">        return &quot;\n&quot; + display((options.german() ? &quot;Zuständig: &quot; : &quot;Owner: &quot;) + owner, columns, 1);</span>
+    }
+
+    static double screenCardHeight(boolean assigned) {
+        // Leave room for the owner line when the application icon narrows the text area.
+<span class="fc bfc" id="L264" title="All 2 branches covered.">        return assigned ? 1.42 : 1.05;</span>
+    }
+
+    static String nodeFooter(String depth, String unitName, int columns, boolean german) {
+<span class="fc bfc" id="L268" title="All 4 branches covered.">        return unitName == null ? (german ? &quot;Tiefe &quot; : &quot;Depth &quot;) + depth : display(unitLabel(unitName, german), columns, 1);</span>
+    }
+
+    static String unitLabel(String unitName, boolean german) {
+<span class="pc bpc" id="L272" title="1 of 2 branches missed.">        return (german ? &quot;Einheit: &quot; : &quot;Unit: &quot;) + unitName;</span>
+    }
+
+    static String relationLabel(String type, boolean german) {
+<span class="pc bpc" id="L276" title="2 of 3 branches missed.">        return switch (type) {</span>
+<span class="nc bnc" id="L277" title="All 2 branches missed.">            case &quot;CONTAINS&quot; -&gt; german ? &quot;enthält&quot; : &quot;contains&quot;;</span>
+<span class="nc bnc" id="L278" title="All 2 branches missed.">            case &quot;REQUIRES&quot; -&gt; german ? &quot;benötigt&quot; : &quot;requires&quot;;</span>
+<span class="pc bpc" id="L279" title="1 of 2 branches missed.">            default -&gt; (german ? GERMAN : ENGLISH).relationLabel(type);</span>
+        };
+    }
+
+    static String statusLabel(String status, boolean german) {
+<span class="fc bfc" id="L284" title="All 2 branches covered.">        if (!german) return status;</span>
+<span class="pc bpc" id="L285" title="5 of 6 branches missed.">        return switch (status) {</span>
+<span class="fc" id="L286">            case &quot;AI-proposed&quot; -&gt; &quot;KI-Vorschlag&quot;;</span>
+<span class="nc" id="L287">            case &quot;Catalogue seed&quot; -&gt; &quot;Katalogbeziehung&quot;;</span>
+<span class="nc" id="L288">            case &quot;Propagated trace&quot; -&gt; &quot;Fortgeführte Herleitung&quot;;</span>
+<span class="nc" id="L289">            case &quot;Derived impact&quot; -&gt; &quot;Abgeleitete Auswirkung&quot;;</span>
+<span class="nc" id="L290">            case &quot;Origin unrecorded&quot; -&gt; &quot;Herkunft nicht aufgezeichnet&quot;;</span>
+<span class="nc" id="L291">            default -&gt; status;</span>
+        };
+    }
+
+    private static int glyphUnits(int codePoint) {
+        // Conservative at the fixed 10/12pt sizes: wide Latin capitals, m/w,
+        // and non-ASCII glyphs receive twice the ordinary lowercase allowance.
+<span class="fc bfc" id="L298" title="All 8 branches covered.">        return codePoint &gt; 127 || Character.isUpperCase(codePoint) || codePoint == 'm' || codePoint == 'w' ? 2 : 1;</span>
+    }
+
+    private static boolean shortened(String original, String displayed) {
+<span class="fc bfc" id="L302" title="All 2 branches covered.">        return !original.replace(&quot;\n&quot;, &quot;&quot;).equals(displayed.replace(&quot;\n&quot;, &quot;&quot;));</span>
+    }
+
+    static void labelLoss(VisioDocument doc, String id, String original, String displayed) {
+<span class="fc bfc" id="L306" title="All 2 branches covered.">        if (shortened(original, displayed)) doc.getLosses().add(new VisioLoss(&quot;element&quot;, id, &quot;displayLabel&quot;, &quot;TRUNCATED&quot;,</span>
+                &quot;Display label shortened; full saved label retained in taxonomy.label on native shape.&quot;));
+<span class="fc" id="L308">    }</span>
+
+<span class="fc" id="L310">    private static String id(VisioConnect c) { return c.getProperties().get(&quot;taxonomy.id&quot;).value(); }</span>
+<span class="fc" id="L311">    private static String key(VisioConnect c) { return c.getProperties().get(&quot;taxonomy.displayKey&quot;).value(); }</span>
+
+<span class="fc" id="L313">    private record Box(double x, double y, double width, double height) {</span>
+<span class="fc" id="L314">        double left() { return x - width / 2; }</span>
+<span class="fc" id="L315">        double bottom() { return y - height / 2; }</span>
+<span class="fc bfc" id="L316" title="All 2 branches covered.">        boolean intersects(Box other) { return Math.abs(x - other.x) &lt; (width + other.width) / 2 + .06</span>
+<span class="fc bfc" id="L317" title="All 2 branches covered.">                &amp;&amp; Math.abs(y - other.y) &lt; (height + other.height) / 2 + .06; }</span>
+    }
+
+    /** Fixed-size spatial buckets bound each caption query even on the 10000-node overview. */
+<span class="fc" id="L321">    private static final class Occupancy {</span>
+<span class="fc" id="L322">        private final Map&lt;Long, List&lt;Box&gt;&gt; buckets = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L323">        void add(Box box) { visit(box, (x, y) -&gt; { buckets.computeIfAbsent(bucket(x, y), ignored -&gt; new ArrayList&lt;&gt;()).add(box); return false; }); }</span>
+<span class="fc" id="L324">        boolean intersects(Box box) { return visit(box, (x, y) -&gt; buckets.getOrDefault(bucket(x, y), List.of()).stream().anyMatch(box::intersects)); }</span>
+        private boolean visit(Box box, CellVisitor visitor) {
+<span class="fc" id="L326">            int minX = cell(box.left() - .1), maxX = cell(box.x + box.width / 2 + .1);</span>
+<span class="fc" id="L327">            int minY = cell(box.bottom() - .1), maxY = cell(box.y + box.height / 2 + .1);</span>
+<span class="fc" id="L328">            long columns = (long) maxX - minX + 1;</span>
+<span class="fc" id="L329">            long rows = (long) maxY - minY + 1;</span>
+            // Finite int coordinates can still describe billions of cells. Check
+            // before any callback/allocation and divide to avoid area overflow.
+<span class="pc bpc" id="L332" title="3 of 8 branches missed.">            if (columns &lt;= 0 || rows &lt;= 0 || columns &gt; 4096 || rows &gt; 4096 / columns)</span>
+<span class="fc" id="L333">                throw new IllegalArgumentException(&quot;Visio geometry exceeds the 4096-cell spatial query budget&quot;);</span>
+            // Widen the counters, not the bounds: incrementing Integer.MAX_VALUE
+            // must terminate rather than wrap. Reject invalid geometry before use.
+<span class="fc bfc" id="L336" title="All 2 branches covered.">            for (long x = minX; x &lt;= maxX; x++)</span>
+<span class="fc bfc" id="L337" title="All 2 branches covered.">                for (long y = minY; y &lt;= maxY; y++)</span>
+<span class="fc bfc" id="L338" title="All 2 branches covered.">                    if (visitor.visit((int) x, (int) y)) return true;</span>
+<span class="fc" id="L339">            return false;</span>
+        }
+        private int cell(double coordinate) {
+<span class="fc" id="L342">            double floored = Math.floor(coordinate);</span>
+<span class="fc bfc" id="L343" title="All 6 branches covered.">            if (!Double.isFinite(floored) || floored &lt; Integer.MIN_VALUE || floored &gt; Integer.MAX_VALUE) {</span>
+<span class="fc" id="L344">                throw new IllegalArgumentException(&quot;Visio coordinates must be finite and within the integer grid&quot;);</span>
+            }
+<span class="fc" id="L346">            return (int) floored;</span>
+        }
+<span class="fc" id="L348">        private long bucket(int x, int y) { return ((long)x &lt;&lt; 32) ^ (y &amp; 0xffffffffL); }</span>
+        private interface CellVisitor { boolean visit(int x, int y); }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>BranchGraphVectorGeneration.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-knowledge</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.relations.service</a> &gt; <span class="el_source">BranchGraphVectorGeneration.java</span></div><h1>BranchGraphVectorGeneration.java</h1><pre class="source lang-java linenums">package com.taxonomy.relations.service;
+
+import com.taxonomy.relations.model.RelationDecisionProjectionCheckpoint;
+import jakarta.persistence.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.annotations.OnDelete;
+import org.hibernate.annotations.OnDeleteAction;
+import org.hibernate.type.SqlTypes;
+
+/** The projection checkpoint already owns the collision-safe repository/workspace/branch identity. */
+@Entity
+@Table(name = &quot;branch_graph_vector_generation&quot;)
+class BranchGraphVectorGeneration {
+    @Id @Column(name = &quot;checkpoint_id&quot;) Long checkpointId;
+    @OneToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = &quot;checkpoint_id&quot;, insertable = false, updatable = false)
+    @OnDelete(action = OnDeleteAction.CASCADE)
+    RelationDecisionProjectionCheckpoint checkpoint;
+    @Column(name = &quot;generation_id&quot;, nullable = false, length = 36) String generation;
+    @Column(name = &quot;started_at&quot;, nullable = false) java.time.Instant startedAt;
+    @Column(name = &quot;started_by&quot;, nullable = false, length = 255) String startedBy;
+    @Column(name = &quot;published_at&quot;) java.time.Instant publishedAt;
+    @Column(name = &quot;state&quot;, nullable = false, length = 16) String state;
+    @Column(name = &quot;source_commit&quot;, nullable = false, length = 40) String commit;
+    @Column(name = &quot;source_key&quot;, nullable = false, length = 64) String sourceKey;
+    @Column(name = &quot;catalogue_revision&quot;, nullable = false, length = 255) String catalogueRevision;
+    @Column(name = &quot;definition_key&quot;, nullable = false, length = 64) String definitionKey;
+    @Column(name = &quot;model_key&quot;, nullable = false, length = 64) String modelKey;
+    @JdbcTypeCode(SqlTypes.LONG32VARCHAR) @Column(name = &quot;model_identity&quot;, nullable = false) String modelIdentity;
+    @Column(name = &quot;text_format&quot;, nullable = false, length = 255) String textFormat;
+    @Column(name = &quot;index_format&quot;, nullable = false, length = 64) String indexFormat;
+    @Column(name = &quot;relations_key&quot;, nullable = false, length = 64) String relationsKey;
+    @Column(name = &quot;node_count&quot;, nullable = false) int nodes;
+    @Column(name = &quot;relation_count&quot;, nullable = false) int relations;
+    @Column(name = &quot;index_sha256&quot;, length = 64) String indexSha256;
+    @JdbcTypeCode(SqlTypes.LONG32VARBINARY) @Column(name = &quot;index_bytes&quot;) byte[] bytes;
+<span class="fc" id="L37">    protected BranchGraphVectorGeneration() { }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

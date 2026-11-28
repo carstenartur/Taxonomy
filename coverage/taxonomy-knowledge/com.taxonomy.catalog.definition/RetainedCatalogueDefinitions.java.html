@@ -1,0 +1,219 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RetainedCatalogueDefinitions.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-knowledge</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.catalog.definition</a> &gt; <span class="el_source">RetainedCatalogueDefinitions.java</span></div><h1>RetainedCatalogueDefinitions.java</h1><pre class="source lang-java linenums">package com.taxonomy.catalog.definition;
+
+import com.taxonomy.catalog.provenance.CatalogueSourceJournal;
+import com.taxonomy.catalog.definition.CatalogueParentIndex.Entry;
+import com.taxonomy.dsl.model.ArchitectureElement;
+import com.taxonomy.dsl.model.CatalogueDefinition;
+import com.taxonomy.dsl.model.CatalogueDefinitionResolver;
+import com.taxonomy.dsl.model.CatalogueReference;
+import com.taxonomy.dsl.model.CanonicalArchitectureModel;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.springframework.context.annotation.Lazy;
+import org.springframework.stereotype.Service;
+
+import java.io.IOException;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.NoSuchElementException;
+import java.util.Objects;
+
+/** A descriptor belongs to the bytes of one recorded workbook, including after an import or restart. */
+@Service
+public class RetainedCatalogueDefinitions implements CatalogueDefinitionResolver {
+    private final CatalogueSourceJournal sources;
+    private String lastWorkbook;
+    private CatalogueDefinition lastDefinition;
+
+    private final CatalogueParentIndex hierarchy;
+
+<span class="fc" id="L30">    public RetainedCatalogueDefinitions(CatalogueSourceJournal sources) { this(sources, null); }</span>
+
+    @org.springframework.beans.factory.annotation.Autowired
+<span class="fc" id="L33">    public RetainedCatalogueDefinitions(CatalogueSourceJournal sources, @Lazy CatalogueParentIndex hierarchy) {</span>
+<span class="fc" id="L34">        this.sources = sources;</span>
+<span class="fc" id="L35">        this.hierarchy = hierarchy;</span>
+<span class="fc" id="L36">    }</span>
+
+    @Override
+    public java.util.Map&lt;String, String&gt; parentsForModel(com.taxonomy.dsl.model.CanonicalArchitectureModel model) {
+<span class="fc bfc" id="L40" title="All 2 branches covered.">        if (hierarchy == null) return Map.of();</span>
+<span class="pc bpc" id="L41" title="1 of 2 branches missed.">        if (!model.getCatalogueResponsibilities().isEmpty()) {</span>
+<span class="nc" id="L42">            return appliedGeneration(model.responsibilityCatalogueRevision()).map(generation -&gt;</span>
+<span class="nc" id="L43">                    analysisParents(model, generation.revision())).orElseGet(Map::of);</span>
+        }
+<span class="fc" id="L45">        return hierarchy.parentsFor(model);</span>
+    }
+
+    public Map&lt;String, String&gt; analysisParents(CanonicalArchitectureModel model, String revision) {
+<span class="nc bnc" id="L49" title="All 4 branches missed.">        if (revision == null || hierarchy == null) return Map.of();</span>
+<span class="nc" id="L50">        return hierarchy.parentsFor(model, revision, forGeneration(archivedHierarchy(revision)));</span>
+    }
+
+    private CatalogueSourceJournal.Snapshot archivedHierarchy(String revision) {
+<span class="nc" id="L54">        var snapshot = sources.findRevision(revision).orElseThrow();</span>
+<span class="nc bnc" id="L55" title="All 2 branches missed.">        if (snapshot.workbook().use() != CatalogueSourceJournal.Use.APPLIED</span>
+<span class="nc bnc" id="L56" title="All 2 branches missed.">                || snapshot.overlay().use() != CatalogueSourceJournal.Use.APPLIED</span>
+<span class="nc bnc" id="L57" title="All 2 branches missed.">                &amp;&amp; snapshot.overlay().use() != CatalogueSourceJournal.Use.NOT_USED)</span>
+<span class="nc" id="L58">            throw new NoSuchElementException(&quot;The archived catalogue hierarchy was not retained&quot;);</span>
+<span class="nc" id="L59">        return snapshot;</span>
+    }
+
+    @Override
+    public List&lt;Node&gt; analysisNodes(String revision) {
+<span class="nc bnc" id="L64" title="All 4 branches missed.">        if (revision == null || hierarchy == null) return List.of();</span>
+<span class="nc" id="L65">        archivedHierarchy(revision);</span>
+<span class="nc" id="L66">        return hierarchy.catalogueNodes(revision);</span>
+    }
+
+    @Override
+    public Map&lt;String, String&gt; translatedTitles(CanonicalArchitectureModel model, String language) {
+<span class="fc" id="L71">        var embedded = CatalogueDefinitionResolver.super.translatedTitles(model, language);</span>
+<span class="fc bfc" id="L72" title="All 4 branches covered.">        if (!&quot;de&quot;.equals(language) || embedded.size() == model.getElements().size()) return embedded;</span>
+<span class="fc" id="L73">        var result = new HashMap&lt;&gt;(embedded);</span>
+<span class="fc" id="L74">        addMatchingTitles(model, sourceIndex(model.getCatalogueRevision()), false, result);</span>
+        // An adopted source may come from a different edition than the target workspace, or predate its pin.
+<span class="fc bfc" id="L76" title="All 4 branches covered.">        if (model.getElements().stream().anyMatch(e -&gt; !result.containsKey(e.getId())</span>
+<span class="fc bfc" id="L77" title="All 2 branches covered.">                &amp;&amp; e.getExtensions().containsKey(CatalogueReference.UUID_PROPERTY))) {</span>
+<span class="fc" id="L78">            addMatchingTitles(model, bundledIndex(), true, result);</span>
+        }
+<span class="fc" id="L80">        return result;</span>
+    }
+
+    private static void addMatchingTitles(CanonicalArchitectureModel model, SourceIndex index,
+                                          boolean requireUuid, Map&lt;String, String&gt; result) {
+<span class="fc bfc" id="L85" title="All 2 branches covered.">        for (var element : model.getElements()) {</span>
+<span class="fc" id="L86">            var entry = index.entries().get(element.getId());</span>
+<span class="pc bpc" id="L87" title="2 of 6 branches missed.">            if (entry != null &amp;&amp; entry.node().uuid() != null &amp;&amp; hasText(entry.node().nameDe())</span>
+<span class="fc bfc" id="L88" title="All 4 branches covered.">                    &amp;&amp; entry.node().nameEn().equals(element.getTitle()) &amp;&amp; matches(element, index, entry, requireUuid)) {</span>
+<span class="fc" id="L89">                result.putIfAbsent(element.getId(), entry.node().nameDe());</span>
+            }
+<span class="fc" id="L91">        }</span>
+<span class="fc" id="L92">    }</span>
+
+    @Override
+    public Map&lt;String, SourceText&gt; sourceTexts(CanonicalArchitectureModel model, String language) {
+<span class="fc bfc" id="L96" title="All 2 branches covered.">        if (model.getElements().isEmpty()) return Map.of();</span>
+<span class="fc" id="L97">        String modelRevision = model.getCatalogueRevision();</span>
+<span class="fc bfc" id="L98" title="All 2 branches covered.">        boolean requireUuid = modelRevision == null;</span>
+<span class="fc bfc" id="L99" title="All 4 branches covered.">        if (requireUuid &amp;&amp; model.getElements().stream().noneMatch(</span>
+<span class="fc" id="L100">                element -&gt; element.getExtensions().containsKey(CatalogueReference.UUID_PROPERTY))) return Map.of();</span>
+<span class="fc bfc" id="L101" title="All 2 branches covered.">        var index = requireUuid ? bundledIndex() : sourceIndex(modelRevision);</span>
+<span class="fc" id="L102">        Map&lt;String, SourceText&gt; result = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L103" title="All 2 branches covered.">        for (var element : model.getElements()) {</span>
+<span class="fc" id="L104">            var text = sourceText(element, index, requireUuid, language);</span>
+<span class="fc bfc" id="L105" title="All 2 branches covered.">            if (text != null) result.put(element.getId(), text);</span>
+<span class="fc" id="L106">        }</span>
+<span class="fc" id="L107">        return result;</span>
+    }
+
+<span class="fc" id="L110">    private record SourceIndex(CatalogueDefinition definition, Map&lt;String, Entry&gt; entries) {}</span>
+
+    private static SourceIndex bundledIndex() {
+<span class="fc" id="L113">        return new SourceIndex(CatalogueDefinition.standard(), BundledCatalogue.originalEditionTranslations());</span>
+    }
+
+    private SourceIndex sourceIndex(String revision) {
+<span class="fc bfc" id="L117" title="All 2 branches covered.">        var generation = revision == null ? null : sources.findRevision(revision).orElse(null);</span>
+<span class="pc bpc" id="L118" title="1 of 4 branches missed.">        if (generation == null || generation.workbook().use() != CatalogueSourceJournal.Use.APPLIED)</span>
+<span class="fc" id="L119">            return new SourceIndex(CatalogueDefinition.standard(), Map.of());</span>
+<span class="fc bfc" id="L120" title="All 2 branches covered.">        if (BundledCatalogue.needsTranslationUpgrade(generation.workbook().sha256())) {</span>
+            // The bilingual edition preserves every original English cell and source UUID.
+<span class="fc" id="L122">            return bundledIndex();</span>
+        }
+<span class="fc bfc" id="L124" title="All 2 branches covered.">        var entries = hierarchy == null ? Map.&lt;String, Entry&gt;of() : hierarchy.sourceEntries(revision);</span>
+<span class="fc" id="L125">        return new SourceIndex(forGeneration(generation), entries);</span>
+    }
+
+    private static SourceText sourceText(ArchitectureElement element, SourceIndex index,
+                                         boolean requireUuid, String language) {
+<span class="fc" id="L130">        var entry = index.entries().get(element.getId());</span>
+<span class="fc bfc" id="L131" title="All 4 branches covered.">        if (entry == null || !matches(element, index, entry, requireUuid)) return null;</span>
+<span class="fc" id="L132">        var node = entry.node();</span>
+<span class="fc" id="L133">        boolean german = &quot;de&quot;.equals(language);</span>
+<span class="pc bpc" id="L134" title="1 of 4 branches missed.">        String title = german &amp;&amp; hasText(node.nameDe()) ? node.nameDe() : node.nameEn();</span>
+<span class="pc bpc" id="L135" title="1 of 4 branches missed.">        boolean translated = german &amp;&amp; hasText(entry.descriptionDe());</span>
+<span class="fc bfc" id="L136" title="All 2 branches covered.">        return new SourceText(title, title.equals(node.nameEn()) ? null : node.nameEn(),</span>
+<span class="fc bfc" id="L137" title="All 4 branches covered.">                translated ? entry.descriptionDe() : entry.descriptionEn(), translated ? &quot;de&quot; : &quot;en&quot;);</span>
+    }
+
+    private static boolean matches(ArchitectureElement element, SourceIndex index, Entry entry, boolean requireUuid) {
+<span class="fc" id="L141">        var node = entry.node();</span>
+<span class="fc" id="L142">        String uuid = element.getExtensions().get(CatalogueReference.UUID_PROPERTY);</span>
+<span class="pc bpc" id="L143" title="1 of 2 branches missed.">        return !node.code().equals(node.root())</span>
+<span class="fc bfc" id="L144" title="All 2 branches covered.">                &amp;&amp; Objects.equals(index.definition().typeFor(node.root()), element.getType())</span>
+<span class="pc bpc" id="L145" title="2 of 8 branches missed.">                &amp;&amp; (element.getTaxonomy() == null || element.getTaxonomy().equals(node.root()))</span>
+<span class="fc bfc" id="L146" title="All 4 branches covered.">                &amp;&amp; (uuid == null ? !requireUuid &amp;&amp; node.nameEn().equals(element.getTitle()) : uuid.equalsIgnoreCase(node.uuid()));</span>
+    }
+
+<span class="pc bpc" id="L149" title="2 of 4 branches missed.">    private static boolean hasText(String value) { return value != null &amp;&amp; !value.isBlank(); }</span>
+
+    @Override
+    public AssignmentTarget assignmentTarget(CanonicalArchitectureModel model, String code) {
+<span class="nc bnc" id="L153" title="All 2 branches missed.">        return hierarchy == null ? new AssignmentTarget(false, null)</span>
+<span class="nc" id="L154">                : appliedGeneration(model.responsibilityCatalogueRevision()).map(generation -&gt; new AssignmentTarget(</span>
+<span class="nc bnc" id="L155" title="All 2 branches missed.">                        hierarchy.contains(generation.revision(), code), model.getCatalogueRevision() == null</span>
+<span class="nc bnc" id="L156" title="All 2 branches missed.">                                || model.getCatalogueRevision().isBlank() ? generation.revision() : null))</span>
+<span class="nc" id="L157">                .orElseGet(() -&gt; new AssignmentTarget(false, null));</span>
+    }
+
+    @Override
+    public List&lt;Node&gt; catalogueNodes(CanonicalArchitectureModel model) {
+<span class="nc bnc" id="L162" title="All 2 branches missed.">        if (hierarchy == null) return List.of();</span>
+<span class="nc" id="L163">        return appliedGeneration(model.responsibilityCatalogueRevision())</span>
+<span class="nc" id="L164">                .map(generation -&gt; analysisNodes(generation.revision())).orElseGet(List::of);</span>
+    }
+
+    @Override
+    public CatalogueDefinition forModel(com.taxonomy.dsl.model.CanonicalArchitectureModel model) {
+<span class="fc" id="L169">        String revision = model.responsibilityCatalogueRevision();</span>
+<span class="fc bfc" id="L170" title="All 2 branches covered.">        if (revision == null) return CatalogueDefinition.standard();</span>
+<span class="fc" id="L171">        return forGeneration(generation(revision));</span>
+    }
+
+    @Override
+    public CatalogueDefinition forRevision(String revision) {
+<span class="fc" id="L176">        var retained = generation(revision);</span>
+<span class="fc bfc" id="L177" title="All 2 branches covered.">        if (retained.workbook().use() != CatalogueSourceJournal.Use.APPLIED)</span>
+<span class="fc" id="L178">            throw new IllegalStateException(&quot;The recorded catalogue workbook was not retained as applied&quot;);</span>
+<span class="fc" id="L179">        return forGeneration(retained);</span>
+    }
+
+    private CatalogueSourceJournal.Snapshot generation(String revision) {
+<span class="fc" id="L183">        return sources.findRevision(revision)</span>
+<span class="pc" id="L184">                .orElseThrow(() -&gt; new IllegalStateException(&quot;The project's catalogue revision is unavailable&quot;));</span>
+    }
+
+<span class="fc" id="L187">    public record AppliedGeneration(String revision, CatalogueDefinition definition) { }</span>
+
+    /** Resolve a project pin, or capture the current pointer once when the project has no pin. */
+    public java.util.Optional&lt;AppliedGeneration&gt; appliedGeneration(String projectRevision) {
+<span class="fc bfc" id="L191" title="All 2 branches covered.">        var selected = projectRevision == null ? sources.current() : sources.findRevision(projectRevision).orElse(null);</span>
+<span class="fc bfc" id="L192" title="All 4 branches covered.">        if (selected == null || selected.workbook().use() != CatalogueSourceJournal.Use.APPLIED)</span>
+<span class="fc" id="L193">            return java.util.Optional.empty();</span>
+<span class="fc" id="L194">        return java.util.Optional.of(new AppliedGeneration(selected.id(), forGeneration(selected)));</span>
+    }
+
+    public CatalogueDefinition current() {
+<span class="fc" id="L198">        return com.taxonomy.catalog.snapshot.FrozenCatalogueContext.definition()</span>
+<span class="fc" id="L199">                .orElseGet(() -&gt; forGeneration(sources.current()));</span>
+    }
+
+    public synchronized CatalogueDefinition forGeneration(CatalogueSourceJournal.Snapshot generation) {
+<span class="fc bfc" id="L203" title="All 4 branches covered.">        if (generation == null || generation.workbook().use() == CatalogueSourceJournal.Use.NOT_RETAINED)</span>
+<span class="fc" id="L204">            return CatalogueDefinition.standard();</span>
+<span class="fc" id="L205">        var ref = generation.workbook();</span>
+<span class="pc bpc" id="L206" title="1 of 2 branches missed.">        if (ref.use() != CatalogueSourceJournal.Use.APPLIED)</span>
+<span class="nc" id="L207">            throw new IllegalStateException(&quot;Catalogue definition has no applied workbook&quot;);</span>
+<span class="fc bfc" id="L208" title="All 2 branches covered.">        if (ref.sha256().equals(lastWorkbook)) return lastDefinition;</span>
+<span class="fc" id="L209">        try (var input = sources.retainedWorkbook(ref).openStream(); var book = new XSSFWorkbook(input)) {</span>
+<span class="fc" id="L210">            var definition = WorkbookCatalogueDefinition.read(book);</span>
+<span class="fc" id="L211">            lastDefinition = definition;</span>
+<span class="fc" id="L212">            lastWorkbook = ref.sha256();</span>
+<span class="fc" id="L213">            return definition;</span>
+<span class="nc" id="L214">        } catch (IOException failure) {</span>
+<span class="nc" id="L215">            throw new IllegalStateException(&quot;Cannot read the retained catalogue definition&quot;, failure);</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

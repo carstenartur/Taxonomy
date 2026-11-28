@@ -1,0 +1,490 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ContextNavigationService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.versioning.service</a> &gt; <span class="el_source">ContextNavigationService.java</span></div><h1>ContextNavigationService.java</h1><pre class="source lang-java linenums">package com.taxonomy.versioning.service;
+
+import com.taxonomy.dto.ContextHistoryEntry;
+import com.taxonomy.dto.ContextMode;
+import com.taxonomy.dto.ContextRef;
+import com.taxonomy.dto.NavigationReason;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.WorkspaceManager;
+import com.taxonomy.workspace.service.WorkspaceNavigation;
+import com.taxonomy.workspace.service.WorkspaceNavigationSession;
+import com.taxonomy.workspace.storage.DslGitRepository;
+import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.stereotype.Service;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
+import org.springframework.web.server.ResponseStatusException;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.util.List;
+import java.util.UUID;
+
+/**
+ * Manages per-user architecture context and navigation history.
+ *
+ * &lt;p&gt;Provides browser-like navigation: the user can open read-only snapshots,
+ * switch branches, return to origin, and navigate back through history.
+ *
+ * &lt;p&gt;Authenticated browser documents select a navigation cursor within the authorized
+ * workspace. Headerless clients use the per-actor cursor managed by {@link WorkspaceManager}.
+ * Overloaded methods without a {@code username} parameter use
+ * {@link WorkspaceManager#DEFAULT_USER} for backward compatibility with
+ * tests and unauthenticated callers.
+ */
+@Service
+public class ContextNavigationService {
+
+<span class="fc" id="L44">    private static final Logger log = LoggerFactory.getLogger(ContextNavigationService.class);</span>
+
+    private final DslGitRepositoryFactory repositoryFactory;
+    private final RepositoryStateService stateService;
+    private final WorkspaceManager workspaceManager;
+    private final int maxHistory;
+
+    public ContextNavigationService(DslGitRepositoryFactory repositoryFactory,
+                                    RepositoryStateService stateService,
+                                    WorkspaceManager workspaceManager,
+<span class="fc" id="L54">                                    @Value(&quot;${taxonomy.context.max-history:50}&quot;) int maxHistory) {</span>
+<span class="fc" id="L55">        this.repositoryFactory = repositoryFactory;</span>
+<span class="fc" id="L56">        this.stateService = stateService;</span>
+<span class="fc" id="L57">        this.workspaceManager = workspaceManager;</span>
+<span class="fc" id="L58">        this.maxHistory = maxHistory;</span>
+<span class="fc" id="L59">    }</span>
+
+    /**
+     * Resolve the Git repository for the given workspace context.
+     *
+     * @param ctx the workspace context (use {@link WorkspaceContext#SHARED}
+     *            for the system repository)
+     * @return the resolved DslGitRepository
+     */
+    private DslGitRepository resolveRepository(WorkspaceContext ctx) {
+<span class="fc" id="L69">        return repositoryFactory.resolveRepository(ctx);</span>
+    }
+
+    // ── Workspace-aware methods ─────────────────────────────────────
+
+    /**
+     * Get the current context reference for a user.
+     *
+     * @param username the user whose context to retrieve
+     * @return the current context, never null
+     */
+    public ContextRef getCurrentContext(String username) {
+<span class="fc" id="L81">        WorkspaceNavigation state = legacyWorkspaceNavigation(username);</span>
+<span class="fc bfc" id="L82" title="All 2 branches covered.">        if (state != null) {</span>
+<span class="fc" id="L83">            return state.getCurrentContext();</span>
+        }
+<span class="fc" id="L85">        return centralReadContext(username, WorkspaceContext.LEGACY_REPOSITORY_ID,</span>
+<span class="fc" id="L86">                stateService.resolveWorkspaceBranch(username));</span>
+    }
+
+    /** Read the context of the repository selection authorized for this request. */
+    public ContextRef getCurrentContextForScope(WorkspaceContext scope) {
+<span class="fc bfc" id="L91" title="All 2 branches covered.">        if (scope.workspaceId() != null) {</span>
+<span class="fc" id="L92">            WorkspaceNavigation browser = browserNavigation(scope, true);</span>
+<span class="fc bfc" id="L93" title="All 2 branches covered.">            return (browser == null ? legacyScopedNavigation(scope) : browser).getCurrentContext();</span>
+        }
+<span class="fc" id="L95">        return centralReadContext(scope.username(), scope.repositoryId(), scope.currentBranch());</span>
+    }
+
+    /** Hold the same browser selection monitor used by navigation changes through the reviewed command. */
+    public &lt;T&gt; T withEditableBranch(WorkspaceContext scope, String expectedContextId,
+            com.taxonomy.workspace.service.WorkspaceArchitectureVersionPort.GitAction&lt;T&gt; action) throws IOException {
+<span class="fc" id="L101">        var state = scopedNavigation(scope);</span>
+<span class="fc" id="L102">        synchronized (state) {</span>
+<span class="fc" id="L103">            var current = state.getCurrentContext();</span>
+<span class="fc bfc" id="L104" title="All 2 branches covered.">            if (current.mode() != ContextMode.EDITABLE)</span>
+<span class="fc" id="L105">                throw new AccessDeniedException(&quot;An editable workspace context is required&quot;);</span>
+<span class="pc bpc" id="L106" title="1 of 4 branches missed.">            if (!current.contextId().equals(expectedContextId) || !scope.currentBranch().equals(current.branch()))</span>
+<span class="fc" id="L107">                throw new ResponseStatusException(HttpStatus.CONFLICT, &quot;The reviewed workspace context changed&quot;);</span>
+<span class="fc" id="L108">            return action.run();</span>
+        }
+    }
+
+<span class="fc" id="L112">    record TransferTarget(WorkspaceNavigation state, WorkspaceNavigation.NavigationSelection selection, String branch) {</span>
+        /** The caller holds the same state monitor as setCurrentContext through the Git ref update. */
+        void requireCurrent() {
+<span class="fc bfc" id="L115" title="All 2 branches covered.">            if (state.getNavigationSelection() != selection) throw copyBackContextChanged();</span>
+<span class="fc" id="L116">        }</span>
+    }
+
+    TransferTarget getEditableTransferTarget(WorkspaceContext scope, String expectedContextId) {
+<span class="fc" id="L120">        var state = scopedNavigation(scope);</span>
+<span class="fc" id="L121">        var selection = state.getNavigationSelection();</span>
+<span class="fc" id="L122">        var current = selection.current();</span>
+<span class="fc bfc" id="L123" title="All 4 branches covered.">        if (expectedContextId != null &amp;&amp; !expectedContextId.equals(current.contextId())) {</span>
+<span class="fc" id="L124">            throw copyBackContextChanged();</span>
+        }
+<span class="fc bfc" id="L126" title="All 2 branches covered.">        if (current.mode() == ContextMode.EDITABLE) {</span>
+<span class="fc" id="L127">            return new TransferTarget(state, selection, current.branch());</span>
+        }
+<span class="fc" id="L129">        var origin = selection.origin();</span>
+<span class="pc bpc" id="L130" title="2 of 6 branches missed.">        if (current.mode() == ContextMode.READ_ONLY &amp;&amp; origin != null &amp;&amp; origin.mode() == ContextMode.EDITABLE) {</span>
+<span class="fc" id="L131">            return new TransferTarget(state, selection, origin.branch());</span>
+        }
+<span class="fc" id="L133">        throw new AccessDeniedException(&quot;Copy-back requires an editable workspace context or origin&quot;);</span>
+    }
+
+    private static ResponseStatusException copyBackContextChanged() {
+<span class="fc" id="L137">        return new ResponseStatusException(HttpStatus.CONFLICT,</span>
+                &quot;The copy-back context changed. Reopen the transfer and preview it again.&quot;);
+    }
+
+    private ContextRef centralReadContext(String username, String repositoryId, String branch) {
+<span class="pc bpc" id="L142" title="1 of 2 branches missed.">        String actor = username == null ? WorkspaceManager.DEFAULT_USER : username;</span>
+<span class="fc" id="L143">        String contextId = UUID.nameUUIDFromBytes(</span>
+<span class="fc" id="L144">                (&quot;central-read:&quot; + actor.length() + &quot;:&quot; + actor</span>
+<span class="fc" id="L145">                        + repositoryId.length() + &quot;:&quot; + repositoryId + branch)</span>
+<span class="fc" id="L146">                        .getBytes(StandardCharsets.UTF_8)).toString();</span>
+<span class="fc" id="L147">        return new ContextRef(contextId, branch, null, Instant.now(), ContextMode.READ_ONLY,</span>
+                null, null, null, null, null, false);
+    }
+
+    /**
+     * Open a read-only context for a specific branch and commit.
+     *
+     * &lt;p&gt;Uses the system repository (SHARED context). Use
+     * {@link #openReadOnly(String, String, String, WorkspaceContext, String, String)}
+     * for workspace-aware resolution.
+     *
+     * @param username    the user performing the navigation
+     * @param branch      the branch to view
+     * @param commitId    the commit SHA (null for HEAD)
+     * @param searchQuery the search query that led here (may be null)
+     * @param elementId   the matched element ID (may be null)
+     * @return the new read-only context
+     */
+    public ContextRef openReadOnly(String username, String branch, String commitId,
+                                   String searchQuery, String elementId) {
+<span class="fc" id="L167">        return openReadOnly(username, branch, commitId, WorkspaceContext.SHARED, searchQuery, elementId);</span>
+    }
+
+    /**
+     * Open a read-only context for a specific branch and commit.
+     *
+     * @param username    the user performing the navigation
+     * @param branch      the branch to view
+     * @param commitId    the commit SHA (null for HEAD)
+     * @param ctx         the workspace context for repository resolution
+     * @param searchQuery the search query that led here (may be null)
+     * @param elementId   the matched element ID (may be null)
+     * @return the new read-only context
+     */
+    public ContextRef openReadOnly(String username, String branch, String commitId,
+                                   WorkspaceContext ctx, String searchQuery, String elementId) {
+<span class="fc" id="L183">        WorkspaceNavigation state = resolveState(username, ctx);</span>
+<span class="fc" id="L184">        String resolvedCommit = resolveCommit(branch, commitId, ctx);</span>
+
+<span class="fc" id="L186">        synchronized (state) {</span>
+<span class="fc" id="L187">            ContextRef previous = state.getCurrentContext();</span>
+<span class="fc" id="L188">            ContextRef newCtx = new ContextRef(</span>
+<span class="fc" id="L189">                    UUID.randomUUID().toString(),</span>
+                    branch,
+                    resolvedCommit,
+<span class="fc" id="L192">                    Instant.now(),</span>
+                    ContextMode.READ_ONLY,
+<span class="fc" id="L194">                    previous.contextId(),</span>
+<span class="fc" id="L195">                    previous.branch(),</span>
+<span class="fc" id="L196">                    previous.commitId(),</span>
+                    searchQuery,
+                    elementId,
+                    false
+            );
+
+<span class="fc" id="L202">            recordNavigation(state, previous.contextId(), newCtx.contextId(),</span>
+<span class="fc bfc" id="L203" title="All 2 branches covered.">                    searchQuery != null ? NavigationReason.SEARCH_OPEN : NavigationReason.MANUAL_SWITCH);</span>
+<span class="fc" id="L204">            state.setCurrentContext(newCtx);</span>
+<span class="fc" id="L205">            log.info(&quot;User '{}' opened read-only context: branch='{}', commit='{}'&quot;,</span>
+<span class="fc" id="L206">                    username, branch, abbreviateSha(resolvedCommit));</span>
+<span class="fc" id="L207">            return newCtx;</span>
+        }
+    }
+
+    /**
+     * Switch the working context to a different branch/commit.
+     *
+     * &lt;p&gt;Uses the system repository (SHARED context). Use
+     * {@link #switchContext(String, String, String, WorkspaceContext)} for workspace-aware resolution.
+     *
+     * @param username the user performing the switch
+     * @param branch   the branch to switch to
+     * @param commitId the commit SHA (null for HEAD)
+     * @return the new context
+     */
+    public ContextRef switchContext(String username, String branch, String commitId) {
+<span class="fc" id="L223">        return switchContext(username, branch, commitId, WorkspaceContext.SHARED);</span>
+    }
+
+    /**
+     * Switch the working context to a different branch/commit.
+     *
+     * @param username the user performing the switch
+     * @param branch   the branch to switch to
+     * @param commitId the commit SHA (null for HEAD)
+     * @param ctx      the workspace context for repository resolution
+     * @return the new context
+     */
+    public ContextRef switchContext(String username, String branch, String commitId,
+                                   WorkspaceContext ctx) {
+<span class="fc" id="L237">        WorkspaceNavigation state = resolveState(username, ctx);</span>
+<span class="fc" id="L238">        String resolvedCommit = resolveCommit(branch, commitId, ctx);</span>
+
+<span class="fc" id="L240">        synchronized (state) {</span>
+<span class="fc" id="L241">            ContextRef previous = state.getCurrentContext();</span>
+<span class="fc" id="L242">            ContextRef newCtx = new ContextRef(</span>
+<span class="fc" id="L243">                    UUID.randomUUID().toString(),</span>
+                    branch,
+                    resolvedCommit,
+<span class="fc" id="L246">                    Instant.now(),</span>
+                    ContextMode.EDITABLE,
+<span class="fc" id="L248">                    previous.contextId(),</span>
+<span class="fc" id="L249">                    previous.branch(),</span>
+<span class="fc" id="L250">                    previous.commitId(),</span>
+                    null,
+                    null,
+                    false
+            );
+
+<span class="fc" id="L256">            recordNavigation(state, previous.contextId(), newCtx.contextId(), NavigationReason.MANUAL_SWITCH);</span>
+<span class="fc" id="L257">            state.setCurrentContext(newCtx);</span>
+<span class="fc" id="L258">            log.info(&quot;User '{}' switched context: branch='{}', commit='{}'&quot;,</span>
+<span class="fc" id="L259">                    username, branch, abbreviateSha(resolvedCommit));</span>
+<span class="fc" id="L260">            return newCtx;</span>
+        }
+    }
+
+    /**
+     * Return to the origin context for a user.
+     *
+     * @param username the user performing the navigation
+     * @return the origin context, or the current context if no origin exists
+     */
+    public ContextRef returnToOrigin(String username) {
+<span class="fc" id="L271">        return returnToOrigin(username, WorkspaceContext.SHARED);</span>
+    }
+
+    public ContextRef returnToOrigin(String username, WorkspaceContext scope) {
+<span class="fc" id="L275">        return returnToOrigin(username, scope, null);</span>
+    }
+
+    public ContextRef returnToOrigin(String username, WorkspaceContext scope, String expectedContextId) {
+<span class="fc" id="L279">        WorkspaceNavigation state = resolveState(username, scope);</span>
+<span class="fc" id="L280">        synchronized (state) {</span>
+<span class="fc" id="L281">            ContextRef current = requireNavigationSelection(state, expectedContextId);</span>
+<span class="fc" id="L282">            ContextRef restored = state.restorePreviousContext();</span>
+<span class="fc bfc" id="L283" title="All 2 branches covered.">            if (restored != current) {</span>
+<span class="fc" id="L284">                recordNavigation(state, current.contextId(), restored.contextId(), NavigationReason.RETURN);</span>
+<span class="fc" id="L285">                log.info(&quot;User '{}' returned to origin: branch='{}'&quot;, username, restored.branch());</span>
+            }
+<span class="fc" id="L287">            return restored;</span>
+        }
+    }
+
+    /** Go one step back in navigation history for a user. */
+    public ContextRef back(String username) {
+<span class="fc" id="L293">        return back(username, WorkspaceContext.SHARED);</span>
+    }
+
+    public ContextRef back(String username, WorkspaceContext scope) {
+<span class="fc" id="L297">        return back(username, scope, null);</span>
+    }
+
+    public ContextRef back(String username, WorkspaceContext scope, String expectedContextId) {
+<span class="fc" id="L301">        WorkspaceNavigation state = resolveState(username, scope);</span>
+<span class="fc" id="L302">        synchronized (state) {</span>
+<span class="fc" id="L303">            ContextRef current = requireNavigationSelection(state, expectedContextId);</span>
+<span class="fc bfc" id="L304" title="All 2 branches covered.">            if (state.isHistoryEmpty()) return current;</span>
+<span class="fc" id="L305">            ContextRef restored = state.restorePreviousContext();</span>
+<span class="pc bpc" id="L306" title="1 of 2 branches missed.">            if (restored != current) {</span>
+<span class="fc" id="L307">                state.pollLastHistory();</span>
+<span class="fc" id="L308">                log.info(&quot;User '{}' navigated back to: branch='{}'&quot;, username, restored.branch());</span>
+            }
+<span class="fc" id="L310">            return restored;</span>
+        }
+    }
+
+    private static ContextRef requireNavigationSelection(WorkspaceNavigation state, String expectedContextId) {
+<span class="fc" id="L315">        ContextRef current = state.getCurrentContext();</span>
+<span class="fc bfc" id="L316" title="All 4 branches covered.">        if (expectedContextId != null &amp;&amp; !expectedContextId.equals(current.contextId())) {</span>
+<span class="fc" id="L317">            throw new ResponseStatusException(HttpStatus.CONFLICT,</span>
+                    &quot;The navigation context changed. Refresh and try again.&quot;);
+        }
+<span class="fc" id="L320">        return current;</span>
+    }
+
+    /**
+     * Get the full navigation history for a user.
+     *
+     * @param username the user whose history to retrieve
+     * @return list of navigation entries (newest last)
+     */
+    public List&lt;ContextHistoryEntry&gt; getHistory(String username) {
+<span class="fc" id="L330">        WorkspaceNavigation state = legacyWorkspaceNavigation(username);</span>
+<span class="pc bpc" id="L331" title="1 of 2 branches missed.">        return state == null ? List.of() : state.getHistory();</span>
+    }
+
+    /** Read the history of the workspace authorized for this request. */
+    public List&lt;ContextHistoryEntry&gt; getHistoryForScope(WorkspaceContext scope) {
+<span class="fc bfc" id="L336" title="All 2 branches covered.">        return scope.workspaceId() == null</span>
+<span class="fc" id="L337">                ? List.of() : scopedNavigation(scope).getHistory();</span>
+    }
+
+    /**
+     * Create a new branch variant from a user's current context.
+     *
+     * @param username    the user creating the variant
+     * @param variantName the name for the new branch
+     * @return the new context on the variant branch
+     * @throws IOException if the branch creation fails
+     */
+    public ContextRef createVariantFromCurrent(String username, String variantName) throws IOException {
+<span class="fc" id="L349">        return createVariantFromCurrent(username, variantName, WorkspaceContext.SHARED);</span>
+    }
+
+    /**
+     * Create a new branch variant from a user's current context.
+     *
+     * @param username    the user creating the variant
+     * @param variantName the name for the new branch
+     * @param ctx         the workspace context for repository resolution
+     * @return the new context on the variant branch
+     * @throws IOException if the branch creation fails
+     */
+    public ContextRef createVariantFromCurrent(String username, String variantName,
+                                               WorkspaceContext ctx) throws IOException {
+<span class="fc" id="L363">        WorkspaceNavigation state = resolveState(username, ctx);</span>
+<span class="fc" id="L364">        synchronized (state) {</span>
+<span class="fc" id="L365">            ContextRef current = state.getCurrentContext();</span>
+<span class="fc" id="L366">            String sourceBranch = current.branch();</span>
+
+<span class="fc" id="L368">            DslGitRepository repository = resolveRepository(ctx);</span>
+<span class="fc bfc" id="L369" title="All 2 branches covered.">            String newCommitId = current.commitId() == null</span>
+<span class="fc" id="L370">                    ? repository.createBranch(variantName, sourceBranch)</span>
+<span class="fc" id="L371">                    : repository.createBranchAtVerifiedCommit(variantName, current.commitId());</span>
+
+<span class="fc" id="L373">            ContextRef variantCtx = new ContextRef(</span>
+<span class="fc" id="L374">                    UUID.randomUUID().toString(),</span>
+                    variantName,
+                    newCommitId,
+<span class="fc" id="L377">                    Instant.now(),</span>
+                    ContextMode.EDITABLE,
+<span class="fc" id="L379">                    current.contextId(),</span>
+<span class="fc" id="L380">                    current.branch(),</span>
+<span class="fc" id="L381">                    current.commitId(),</span>
+                    null,
+                    null,
+                    false
+            );
+
+<span class="fc" id="L387">            recordNavigation(state, current.contextId(), variantCtx.contextId(), NavigationReason.VARIANT_CREATED);</span>
+<span class="fc" id="L388">            state.setCurrentContext(variantCtx);</span>
+<span class="fc" id="L389">            log.info(&quot;User '{}' created variant '{}' from branch '{}'&quot;, username, variantName, sourceBranch);</span>
+<span class="fc" id="L390">            return variantCtx;</span>
+        }
+    }
+
+    /**
+     * Check if a user's current context is read-only.
+     *
+     * @param username the user to check
+     * @return true if edits should be blocked
+     */
+    public boolean isReadOnly(String username) {
+<span class="fc" id="L401">        WorkspaceNavigation state = legacyWorkspaceNavigation(username);</span>
+<span class="pc bpc" id="L402" title="1 of 4 branches missed.">        return state == null || isReadOnly(state.getCurrentContext());</span>
+    }
+
+    /** Check navigation mode in the same authorized scope used by a write guard. */
+    public boolean isReadOnlyInScope(WorkspaceContext scope) {
+<span class="fc bfc" id="L407" title="All 2 branches covered.">        if (WorkspaceContext.LEGACY_REPOSITORY_ID.equals(scope.repositoryId())) {</span>
+<span class="fc" id="L408">            return isReadOnly(scope.username());</span>
+        }
+<span class="pc bpc" id="L410" title="1 of 2 branches missed.">        if (scope.workspaceId() == null) {</span>
+<span class="nc" id="L411">            return true;</span>
+        }
+<span class="fc" id="L413">        WorkspaceNavigation state = browserNavigation(scope, false);</span>
+<span class="pc bpc" id="L414" title="1 of 2 branches missed.">        if (state == null) {</span>
+<span class="fc" id="L415">            var shared = workspaceManager.getScopedWorkspaceState(scope);</span>
+<span class="pc bpc" id="L416" title="1 of 2 branches missed.">            state = shared == null ? null : shared.legacyNavigation();</span>
+        }
+<span class="pc bpc" id="L418" title="1 of 4 branches missed.">        return state != null &amp;&amp; isReadOnly(state.getCurrentContext());</span>
+    }
+
+    private static boolean isReadOnly(ContextRef ctx) {
+<span class="fc bfc" id="L422" title="All 2 branches covered.">        return ctx.mode() == ContextMode.READ_ONLY</span>
+<span class="pc bpc" id="L423" title="1 of 2 branches missed.">            || ctx.mode() == ContextMode.TEMPORARY;</span>
+    }
+
+    // ── Internal helpers ────────────────────────────────────────────
+
+    private WorkspaceNavigation resolveState(String username) {
+<span class="fc" id="L429">        WorkspaceNavigation state = legacyWorkspaceNavigation(username);</span>
+<span class="pc bpc" id="L430" title="1 of 2 branches missed.">        if (state == null) {</span>
+<span class="nc" id="L431">            throw new AccessDeniedException(&quot;An existing workspace or provisioning permission is required&quot;);</span>
+        }
+<span class="fc" id="L433">        return state;</span>
+    }
+
+    private WorkspaceNavigation resolveState(String username, WorkspaceContext scope) {
+<span class="fc bfc" id="L437" title="All 2 branches covered.">        if (WorkspaceContext.LEGACY_REPOSITORY_ID.equals(scope.repositoryId())) {</span>
+<span class="fc" id="L438">            return resolveState(username);</span>
+        }
+<span class="fc bfc" id="L440" title="All 2 branches covered.">        if (scope.workspaceId() == null) {</span>
+<span class="fc" id="L441">            throw new AccessDeniedException(&quot;Navigation changes require a workspace&quot;);</span>
+        }
+<span class="fc" id="L443">        return scopedNavigation(scope);</span>
+    }
+
+    private WorkspaceNavigation legacyWorkspaceNavigation(String username) {
+<span class="fc" id="L447">        var state = workspaceManager.getOrCreateWorkspace(username);</span>
+<span class="fc bfc" id="L448" title="All 2 branches covered.">        return state == null ? null : state.legacyNavigation();</span>
+    }
+
+    private WorkspaceNavigation scopedNavigation(WorkspaceContext scope) {
+<span class="fc" id="L452">        WorkspaceNavigation browser = browserNavigation(scope, false);</span>
+<span class="fc bfc" id="L453" title="All 2 branches covered.">        return browser != null ? browser : legacyScopedNavigation(scope);</span>
+    }
+
+    private WorkspaceNavigation legacyScopedNavigation(WorkspaceContext scope) {
+<span class="fc" id="L457">        return workspaceManager.getOrCreateScopedWorkspaceState(scope).legacyNavigation();</span>
+    }
+
+    private WorkspaceNavigation browserNavigation(WorkspaceContext scope, boolean initialize) {
+<span class="fc bfc" id="L461" title="All 2 branches covered.">        if (RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes attributes) {</span>
+<span class="fc" id="L462">            return WorkspaceNavigationSession.resolve(attributes.getRequest(), attributes.getResponse(),</span>
+                    scope, initialize, maxHistory);
+        }
+<span class="fc" id="L465">        return null;</span>
+    }
+
+    private String resolveCommit(String branch, String commitId, WorkspaceContext ctx) {
+<span class="fc bfc" id="L469" title="All 2 branches covered.">        if (commitId != null) {</span>
+<span class="fc" id="L470">            return commitId;</span>
+        }
+        try {
+<span class="fc" id="L473">            return resolveRepository(ctx).getHeadCommit(branch);</span>
+<span class="nc" id="L474">        } catch (IOException e) {</span>
+<span class="nc" id="L475">            log.warn(&quot;Could not resolve HEAD for branch '{}': {}&quot;, branch, e.getMessage());</span>
+<span class="nc" id="L476">            return null;</span>
+        }
+    }
+
+    private void recordNavigation(WorkspaceNavigation state, String fromId,
+                                  String toId, NavigationReason reason) {
+<span class="fc" id="L482">        state.addHistoryEntry(new ContextHistoryEntry(fromId, toId, reason, Instant.now()));</span>
+<span class="fc" id="L483">    }</span>
+
+    private String abbreviateSha(String sha) {
+<span class="pc bpc" id="L486" title="1 of 2 branches missed.">        if (sha == null) return &quot;null&quot;;</span>
+<span class="fc" id="L487">        return sha.substring(0, Math.min(7, sha.length()));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

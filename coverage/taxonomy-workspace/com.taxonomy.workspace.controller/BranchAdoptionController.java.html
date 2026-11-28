@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>BranchAdoptionController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.controller</a> &gt; <span class="el_source">BranchAdoptionController.java</span></div><h1>BranchAdoptionController.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.controller;
+
+import com.taxonomy.versioning.service.ContextNavigationService;
+import com.taxonomy.workspace.service.*;
+import io.swagger.v3.oas.annotations.Operation;
+import org.springframework.http.*;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
+import java.io.IOException;
+import java.util.List;
+import java.util.Objects;
+
+@RestController
+@RequestMapping(&quot;/api/workspace/adoption-rule&quot;)
+public class BranchAdoptionController {
+    private final WorkspaceResolver contexts;
+    private final ContextNavigationService navigation;
+    private final BranchAdoptionService rules;
+    private final BranchAdoptionWorker worker;
+
+    public BranchAdoptionController(WorkspaceResolver contexts, ContextNavigationService navigation,
+<span class="fc" id="L22">            BranchAdoptionService rules, BranchAdoptionWorker worker) {</span>
+<span class="fc" id="L23">        this.contexts = contexts;</span>
+<span class="fc" id="L24">        this.navigation = navigation;</span>
+<span class="fc" id="L25">        this.rules = rules;</span>
+<span class="fc" id="L26">        this.worker = worker;</span>
+<span class="fc" id="L27">    }</span>
+
+<span class="fc" id="L29">    public record Configuration(Boolean enabled, Long expectedRevision) {</span>
+    }
+
+<span class="fc" id="L32">    public record Decision(String action, String sourceCommit, Long expectedRevision) {</span>
+    }
+
+    @GetMapping
+    @Operation(summary = &quot;Inspect the selected branch’s automatic adoption rule&quot;, description = &quot;Returns the explicit opt-in, source default branch and last audited result for the selected repository, workspace and branch.&quot;)
+    public ResponseEntity&lt;BranchAdoptionRule.View&gt; inspect(@RequestParam String repositoryId,
+            @RequestParam String workspaceId, @RequestParam String branch) {
+<span class="fc" id="L39">        return privateResponse(rules.inspect(selected(repositoryId, workspaceId, branch)));</span>
+    }
+
+    @GetMapping(&quot;/history&quot;)
+    @Operation(summary = &quot;Read branch adoption history&quot;, description = &quot;Returns the fifty latest rule changes and automatic outcomes for the selected target, including source and target commits.&quot;)
+    public ResponseEntity&lt;List&lt;BranchAdoptionService.Event&gt;&gt; history(@RequestParam String repositoryId,
+            @RequestParam String workspaceId, @RequestParam String branch) {
+<span class="fc" id="L46">        return privateResponse(rules.history(selected(repositoryId, workspaceId, branch)));</span>
+    }
+
+    @PutMapping
+    @Operation(summary = &quot;Configure adoption of future default-branch commits&quot;, description = &quot;Activates or stops the independent rule at its reviewed revision. A personal working copy also requires an editable context ID.&quot;)
+    public ResponseEntity&lt;BranchAdoptionRule.View&gt; configure(@RequestParam String repositoryId,
+            @RequestParam String workspaceId,
+            @RequestParam String branch, @RequestParam(required = false) String expectedContextId,
+            @RequestBody Configuration configuration) throws IOException {
+<span class="fc bfc" id="L55" title="All 4 branches covered.">        if (configuration.expectedRevision() == null || configuration.enabled() == null)</span>
+<span class="fc" id="L56">            throw new IllegalArgumentException(&quot;A rule revision and enabled flag are required&quot;);</span>
+<span class="fc" id="L57">        var selected = selected(repositoryId, workspaceId, branch);</span>
+<span class="fc" id="L58">        return privateResponse(write(selected, expectedContextId,</span>
+<span class="fc" id="L59">                () -&gt; rules.configure(selected, configuration.enabled(), configuration.expectedRevision())));</span>
+    }
+
+    @PostMapping(&quot;/decision&quot;)
+    @Operation(summary = &quot;Review a stopped default-branch commit&quot;, description = &quot;Retry or skip only the exact displayed source commit at the selected target and rule revision.&quot;)
+    public ResponseEntity&lt;BranchAdoptionRule.View&gt; decide(@RequestParam String repositoryId,
+            @RequestParam String workspaceId,
+            @RequestParam String branch, @RequestParam(required = false) String expectedContextId,
+            @RequestBody Decision request) throws IOException {
+<span class="fc bfc" id="L68" title="All 4 branches covered.">        if (request.expectedRevision() == null || request.sourceCommit() == null)</span>
+<span class="fc" id="L69">            throw new IllegalArgumentException(&quot;A rule revision and source commit are required&quot;);</span>
+<span class="fc" id="L70">        var selected = selected(repositoryId, workspaceId, branch);</span>
+<span class="fc" id="L71">        return privateResponse(write(selected, expectedContextId, () -&gt; {</span>
+<span class="fc" id="L72">            var admitted = rules.decide(selected, request.action(), request.sourceCommit(), request.expectedRevision());</span>
+<span class="fc bfc" id="L73" title="All 2 branches covered.">            return &quot;RETRY&quot;.equals(request.action()) ? worker.retryReviewed(selected, admitted, request.sourceCommit())</span>
+<span class="fc" id="L74">                    : admitted;</span>
+        }));
+    }
+
+    private RepositoryContext selected(String repository, String workspace, String branch) {
+<span class="fc" id="L79">        var selected = contexts.resolveUnambiguousRepositoryForRead();</span>
+<span class="pc bpc" id="L80" title="1 of 2 branches missed.">        if (!repository.equals(selected.repositoryId())</span>
+<span class="pc bpc" id="L81" title="1 of 4 branches missed.">                || !Objects.equals(workspace.isEmpty() ? null : workspace, selected.workspaceId())</span>
+<span class="pc bpc" id="L82" title="1 of 2 branches missed.">                || !branch.equals(selected.branch()))</span>
+<span class="nc" id="L83">            throw new ResponseStatusException(HttpStatus.CONFLICT,</span>
+                    &quot;The selected repository, workspace or branch changed&quot;);
+<span class="fc bfc" id="L85" title="All 2 branches covered.">        return selected.workspaceId() == null ? RepositoryContext.centralWrite(repository, branch, selected.username())</span>
+<span class="fc" id="L86">                : selected;</span>
+    }
+
+    private BranchAdoptionRule.View write(RepositoryContext c, String context,
+            WorkspaceArchitectureVersionPort.GitAction&lt;BranchAdoptionRule.View&gt; action) throws IOException {
+<span class="pc bpc" id="L91" title="1 of 2 branches missed.">        if (c.workspaceId() == null)</span>
+<span class="fc" id="L92">            return action.run();</span>
+<span class="nc bnc" id="L93" title="All 4 branches missed.">        if (context == null || context.isBlank())</span>
+<span class="nc" id="L94">            throw new IllegalArgumentException(&quot;An editable workspace context is required&quot;);</span>
+<span class="nc" id="L95">        return navigation.withEditableBranch(WorkspaceResolver.workspaceContext(c), context, action::run);</span>
+    }
+
+    private static &lt;T&gt; ResponseEntity&lt;T&gt; privateResponse(T body) {
+<span class="fc" id="L99">        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(body);</span>
+    }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    void invalid() {
+<span class="fc" id="L105">    }</span>
+
+    @ExceptionHandler({ IllegalStateException.class, BranchHeadConflictException.class })
+    @ResponseStatus(HttpStatus.CONFLICT)
+    void changed() {
+<span class="fc" id="L110">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

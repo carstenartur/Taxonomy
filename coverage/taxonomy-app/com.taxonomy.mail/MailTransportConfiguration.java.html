@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>MailTransportConfiguration.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.mail</a> &gt; <span class="el_source">MailTransportConfiguration.java</span></div><h1>MailTransportConfiguration.java</h1><pre class="source lang-java linenums">package com.taxonomy.mail;
+
+import com.taxonomy.provenance.service.DocumentParserService;
+import com.taxonomy.shared.features.ConditionalOnFeature;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.core.Ordered;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+import org.springframework.web.filter.CorsFilter;
+
+import java.util.List;
+import java.util.Locale;
+
+@Configuration(proxyBeanMethods = false)
+@ConditionalOnFeature({&quot;analysis&quot;, &quot;architecture&quot;, &quot;reporting&quot;})
+@ConditionalOnProperty(prefix = &quot;taxonomy.mail&quot;, name = &quot;enabled&quot;, havingValue = &quot;true&quot;)
+@EnableConfigurationProperties(MailTransportProperties.class)
+<span class="fc" id="L22">class MailTransportConfiguration {</span>
+
+    @Bean
+    SmtpMailAnalysisDelivery smtpMailAnalysisDelivery(MailTransportProperties properties) {
+<span class="fc" id="L26">        return new SmtpMailAnalysisDelivery(properties);</span>
+    }
+
+    @Bean
+    FilterRegistrationBean&lt;CorsFilter&gt; mailStatusPortalCors(MailTransportProperties properties) {
+<span class="fc" id="L31">        var source = new UrlBasedCorsConfigurationSource();</span>
+<span class="fc" id="L32">        var registration = new FilterRegistrationBean&lt;&gt;(new CorsFilter(source));</span>
+<span class="fc" id="L33">        registration.addUrlPatterns(&quot;/mail-analysis/jobs/*&quot;);</span>
+<span class="fc" id="L34">        registration.setOrder(Ordered.HIGHEST_PRECEDENCE + 10);</span>
+<span class="fc" id="L35">        var portal = properties.statusPortalUrl();</span>
+<span class="fc bfc" id="L36" title="All 2 branches covered.">        registration.setEnabled(portal != null);</span>
+<span class="fc bfc" id="L37" title="All 2 branches covered.">        if (portal != null) {</span>
+<span class="fc" id="L38">            var policy = new CorsConfiguration();</span>
+<span class="pc bpc" id="L39" title="2 of 4 branches missed.">            String port = portal.getPort() &lt; 0 || portal.getPort() == 443 ? &quot;&quot; : &quot;:&quot; + portal.getPort();</span>
+<span class="fc" id="L40">            policy.setAllowedOrigins(List.of(&quot;https://&quot; + portal.getHost().toLowerCase(Locale.ROOT) + port));</span>
+<span class="fc" id="L41">            policy.setAllowedMethods(List.of(&quot;GET&quot;));</span>
+<span class="fc" id="L42">            policy.setAllowedHeaders(List.of(&quot;Accept&quot;, &quot;Cache-Control&quot;, &quot;Pragma&quot;));</span>
+<span class="fc" id="L43">            source.registerCorsConfiguration(&quot;/mail-analysis/jobs/{token:&quot;</span>
+<span class="fc" id="L44">                    + MailAnalysisStatusController.TOKEN.pattern() + &quot;}/status&quot;, policy);</span>
+        }
+<span class="fc" id="L46">        return registration;</span>
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = &quot;taxonomy.mail.imap&quot;, name = &quot;poll-enabled&quot;, havingValue = &quot;true&quot;, matchIfMissing = true)
+    ImapMailAnalysisPoller imapMailAnalysisPoller(MailTransportProperties properties,
+                                                  DocumentParserService documents,
+                                                  MailAnalysisQueue queue,
+                                                  SmtpMailAnalysisDelivery delivery) {
+<span class="nc" id="L55">        return new ImapMailAnalysisPoller(properties.imap(), new MailRequestParser(documents, properties), queue, delivery);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

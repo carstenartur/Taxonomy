@@ -1,0 +1,727 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ReformulationEvidenceCodec.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-portfolio</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.reformulation</a> &gt; <span class="el_source">ReformulationEvidenceCodec.java</span></div><h1>ReformulationEvidenceCodec.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.reformulation;
+
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.taxonomy.dsl.ast.BlockAst;
+import com.taxonomy.dsl.ast.DocumentAst;
+import com.taxonomy.dsl.ast.MetaAst;
+import com.taxonomy.dsl.ast.PropertyAst;
+import com.taxonomy.dsl.ast.SourceLocation;
+import com.taxonomy.dsl.parser.TaxDslParser;
+import com.taxonomy.dsl.serializer.TaxDslSerializer;
+import com.taxonomy.identity.StableIdentityHash;
+import com.taxonomy.portfolio.model.ArchitectureProject;
+import com.taxonomy.portfolio.model.ProjectRequirementVersion;
+import com.taxonomy.portfolio.model.PortfolioTenantIdentity;
+import com.taxonomy.reformulation.ReformulationBaseline;
+import tools.jackson.core.JsonParser;
+import tools.jackson.core.JsonToken;
+import tools.jackson.databind.DeserializationContext;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ValueDeserializer;
+import tools.jackson.databind.annotation.JsonDeserialize;
+import tools.jackson.databind.deser.jdk.StringDeserializer;
+import tools.jackson.databind.node.ObjectNode;
+import com.taxonomy.portfolio.repository.ArchitectureProjectRepository;
+import com.taxonomy.portfolio.repository.ProjectRequirementRepository;
+import com.taxonomy.portfolio.repository.ProjectRequirementVersionRepository;
+import com.taxonomy.portfolio.service.PortfolioException;
+import com.taxonomy.portfolio.service.PortfolioGitService;
+import com.taxonomy.portfolio.service.PortfolioJsonCodec;
+import org.springframework.stereotype.Service;
+
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+
+/**
+ * Encodes adoption evidence with business identities only and validates it
+ * before portfolio materialization can mutate a target workspace.
+ */
+@Service
+public class ReformulationEvidenceCodec {
+
+    public static final String BLOCK_KIND = &quot;reformulationEvidence&quot;;
+    public static final String CURRENT_SCHEMA = &quot;reformulation-evidence-v1&quot;;
+    public static final String ANCESTRY_SCHEMA = &quot;reformulation-evidence-v2&quot;;
+<span class="fc" id="L53">    private static final Set&lt;String&gt; READABLE_SCHEMAS = Set.of(CURRENT_SCHEMA, &quot;1&quot;, ANCESTRY_SCHEMA);</span>
+<span class="fc" id="L54">    private static final SourceLocation GENERATED =</span>
+            new SourceLocation(&quot;reformulation-evidence-projection&quot;, 1, 1);
+
+    private final PortfolioJsonCodec json;
+    private final ReformulationAdoptionRepository adoptions;
+    private final ReformulationPortableEvidenceRepository importedEvidence;
+    private final ArchitectureProjectRepository projects;
+    private final ProjectRequirementRepository requirements;
+    private final ProjectRequirementVersionRepository versions;
+    private final ReformulationAncestryRepository ancestryRepository;
+<span class="fc" id="L64">    private final TaxDslParser parser = new TaxDslParser();</span>
+<span class="fc" id="L65">    private final TaxDslSerializer serializer = new TaxDslSerializer();</span>
+
+    public ReformulationEvidenceCodec(
+            PortfolioJsonCodec json,
+            ReformulationAdoptionRepository adoptions,
+            ReformulationPortableEvidenceRepository importedEvidence,
+            ArchitectureProjectRepository projects,
+            ProjectRequirementRepository requirements,
+            ProjectRequirementVersionRepository versions,
+<span class="fc" id="L74">            ReformulationAncestryRepository ancestryRepository) {</span>
+<span class="fc" id="L75">        this.json = json;</span>
+<span class="fc" id="L76">        this.adoptions = adoptions;</span>
+<span class="fc" id="L77">        this.importedEvidence = importedEvidence;</span>
+<span class="fc" id="L78">        this.projects = projects;</span>
+<span class="fc" id="L79">        this.requirements = requirements;</span>
+<span class="fc" id="L80">        this.versions = versions;</span>
+<span class="fc" id="L81">        this.ancestryRepository = ancestryRepository;</span>
+<span class="fc" id="L82">    }</span>
+
+    /**
+     * Portable immutable evidence. No field is a source database identifier.
+     */
+<span class="fc" id="L87">    public record Payload(</span>
+            String projectKey,
+            String requirementKey,
+            int sourceVersionNumber,
+            int previousActiveVersionNumber,
+            int targetVersionNumber,
+            String analysisSnapshotId,
+            String originalText,
+            String finalText,
+            String targetContentHash,
+            long proposalRevision,
+            String actor,
+            String rationale,
+            ReformulationDtos.Revision revision) {
+    }
+
+<span class="fc" id="L103">    public record Evidence(</span>
+            String projectKey,
+            String requirementKey,
+            int targetVersionNumber,
+            String schemaVersion,
+            String payload,
+            String evidenceHash,
+            String targetTextHash) {
+    }
+
+    public record PayloadV2(Payload adoption, List&lt;String&gt; ancestorHashes) {
+<span class="fc" id="L114">        public PayloadV2 { ancestorHashes = List.copyOf(ancestorHashes); }</span>
+    }
+
+    /** Frozen exact archive and separate prompt-safe projection of its historical decisions. */
+<span class="fc" id="L118">    public record LineageSnapshot(List&lt;Evidence&gt; entries, List&lt;String&gt; roots, String decisionContext) {}</span>
+
+    /** Use the baseline's normal constructor checks while reading only the frozen context text used by ancestry. */
+<span class="fc" id="L121">    private record AncestryBaseline(ReformulationBaseline.Scope scope, long sourceVersionId,</span>
+                                   String snapshotId, String adoptedLineage) {
+        @JsonCreator
+        static AncestryBaseline from(@JsonProperty(&quot;scope&quot;) ReformulationBaseline.Scope scope,
+                @JsonProperty(&quot;sourceVersionId&quot;) long sourceVersionId, @JsonProperty(&quot;originalText&quot;) String originalText,
+                @JsonProperty(&quot;originalTextHash&quot;) String originalTextHash, @JsonProperty(&quot;snapshotId&quot;) String snapshotId,
+                @JsonProperty(&quot;snapshotPayload&quot;) String snapshotPayload,
+                @JsonProperty(&quot;frozenContext&quot;) @JsonDeserialize(contentUsing = AncestryContextText.class) Map&lt;String, String&gt; frozenContext,
+                @JsonProperty(&quot;language&quot;) String language, @JsonProperty(&quot;algorithmVersion&quot;) String algorithmVersion) {
+<span class="fc" id="L130">            var checked = new ReformulationBaseline(scope, sourceVersionId, originalText, originalTextHash,</span>
+                    snapshotId, snapshotPayload, frozenContext, language, algorithmVersion);
+<span class="fc" id="L132">            return new AncestryBaseline(scope, sourceVersionId, snapshotId, checked.frozenContext().get(&quot;adoptedLineage&quot;));</span>
+        }
+    }
+
+    private static final class AncestryContextText extends ValueDeserializer&lt;String&gt; {
+        @Override
+        public String deserialize(JsonParser parser, DeserializationContext context) {
+            // Advancing past a lazy JSON string skips its contents without building a second catalogue in memory.
+            // Preserve every key, null and non-string coercion for the ordinary map and baseline validation.
+<span class="pc bpc" id="L141" title="1 of 4 branches missed.">            if (parser.hasToken(JsonToken.VALUE_STRING) &amp;&amp; !&quot;adoptedLineage&quot;.equals(parser.currentName())) return &quot;&quot;;</span>
+<span class="fc" id="L142">            return StringDeserializer.instance.deserialize(parser, context);</span>
+        }
+    }
+
+<span class="fc" id="L146">    private record SourceEvidence(List&lt;Evidence&gt; roots, List&lt;Evidence&gt; ancestors) {}</span>
+
+    public LineageSnapshot freezeSource(String scopeKey, Long requirementId, Long versionId,
+            String projectKey, String requirementKey, int versionNumber, String contentHash) {
+<span class="fc" id="L150">        var receipts = adoptions.findEvidenceByRequirementVersion(</span>
+                requirementId, versionId, scopeKey);
+<span class="fc" id="L152">        var local = sourceEvidenceFor(receipts, scopeKey);</span>
+<span class="fc" id="L153">        List&lt;Evidence&gt; roots = new ArrayList&lt;&gt;(local.roots());</span>
+<span class="fc bfc" id="L154" title="All 2 branches covered.">        for (ReformulationPortableEvidence stored : importedEvidence.findMatchingCurrent(</span>
+                scopeKey, projectKey, requirementKey, versionNumber, contentHash)) {
+<span class="fc" id="L156">            roots.add(fromStored(stored));</span>
+<span class="fc" id="L157">        }</span>
+<span class="fc" id="L158">        Map&lt;String, Evidence&gt; unique = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L159" title="All 2 branches covered.">        for (Evidence entry : roots) {</span>
+<span class="pc bpc" id="L160" title="1 of 2 branches missed.">            if (!entry.projectKey().equalsIgnoreCase(projectKey)</span>
+<span class="pc bpc" id="L161" title="1 of 2 branches missed.">                    || !entry.requirementKey().equalsIgnoreCase(requirementKey)</span>
+<span class="pc bpc" id="L162" title="1 of 2 branches missed.">                    || entry.targetVersionNumber() != versionNumber</span>
+<span class="pc bpc" id="L163" title="1 of 2 branches missed.">                    || !entry.targetTextHash().equals(contentHash)</span>
+<span class="pc bpc" id="L164" title="1 of 2 branches missed.">                    || !StableIdentityHash.sha256(entry.payload()).equals(entry.evidenceHash())) {</span>
+<span class="nc" id="L165">                throw PortfolioException.conflict(&quot;Adopted source evidence does not match selected version&quot;);</span>
+            }
+<span class="fc" id="L167">            payload(entry);</span>
+<span class="fc" id="L168">            merge(unique, entry);</span>
+<span class="fc" id="L169">        }</span>
+<span class="fc bfc" id="L170" title="All 2 branches covered.">        if (roots.isEmpty()) return new LineageSnapshot(List.of(), List.of(), &quot;[]&quot;);</span>
+<span class="pc bpc" id="L171" title="1 of 2 branches missed.">        for (Evidence ancestor : local.ancestors()) merge(unique, ancestor);</span>
+<span class="fc" id="L172">        var pending = new ArrayList&lt;&gt;(roots);</span>
+<span class="fc bfc" id="L173" title="All 2 branches covered.">        for (int index = 0; index &lt; pending.size(); index++) {</span>
+<span class="pc bpc" id="L174" title="1 of 2 branches missed.">            for (String hash : ancestorHashes(pending.get(index))) {</span>
+<span class="nc bnc" id="L175" title="All 2 branches missed.">                if (unique.containsKey(hash)) continue;</span>
+<span class="nc" id="L176">                var stored = importedEvidence.findByScopeKeyAndEvidenceHash(scopeKey, hash)</span>
+<span class="nc" id="L177">                        .orElseThrow(() -&gt; PortfolioException.conflict(&quot;Adopted source ancestry closure is missing&quot;));</span>
+<span class="nc" id="L178">                Evidence ancestor = fromStored(stored);</span>
+<span class="nc" id="L179">                merge(unique, ancestor);</span>
+<span class="nc" id="L180">                pending.add(ancestor);</span>
+<span class="nc" id="L181">            }</span>
+        }
+<span class="fc" id="L183">        validateClosure(unique);</span>
+<span class="fc" id="L184">        List&lt;String&gt; rootHashes = roots.stream().map(Evidence::evidenceHash).distinct().sorted().toList();</span>
+<span class="fc" id="L185">        List&lt;Evidence&gt; entries = unique.values().stream().sorted(Comparator.comparing(Evidence::evidenceHash)).toList();</span>
+<span class="fc" id="L186">        List&lt;Object&gt; contexts = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L187" title="All 2 branches covered.">        for (Evidence evidence : entries) {</span>
+<span class="fc" id="L188">            Payload payload = payload(evidence);</span>
+<span class="fc" id="L189">            Map&lt;String, Object&gt; context = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L190">            context.put(&quot;historicalEvidenceHash&quot;, evidence.evidenceHash());</span>
+<span class="fc" id="L191">            context.put(&quot;historicalSourceVersion&quot;, payload.sourceVersionNumber());</span>
+<span class="fc" id="L192">            context.put(&quot;historicalTargetVersion&quot;, evidence.targetVersionNumber());</span>
+<span class="fc" id="L193">            context.put(&quot;adoptionActor&quot;, payload.actor());</span>
+<span class="fc" id="L194">            context.put(&quot;adoptionRationale&quot;, payload.rationale());</span>
+            // The selected current original is already supplied in full. A verbatim
+            // historical source statement would inject an obsolete entire original;
+            // retain it only in the immutable archive, not the semantic prompt view.
+<span class="fc" id="L198">            var applicable = payload.revision().statements().stream()</span>
+<span class="fc bfc" id="L199" title="All 2 branches covered.">                    .filter(statement -&gt; !(statement.provenance().isSource()</span>
+<span class="pc bpc" id="L200" title="1 of 2 branches missed.">                            &amp;&amp; statement.wording().equals(payload.originalText()))).toList();</span>
+<span class="fc" id="L201">            context.put(&quot;statements&quot;, withoutOldSpans(applicable));</span>
+<span class="fc" id="L202">            context.put(&quot;questions&quot;, withoutOldSpans(payload.revision().questions()));</span>
+<span class="fc" id="L203">            context.put(&quot;humanAnswers&quot;, withoutOldSpans(payload.revision().answers()));</span>
+<span class="fc" id="L204">            context.put(&quot;historicalReview&quot;, withoutOldSpans(payload.revision().validation()));</span>
+<span class="fc" id="L205">            contexts.add(context);</span>
+<span class="fc" id="L206">        }</span>
+<span class="fc" id="L207">        return new LineageSnapshot(entries, rootHashes, json.write(contexts));</span>
+    }
+
+    private JsonNode withoutOldSpans(Object value) {
+<span class="fc" id="L211">        JsonNode tree = json.readStrictEvidence(json.write(value), JsonNode.class);</span>
+<span class="fc" id="L212">        removeOldSpans(tree);</span>
+<span class="fc" id="L213">        return tree;</span>
+    }
+
+    private static void removeOldSpans(JsonNode node) {
+<span class="fc bfc" id="L217" title="All 2 branches covered.">        if (node instanceof ObjectNode object) {</span>
+<span class="fc" id="L218">            object.remove(&quot;sourceSpans&quot;);</span>
+<span class="fc" id="L219">            object.properties().forEach(property -&gt; removeOldSpans(property.getValue()));</span>
+<span class="fc bfc" id="L220" title="All 2 branches covered.">        } else if (node.isArray()) node.forEach(ReformulationEvidenceCodec::removeOldSpans);</span>
+<span class="fc" id="L221">    }</span>
+
+    /** Replace only this codec's blocks; all other portfolio/architecture DSL is preserved. */
+    public String contributeTo(String dsl, String scopeKey) {
+<span class="fc" id="L225">        DocumentAst document = parse(dsl, &quot;reformulation-evidence-contribute.taxdsl&quot;);</span>
+<span class="fc" id="L226">        List&lt;BlockAst&gt; blocks = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L227" title="All 2 branches covered.">        for (BlockAst block : document.getBlocks()) {</span>
+<span class="pc bpc" id="L228" title="1 of 2 branches missed.">            if (!BLOCK_KIND.equals(block.getKind())) blocks.add(block);</span>
+<span class="fc" id="L229">        }</span>
+
+<span class="fc" id="L231">        Map&lt;String, Evidence&gt; byHash = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L232" title="All 4 branches covered.">        if (scopeKey == null || scopeKey.isBlank()) {</span>
+<span class="fc" id="L233">            throw PortfolioException.validation(&quot;Reformulation evidence requires an exact portfolio scope&quot;);</span>
+        }
+<span class="fc bfc" id="L235" title="All 2 branches covered.">        for (ReformulationPortableEvidence stored : importedEvidence</span>
+<span class="fc" id="L236">                .findByScopeKeyOrderByProjectKeyAscRequirementKeyAscTargetVersionNumberAscEvidenceHashAsc(</span>
+                        scopeKey)) {
+<span class="fc" id="L238">            merge(byHash, fromStored(stored));</span>
+<span class="fc" id="L239">        }</span>
+<span class="fc" id="L240">        var local = sourceEvidenceFor(adoptions.findEvidenceByScopeKey(scopeKey), scopeKey);</span>
+<span class="fc" id="L241">        local.roots().forEach(evidence -&gt; merge(byHash, evidence));</span>
+<span class="fc" id="L242">        local.ancestors().forEach(evidence -&gt; merge(byHash, evidence));</span>
+
+<span class="fc" id="L244">        byHash.values().stream()</span>
+<span class="fc" id="L245">                .sorted(Comparator.comparing(Evidence::projectKey)</span>
+<span class="fc" id="L246">                        .thenComparing(Evidence::requirementKey)</span>
+<span class="fc" id="L247">                        .thenComparingInt(Evidence::targetVersionNumber)</span>
+<span class="fc" id="L248">                        .thenComparing(Evidence::evidenceHash))</span>
+<span class="fc" id="L249">                .map(this::block)</span>
+<span class="fc" id="L250">                .forEach(blocks::add);</span>
+<span class="fc" id="L251">        return serializer.serialize(new DocumentAst(document.getMeta(), blocks));</span>
+    }
+
+    /**
+     * Parse and validate every evidence block without touching persistence.
+     * Call this before ordinary portfolio materialization.
+     */
+    public List&lt;Evidence&gt; validateForMaterialization(String dsl) {
+<span class="fc" id="L259">        DocumentAst document = parse(dsl, &quot;reformulation-evidence-import.taxdsl&quot;);</span>
+<span class="fc" id="L260">        List&lt;Evidence&gt; result = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L261">        Map&lt;String, Evidence&gt; byHash = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L262">        Set&lt;String&gt; roots = new LinkedHashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L263" title="All 2 branches covered.">        for (BlockAst block : document.blocksOfKind(BLOCK_KIND)) {</span>
+<span class="fc" id="L264">            Evidence evidence = validate(block, document);</span>
+<span class="fc" id="L265">            String root = evidence.projectKey().toLowerCase(java.util.Locale.ROOT) + &quot;\u0000&quot;</span>
+<span class="fc" id="L266">                    + evidence.requirementKey().toLowerCase(java.util.Locale.ROOT) + &quot;\u0000&quot;</span>
+<span class="fc" id="L267">                    + evidence.targetVersionNumber() + &quot;\u0000&quot; + evidence.evidenceHash();</span>
+<span class="fc bfc" id="L268" title="All 2 branches covered.">            if (!roots.add(root)) {</span>
+<span class="fc" id="L269">                throw PortfolioException.validation(&quot;Duplicate reformulation evidence root&quot;);</span>
+            }
+<span class="fc" id="L271">            Evidence previous = byHash.putIfAbsent(evidence.evidenceHash(), evidence);</span>
+<span class="pc bpc" id="L272" title="3 of 4 branches missed.">            if (previous != null &amp;&amp; !previous.equals(evidence)) {</span>
+<span class="nc" id="L273">                throw PortfolioException.conflict(</span>
+                        &quot;Conflicting reformulation evidence shares the same content hash&quot;);
+            }
+<span class="pc bpc" id="L276" title="1 of 2 branches missed.">            if (previous == null) result.add(evidence);</span>
+<span class="fc" id="L277">        }</span>
+<span class="fc" id="L278">        validateClosure(byHash);</span>
+<span class="fc" id="L279">        return List.copyOf(result);</span>
+    }
+
+    /** Store only already validated imported evidence in the target tenant. */
+    public void storeImported(List&lt;Evidence&gt; evidence, String scopeKey) {
+<span class="fc bfc" id="L284" title="All 4 branches covered.">        if (evidence == null || evidence.isEmpty()) return;</span>
+<span class="fc bfc" id="L285" title="All 4 branches covered.">        if (scopeKey == null || scopeKey.isBlank()) {</span>
+<span class="fc" id="L286">            throw PortfolioException.validation(&quot;Reformulation evidence requires an exact portfolio scope&quot;);</span>
+        }
+<span class="fc" id="L288">        List&lt;Evidence&gt; ordered = evidence.stream()</span>
+<span class="fc" id="L289">                .sorted(Comparator.comparing(Evidence::projectKey)</span>
+<span class="fc" id="L290">                        .thenComparing(Evidence::requirementKey)</span>
+<span class="fc" id="L291">                        .thenComparingInt(Evidence::targetVersionNumber)</span>
+<span class="fc" id="L292">                        .thenComparing(Evidence::evidenceHash))</span>
+<span class="fc" id="L293">                .toList();</span>
+<span class="fc bfc" id="L294" title="All 2 branches covered.">        for (Evidence item : ordered) {</span>
+<span class="fc" id="L295">            ArchitectureProject project = projects</span>
+<span class="fc" id="L296">                    .findByScopeKeyAndProjectKeyIgnoreCase(scopeKey, item.projectKey())</span>
+<span class="pc" id="L297">                    .orElseThrow(() -&gt; PortfolioException.validation(</span>
+                            &quot;Reformulation evidence project was not materialized&quot;));
+<span class="fc" id="L299">            requirements.findByProjectIdAndScopeKeyAndRequirementKeyIgnoreCaseForUpdate(</span>
+<span class="fc" id="L300">                            project.getId(), scopeKey, item.requirementKey())</span>
+<span class="pc" id="L301">                    .orElseThrow(() -&gt; PortfolioException.validation(</span>
+                            &quot;Reformulation evidence requirement was not materialized&quot;));
+
+            // The pessimistic requirement-row lock serializes identical evidence imports
+            // across application instances before this idempotence check.
+<span class="fc" id="L306">            var existing = importedEvidence.findByScopeKeyAndEvidenceHash(</span>
+<span class="fc" id="L307">                    scopeKey, item.evidenceHash());</span>
+<span class="fc bfc" id="L308" title="All 2 branches covered.">            if (existing.isPresent()) {</span>
+<span class="pc bpc" id="L309" title="1 of 2 branches missed.">                if (!same(existing.get(), item)) {</span>
+<span class="nc" id="L310">                    throw PortfolioException.conflict(</span>
+                            &quot;Stored reformulation evidence conflicts with imported content&quot;);
+                }
+                continue;
+            }
+<span class="fc" id="L315">            String id = StableIdentityHash.sha256(scopeKey + &quot;\u0000&quot; + item.evidenceHash());</span>
+<span class="fc" id="L316">            importedEvidence.save(new ReformulationPortableEvidence(</span>
+                    id,
+                    scopeKey,
+<span class="fc" id="L319">                    item.projectKey(),</span>
+<span class="fc" id="L320">                    item.requirementKey(),</span>
+<span class="fc" id="L321">                    item.targetVersionNumber(),</span>
+<span class="fc" id="L322">                    item.schemaVersion(),</span>
+<span class="fc" id="L323">                    item.evidenceHash(),</span>
+<span class="fc" id="L324">                    item.targetTextHash(),</span>
+<span class="fc" id="L325">                    item.payload(),</span>
+<span class="fc" id="L326">                    Instant.now()));</span>
+<span class="fc" id="L327">        }</span>
+<span class="fc" id="L328">    }</span>
+
+    private LineageSnapshot ancestry(String proposalId, Long requirementId, String scopeKey, Long previewSourceVersionId) {
+<span class="fc" id="L331">        var proposal = ancestryRepository.read(proposalId, scopeKey, requirementId, previewSourceVersionId,</span>
+<span class="fc" id="L332">                reader -&gt; json.read(reader, AncestryBaseline.class))</span>
+<span class="pc" id="L333">                .orElseThrow(() -&gt; PortfolioException.conflict(&quot;Adopted proposal is missing&quot;));</span>
+<span class="fc" id="L334">        AncestryBaseline baseline = proposal.baseline();</span>
+<span class="fc" id="L335">        PortfolioTenantIdentity tenant = PortfolioTenantIdentity.parse(scopeKey);</span>
+<span class="pc bpc" id="L336" title="1 of 2 branches missed.">        String workspaceId = tenant.workspaceScope().equals(PortfolioTenantIdentity.CENTRAL_SCOPE)</span>
+<span class="pc" id="L337">                ? null : tenant.workspaceScope().substring(PortfolioTenantIdentity.WORKSPACE_SCOPE_PREFIX.length());</span>
+<span class="pc bpc" id="L338" title="2 of 4 branches missed.">        if (baseline == null || baseline.scope() == null</span>
+<span class="fc bfc" id="L339" title="All 2 branches covered.">                || !tenant.repositoryId().equals(baseline.scope().repositoryId())</span>
+<span class="fc bfc" id="L340" title="All 2 branches covered.">                || !Objects.equals(workspaceId, baseline.scope().workspaceId())</span>
+<span class="fc bfc" id="L341" title="All 2 branches covered.">                || !tenant.branch().equals(baseline.scope().branch())</span>
+<span class="fc bfc" id="L342" title="All 2 branches covered.">                || !Objects.equals(proposal.projectId(), baseline.scope().projectId())</span>
+<span class="fc bfc" id="L343" title="All 2 branches covered.">                || !Objects.equals(proposal.requirementId(), baseline.scope().requirementId())</span>
+<span class="pc bpc" id="L344" title="1 of 2 branches missed.">                || !Objects.equals(proposal.sourceVersionId(), baseline.sourceVersionId())</span>
+<span class="pc bpc" id="L345" title="1 of 2 branches missed.">                || !Objects.equals(proposal.snapshotId(), baseline.snapshotId())) {</span>
+<span class="fc" id="L346">            throw PortfolioException.conflict(&quot;Adopted proposal baseline does not match physical scope and source&quot;);</span>
+        }
+<span class="fc" id="L348">        String frozen = baseline.adoptedLineage();</span>
+<span class="fc bfc" id="L349" title="All 2 branches covered.">        if (frozen == null) return new LineageSnapshot(List.of(), List.of(), &quot;[]&quot;);</span>
+<span class="fc" id="L350">        LineageSnapshot lineage = json.readStrictEvidence(frozen, LineageSnapshot.class);</span>
+<span class="pc bpc" id="L351" title="3 of 6 branches missed.">        if (lineage == null || lineage.roots() == null || lineage.entries() == null</span>
+<span class="pc bpc" id="L352" title="1 of 2 branches missed.">                || lineage.decisionContext() == null) {</span>
+<span class="nc" id="L353">            throw PortfolioException.conflict(&quot;Adopted proposal ancestry is incomplete&quot;);</span>
+        }
+<span class="fc" id="L355">        return lineage;</span>
+    }
+
+    private SourceEvidence sourceEvidenceFor(List&lt;ReformulationAdoptionRepository.EvidenceSource&gt; rows, String scopeKey) {
+<span class="fc bfc" id="L359" title="All 2 branches covered.">        if (rows.isEmpty()) return new SourceEvidence(List.of(), List.of());</span>
+
+<span class="fc" id="L361">        record SourceRow(</span>
+                ReformulationAdoptionRepository.EvidenceSource adoption,
+                ReformulationAdoptionDtos.Result receipt,
+                ReformulationAdoptionDtos.PreviewContent preview) {}
+
+<span class="fc" id="L366">        List&lt;SourceRow&gt; sources = new ArrayList&lt;&gt;(rows.size());</span>
+<span class="fc" id="L367">        var sourceVersionIds = new LinkedHashSet&lt;Long&gt;();</span>
+<span class="fc bfc" id="L368" title="All 2 branches covered.">        for (var adoption : rows) {</span>
+<span class="fc" id="L369">            ReformulationAdoptionDtos.Result receipt =</span>
+<span class="fc" id="L370">                    json.read(adoption.receiptPayload(), ReformulationAdoptionDtos.Result.class);</span>
+<span class="pc bpc" id="L371" title="1 of 2 branches missed.">            if (receipt == null</span>
+<span class="pc bpc" id="L372" title="1 of 2 branches missed.">                    || !scopeKey.equals(adoption.scopeKey())</span>
+<span class="pc bpc" id="L373" title="1 of 2 branches missed.">                    || !Objects.equals(adoption.proposalId(), receipt.proposalId())</span>
+<span class="pc bpc" id="L374" title="1 of 2 branches missed.">                    || !Objects.equals(adoption.previewId(), receipt.previewId())</span>
+<span class="pc bpc" id="L375" title="1 of 2 branches missed.">                    || !Objects.equals(adoption.targetVersionId(), receipt.targetVersionId())) {</span>
+<span class="nc" id="L376">                throw PortfolioException.conflict(</span>
+                        &quot;Stored adoption receipt is inconsistent with its reformulation evidence&quot;);
+            }
+<span class="pc bpc" id="L379" title="1 of 2 branches missed.">            if (adoption.previewPayload() == null</span>
+<span class="pc bpc" id="L380" title="1 of 2 branches missed.">                    || !StableIdentityHash.sha256(adoption.previewPayload()).equals(adoption.previewHash())) {</span>
+<span class="nc" id="L381">                throw PortfolioException.conflict(</span>
+                        &quot;Stored adoption preview integrity check failed&quot;);
+            }
+<span class="fc" id="L384">            ReformulationAdoptionDtos.PreviewContent preview =</span>
+<span class="fc" id="L385">                    json.read(adoption.previewPayload(), ReformulationAdoptionDtos.PreviewContent.class);</span>
+<span class="pc bpc" id="L386" title="2 of 4 branches missed.">            if (preview == null || preview.currentRequirement() == null</span>
+<span class="pc bpc" id="L387" title="1 of 2 branches missed.">                    || preview.currentRequirement().currentVersion() == null</span>
+<span class="pc bpc" id="L388" title="1 of 2 branches missed.">                    || preview.revision() == null) {</span>
+<span class="nc" id="L389">                throw PortfolioException.conflict(</span>
+                        &quot;Adoption preview is incomplete for portable reformulation evidence&quot;);
+            }
+<span class="fc" id="L392">            sourceVersionIds.add(preview.sourceVersionId());</span>
+<span class="fc" id="L393">            sources.add(new SourceRow(adoption, receipt, preview));</span>
+<span class="fc" id="L394">        }</span>
+
+<span class="fc" id="L396">        Map&lt;Long, ProjectRequirementVersion&gt; sourceVersions = new LinkedHashMap&lt;&gt;();</span>
+        for (ProjectRequirementVersion source :
+<span class="fc bfc" id="L398" title="All 2 branches covered.">                versions.findByScopeKeyAndIdIn(scopeKey, sourceVersionIds)) {</span>
+<span class="fc" id="L399">            sourceVersions.put(source.getId(), source);</span>
+<span class="fc" id="L400">        }</span>
+
+<span class="fc" id="L402">        List&lt;Evidence&gt; result = new ArrayList&lt;&gt;(sources.size());</span>
+<span class="fc" id="L403">        List&lt;Evidence&gt; ancestors = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L404" title="All 2 branches covered.">        for (SourceRow row : sources) {</span>
+<span class="fc" id="L405">            var adoption = row.adoption();</span>
+<span class="fc" id="L406">            ReformulationAdoptionDtos.Result receipt = row.receipt();</span>
+<span class="fc" id="L407">            ReformulationAdoptionDtos.PreviewContent preview = row.preview();</span>
+
+<span class="fc" id="L409">            ProjectRequirementVersion source = sourceVersions.get(preview.sourceVersionId());</span>
+<span class="pc bpc" id="L410" title="4 of 8 branches missed.">            if (adoption.targetVersion() == null || adoption.actualRequirementId() == null || adoption.projectKey() == null</span>
+                    || source == null
+<span class="pc bpc" id="L412" title="1 of 2 branches missed.">                    || !scopeKey.equals(adoption.targetScope())</span>
+<span class="pc bpc" id="L413" title="1 of 2 branches missed.">                    || !scopeKey.equals(adoption.requirementScope())</span>
+<span class="pc bpc" id="L414" title="1 of 2 branches missed.">                    || !scopeKey.equals(adoption.projectScope())</span>
+<span class="pc bpc" id="L415" title="1 of 2 branches missed.">                    || !scopeKey.equals(source.getScopeKey())</span>
+<span class="pc bpc" id="L416" title="1 of 2 branches missed.">                    || !Objects.equals(adoption.requirementId(), adoption.actualRequirementId())</span>
+<span class="pc bpc" id="L417" title="1 of 2 branches missed.">                    || !Objects.equals(source.getRequirementId(), adoption.actualRequirementId())) {</span>
+<span class="nc" id="L418">                throw PortfolioException.conflict(</span>
+                        &quot;Adoption business identity is inconsistent with portable reformulation evidence&quot;);
+            }
+
+<span class="fc" id="L422">            int previousVersion = preview.currentRequirement().currentVersion().versionNumber();</span>
+<span class="pc bpc" id="L423" title="1 of 2 branches missed.">            if (adoption.targetVersion() != receipt.targetVersionNumber()</span>
+<span class="fc" id="L424">                    || receipt.previousVersionId()</span>
+<span class="pc bpc" id="L425" title="1 of 2 branches missed.">                    != preview.currentRequirement().currentVersionId()</span>
+<span class="pc bpc" id="L426" title="1 of 2 branches missed.">                    || !preview.originalText().equals(source.getText())</span>
+<span class="pc bpc" id="L427" title="1 of 2 branches missed.">                    || !StableIdentityHash.sha256(preview.originalText()).equals(source.getContentHash())) {</span>
+<span class="nc" id="L428">                throw PortfolioException.conflict(</span>
+                        &quot;Adoption version binding is inconsistent with portable reformulation evidence&quot;);
+            }
+
+<span class="fc" id="L432">            Payload value = new Payload(</span>
+<span class="fc" id="L433">                    adoption.projectKey(),</span>
+<span class="fc" id="L434">                    adoption.requirementKey(),</span>
+<span class="fc" id="L435">                    source.getVersionNumber(),</span>
+                    previousVersion,
+<span class="fc" id="L437">                    adoption.targetVersion(),</span>
+<span class="fc" id="L438">                    preview.analysisSnapshotId(),</span>
+<span class="fc" id="L439">                    preview.originalText(),</span>
+<span class="fc" id="L440">                    preview.finalText(),</span>
+<span class="fc" id="L441">                    adoption.targetHash(),</span>
+<span class="fc" id="L442">                    receipt.proposalRevision(),</span>
+<span class="fc" id="L443">                    receipt.actor(),</span>
+<span class="fc" id="L444">                    receipt.rationale(),</span>
+<span class="fc" id="L445">                    preview.revision());</span>
+<span class="fc" id="L446">            LineageSnapshot ancestry = ancestry(adoption.proposalId(), adoption.requirementId(), scopeKey, preview.sourceVersionId());</span>
+<span class="fc" id="L447">            ancestors.addAll(ancestry.entries());</span>
+<span class="fc bfc" id="L448" title="All 2 branches covered.">            for (String ancestor : ancestry.roots()) {</span>
+<span class="fc" id="L449">                Evidence parent = ancestry.entries().stream().filter(e -&gt; e.evidenceHash().equals(ancestor))</span>
+<span class="pc" id="L450">                        .findFirst().orElseThrow(() -&gt; PortfolioException.conflict(&quot;Adopted source ancestry is missing&quot;));</span>
+<span class="pc bpc" id="L451" title="1 of 2 branches missed.">                if (parent.targetVersionNumber() != source.getVersionNumber()</span>
+<span class="pc bpc" id="L452" title="1 of 2 branches missed.">                        || !parent.targetTextHash().equals(source.getContentHash())</span>
+<span class="pc bpc" id="L453" title="1 of 2 branches missed.">                        || !parent.projectKey().equalsIgnoreCase(adoption.projectKey())</span>
+<span class="pc bpc" id="L454" title="1 of 2 branches missed.">                        || !parent.requirementKey().equalsIgnoreCase(adoption.requirementKey())) {</span>
+<span class="nc" id="L455">                    throw PortfolioException.conflict(&quot;Adopted source ancestry does not match source version&quot;);</span>
+                }
+<span class="fc" id="L457">            }</span>
+<span class="fc bfc" id="L458" title="All 2 branches covered.">            String payload = ancestry.roots().isEmpty() ? json.write(value)</span>
+<span class="fc" id="L459">                    : json.write(new PayloadV2(value, ancestry.roots()));</span>
+<span class="fc" id="L460">            String hash = StableIdentityHash.sha256(payload);</span>
+<span class="fc" id="L461">            result.add(new Evidence(</span>
+<span class="fc" id="L462">                    value.projectKey(),</span>
+<span class="fc" id="L463">                    value.requirementKey(),</span>
+<span class="fc" id="L464">                    value.targetVersionNumber(),</span>
+<span class="fc bfc" id="L465" title="All 2 branches covered.">                    ancestry.roots().isEmpty() ? CURRENT_SCHEMA : ANCESTRY_SCHEMA,</span>
+                    payload,
+                    hash,
+<span class="fc" id="L468">                    value.targetContentHash()));</span>
+<span class="fc" id="L469">        }</span>
+<span class="fc" id="L470">        return new SourceEvidence(result, ancestors);</span>
+    }
+
+    private Evidence validate(BlockAst block, DocumentAst document) {
+<span class="pc bpc" id="L474" title="1 of 2 branches missed.">        if (block.getHeaderTokens().size() != 4) {</span>
+<span class="nc" id="L475">            throw PortfolioException.validation(</span>
+                    &quot;Reformulation evidence requires project, requirement, target version and evidence hash&quot;);
+        }
+<span class="fc" id="L478">        Set&lt;String&gt; expectedProperties = Set.of(&quot;schemaVersion&quot;, &quot;payload&quot;, &quot;evidenceHash&quot;, &quot;targetTextHash&quot;);</span>
+<span class="fc" id="L479">        Set&lt;String&gt; observedProperties = new LinkedHashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L480" title="All 2 branches covered.">        for (PropertyAst property : block.getProperties()) observedProperties.add(property.key());</span>
+<span class="fc bfc" id="L481" title="All 2 branches covered.">        if (block.getProperties().size() != expectedProperties.size()</span>
+<span class="pc bpc" id="L482" title="1 of 2 branches missed.">                || !observedProperties.equals(expectedProperties)</span>
+<span class="pc bpc" id="L483" title="1 of 2 branches missed.">                || !block.getChildren().isEmpty()</span>
+<span class="pc bpc" id="L484" title="1 of 2 branches missed.">                || !block.getExtensions().isEmpty()) {</span>
+<span class="fc" id="L485">            throw PortfolioException.validation(&quot;Reformulation evidence DSL schema is ambiguous&quot;);</span>
+        }
+<span class="fc" id="L487">        String projectKey = requiredToken(block, 0);</span>
+<span class="fc" id="L488">        String requirementKey = requiredToken(block, 1);</span>
+<span class="fc" id="L489">        int targetVersion = positiveInt(requiredToken(block, 2));</span>
+<span class="fc" id="L490">        String headerHash = requiredToken(block, 3);</span>
+<span class="fc" id="L491">        String schema = required(block, &quot;schemaVersion&quot;);</span>
+<span class="fc bfc" id="L492" title="All 2 branches covered.">        if (!READABLE_SCHEMAS.contains(schema)) {</span>
+<span class="fc" id="L493">            throw PortfolioException.validation(</span>
+                    &quot;Unsupported reformulation evidence schema: &quot; + schema);
+        }
+<span class="fc" id="L496">        String payload = required(block, &quot;payload&quot;);</span>
+<span class="fc" id="L497">        String evidenceHash = required(block, &quot;evidenceHash&quot;);</span>
+<span class="fc" id="L498">        String targetTextHash = required(block, &quot;targetTextHash&quot;);</span>
+<span class="pc bpc" id="L499" title="2 of 4 branches missed.">        if (!hex64(headerHash) || !headerHash.equals(evidenceHash)</span>
+<span class="fc bfc" id="L500" title="All 2 branches covered.">                || !StableIdentityHash.sha256(payload).equals(evidenceHash)) {</span>
+<span class="fc" id="L501">            throw PortfolioException.validation(</span>
+                    &quot;Reformulation evidence integrity check failed&quot;);
+        }
+<span class="pc bpc" id="L504" title="1 of 2 branches missed.">        if (!hex64(targetTextHash)) {</span>
+<span class="nc" id="L505">            throw PortfolioException.validation(</span>
+                    &quot;Reformulation evidence target requirement version hash is invalid&quot;);
+        }
+
+<span class="fc" id="L509">        Evidence evidence = new Evidence(projectKey, requirementKey, targetVersion,</span>
+                schema, payload, evidenceHash, targetTextHash);
+        Payload decoded;
+        try {
+<span class="fc" id="L513">            decoded = payload(evidence);</span>
+<span class="fc" id="L514">        } catch (PortfolioException invalid) {</span>
+<span class="fc" id="L515">            throw new PortfolioException(</span>
+                    PortfolioException.Kind.VALIDATION,
+                    &quot;Reformulation evidence integrity payload is invalid&quot;,
+                    invalid);
+<span class="fc" id="L519">        }</span>
+<span class="pc bpc" id="L520" title="1 of 2 branches missed.">        if (decoded == null</span>
+<span class="pc bpc" id="L521" title="1 of 2 branches missed.">                || decoded.revision() == null</span>
+<span class="pc bpc" id="L522" title="1 of 2 branches missed.">                || decoded.sourceVersionNumber() &lt;= 0</span>
+<span class="pc bpc" id="L523" title="1 of 2 branches missed.">                || decoded.previousActiveVersionNumber() &lt;= 0</span>
+<span class="pc bpc" id="L524" title="1 of 2 branches missed.">                || decoded.targetVersionNumber() &lt;= 0</span>
+<span class="pc bpc" id="L525" title="1 of 2 branches missed.">                || decoded.proposalRevision() &lt;= 0</span>
+<span class="pc bpc" id="L526" title="1 of 2 branches missed.">                || blank(decoded.analysisSnapshotId())</span>
+<span class="pc bpc" id="L527" title="1 of 2 branches missed.">                || decoded.originalText() == null</span>
+<span class="pc bpc" id="L528" title="1 of 2 branches missed.">                || decoded.finalText() == null</span>
+<span class="pc bpc" id="L529" title="1 of 2 branches missed.">                || blank(decoded.actor())</span>
+<span class="pc bpc" id="L530" title="1 of 2 branches missed.">                || blank(decoded.rationale())</span>
+<span class="pc bpc" id="L531" title="1 of 2 branches missed.">                || !projectKey.equals(decoded.projectKey())</span>
+<span class="pc bpc" id="L532" title="1 of 2 branches missed.">                || !requirementKey.equals(decoded.requirementKey())</span>
+<span class="pc bpc" id="L533" title="1 of 2 branches missed.">                || targetVersion != decoded.targetVersionNumber()) {</span>
+<span class="nc" id="L534">            throw PortfolioException.validation(</span>
+                    &quot;Reformulation evidence integrity payload does not match its business identity&quot;);
+        }
+<span class="fc bfc" id="L537" title="All 2 branches covered.">        if (!targetTextHash.equals(decoded.targetContentHash())) {</span>
+<span class="fc" id="L538">            throw PortfolioException.validation(</span>
+                    &quot;Reformulation evidence does not match target requirement version&quot;);
+        }
+
+<span class="fc" id="L542">        List&lt;BlockAst&gt; sourceBlocks = document.blocksOfKind(PortfolioGitService.VERSION_BLOCK)</span>
+<span class="fc" id="L543">                .stream()</span>
+<span class="pc bpc" id="L544" title="1 of 2 branches missed.">                .filter(candidate -&gt; candidate.getHeaderTokens().size() &gt;= 3)</span>
+<span class="fc" id="L545">                .filter(candidate -&gt; projectKey.equalsIgnoreCase(candidate.getHeaderTokens().get(0)))</span>
+<span class="fc" id="L546">                .filter(candidate -&gt; requirementKey.equalsIgnoreCase(candidate.getHeaderTokens().get(1)))</span>
+<span class="fc" id="L547">                .filter(candidate -&gt; Integer.toString(decoded.sourceVersionNumber())</span>
+<span class="fc" id="L548">                        .equals(candidate.getHeaderTokens().get(2)))</span>
+<span class="fc" id="L549">                .toList();</span>
+<span class="pc bpc" id="L550" title="1 of 2 branches missed.">        if (sourceBlocks.size() != 1</span>
+<span class="fc bfc" id="L551" title="All 2 branches covered.">                || !decoded.originalText().equals(sourceBlocks.getFirst().property(&quot;text&quot;))</span>
+<span class="fc" id="L552">                || !StableIdentityHash.sha256(decoded.originalText())</span>
+<span class="pc bpc" id="L553" title="1 of 2 branches missed.">                        .equals(sourceBlocks.getFirst().property(&quot;contentHash&quot;))) {</span>
+<span class="fc" id="L554">            throw PortfolioException.validation(</span>
+                    &quot;Reformulation evidence does not match source requirement version&quot;);
+        }
+
+<span class="fc" id="L558">        List&lt;BlockAst&gt; targetBlocks = document.blocksOfKind(PortfolioGitService.VERSION_BLOCK)</span>
+<span class="fc" id="L559">                .stream()</span>
+<span class="pc bpc" id="L560" title="1 of 2 branches missed.">                .filter(candidate -&gt; candidate.getHeaderTokens().size() &gt;= 3)</span>
+<span class="fc" id="L561">                .filter(candidate -&gt; projectKey.equalsIgnoreCase(candidate.getHeaderTokens().get(0)))</span>
+<span class="fc" id="L562">                .filter(candidate -&gt; requirementKey.equalsIgnoreCase(candidate.getHeaderTokens().get(1)))</span>
+<span class="fc" id="L563">                .filter(candidate -&gt; Integer.toString(targetVersion)</span>
+<span class="fc" id="L564">                        .equals(candidate.getHeaderTokens().get(2)))</span>
+<span class="fc" id="L565">                .toList();</span>
+<span class="pc bpc" id="L566" title="1 of 2 branches missed.">        if (targetBlocks.size() != 1</span>
+<span class="pc bpc" id="L567" title="1 of 2 branches missed.">                || !targetTextHash.equals(targetBlocks.getFirst().property(&quot;contentHash&quot;))</span>
+<span class="pc bpc" id="L568" title="1 of 2 branches missed.">                || !decoded.finalText().equals(targetBlocks.getFirst().property(&quot;text&quot;))) {</span>
+<span class="nc" id="L569">            throw PortfolioException.validation(</span>
+                    &quot;Reformulation evidence does not match target requirement version&quot;);
+        }
+
+<span class="fc" id="L573">        return evidence;</span>
+    }
+
+    public Payload payload(Evidence evidence) {
+<span class="fc bfc" id="L577" title="All 2 branches covered.">        if (!READABLE_SCHEMAS.contains(evidence.schemaVersion()))</span>
+<span class="fc" id="L578">            throw PortfolioException.validation(</span>
+<span class="fc" id="L579">                    &quot;Unsupported reformulation evidence schema: &quot; + evidence.schemaVersion());</span>
+<span class="fc bfc" id="L580" title="All 2 branches covered.">        if (ANCESTRY_SCHEMA.equals(evidence.schemaVersion())) {</span>
+<span class="fc" id="L581">            PayloadV2 value = json.readStrictEvidence(evidence.payload(), PayloadV2.class);</span>
+<span class="pc bpc" id="L582" title="3 of 6 branches missed.">            if (value == null || value.adoption() == null || value.ancestorHashes() == null</span>
+<span class="pc bpc" id="L583" title="1 of 2 branches missed.">                    || value.ancestorHashes().isEmpty())</span>
+<span class="nc" id="L584">                throw PortfolioException.validation(&quot;Reformulation evidence ancestry is incomplete&quot;);</span>
+<span class="fc" id="L585">            return value.adoption();</span>
+        }
+<span class="fc" id="L587">        return json.readStrictEvidence(evidence.payload(), Payload.class);</span>
+    }
+
+    private List&lt;String&gt; ancestorHashes(Evidence evidence) {
+<span class="fc bfc" id="L591" title="All 2 branches covered.">        if (!ANCESTRY_SCHEMA.equals(evidence.schemaVersion())) return List.of();</span>
+<span class="fc" id="L592">        PayloadV2 value = json.readStrictEvidence(evidence.payload(), PayloadV2.class);</span>
+<span class="pc bpc" id="L593" title="3 of 6 branches missed.">        if (value == null || value.ancestorHashes() == null || value.ancestorHashes().isEmpty()</span>
+<span class="pc bpc" id="L594" title="1 of 2 branches missed.">                || new LinkedHashSet&lt;&gt;(value.ancestorHashes()).size() != value.ancestorHashes().size()</span>
+<span class="pc bpc" id="L595" title="2 of 4 branches missed.">                || value.ancestorHashes().stream().anyMatch(hash -&gt; !hex64(hash)))</span>
+<span class="nc" id="L596">            throw PortfolioException.validation(&quot;Reformulation evidence ancestry references are invalid&quot;);</span>
+<span class="fc" id="L597">        return value.ancestorHashes();</span>
+    }
+
+    private void validateClosure(Map&lt;String, Evidence&gt; entries) {
+<span class="fc" id="L601">        var complete = new LinkedHashSet&lt;String&gt;();</span>
+<span class="fc bfc" id="L602" title="All 2 branches covered.">        for (String hash : entries.keySet()) visit(hash, entries, new LinkedHashSet&lt;&gt;(), complete);</span>
+<span class="fc" id="L603">    }</span>
+
+    private void visit(String hash, Map&lt;String, Evidence&gt; entries, Set&lt;String&gt; visiting, Set&lt;String&gt; complete) {
+<span class="fc bfc" id="L606" title="All 2 branches covered.">        if (complete.contains(hash)) return;</span>
+<span class="fc" id="L607">        Evidence child = entries.get(hash);</span>
+<span class="pc bpc" id="L608" title="2 of 4 branches missed.">        if (child == null || !StableIdentityHash.sha256(child.payload()).equals(hash))</span>
+<span class="nc" id="L609">            throw PortfolioException.validation(&quot;Reformulation evidence ancestry closure or hash is invalid&quot;);</span>
+<span class="pc bpc" id="L610" title="1 of 2 branches missed.">        if (!visiting.add(hash)) throw PortfolioException.validation(&quot;Reformulation evidence ancestry cycle&quot;);</span>
+<span class="fc" id="L611">        Payload current = payload(child);</span>
+<span class="fc bfc" id="L612" title="All 2 branches covered.">        for (String parentHash : ancestorHashes(child)) {</span>
+<span class="fc" id="L613">            Evidence parent = entries.get(parentHash);</span>
+<span class="fc bfc" id="L614" title="All 2 branches covered.">            if (parent == null) throw PortfolioException.validation(&quot;Reformulation evidence ancestry closure is missing&quot;);</span>
+<span class="fc" id="L615">            Payload previous = payload(parent);</span>
+<span class="pc bpc" id="L616" title="1 of 2 branches missed.">            if (!child.projectKey().equalsIgnoreCase(parent.projectKey())</span>
+<span class="pc bpc" id="L617" title="1 of 2 branches missed.">                    || !child.requirementKey().equalsIgnoreCase(parent.requirementKey())</span>
+<span class="pc bpc" id="L618" title="1 of 2 branches missed.">                    || current.sourceVersionNumber() != parent.targetVersionNumber()</span>
+<span class="pc bpc" id="L619" title="1 of 2 branches missed.">                    || !StableIdentityHash.sha256(current.originalText()).equals(parent.targetTextHash())</span>
+<span class="pc bpc" id="L620" title="1 of 2 branches missed.">                    || !current.originalText().equals(previous.finalText()))</span>
+<span class="nc" id="L621">                throw PortfolioException.validation(&quot;Reformulation evidence ancestry identity mismatch&quot;);</span>
+<span class="fc" id="L622">            visit(parentHash, entries, visiting, complete);</span>
+<span class="fc" id="L623">        }</span>
+<span class="fc" id="L624">        visiting.remove(hash);</span>
+<span class="fc" id="L625">        complete.add(hash);</span>
+<span class="fc" id="L626">    }</span>
+
+    private BlockAst block(Evidence evidence) {
+<span class="fc" id="L629">        return new BlockAst(</span>
+                BLOCK_KIND,
+<span class="fc" id="L631">                List.of(</span>
+<span class="fc" id="L632">                        evidence.projectKey(),</span>
+<span class="fc" id="L633">                        evidence.requirementKey(),</span>
+<span class="fc" id="L634">                        Integer.toString(evidence.targetVersionNumber()),</span>
+<span class="fc" id="L635">                        evidence.evidenceHash()),</span>
+<span class="fc" id="L636">                List.of(</span>
+<span class="fc" id="L637">                        property(&quot;schemaVersion&quot;, evidence.schemaVersion()),</span>
+<span class="fc" id="L638">                        property(&quot;payload&quot;, evidence.payload()),</span>
+<span class="fc" id="L639">                        property(&quot;evidenceHash&quot;, evidence.evidenceHash()),</span>
+<span class="fc" id="L640">                        property(&quot;targetTextHash&quot;, evidence.targetTextHash())),</span>
+<span class="fc" id="L641">                List.of(),</span>
+<span class="fc" id="L642">                Map.of(),</span>
+                GENERATED);
+    }
+
+    private static void merge(Map&lt;String, Evidence&gt; byHash, Evidence evidence) {
+<span class="fc" id="L647">        Evidence previous = byHash.putIfAbsent(evidence.evidenceHash(), evidence);</span>
+<span class="pc bpc" id="L648" title="1 of 4 branches missed.">        if (previous != null &amp;&amp; !previous.equals(evidence)) {</span>
+<span class="nc" id="L649">            throw PortfolioException.conflict(</span>
+                    &quot;Conflicting reformulation evidence shares the same content hash&quot;);
+        }
+<span class="fc" id="L652">    }</span>
+
+    private static Evidence fromStored(ReformulationPortableEvidence stored) {
+<span class="fc" id="L655">        return new Evidence(</span>
+<span class="fc" id="L656">                stored.getProjectKey(),</span>
+<span class="fc" id="L657">                stored.getRequirementKey(),</span>
+<span class="fc" id="L658">                stored.getTargetVersionNumber(),</span>
+<span class="fc" id="L659">                stored.getSchemaVersion(),</span>
+<span class="fc" id="L660">                stored.getPayload(),</span>
+<span class="fc" id="L661">                stored.getEvidenceHash(),</span>
+<span class="fc" id="L662">                stored.getTargetTextHash());</span>
+    }
+
+    private static boolean same(
+            ReformulationPortableEvidence stored,
+            Evidence evidence) {
+<span class="pc bpc" id="L668" title="1 of 2 branches missed.">        return stored.getProjectKey().equals(evidence.projectKey())</span>
+<span class="pc bpc" id="L669" title="1 of 2 branches missed.">                &amp;&amp; stored.getRequirementKey().equals(evidence.requirementKey())</span>
+<span class="pc bpc" id="L670" title="1 of 2 branches missed.">                &amp;&amp; stored.getTargetVersionNumber() == evidence.targetVersionNumber()</span>
+<span class="pc bpc" id="L671" title="1 of 2 branches missed.">                &amp;&amp; stored.getSchemaVersion().equals(evidence.schemaVersion())</span>
+<span class="pc bpc" id="L672" title="1 of 2 branches missed.">                &amp;&amp; stored.getEvidenceHash().equals(evidence.evidenceHash())</span>
+<span class="pc bpc" id="L673" title="1 of 2 branches missed.">                &amp;&amp; stored.getTargetTextHash().equals(evidence.targetTextHash())</span>
+<span class="pc bpc" id="L674" title="1 of 2 branches missed.">                &amp;&amp; stored.getPayload().equals(evidence.payload());</span>
+    }
+
+    private DocumentAst parse(String dsl, String sourceName) {
+<span class="fc bfc" id="L678" title="All 4 branches covered.">        if (dsl == null || dsl.isBlank()) {</span>
+<span class="fc" id="L679">            return new DocumentAst(</span>
+                    new MetaAst(MetaAst.LANGUAGE_ID, MetaAst.CURRENT_VERSION, &quot;portfolio&quot;, GENERATED),
+<span class="fc" id="L681">                    List.of());</span>
+        }
+<span class="fc" id="L683">        return parser.parse(dsl, sourceName);</span>
+    }
+
+    private static PropertyAst property(String key, String value) {
+<span class="fc" id="L687">        return new PropertyAst(key, value, GENERATED);</span>
+    }
+
+    private static String required(BlockAst block, String key) {
+<span class="fc" id="L691">        String value = block.property(key);</span>
+<span class="pc bpc" id="L692" title="2 of 4 branches missed.">        if (value == null || value.isBlank()) {</span>
+<span class="nc" id="L693">            throw PortfolioException.validation(</span>
+                    &quot;Reformulation evidence is missing &quot; + key);
+        }
+<span class="fc" id="L696">        return value;</span>
+    }
+
+    private static String requiredToken(BlockAst block, int index) {
+<span class="fc" id="L700">        String value = block.getHeaderTokens().get(index);</span>
+<span class="pc bpc" id="L701" title="2 of 4 branches missed.">        if (value == null || value.isBlank()) {</span>
+<span class="nc" id="L702">            throw PortfolioException.validation(</span>
+                    &quot;Reformulation evidence contains a blank identity token&quot;);
+        }
+<span class="fc" id="L705">        return value;</span>
+    }
+
+    private static int positiveInt(String value) {
+        try {
+<span class="fc" id="L710">            int parsed = Integer.parseInt(value);</span>
+<span class="pc bpc" id="L711" title="1 of 2 branches missed.">            if (parsed &gt; 0) return parsed;</span>
+<span class="nc" id="L712">        } catch (NumberFormatException ignored) {</span>
+            // Handled by the shared validation error below.
+<span class="nc" id="L714">        }</span>
+<span class="nc" id="L715">        throw PortfolioException.validation(</span>
+                &quot;Reformulation evidence target version must be positive&quot;);
+    }
+
+    private static boolean hex64(String value) {
+<span class="pc bpc" id="L720" title="2 of 4 branches missed.">        return value != null &amp;&amp; value.matches(&quot;[a-f0-9]{64}&quot;);</span>
+    }
+
+    private static boolean blank(String value) {
+<span class="pc bpc" id="L724" title="2 of 4 branches missed.">        return value == null || value.isBlank();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

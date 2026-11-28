@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>VisioPagesConverter.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-export</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.visio.converter</a> &gt; <span class="el_source">VisioPagesConverter.java</span></div><h1>VisioPagesConverter.java</h1><pre class="source lang-java linenums">package com.taxonomy.visio.converter;
+
+import com.taxonomy.diagram.VisioDrawingOptions;
+import com.taxonomy.visio.VisioDocument;
+import com.taxonomy.visio.VisioPage;
+import com.taxonomy.visio.VisioPageLayout;
+import com.thoughtworks.xstream.converters.Converter;
+import com.thoughtworks.xstream.converters.MarshallingContext;
+import com.thoughtworks.xstream.converters.UnmarshallingContext;
+import com.thoughtworks.xstream.io.HierarchicalStreamReader;
+import com.thoughtworks.xstream.io.HierarchicalStreamWriter;
+
+import java.math.BigDecimal;
+import java.util.Map;
+
+/** Marshals the Visio page index part used inside a {@code .vsdx} package. */
+public class VisioPagesConverter implements Converter {
+    private final Map&lt;String, VisioPageLayout&gt; layouts;
+
+<span class="fc" id="L20">    public VisioPagesConverter() { this(Map.of()); }</span>
+
+<span class="fc" id="L22">    public VisioPagesConverter(Map&lt;String, VisioPageLayout&gt; layouts) { this.layouts = layouts; }</span>
+
+    private static final String VISIO_NS =
+            &quot;http://schemas.microsoft.com/office/visio/2012/main&quot;;
+    private static final String REL_NS =
+            &quot;http://schemas.openxmlformats.org/officeDocument/2006/relationships&quot;;
+    @Override
+    public boolean canConvert(Class type) {
+<span class="fc" id="L30">        return VisioDocument.class.equals(type);</span>
+    }
+
+    @Override
+    public void marshal(
+            Object source,
+            HierarchicalStreamWriter writer,
+            MarshallingContext context) {
+<span class="fc" id="L38">        VisioDocument document = (VisioDocument) source;</span>
+<span class="fc" id="L39">        writer.addAttribute(&quot;xmlns&quot;, VISIO_NS);</span>
+<span class="fc" id="L40">        writer.addAttribute(&quot;xmlns:r&quot;, REL_NS);</span>
+
+<span class="fc bfc" id="L42" title="All 2 branches covered.">        for (int index = 0; index &lt; document.getPages().size(); index++) {</span>
+<span class="fc" id="L43">            VisioPage page = document.getPages().get(index);</span>
+<span class="fc" id="L44">            writer.startNode(&quot;Page&quot;);</span>
+<span class="fc" id="L45">            writer.addAttribute(&quot;ID&quot;, page.getId());</span>
+<span class="fc" id="L46">            writer.addAttribute(&quot;Name&quot;, page.getName());</span>
+<span class="fc" id="L47">            writer.addAttribute(&quot;NameU&quot;, &quot;TaxonomyPage.&quot; + page.getId());</span>
+<span class="fc" id="L48">            writer.addAttribute(&quot;IsCustomName&quot;, &quot;1&quot;);</span>
+<span class="fc" id="L49">            writer.addAttribute(&quot;IsCustomNameU&quot;, &quot;1&quot;);</span>
+
+<span class="fc" id="L51">            writer.startNode(&quot;PageSheet&quot;);</span>
+<span class="fc" id="L52">            var layout = layouts.get(page.getId());</span>
+<span class="fc bfc" id="L53" title="All 2 branches covered.">            if (layout == null) layout = VisioPageLayout.of(page, document.getDrawingOptions());</span>
+<span class="fc" id="L54">            writeCell(writer, &quot;PageWidth&quot;, decimal(layout.width()));</span>
+<span class="fc" id="L55">            writeCell(writer, &quot;PageHeight&quot;, decimal(layout.height()));</span>
+<span class="fc" id="L56">            writeCell(writer, &quot;PageScale&quot;, &quot;1&quot;);</span>
+<span class="fc" id="L57">            writeCell(writer, &quot;DrawingScale&quot;, &quot;1&quot;);</span>
+<span class="fc bfc" id="L58" title="All 4 branches covered.">            if (document.getDrawingOptions() != null &amp;&amp; document.getDrawingOptions().mode() == VisioDrawingOptions.Mode.WALL) {</span>
+<span class="fc" id="L59">                writeCell(writer, &quot;PrintPageOrientation&quot;, &quot;2&quot;); // visPPOLandscape</span>
+<span class="fc" id="L60">                writeCell(writer, &quot;OnPage&quot;, &quot;1&quot;);</span>
+<span class="fc" id="L61">                writeCell(writer, &quot;PagesX&quot;, &quot;1&quot;);</span>
+<span class="fc" id="L62">                writeCell(writer, &quot;PagesY&quot;, &quot;1&quot;);</span>
+                // Windows DMPAPER codes. A0 and A1 media are printer-specific.
+<span class="fc bfc" id="L64" title="All 4 branches covered.">                switch (document.getDrawingOptions().paper()) {</span>
+<span class="fc" id="L65">                    case A4 -&gt; writeCell(writer, &quot;PaperKind&quot;, &quot;9&quot;);</span>
+<span class="fc" id="L66">                    case A3 -&gt; writeCell(writer, &quot;PaperKind&quot;, &quot;8&quot;);</span>
+<span class="fc" id="L67">                    case A2 -&gt; writeCell(writer, &quot;PaperKind&quot;, &quot;66&quot;);</span>
+                    case A1, A0 -&gt; { }
+                }
+            }
+<span class="fc" id="L71">            writer.endNode();</span>
+
+<span class="fc" id="L73">            writer.startNode(&quot;Rel&quot;);</span>
+<span class="fc" id="L74">            writer.addAttribute(&quot;r:id&quot;, &quot;rId&quot; + (index + 1));</span>
+<span class="fc" id="L75">            writer.endNode();</span>
+<span class="fc" id="L76">            writer.endNode();</span>
+        }
+<span class="fc" id="L78">    }</span>
+
+    @Override
+    public Object unmarshal(
+            HierarchicalStreamReader reader,
+            UnmarshallingContext context) {
+<span class="fc" id="L84">        throw new UnsupportedOperationException(</span>
+                &quot;VisioPagesConverter does not support unmarshaling&quot;);
+    }
+
+    private static void writeCell(
+            HierarchicalStreamWriter writer,
+            String name,
+            String value) {
+<span class="fc" id="L92">        writer.startNode(&quot;Cell&quot;);</span>
+<span class="fc" id="L93">        writer.addAttribute(&quot;N&quot;, name);</span>
+<span class="fc" id="L94">        writer.addAttribute(&quot;V&quot;, value);</span>
+<span class="fc" id="L95">        writer.endNode();</span>
+<span class="fc" id="L96">    }</span>
+
+    private static String decimal(double value) {
+<span class="fc" id="L99">        return BigDecimal.valueOf(value).stripTrailingZeros().toPlainString();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

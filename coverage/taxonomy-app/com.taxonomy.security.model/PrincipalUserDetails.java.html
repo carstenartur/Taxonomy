@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PrincipalUserDetails.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.security.model</a> &gt; <span class="el_source">PrincipalUserDetails.java</span></div><h1>PrincipalUserDetails.java</h1><pre class="source lang-java linenums">package com.taxonomy.security.model;
+
+import com.taxonomy.backup.PrincipalId;
+import org.springframework.security.core.CredentialsContainer;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.userdetails.User;
+import org.springframework.security.core.userdetails.UserDetails;
+
+import java.util.Collection;
+import java.util.UUID;
+
+/** Keeps the login name as display data while keying Spring's session registry by the verified principal. */
+public final class PrincipalUserDetails implements UserDetails, CredentialsContainer, StablePrincipal {
+    private static final long serialVersionUID = 1L;
+    private final User login;
+    private final UUID stableId;
+
+    public PrincipalUserDetails(PrincipalId id, String username, String password, boolean enabled,
+<span class="fc" id="L19">                                Collection&lt;? extends GrantedAuthority&gt; authorities) {</span>
+<span class="fc" id="L20">        login = new User(username, password, enabled, true, true, true, authorities);</span>
+<span class="fc" id="L21">        stableId = id.value();</span>
+<span class="fc" id="L22">    }</span>
+
+<span class="fc" id="L24">    @Override public PrincipalId principalId() { return new PrincipalId(stableId); }</span>
+<span class="fc" id="L25">    @Override public String getUsername() { return login.getUsername(); }</span>
+<span class="fc" id="L26">    @Override public String getPassword() { return login.getPassword(); }</span>
+<span class="fc" id="L27">    @Override public boolean isEnabled() { return login.isEnabled(); }</span>
+<span class="fc" id="L28">    @Override public Collection&lt;GrantedAuthority&gt; getAuthorities() { return login.getAuthorities(); }</span>
+<span class="fc" id="L29">    @Override public void eraseCredentials() { login.eraseCredentials(); }</span>
+
+    @Override
+    public boolean equals(Object other) {
+<span class="fc bfc" id="L33" title="All 4 branches covered.">        return other instanceof PrincipalUserDetails principal &amp;&amp; stableId.equals(principal.stableId);</span>
+    }
+
+<span class="fc" id="L36">    @Override public int hashCode() { return stableId.hashCode(); }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

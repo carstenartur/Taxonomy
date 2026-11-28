@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RetainedCataloguePreview.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-knowledge</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.catalog.snapshot</a> &gt; <span class="el_source">RetainedCataloguePreview.java</span></div><h1>RetainedCataloguePreview.java</h1><pre class="source lang-java linenums">package com.taxonomy.catalog.snapshot;
+
+import com.taxonomy.catalog.provenance.CatalogueSourceJournal;
+import com.taxonomy.dto.CatalogueAnalysisPreview.Association;
+import com.taxonomy.dto.CatalogueAnalysisPreview.Node;
+import com.taxonomy.dto.CatalogueAnalysisPreview.Ranking;
+import org.springframework.stereotype.Service;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Set;
+
+/** Reopens the retained archive for every caller. Only derived, requirement-independent data are shared. */
+@Service
+public class RetainedCataloguePreview {
+    private final CatalogueSnapshotService catalogues;
+    private final SemanticCataloguePreview semantic;
+<span class="fc" id="L19">    private final LinkedHashMap&lt;CatalogueSourceJournal.Snapshot, CataloguePreviewIndex&gt; indexes =</span>
+            new LinkedHashMap&lt;&gt;(4, 0.75f, true);
+
+<span class="fc" id="L22">    public RetainedCataloguePreview(CatalogueSnapshotService catalogues, SemanticCataloguePreview semantic) {</span>
+<span class="fc" id="L23">        this.catalogues = catalogues;</span>
+<span class="fc" id="L24">        this.semantic = semantic;</span>
+<span class="fc" id="L25">    }</span>
+
+    public Selection open(CatalogueSourceIdentity source, String revision) {
+        // A warm index must still pass the archive's availability and integrity checks.
+<span class="fc" id="L29">        var roots = catalogues.captureRevision(source, revision, Set.of());</span>
+<span class="pc bpc" id="L30" title="2 of 4 branches missed.">        if (roots.isEmpty() || !revision.equals(roots.getFirst().catalogueProvenance().id())) {</span>
+<span class="nc" id="L31">            throw new IllegalStateException(&quot;The retained catalogue does not match the selected revision&quot;);</span>
+        }
+<span class="fc" id="L33">        return new Selection(index(roots), roots);</span>
+    }
+
+    private synchronized CataloguePreviewIndex index(List&lt;RootCatalogueSnapshot&gt; roots) {
+<span class="fc" id="L37">        var generation = roots.getFirst().catalogueProvenance();</span>
+<span class="fc" id="L38">        var result = indexes.get(generation);</span>
+<span class="fc bfc" id="L39" title="All 2 branches covered.">        if (result == null) {</span>
+<span class="fc" id="L40">            result = new CataloguePreviewIndex(roots);</span>
+<span class="pc bpc" id="L41" title="1 of 2 branches missed.">            if (indexes.size() == 2) indexes.pollFirstEntry();</span>
+<span class="fc" id="L42">            indexes.put(generation, result);</span>
+        }
+<span class="fc" id="L44">        return result;</span>
+    }
+
+    public final class Selection {
+        private final CataloguePreviewIndex index;
+        private final List&lt;RootCatalogueSnapshot&gt; snapshot;
+
+<span class="fc" id="L51">        private Selection(CataloguePreviewIndex index, List&lt;RootCatalogueSnapshot&gt; snapshot) {</span>
+<span class="fc" id="L52">            this.index = index;</span>
+<span class="fc" id="L53">            this.snapshot = snapshot;</span>
+<span class="fc" id="L54">        }</span>
+
+        public void prepare() {
+<span class="fc" id="L57">            semantic.prepare(index, snapshot);</span>
+<span class="fc" id="L58">        }</span>
+
+        public Ranking query(String businessText, Set&lt;String&gt; roots) {
+<span class="fc" id="L61">            var semanticResult = semantic.query(index, snapshot, businessText, roots);</span>
+<span class="fc" id="L62">            var result = semanticResult.orElseGet(() -&gt; index.query(businessText, roots));</span>
+<span class="fc" id="L63">            var nodes = new ArrayList&lt;Node&gt;();</span>
+<span class="fc" id="L64">            result.ancestors().forEach(match -&gt; nodes.add(node(match, null)));</span>
+<span class="fc" id="L65">            result.matches().forEach(match -&gt; nodes.add(node(match, match.score())));</span>
+<span class="fc" id="L66">            var associations = result.associations().stream()</span>
+<span class="pc" id="L67">                    .map(pair -&gt; new Association(pair.sourceCode(), pair.targetCode(), pair.sharedTerms())).toList();</span>
+<span class="fc bfc" id="L68" title="All 2 branches covered.">            return new Ranking(semanticResult.isPresent() ? &quot;CATALOGUE_ONNX&quot; : &quot;CATALOGUE_LEXICAL&quot;,</span>
+<span class="fc" id="L69">                    List.copyOf(nodes), associations);</span>
+        }
+
+        private static Node node(CataloguePreviewIndex.Match match, Double score) {
+<span class="fc" id="L73">            return new Node(match.code(), match.parentCode(), match.root(), match.nameEn(), match.nameDe(), score,</span>
+<span class="pc bpc" id="L74" title="1 of 4 branches missed.">                    match.analysisRole(), score != null &amp;&amp; match.architectureCandidate(), match.sourceOrder());</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

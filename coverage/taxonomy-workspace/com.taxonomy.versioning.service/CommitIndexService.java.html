@@ -1,0 +1,515 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>CommitIndexService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.versioning.service</a> &gt; <span class="el_source">CommitIndexService.java</span></div><h1>CommitIndexService.java</h1><pre class="source lang-java linenums">package com.taxonomy.versioning.service;
+
+import com.taxonomy.versioning.model.ArchitectureCommitIndex;
+import com.taxonomy.versioning.repository.ArchitectureCommitIndexRepository;
+import com.taxonomy.dsl.parser.DslTokenizer;
+import com.taxonomy.workspace.storage.DslCommit;
+import com.taxonomy.workspace.storage.DslGitRepository;
+import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
+import com.taxonomy.dto.ElementHistoryAggregation;
+import com.taxonomy.dto.RepositoryReadiness;
+import com.taxonomy.error.SearchUnavailableException;
+import com.taxonomy.workspace.service.RepositoryContext;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
+import org.hibernate.search.engine.search.predicate.SearchPredicate;
+import org.hibernate.search.engine.search.predicate.dsl.SearchPredicateFactory;
+import org.hibernate.search.mapper.orm.Search;
+import org.hibernate.search.mapper.orm.session.SearchSession;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.TransientDataAccessResourceException;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.io.IOException;
+import java.time.Instant;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Locale;
+import java.util.Set;
+
+/**
+ * Populates and queries repository-scoped commit-history projections.
+ *
+ * &lt;p&gt;JGit remains authoritative. Every relational row and every Hibernate Search
+ * query uses the exact same {@link RepositoryContext}; a null workspace means
+ * central history only inside the selected repository, never a global index.&lt;/p&gt;
+ */
+@Service
+public class CommitIndexService {
+
+<span class="fc" id="L44">    private static final Logger log = LoggerFactory.getLogger(CommitIndexService.class);</span>
+
+    private final DslGitRepositoryFactory repositoryFactory;
+    private final ArchitectureCommitIndexRepository indexRepository;
+<span class="fc" id="L48">    private final DslTokenizer tokenizer = new DslTokenizer();</span>
+
+    @PersistenceContext
+    private EntityManager entityManager;
+
+    @Autowired(required = false)
+    private CommitIndexSearchLifecycle searchLifecycle;
+
+    public CommitIndexService(
+            DslGitRepositoryFactory repositoryFactory,
+<span class="fc" id="L58">            ArchitectureCommitIndexRepository indexRepository) {</span>
+<span class="fc" id="L59">        this.repositoryFactory = repositoryFactory;</span>
+<span class="fc" id="L60">        this.indexRepository = indexRepository;</span>
+<span class="fc" id="L61">    }</span>
+
+    /** Index every commit not yet projected for this exact tenant and branch. */
+    @Transactional
+    public int indexBranch(String branch, RepositoryContext context) {
+<span class="fc" id="L66">        requireSearchMutationAvailable();</span>
+<span class="fc" id="L67">        TenantScope scope = TenantScope.from(context);</span>
+<span class="fc" id="L68">        String normalizedBranch = requireText(branch, &quot;branch&quot;);</span>
+        try {
+<span class="fc" id="L70">            DslGitRepository repository = repositoryFactory.resolveRepository(context);</span>
+<span class="fc" id="L71">            List&lt;DslCommit&gt; commits = repository.getDslHistory(normalizedBranch);</span>
+<span class="fc" id="L72">            return indexCommits(repository, commits, normalizedBranch, scope);</span>
+<span class="fc" id="L73">        } catch (IOException exception) {</span>
+<span class="fc" id="L74">            throw indexingFailure(scope, normalizedBranch, exception);</span>
+        }
+    }
+
+    /**
+     * Rebuild one branch projection without touching another repository,
+     * workspace or branch.
+     *
+     * &lt;p&gt;The authoritative history is opened before the old projection is
+     * deleted. Any later JGit failure propagates and rolls back the surrounding
+     * transaction, so a failed rebuild cannot commit an empty replacement.&lt;/p&gt;
+     */
+    @Transactional
+    public int rebuildBranch(String branch, RepositoryContext context) {
+<span class="fc" id="L88">        requireSearchMutationAvailable();</span>
+<span class="fc" id="L89">        TenantScope scope = TenantScope.from(context);</span>
+<span class="fc" id="L90">        String normalizedBranch = requireText(branch, &quot;branch&quot;);</span>
+        try {
+<span class="fc" id="L92">            DslGitRepository repository = repositoryFactory.resolveRepository(context);</span>
+<span class="fc" id="L93">            List&lt;DslCommit&gt; commits = repository.getDslHistory(normalizedBranch);</span>
+<span class="fc bfc" id="L94" title="All 2 branches covered.">            if (commits.isEmpty()) {</span>
+<span class="fc" id="L95">                throw new IllegalStateException(&quot;Cannot rebuild commit index for missing branch &quot; + normalizedBranch);</span>
+            }
+<span class="fc" id="L97">            String capturedHead = commits.getFirst().commitId();</span>
+<span class="fc" id="L98">            repository.verifyExpectedHead(normalizedBranch, capturedHead);</span>
+<span class="fc" id="L99">            List&lt;ArchitectureCommitIndex&gt; existing = indexRepository</span>
+<span class="fc" id="L100">                    .findByRepositoryIdAndWorkspaceScopeKeyAndBranchOrderByCommitTimestampDesc(</span>
+<span class="fc" id="L101">                            scope.repositoryId(),</span>
+<span class="fc" id="L102">                            scope.workspaceScopeKey(),</span>
+                            normalizedBranch);
+<span class="pc bpc" id="L104" title="1 of 2 branches missed.">            if (!existing.isEmpty()) {</span>
+<span class="nc" id="L105">                indexRepository.deleteAll(existing);</span>
+<span class="nc" id="L106">                entityManager.flush();</span>
+            }
+<span class="fc" id="L108">            int indexed = indexCommits(repository, commits, normalizedBranch, scope);</span>
+<span class="fc" id="L109">            repository.verifyExpectedHead(normalizedBranch, capturedHead);</span>
+<span class="fc" id="L110">            return indexed;</span>
+<span class="fc" id="L111">        } catch (IOException exception) {</span>
+<span class="fc" id="L112">            throw indexingFailure(scope, normalizedBranch, exception);</span>
+        }
+    }
+
+    /** Rebuild only the admitted Git authority, validating it on both sides of the projection write. */
+    @Transactional
+    public int applyCapturedBranch(String branch, RepositoryContext context, String expected, boolean rebuild) {
+<span class="fc" id="L119">        TenantScope scope = TenantScope.from(context);</span>
+<span class="fc" id="L120">        DslGitRepository repository = repositoryFactory.resolveRepository(context);</span>
+        try {
+<span class="fc" id="L122">            repository.verifyExpectedHead(branch, expected);</span>
+<span class="fc bfc" id="L123" title="All 2 branches covered.">            int count = rebuild ? rebuildBranch(branch, context) : indexBranch(branch, context);</span>
+<span class="fc" id="L124">            repository.verifyExpectedHead(branch, expected);</span>
+<span class="fc" id="L125">            return count;</span>
+<span class="fc" id="L126">        } catch (IOException exception) {</span>
+<span class="fc" id="L127">            throw indexingFailure(scope, branch, exception);</span>
+        }
+    }
+
+    /** A retry can remove only rows that already existed in this scope when the user requested the purge. */
+    @Transactional
+    public int purgeCaptured(RepositoryContext context, String operationId) {
+<span class="fc" id="L134">        requireSearchMutationAvailable();</span>
+<span class="fc" id="L135">        TenantScope scope = TenantScope.from(context);</span>
+<span class="fc" id="L136">        List&lt;ArchitectureCommitIndex&gt; rows = entityManager.createQuery(&quot;&quot;&quot;</span>
+                select projection from ArchitectureCommitIndex projection
+                where projection.repositoryId=:repository and projection.workspaceScopeKey=:workspace
+                and exists (select target.projectionId from HistoryIndexPurgeTarget target
+                            where target.operationId=:operation and target.projectionId=projection.id)
+                &quot;&quot;&quot;, ArchitectureCommitIndex.class)
+<span class="fc" id="L142">                .setParameter(&quot;operation&quot;, operationId)</span>
+<span class="fc" id="L143">                .setParameter(&quot;repository&quot;, scope.repositoryId())</span>
+<span class="fc" id="L144">                .setParameter(&quot;workspace&quot;, scope.workspaceScopeKey())</span>
+<span class="fc" id="L145">                .getResultList();</span>
+<span class="fc" id="L146">        rows.forEach(entityManager::remove);</span>
+<span class="fc" id="L147">        entityManager.flush();</span>
+<span class="fc" id="L148">        return rows.size();</span>
+    }
+
+    /** Delete only the selected central/workspace history projection. */
+    @Transactional
+    public int purge(RepositoryContext context) {
+<span class="fc" id="L154">        requireSearchMutationAvailable();</span>
+<span class="fc" id="L155">        TenantScope scope = TenantScope.from(context);</span>
+<span class="fc" id="L156">        List&lt;ArchitectureCommitIndex&gt; existing = indexRepository</span>
+<span class="fc" id="L157">                .findByRepositoryIdAndWorkspaceScopeKey(</span>
+<span class="fc" id="L158">                        scope.repositoryId(), scope.workspaceScopeKey());</span>
+<span class="pc bpc" id="L159" title="1 of 2 branches missed.">        if (existing.isEmpty()) {</span>
+<span class="nc" id="L160">            return 0;</span>
+        }
+<span class="fc" id="L162">        indexRepository.deleteAll(existing);</span>
+<span class="fc" id="L163">        entityManager.flush();</span>
+<span class="fc" id="L164">        log.info(</span>
+                &quot;Purged {} commit-index row(s) for repository={} workspace={}&quot;,
+<span class="fc" id="L166">                existing.size(),</span>
+<span class="fc" id="L167">                scope.repositoryId(),</span>
+<span class="fc" id="L168">                scope.workspaceScopeKey());</span>
+<span class="fc" id="L169">        return existing.size();</span>
+    }
+
+    @Transactional(readOnly = true)
+    public List&lt;ArchitectureCommitIndex&gt; search(
+            String query,
+            RepositoryContext context) {
+<span class="fc" id="L176">        return search(query, 50, context);</span>
+    }
+
+    /** Full-text search restricted to the exact selected repository/workspace. */
+    @Transactional(readOnly = true)
+    public List&lt;ArchitectureCommitIndex&gt; search(
+            String query,
+            int maxResults,
+            RepositoryContext context) {
+<span class="fc" id="L185">        requireSearchReady();</span>
+<span class="fc bfc" id="L186" title="All 6 branches covered.">        if (query == null || query.isBlank() || maxResults &lt;= 0) {</span>
+<span class="fc" id="L187">            return Collections.emptyList();</span>
+        }
+<span class="fc" id="L189">        TenantScope scope = TenantScope.from(context);</span>
+        try {
+<span class="fc" id="L191">            return textMatches(Search.session(entityManager), scope, query, maxResults);</span>
+<span class="fc" id="L192">        } catch (RuntimeException exception) {</span>
+<span class="fc" id="L193">            throw searchUnavailable(scope, exception);</span>
+        }
+    }
+
+    /** Search across indexed branches only after the selected branch head is searchable. */
+    @Transactional(readOnly = true)
+    public VersionedMatches searchVersioned(String query, int maxResults, RepositoryContext context, String head) {
+<span class="fc" id="L200">        requireSearchReady();</span>
+<span class="fc" id="L201">        TenantScope scope = TenantScope.from(context);</span>
+<span class="fc" id="L202">        String branch = context.branch();</span>
+        try {
+<span class="fc" id="L204">            SearchSession session = Search.session(entityManager);</span>
+<span class="fc" id="L205">            Long projectionId = headProjectionId(scope, branch, head);</span>
+<span class="fc bfc" id="L206" title="All 2 branches covered.">            if (projectionId == null) {</span>
+<span class="fc" id="L207">                boolean indexed = indexRepository.existsByRepositoryIdAndWorkspaceScopeKeyAndBranch(</span>
+<span class="fc" id="L208">                        scope.repositoryId(), scope.workspaceScopeKey(), branch);</span>
+<span class="fc bfc" id="L209" title="All 2 branches covered.">                return new VersionedMatches(indexed ? RepositoryReadiness.STALE : RepositoryReadiness.MISSING, List.of());</span>
+            }
+<span class="fc bfc" id="L211" title="All 2 branches covered.">            if (!isHeadSearchable(session, scope, branch, head, projectionId)) {</span>
+<span class="fc" id="L212">                return new VersionedMatches(RepositoryReadiness.STALE, List.of());</span>
+            }
+<span class="fc" id="L214">            var hits = textMatches(session, scope, query, maxResults);</span>
+            // Maintenance can replace the database row or invalidate the search index independently.
+<span class="pc bpc" id="L216" title="1 of 2 branches missed.">            if (!projectionId.equals(headProjectionId(scope, branch, head))</span>
+<span class="pc bpc" id="L217" title="1 of 2 branches missed.">                    || !isHeadSearchable(session, scope, branch, head, projectionId)) {</span>
+<span class="nc" id="L218">                return new VersionedMatches(RepositoryReadiness.STALE, List.of());</span>
+            }
+<span class="fc" id="L220">            return new VersionedMatches(RepositoryReadiness.FRESH, hits);</span>
+<span class="fc" id="L221">        } catch (RuntimeException exception) {</span>
+<span class="fc" id="L222">            throw searchUnavailable(scope, exception);</span>
+        }
+    }
+
+<span class="fc" id="L226">    public record VersionedMatches(RepositoryReadiness readiness, List&lt;ArchitectureCommitIndex&gt; hits) { }</span>
+
+    private Long headProjectionId(TenantScope scope, String branch, String head) {
+<span class="fc" id="L229">        return indexRepository.findByRepositoryIdAndWorkspaceScopeKeyAndBranchAndCommitId(</span>
+<span class="fc" id="L230">                scope.repositoryId(), scope.workspaceScopeKey(), branch, head)</span>
+<span class="fc" id="L231">                .map(ArchitectureCommitIndex::getId).orElse(null);</span>
+    }
+
+    private boolean isHeadSearchable(SearchSession session, TenantScope scope, String branch, String head, Long projectionId) {
+<span class="fc" id="L235">        return session.search(ArchitectureCommitIndex.class)</span>
+<span class="fc" id="L236">                .where(f -&gt; f.bool().filter(inScope(f, scope)).filter(f.id().matching(projectionId))</span>
+<span class="fc" id="L237">                        .filter(f.match().field(&quot;branch&quot;).matching(branch))</span>
+<span class="fc" id="L238">                        .filter(f.match().field(&quot;commitId&quot;).matching(head)))</span>
+<span class="fc bfc" id="L239" title="All 2 branches covered.">                .fetchTotalHitCount() == 1;</span>
+    }
+
+    private List&lt;ArchitectureCommitIndex&gt; textMatches(SearchSession session, TenantScope scope, String query, int maxResults) {
+<span class="pc bpc" id="L243" title="3 of 6 branches missed.">        if (query == null || query.isBlank() || maxResults &lt;= 0) {</span>
+<span class="nc" id="L244">            return Collections.emptyList();</span>
+        }
+<span class="fc" id="L246">        String lower = query.toLowerCase(Locale.ROOT);</span>
+<span class="fc" id="L247">        return session.search(ArchitectureCommitIndex.class)</span>
+<span class="fc" id="L248">                .where(f -&gt; f.bool().must(inScope(f, scope))</span>
+<span class="fc" id="L249">                        .must(f.bool()</span>
+<span class="fc" id="L250">                                .should(f.match().field(&quot;tokenizedChangeText&quot;).matching(lower).boost(1.0f))</span>
+<span class="fc" id="L251">                                .should(f.match().field(&quot;message&quot;).matching(query).boost(0.5f))</span>
+<span class="fc" id="L252">                                .should(f.match().field(&quot;affectedElementIds&quot;).matching(lower).boost(3.0f))</span>
+<span class="fc" id="L253">                                .should(f.match().field(&quot;affectedRelationIds&quot;).matching(lower).boost(2.0f))))</span>
+<span class="fc" id="L254">                .sort(f -&gt; f.score())</span>
+<span class="fc" id="L255">                .fetchHits(maxResults);</span>
+    }
+
+    private static SearchPredicate inScope(SearchPredicateFactory factory, TenantScope scope) {
+<span class="fc" id="L259">        return factory.bool()</span>
+<span class="fc" id="L260">                .must(factory.match().field(&quot;repositoryId&quot;).matching(scope.repositoryId()))</span>
+<span class="fc bfc" id="L261" title="All 2 branches covered.">                .must(scope.workspaceId() == null</span>
+<span class="fc" id="L262">                        ? factory.not(factory.exists().field(&quot;workspaceId&quot;))</span>
+<span class="fc" id="L263">                        : factory.match().field(&quot;workspaceId&quot;).matching(scope.workspaceId()))</span>
+<span class="fc" id="L264">                .toPredicate();</span>
+    }
+
+    private SearchUnavailableException searchUnavailable(TenantScope scope, RuntimeException exception) {
+<span class="fc" id="L268">        log.error(&quot;Commit history search failed for repository={} workspace={}: {}&quot;,</span>
+<span class="fc" id="L269">                scope.repositoryId(), scope.workspaceScopeKey(), exception.getClass().getSimpleName());</span>
+<span class="fc" id="L270">        return new SearchUnavailableException();</span>
+    }
+
+    @Transactional(readOnly = true)
+    public List&lt;ArchitectureCommitIndex&gt; findByElement(
+            String elementId,
+            RepositoryContext context) {
+<span class="fc" id="L277">        requireSearchReady();</span>
+<span class="pc bpc" id="L278" title="1 of 4 branches missed.">        if (elementId == null || elementId.isBlank()) {</span>
+<span class="fc" id="L279">            return Collections.emptyList();</span>
+        }
+<span class="fc" id="L281">        TenantScope scope = TenantScope.from(context);</span>
+        try {
+<span class="fc" id="L283">            SearchSession session = Search.session(entityManager);</span>
+<span class="fc" id="L284">            String normalizedElementId = elementId.toLowerCase(Locale.ROOT);</span>
+<span class="fc" id="L285">            return session.search(ArchitectureCommitIndex.class)</span>
+<span class="fc" id="L286">                    .where(f -&gt; f.bool()</span>
+<span class="fc" id="L287">                            .must(f.match()</span>
+<span class="fc" id="L288">                                    .field(&quot;repositoryId&quot;)</span>
+<span class="fc" id="L289">                                    .matching(scope.repositoryId()))</span>
+<span class="fc bfc" id="L290" title="All 2 branches covered.">                            .must(scope.workspaceId() == null</span>
+<span class="fc" id="L291">                                    ? f.not(f.exists().field(&quot;workspaceId&quot;))</span>
+<span class="fc" id="L292">                                    : f.match().field(&quot;workspaceId&quot;).matching(scope.workspaceId()))</span>
+<span class="fc" id="L293">                            .must(f.bool()</span>
+<span class="fc" id="L294">                                    .should(f.match()</span>
+<span class="fc" id="L295">                                            .field(&quot;affectedElementIds&quot;)</span>
+<span class="fc" id="L296">                                            .matching(normalizedElementId)</span>
+<span class="fc" id="L297">                                            .boost(3.0f))</span>
+<span class="fc" id="L298">                                    .should(f.match()</span>
+<span class="fc" id="L299">                                            .field(&quot;tokenizedChangeText&quot;)</span>
+<span class="fc" id="L300">                                            .matching(normalizedElementId)</span>
+<span class="fc" id="L301">                                            .boost(1.0f))))</span>
+<span class="fc" id="L302">                    .sort(f -&gt; f.score())</span>
+<span class="fc" id="L303">                    .fetchHits(50);</span>
+<span class="fc" id="L304">        } catch (RuntimeException exception) {</span>
+<span class="fc" id="L305">            log.error(</span>
+                    &quot;Hibernate Search element history failed for repository={} workspace={}: {}&quot;,
+<span class="fc" id="L307">                    scope.repositoryId(),</span>
+<span class="fc" id="L308">                    scope.workspaceScopeKey(),</span>
+<span class="fc" id="L309">                    exception.getClass().getSimpleName());</span>
+<span class="fc" id="L310">            throw new SearchUnavailableException();</span>
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public List&lt;ArchitectureCommitIndex&gt; findByRelation(
+            String relationKey,
+            RepositoryContext context) {
+<span class="fc" id="L318">        requireSearchReady();</span>
+<span class="pc bpc" id="L319" title="1 of 4 branches missed.">        if (relationKey == null || relationKey.isBlank()) {</span>
+<span class="fc" id="L320">            return Collections.emptyList();</span>
+        }
+<span class="fc" id="L322">        TenantScope scope = TenantScope.from(context);</span>
+        try {
+<span class="fc" id="L324">            SearchSession session = Search.session(entityManager);</span>
+<span class="fc" id="L325">            String normalizedRelationKey = relationKey.toLowerCase(Locale.ROOT);</span>
+<span class="fc" id="L326">            return session.search(ArchitectureCommitIndex.class)</span>
+<span class="fc" id="L327">                    .where(f -&gt; f.bool()</span>
+<span class="fc" id="L328">                            .must(f.match()</span>
+<span class="fc" id="L329">                                    .field(&quot;repositoryId&quot;)</span>
+<span class="fc" id="L330">                                    .matching(scope.repositoryId()))</span>
+<span class="pc bpc" id="L331" title="1 of 2 branches missed.">                            .must(scope.workspaceId() == null</span>
+<span class="fc" id="L332">                                    ? f.not(f.exists().field(&quot;workspaceId&quot;))</span>
+<span class="nc" id="L333">                                    : f.match().field(&quot;workspaceId&quot;).matching(scope.workspaceId()))</span>
+<span class="fc" id="L334">                            .must(f.bool()</span>
+<span class="fc" id="L335">                                    .should(f.match()</span>
+<span class="fc" id="L336">                                            .field(&quot;affectedRelationIds&quot;)</span>
+<span class="fc" id="L337">                                            .matching(normalizedRelationKey)</span>
+<span class="fc" id="L338">                                            .boost(3.0f))</span>
+<span class="fc" id="L339">                                    .should(f.match()</span>
+<span class="fc" id="L340">                                            .field(&quot;tokenizedChangeText&quot;)</span>
+<span class="fc" id="L341">                                            .matching(normalizedRelationKey)</span>
+<span class="fc" id="L342">                                            .boost(1.0f))))</span>
+<span class="fc" id="L343">                    .sort(f -&gt; f.score())</span>
+<span class="fc" id="L344">                    .fetchHits(50);</span>
+<span class="fc" id="L345">        } catch (RuntimeException exception) {</span>
+<span class="fc" id="L346">            log.error(</span>
+                    &quot;Hibernate Search relation history failed for repository={} workspace={}: {}&quot;,
+<span class="fc" id="L348">                    scope.repositoryId(),</span>
+<span class="fc" id="L349">                    scope.workspaceScopeKey(),</span>
+<span class="fc" id="L350">                    exception.getClass().getSimpleName());</span>
+<span class="fc" id="L351">            throw new SearchUnavailableException();</span>
+        }
+    }
+
+    /** Aggregate element history and volatility inside one tenant only. */
+    @Transactional(readOnly = true)
+    public ElementHistoryAggregation aggregateElementHistory(
+            String elementId,
+            RepositoryContext context) {
+<span class="fc" id="L360">        TenantScope scope = TenantScope.from(context);</span>
+<span class="fc" id="L361">        List&lt;ArchitectureCommitIndex&gt; commits = findByElement(elementId, context);</span>
+<span class="pc bpc" id="L362" title="1 of 2 branches missed.">        if (commits.isEmpty()) {</span>
+<span class="nc" id="L363">            return null;</span>
+        }
+
+<span class="fc" id="L366">        long totalCommits = indexRepository.countByRepositoryIdAndWorkspaceScopeKey(</span>
+<span class="fc" id="L367">                scope.repositoryId(), scope.workspaceScopeKey());</span>
+
+<span class="fc" id="L369">        Instant firstSeen = commits.stream()</span>
+<span class="fc" id="L370">                .map(ArchitectureCommitIndex::getCommitTimestamp)</span>
+<span class="fc" id="L371">                .min(Comparator.naturalOrder())</span>
+<span class="fc" id="L372">                .orElse(null);</span>
+<span class="fc" id="L373">        Instant lastSeen = commits.stream()</span>
+<span class="fc" id="L374">                .map(ArchitectureCommitIndex::getCommitTimestamp)</span>
+<span class="fc" id="L375">                .max(Comparator.naturalOrder())</span>
+<span class="fc" id="L376">                .orElse(null);</span>
+
+<span class="fc" id="L378">        List&lt;String&gt; recentMessages = commits.stream()</span>
+<span class="fc" id="L379">                .sorted(Comparator.comparing(</span>
+<span class="fc" id="L380">                        ArchitectureCommitIndex::getCommitTimestamp).reversed())</span>
+<span class="fc" id="L381">                .limit(5)</span>
+<span class="fc" id="L382">                .map(ArchitectureCommitIndex::getMessage)</span>
+<span class="fc" id="L383">                .toList();</span>
+
+<span class="fc" id="L385">        double volatility = ElementHistoryAggregation.computeVolatility(</span>
+<span class="fc" id="L386">                commits.size(), Math.toIntExact(totalCommits));</span>
+
+<span class="fc" id="L388">        return new ElementHistoryAggregation(</span>
+                elementId,
+                firstSeen,
+                lastSeen,
+<span class="fc" id="L392">                commits.size(),</span>
+                volatility,
+                recentMessages);
+    }
+
+    private int indexCommits(
+            DslGitRepository repository,
+            List&lt;DslCommit&gt; commits,
+            String branch,
+            TenantScope scope) throws IOException {
+<span class="fc" id="L402">        int indexed = 0;</span>
+<span class="fc bfc" id="L403" title="All 2 branches covered.">        for (DslCommit commit : commits) {</span>
+<span class="fc" id="L404">            if (indexRepository</span>
+<span class="pc bpc" id="L405" title="1 of 2 branches missed.">                    .existsByRepositoryIdAndWorkspaceScopeKeyAndBranchAndCommitId(</span>
+<span class="fc" id="L406">                            scope.repositoryId(),</span>
+<span class="fc" id="L407">                            scope.workspaceScopeKey(),</span>
+                            branch,
+<span class="fc" id="L409">                            commit.commitId())) {</span>
+<span class="nc" id="L410">                continue;</span>
+            }
+
+<span class="fc" id="L413">            String dslText = repository.getDslAtCommit(commit.commitId());</span>
+<span class="pc bpc" id="L414" title="1 of 2 branches missed.">            if (dslText == null) {</span>
+<span class="nc" id="L415">                continue;</span>
+            }
+
+<span class="fc" id="L418">            ArchitectureCommitIndex entry = new ArchitectureCommitIndex();</span>
+<span class="fc" id="L419">            entry.setRepositoryId(scope.repositoryId());</span>
+<span class="fc" id="L420">            entry.setWorkspaceId(scope.workspaceId());</span>
+<span class="fc" id="L421">            entry.setCommitId(commit.commitId());</span>
+<span class="fc" id="L422">            entry.setAuthor(commit.author());</span>
+<span class="fc" id="L423">            entry.setCommitTimestamp(commit.timestamp());</span>
+<span class="fc" id="L424">            entry.setMessage(commit.message());</span>
+<span class="fc" id="L425">            entry.setBranch(branch);</span>
+<span class="fc" id="L426">            entry.setChangedFiles(&quot;architecture.taxdsl&quot;);</span>
+<span class="fc" id="L427">            entry.setTokenizedChangeText(tokenizer.tokenize(dslText));</span>
+
+<span class="fc" id="L429">            Set&lt;String&gt; elementIds = tokenizer.extractElementIds(dslText);</span>
+<span class="fc" id="L430">            entry.setAffectedElementIds(String.join(&quot;,&quot;, elementIds));</span>
+
+<span class="fc" id="L432">            Set&lt;String&gt; relationKeys = tokenizer.extractRelationKeys(dslText);</span>
+<span class="fc" id="L433">            entry.setAffectedRelationIds(String.join(&quot;;&quot;, relationKeys));</span>
+
+<span class="fc" id="L435">            indexRepository.save(entry);</span>
+<span class="fc" id="L436">            indexed++;</span>
+<span class="fc" id="L437">        }</span>
+
+<span class="pc bpc" id="L439" title="1 of 2 branches missed.">        if (indexed &gt; 0) {</span>
+<span class="fc" id="L440">            log.info(</span>
+                    &quot;Indexed {} new commit(s) for repository={} workspace={} branch={}&quot;,
+<span class="fc" id="L442">                    indexed,</span>
+<span class="fc" id="L443">                    scope.repositoryId(),</span>
+<span class="fc" id="L444">                    scope.workspaceScopeKey(),</span>
+                    branch);
+        }
+<span class="fc" id="L447">        return indexed;</span>
+    }
+
+    private IllegalStateException indexingFailure(
+            TenantScope scope,
+            String branch,
+            IOException exception) {
+<span class="fc" id="L454">        log.error(</span>
+                &quot;Failed to index repository={} workspace={} branch={}&quot;,
+<span class="fc" id="L456">                scope.repositoryId(),</span>
+<span class="fc" id="L457">                scope.workspaceScopeKey(),</span>
+                branch,
+                exception);
+<span class="fc" id="L460">        return new IllegalStateException(</span>
+                &quot;Unable to read authoritative JGit history for repository=&quot;
+<span class="fc" id="L462">                        + scope.repositoryId()</span>
+<span class="fc" id="L463">                        + &quot;, workspace=&quot; + scope.workspaceScopeKey()</span>
+                        + &quot;, branch=&quot; + branch,
+                exception);
+    }
+
+    boolean canRecoverHistory() {
+<span class="fc bfc" id="L469" title="All 4 branches covered.">        return searchLifecycle == null || switch (searchLifecycle.getState()) {</span>
+<span class="fc" id="L470">            case READY, FAILED -&gt; true;</span>
+<span class="fc" id="L471">            default -&gt; false;</span>
+        };
+    }
+
+    private void requireSearchMutationAvailable() {
+        // Startup verification runs only once. A mutation admitted afterward
+        // can finish its transaction without overlapping the startup mass indexer.
+<span class="fc bfc" id="L478" title="All 4 branches covered.">        if (searchLifecycle != null &amp;&amp; searchLifecycle.isInitializing()) {</span>
+<span class="fc" id="L479">            throw new TransientDataAccessResourceException(&quot;Commit history search index is initializing&quot;);</span>
+        }
+<span class="fc" id="L481">    }</span>
+
+    private void requireSearchReady() {
+<span class="fc bfc" id="L484" title="All 4 branches covered.">        if (searchLifecycle != null &amp;&amp; !searchLifecycle.isReady()) throw new SearchUnavailableException();</span>
+<span class="fc" id="L485">    }</span>
+
+    private static String requireText(String value, String field) {
+<span class="pc bpc" id="L488" title="2 of 4 branches missed.">        if (value == null || value.isBlank()) {</span>
+<span class="nc" id="L489">            throw new IllegalArgumentException(field + &quot; must not be blank&quot;);</span>
+        }
+<span class="fc" id="L491">        return value.strip();</span>
+    }
+
+<span class="fc" id="L494">    private record TenantScope(</span>
+            String repositoryId,
+            String workspaceId,
+            String workspaceScopeKey) {
+
+        private static TenantScope from(RepositoryContext context) {
+<span class="pc bpc" id="L500" title="1 of 2 branches missed.">            if (context == null) {</span>
+<span class="nc" id="L501">                throw new IllegalArgumentException(&quot;RepositoryContext must not be null&quot;);</span>
+            }
+<span class="fc" id="L503">            String repositoryId = requireText(context.repositoryId(), &quot;repositoryId&quot;);</span>
+<span class="fc bfc" id="L504" title="All 2 branches covered.">            String workspaceId = context.workspaceId() == null</span>
+<span class="pc bpc" id="L505" title="1 of 2 branches missed.">                    || context.workspaceId().isBlank()</span>
+<span class="fc" id="L506">                    ? null</span>
+<span class="fc" id="L507">                    : context.workspaceId().strip();</span>
+<span class="fc" id="L508">            return new TenantScope(</span>
+                    repositoryId,
+                    workspaceId,
+<span class="fc" id="L511">                    ArchitectureCommitIndex.scopeKeyFor(workspaceId));</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

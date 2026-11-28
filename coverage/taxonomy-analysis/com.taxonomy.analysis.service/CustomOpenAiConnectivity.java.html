@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>CustomOpenAiConnectivity.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.service</a> &gt; <span class="el_source">CustomOpenAiConnectivity.java</span></div><h1>CustomOpenAiConnectivity.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.service;
+
+import org.springframework.stereotype.Component;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
+import java.util.Objects;
+import java.util.function.LongSupplier;
+
+/** A bounded, non-generating check of the configured compatible server. */
+@Component
+public class CustomOpenAiConnectivity implements AutoCloseable {
+<span class="fc" id="L18">    public enum Result { REACHABLE, UNREACHABLE, AUTHENTICATION_FAILED, UNKNOWN }</span>
+
+    @FunctionalInterface
+    interface Transport {
+        int send(HttpRequest request) throws IOException, InterruptedException;
+    }
+
+<span class="fc" id="L25">    private static final Duration TIMEOUT = Duration.ofSeconds(3);</span>
+<span class="fc" id="L26">    private static final long CACHE_NANOS = Duration.ofSeconds(15).toNanos();</span>
+    private final Transport transport;
+    private final LongSupplier clock;
+    private HttpClient client;
+    private String cachedUrl;
+    private String cachedKey;
+    private long checkedAt;
+    private Result cached;
+
+<span class="fc" id="L35">    public CustomOpenAiConnectivity() {</span>
+<span class="fc" id="L36">        this.transport = this::send;</span>
+<span class="fc" id="L37">        this.clock = System::nanoTime;</span>
+<span class="fc" id="L38">    }</span>
+
+<span class="fc" id="L40">    CustomOpenAiConnectivity(Transport transport, LongSupplier clock) {</span>
+<span class="fc" id="L41">        this.transport = Objects.requireNonNull(transport);</span>
+<span class="fc" id="L42">        this.clock = Objects.requireNonNull(clock);</span>
+<span class="fc" id="L43">    }</span>
+
+    private int send(HttpRequest request) throws IOException, InterruptedException {
+        // check() holds the instance lock and serializes the first probe with close().
+<span class="pc bpc" id="L47" title="1 of 2 branches missed.">        if (client == null) {</span>
+<span class="fc" id="L48">            client = HttpClient.newBuilder().connectTimeout(TIMEOUT)</span>
+<span class="fc" id="L49">                    .followRedirects(HttpClient.Redirect.NEVER).build();</span>
+        }
+<span class="nc" id="L51">        HttpResponse&lt;InputStream&gt; response = client.send(request, HttpResponse.BodyHandlers.ofInputStream());</span>
+<span class="nc" id="L52">        try (InputStream body = response.body()) {</span>
+<span class="nc" id="L53">            return response.statusCode();</span>
+        }
+    }
+
+    @Override
+    public synchronized void close() {
+<span class="fc bfc" id="L59" title="All 2 branches covered.">        if (client != null) client.close();</span>
+<span class="fc" id="L60">    }</span>
+
+    /** Returns UNKNOWN when a server does not provide the optional models endpoint. */
+    public synchronized Result check(String completionUrl, String apiKey) {
+<span class="fc" id="L64">        long now = clock.getAsLong();</span>
+<span class="fc" id="L65">        long age = now - checkedAt;</span>
+<span class="pc bpc" id="L66" title="1 of 6 branches missed.">        if (cached != null &amp;&amp; age &gt;= 0 &amp;&amp; age &lt; CACHE_NANOS</span>
+<span class="pc bpc" id="L67" title="1 of 4 branches missed.">                &amp;&amp; Objects.equals(cachedUrl, completionUrl) &amp;&amp; Objects.equals(cachedKey, apiKey)) {</span>
+<span class="fc" id="L68">            return cached;</span>
+        }
+<span class="fc" id="L70">        Result result = probe(completionUrl, apiKey);</span>
+<span class="fc" id="L71">        cachedUrl = completionUrl;</span>
+<span class="fc" id="L72">        cachedKey = apiKey;</span>
+<span class="fc" id="L73">        cached = result;</span>
+<span class="fc" id="L74">        checkedAt = clock.getAsLong();</span>
+<span class="fc" id="L75">        return result;</span>
+    }
+
+    private Result probe(String completionUrl, String apiKey) {
+        try {
+<span class="fc" id="L80">            URI configured = URI.create(completionUrl);</span>
+<span class="fc" id="L81">            String scheme = configured.getScheme();</span>
+<span class="fc" id="L82">            String path = configured.getRawPath();</span>
+<span class="fc" id="L83">            String suffix = &quot;/chat/completions&quot;;</span>
+<span class="pc bpc" id="L84" title="1 of 4 branches missed.">            if (!(&quot;http&quot;.equalsIgnoreCase(scheme) || &quot;https&quot;.equalsIgnoreCase(scheme))</span>
+<span class="pc bpc" id="L85" title="3 of 6 branches missed.">                    || configured.getHost() == null || configured.getUserInfo() != null</span>
+<span class="pc bpc" id="L86" title="1 of 2 branches missed.">                    || path == null || !path.endsWith(suffix)) return Result.UNKNOWN;</span>
+<span class="fc bfc" id="L87" title="All 2 branches covered.">            String query = configured.getRawQuery() == null ? &quot;&quot; : &quot;?&quot; + configured.getRawQuery();</span>
+<span class="fc" id="L88">            URI models = URI.create(scheme + &quot;://&quot; + configured.getRawAuthority()</span>
+<span class="fc" id="L89">                    + path.substring(0, path.length() - suffix.length()) + &quot;/models&quot; + query);</span>
+<span class="fc" id="L90">            HttpRequest.Builder request = HttpRequest.newBuilder(models).timeout(TIMEOUT)</span>
+<span class="fc" id="L91">                    .header(&quot;Accept&quot;, &quot;application/json&quot;).GET();</span>
+<span class="pc bpc" id="L92" title="1 of 4 branches missed.">            if (apiKey != null &amp;&amp; !apiKey.isBlank()) request.header(&quot;Authorization&quot;, &quot;Bearer &quot; + apiKey);</span>
+<span class="fc" id="L93">            int status = transport.send(request.build());</span>
+<span class="pc bpc" id="L94" title="1 of 4 branches missed.">            if (status &gt;= 200 &amp;&amp; status &lt; 300) return Result.REACHABLE;</span>
+<span class="pc bpc" id="L95" title="1 of 4 branches missed.">            if (status == 401 || status == 403) return Result.AUTHENTICATION_FAILED;</span>
+<span class="fc bfc" id="L96" title="All 2 branches covered.">            if (status &gt;= 500) return Result.UNREACHABLE;</span>
+<span class="fc" id="L97">            return Result.UNKNOWN;</span>
+<span class="nc" id="L98">        } catch (InterruptedException interrupted) {</span>
+<span class="nc" id="L99">            Thread.currentThread().interrupt();</span>
+<span class="nc" id="L100">            return Result.UNKNOWN;</span>
+<span class="fc" id="L101">        } catch (IOException | IllegalArgumentException | NullPointerException failure) {</span>
+<span class="pc bpc" id="L102" title="1 of 2 branches missed.">            return failure instanceof IOException ? Result.UNREACHABLE : Result.UNKNOWN;</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

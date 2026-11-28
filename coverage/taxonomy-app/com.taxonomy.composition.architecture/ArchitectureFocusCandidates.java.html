@@ -1,0 +1,346 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchitectureFocusCandidates.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.composition.architecture</a> &gt; <span class="el_source">ArchitectureFocusCandidates.java</span></div><h1>ArchitectureFocusCandidates.java</h1><pre class="source lang-java linenums">package com.taxonomy.composition.architecture;
+
+import com.taxonomy.dsl.command.SnapshotEvidence;
+import com.taxonomy.dsl.model.ArchitectureElement;
+import com.taxonomy.dsl.model.CanonicalArchitectureModel;
+import com.taxonomy.dsl.model.CatalogueDefinition;
+import com.taxonomy.dto.NodeOrigin;
+import com.taxonomy.dto.RelationSearchReport;
+import com.taxonomy.identity.StableIdentityHash;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+
+import static com.taxonomy.composition.architecture.ArchitectureFocusSuggestionService.Evidence;
+import static com.taxonomy.dto.RelationSearchModel.*;
+
+/** Ranks bounded hypotheses on concrete graph members using authored or retained evidence. */
+final class ArchitectureFocusCandidates {
+    static final int MAX_QUOTE = 512;
+<span class="fc" id="L30">    private static final Pattern WORD = Pattern.compile(&quot;[\\p{L}\\p{M}\\p{N}]+&quot;);</span>
+<span class="fc" id="L31">    private static final Set&lt;String&gt; LEGACY_ORIGINS = Arrays.stream(NodeOrigin.values())</span>
+<span class="fc" id="L32">            .map(origin -&gt; origin.name().toLowerCase(Locale.ROOT).replace('_', ' ')).collect(Collectors.toUnmodifiableSet());</span>
+<span class="fc" id="L33">    private static final Pattern LEGACY_PROPAGATION = Pattern.compile(&quot;(?:, LLM score [0-9.]+)?(?:, [0-9]+ hop\\(s\\))?&quot;);</span>
+<span class="fc" id="L34">    private static final Pattern LEGACY_IMPACT = Pattern.compile(&quot;, score [0-9.]+, impact [0-9.,]+(?:, depth [0-9]+)?&quot;);</span>
+<span class="fc" id="L35">    private static final Set&lt;String&gt; GENERIC = Set.of(</span>
+            &quot;about&quot;, &quot;after&quot;, &quot;also&quot;, &quot;before&quot;, &quot;both&quot;, &quot;each&quot;, &quot;from&quot;, &quot;have&quot;, &quot;into&quot;, &quot;only&quot;, &quot;other&quot;, &quot;same&quot;,
+            &quot;shall&quot;, &quot;should&quot;, &quot;that&quot;, &quot;their&quot;, &quot;these&quot;, &quot;this&quot;, &quot;through&quot;, &quot;used&quot;, &quot;uses&quot;, &quot;using&quot;, &quot;when&quot;, &quot;where&quot;, &quot;with&quot;,
+            &quot;auch&quot;, &quot;beide&quot;, &quot;dabei&quot;, &quot;daher&quot;, &quot;diese&quot;, &quot;dieser&quot;, &quot;dieses&quot;, &quot;eine&quot;, &quot;einer&quot;, &quot;einem&quot;, &quot;einen&quot;, &quot;hier&quot;,
+            &quot;kann&quot;, &quot;können&quot;, &quot;muss&quot;, &quot;müssen&quot;, &quot;nach&quot;, &quot;oder&quot;, &quot;sich&quot;, &quot;sind&quot;, &quot;soll&quot;, &quot;sollen&quot;, &quot;über&quot;, &quot;unter&quot;, &quot;wenn&quot;, &quot;wird&quot;, &quot;werden&quot;,
+            &quot;analysis&quot;, &quot;application&quot;, &quot;architecture&quot;, &quot;capability&quot;, &quot;component&quot;, &quot;context&quot;, &quot;description&quot;, &quot;element&quot;, &quot;fixture&quot;,
+            &quot;function&quot;, &quot;general&quot;, &quot;included&quot;, &quot;information&quot;, &quot;model&quot;, &quot;module&quot;, &quot;platform&quot;, &quot;process&quot;, &quot;propagation&quot;, &quot;reference&quot;, &quot;requirement&quot;, &quot;retained&quot;, &quot;sample&quot;,
+            &quot;score&quot;, &quot;selected&quot;, &quot;service&quot;, &quot;services&quot;, &quot;system&quot;, &quot;systems&quot;, &quot;technical&quot;, &quot;technology&quot;, &quot;workflow&quot;,
+            &quot;allgemein&quot;, &quot;analyse&quot;, &quot;anforderung&quot;, &quot;anwendung&quot;, &quot;architektur&quot;, &quot;beispiel&quot;, &quot;beschreibung&quot;, &quot;dienst&quot;, &quot;dienste&quot;, &quot;fähigkeit&quot;,
+            &quot;funktion&quot;, &quot;komponente&quot;, &quot;kontext&quot;, &quot;modell&quot;, &quot;modul&quot;, &quot;plattform&quot;, &quot;prozess&quot;, &quot;referenz&quot;, &quot;systeme&quot;, &quot;technisch&quot;);
+
+    private ArchitectureFocusCandidates() { }
+
+<span class="fc" id="L48">    record Triple(String sourceId, String targetId, String relationType, List&lt;Evidence&gt; evidence,</span>
+                  List&lt;String&gt; sharedTerms, Scope scope) {
+<span class="fc" id="L50">        String key() { return keyFor(sourceId, relationType, targetId); }</span>
+
+        String rationale(String language) {
+<span class="fc" id="L53">            boolean german = &quot;de&quot;.equals(language);</span>
+<span class="fc bfc" id="L54" title="All 2 branches covered.">            if (scope != null) return scope.rationale(language);</span>
+<span class="fc" id="L55">            String terms = String.join(&quot;, &quot;, sharedTerms);</span>
+<span class="fc bfc" id="L56" title="All 2 branches covered.">            return german ? &quot;Ungeprüfter Kandidat mit gemeinsamen Elementbegriffen („&quot; + terms</span>
+<span class="fc" id="L57">                    + &quot;“). Typ, Richtung und fachliche Eignung prüfen.&quot;</span>
+<span class="fc" id="L58">                    : &quot;Unassessed candidate with shared element wording (&quot; + terms + &quot;). Review its type, direction and actual purpose.&quot;;</span>
+        }
+    }
+
+<span class="fc" id="L62">    record Scope(Necessity necessity, Direction direction, String assessedCondition, String candidateCondition,</span>
+                 String alternativeGroup, int otherScopes, int rejectedScopes) {
+        String rationale(String language) {
+<span class="fc" id="L65">            boolean german = &quot;de&quot;.equals(language);</span>
+<span class="pc bpc" id="L66" title="1 of 2 branches missed.">            StringBuilder text = new StringBuilder(german ? &quot;Ungeprüfter Kandidat aus einem gespeicherten Anforderungskontext (&quot;</span>
+<span class="fc" id="L67">                    : &quot;Unassessed candidate from one retained requirement scope (&quot;).append(necessity).append(&quot;).&quot;);</span>
+<span class="pc bpc" id="L68" title="1 of 2 branches missed.">            append(text, german ? &quot; Bedingung des untersuchten Beitrags: &quot; : &quot; Assessed contribution condition: &quot;, assessedCondition);</span>
+<span class="pc bpc" id="L69" title="1 of 2 branches missed.">            append(text, german ? &quot; Bedingung des Gegenbeitrags: &quot; : &quot; Counterpart condition: &quot;, candidateCondition);</span>
+<span class="pc bpc" id="L70" title="1 of 2 branches missed.">            append(text, german ? &quot; Alternativengruppe: &quot; : &quot; Alternative group: &quot;, alternativeGroup);</span>
+<span class="pc bpc" id="L71" title="3 of 4 branches missed.">            if (otherScopes &gt; 0) text.append(german ? &quot; Weitere Kontexte bleiben im Analysebericht erhalten.&quot;</span>
+<span class="nc" id="L72">                    : &quot; Additional scopes remain in the retained analysis report.&quot;);</span>
+<span class="pc bpc" id="L73" title="1 of 4 branches missed.">            if (rejectedScopes &gt; 0) text.append(german ? &quot; Für diese Beziehung sind außerdem Ablehnungen gespeichert.&quot;</span>
+<span class="fc" id="L74">                    : &quot; This relation also has retained rejected assessments.&quot;);</span>
+<span class="fc" id="L75">            return text.toString();</span>
+        }
+    }
+
+<span class="fc" id="L79">    private record Peer(ArchitectureElement element, boolean scoped, int overlap, List&lt;String&gt; sharedTerms, List&lt;Evidence&gt; evidence) { }</span>
+<span class="fc" id="L80">    private record Word(String field, String text, int end) {</span>
+        Evidence excerpt(String elementId) {
+<span class="fc" id="L82">            int start = Math.max(0, end - MAX_QUOTE);</span>
+<span class="fc" id="L83">            int stop = Math.min(text.length(), start + MAX_QUOTE);</span>
+<span class="pc bpc" id="L84" title="1 of 2 branches missed.">            if (Character.isLowSurrogate(text.charAt(start))) start++;</span>
+<span class="pc bpc" id="L85" title="1 of 2 branches missed.">            if (Character.isHighSurrogate(text.charAt(stop - 1))) stop--;</span>
+<span class="fc" id="L86">            return new Evidence(elementId, field, text.substring(start, stop));</span>
+        }
+    }
+<span class="fc" id="L89">    private record ScopedSearch(Map&lt;String, List&lt;Edge&gt;&gt; edges, Set&lt;String&gt; coveredPeers, Map&lt;String, List&lt;Trace&gt;&gt; rejected,</span>
+                                Set&lt;String&gt; navigation, boolean originalVerified) { }
+
+    static Set&lt;String&gt; displayDescriptions(CanonicalArchitectureModel model) {
+<span class="fc" id="L93">        var members = new HashSet&lt;String&gt;();</span>
+<span class="fc" id="L94">        model.getViews().stream().filter(view -&gt; view.getExtensions().containsKey(&quot;x-analysis-snapshot-id&quot;))</span>
+<span class="fc" id="L95">                .forEach(view -&gt; members.addAll(view.getIncludes()));</span>
+<span class="fc" id="L96">        return model.getElements().stream().filter(element -&gt; hasDisplayDescription(element, members.contains(element.getId())))</span>
+<span class="fc" id="L97">                .map(ArchitectureElement::getId).collect(Collectors.toUnmodifiableSet());</span>
+    }
+
+    private static boolean hasDisplayDescription(ArchitectureElement element, boolean adoptedMember) {
+<span class="fc" id="L101">        String description = element.getDescription();</span>
+<span class="fc bfc" id="L102" title="All 2 branches covered.">        if (blank(description)) return false;</span>
+<span class="fc" id="L103">        String captured = element.getExtensions().get(SnapshotEvidence.GENERATED_DESCRIPTION_HASH);</span>
+<span class="pc bpc" id="L104" title="1 of 6 branches missed.">        if (captured != null) return validUnicode(description) &amp;&amp; captured.equals(StableIdentityHash.sha256(description));</span>
+<span class="fc bfc" id="L105" title="All 2 branches covered.">        if (!adoptedMember) return false;</span>
+<span class="fc bfc" id="L106" title="All 2 branches covered.">        return description.startsWith(&quot;Requirement-scoped contribution: &quot;)</span>
+<span class="pc bpc" id="L107" title="1 of 2 branches missed.">                || description.startsWith(&quot;Requirement-scoped contribution proposals: &quot;)</span>
+<span class="pc bpc" id="L108" title="1 of 2 branches missed.">                || description.startsWith(&quot;SOURCE_ONLY: quoted requirement contribution proposal; &quot;)</span>
+<span class="pc bpc" id="L109" title="1 of 2 branches missed.">                || description.startsWith(&quot;leaf-enrichment: top-scoring in &quot;)</span>
+<span class="pc bpc" id="L110" title="1 of 2 branches missed.">                || description.equals(&quot;provisional relation endpoint&quot;)</span>
+<span class="pc bpc" id="L111" title="1 of 2 branches missed.">                || legacyScoringReason(element.getId(), description);</span>
+    }
+
+    private static boolean legacyScoringReason(String id, String description) {
+<span class="pc bpc" id="L115" title="1 of 2 branches missed.">        int start = description.startsWith(id + &quot;: &quot;) ? id.length()</span>
+<span class="pc bpc" id="L116" title="1 of 2 branches missed.">                : description.startsWith(id + &quot; (&quot;) ? description.indexOf(&quot;): &quot;, id.length()) + 1 : 0;</span>
+<span class="pc bpc" id="L117" title="1 of 2 branches missed.">        if (start &lt; id.length()) return false;</span>
+<span class="nc" id="L118">        String explanation = description.substring(start + 2);</span>
+<span class="nc" id="L119">        int comma = explanation.indexOf(',');</span>
+<span class="nc bnc" id="L120" title="All 2 branches missed.">        String origin = comma &lt; 0 ? explanation : explanation.substring(0, comma);</span>
+<span class="nc bnc" id="L121" title="All 2 branches missed.">        String scores = comma &lt; 0 ? &quot;&quot; : explanation.substring(comma);</span>
+<span class="nc bnc" id="L122" title="All 4 branches missed.">        boolean generatedOrigin = LEGACY_ORIGINS.contains(origin) || &quot;included via propagation&quot;.equals(origin);</span>
+<span class="nc bnc" id="L123" title="All 6 branches missed.">        return generatedOrigin &amp;&amp; LEGACY_PROPAGATION.matcher(scores).matches()</span>
+<span class="nc bnc" id="L124" title="All 4 branches missed.">                || (generatedOrigin || origin.isEmpty()) &amp;&amp; LEGACY_IMPACT.matcher(scores).matches();</span>
+    }
+
+    static List&lt;Triple&gt; find(CanonicalArchitectureModel model, CatalogueDefinition catalogue, Set&lt;String&gt; excluded,
+                             Set&lt;String&gt; displayDescriptions, ArchitectureElement focus, int limit,
+                             RelationSearchReport report, String original) {
+<span class="fc" id="L130">        var scoped = scopedSearch(report, original, focus.getId());</span>
+<span class="fc bfc" id="L131" title="All 2 branches covered.">        if (navigation(focus, catalogue, scoped)) return List.of();</span>
+<span class="fc" id="L132">        var existing = new HashSet&lt;String&gt;();</span>
+<span class="fc" id="L133">        model.getRelations().forEach(r -&gt; existing.add(keyFor(r.getSourceId(), r.getRelationType(), r.getTargetId())));</span>
+<span class="fc bfc" id="L134" title="All 4 branches covered.">        var types = catalogue.relationDomains().keySet().stream().filter(t -&gt; !&quot;CONTAINS&quot;.equals(t) &amp;&amp; !excluded.contains(t))</span>
+<span class="fc" id="L135">                .sorted(Comparator.comparing((String t) -&gt; &quot;RELATED_TO&quot;.equals(t)).thenComparing(t -&gt; t)).toList();</span>
+<span class="fc" id="L136">        var focusTerms = terms(focus, displayDescriptions);</span>
+<span class="fc" id="L137">        var peers = new ArrayList&lt;Peer&gt;();</span>
+<span class="fc bfc" id="L138" title="All 2 branches covered.">        for (var peer : model.getElements()) {</span>
+<span class="fc bfc" id="L139" title="All 4 branches covered.">            if (focus.getId().equals(peer.getId()) || navigation(peer, catalogue, scoped)) continue;</span>
+<span class="fc bfc" id="L140" title="All 2 branches covered.">            var group = scoped.coveredPeers().contains(peer.getId())</span>
+<span class="fc" id="L141">                    ? new Peer(peer, true, 0, List.of(), List.of())</span>
+<span class="fc" id="L142">                    : lexicalPeer(focus, peer, focusTerms, terms(peer, displayDescriptions));</span>
+<span class="fc bfc" id="L143" title="All 2 branches covered.">            if (group != null) peers.add(group);</span>
+<span class="fc" id="L144">        }</span>
+<span class="fc" id="L145">        peers.sort(Comparator.comparing(Peer::scoped).reversed()</span>
+<span class="fc" id="L146">                .thenComparing(Comparator.comparingInt(Peer::overlap).reversed()).thenComparing(peer -&gt; peer.element().getId()));</span>
+<span class="fc" id="L147">        var eligible = new ArrayList&lt;List&lt;Triple&gt;&gt;();</span>
+<span class="fc bfc" id="L148" title="All 2 branches covered.">        for (var peer : peers) {</span>
+<span class="fc bfc" id="L149" title="All 2 branches covered.">            var triples = peer.scoped() ? scopedTriples(focus, peer.element(), scoped, catalogue, existing, types, original)</span>
+<span class="fc" id="L150">                    : lexicalTriples(focus, peer, catalogue, existing, types);</span>
+<span class="fc bfc" id="L151" title="All 2 branches covered.">            if (!triples.isEmpty()) eligible.add(triples);</span>
+<span class="fc bfc" id="L152" title="All 2 branches covered.">            if (eligible.size() == limit) break;</span>
+<span class="fc" id="L153">        }</span>
+
+        // Reserve one slot per counterpart before spending any on additional relation types.
+<span class="fc" id="L156">        var result = new ArrayList&lt;Triple&gt;();</span>
+<span class="fc bfc" id="L157" title="All 2 branches covered.">        for (int round = 0; result.size() &lt; limit; round++) {</span>
+<span class="fc" id="L158">            int before = result.size();</span>
+<span class="fc bfc" id="L159" title="All 2 branches covered.">            for (var triples : eligible) {</span>
+<span class="fc bfc" id="L160" title="All 2 branches covered.">                if (triples.size() &gt; round) result.add(triples.get(round));</span>
+<span class="fc bfc" id="L161" title="All 2 branches covered.">                if (result.size() == limit) break;</span>
+<span class="fc" id="L162">            }</span>
+<span class="fc bfc" id="L163" title="All 2 branches covered.">            if (result.size() == before) break;</span>
+        }
+<span class="fc" id="L165">        return List.copyOf(result);</span>
+    }
+
+    private static boolean navigation(ArchitectureElement element, CatalogueDefinition catalogue, ScopedSearch scoped) {
+<span class="pc bpc" id="L169" title="1 of 4 branches missed.">        return catalogue.rootCodes().contains(element.getId()) || scoped.navigation().contains(element.getId());</span>
+    }
+
+    private static Peer lexicalPeer(ArchitectureElement focus, ArchitectureElement peer, Map&lt;String, Word&gt; focusTerms,
+                                    Map&lt;String, Word&gt; peerTerms) {
+<span class="fc" id="L174">        var overlap = focusTerms.keySet().stream().filter(peerTerms::containsKey).sorted().toList();</span>
+<span class="fc bfc" id="L175" title="All 2 branches covered.">        if (overlap.isEmpty()) return null;</span>
+<span class="fc" id="L176">        var shared = overlap.subList(0, Math.min(3, overlap.size()));</span>
+<span class="fc" id="L177">        String term = shared.getFirst();</span>
+<span class="fc" id="L178">        return new Peer(peer, false, overlap.size(), shared,</span>
+<span class="fc" id="L179">                List.of(focusTerms.get(term).excerpt(focus.getId()), peerTerms.get(term).excerpt(peer.getId())));</span>
+    }
+
+    private static List&lt;Triple&gt; lexicalTriples(ArchitectureElement focus, Peer candidate, CatalogueDefinition catalogue,
+                                               Set&lt;String&gt; existing, List&lt;String&gt; types) {
+<span class="fc" id="L184">        var peer = candidate.element();</span>
+<span class="fc" id="L185">        var triples = new ArrayList&lt;Triple&gt;();</span>
+<span class="fc bfc" id="L186" title="All 2 branches covered.">        for (String type : types) {</span>
+<span class="fc bfc" id="L187" title="All 2 branches covered.">            if (eligible(focus, peer, type, existing, catalogue))</span>
+<span class="fc" id="L188">                triples.add(new Triple(focus.getId(), peer.getId(), type, candidate.evidence(), candidate.sharedTerms(), null));</span>
+<span class="fc bfc" id="L189" title="All 2 branches covered.">            if (eligible(peer, focus, type, existing, catalogue))</span>
+<span class="fc" id="L190">                triples.add(new Triple(peer.getId(), focus.getId(), type, candidate.evidence().reversed(), candidate.sharedTerms(), null));</span>
+<span class="fc" id="L191">        }</span>
+<span class="fc" id="L192">        return triples;</span>
+    }
+
+    private static ScopedSearch scopedSearch(RelationSearchReport report, String original, String focus) {
+<span class="fc" id="L196">        var byPeer = new HashMap&lt;String, List&lt;Edge&gt;&gt;();</span>
+<span class="fc" id="L197">        var covered = new HashSet&lt;String&gt;();</span>
+<span class="fc" id="L198">        var rejected = new HashMap&lt;String, List&lt;Trace&gt;&gt;();</span>
+<span class="fc" id="L199">        var navigation = new HashSet&lt;String&gt;();</span>
+<span class="fc bfc" id="L200" title="All 2 branches covered.">        if (report != null) {</span>
+<span class="pc bnc" id="L201" title="All 4 branches missed.">            report.sources().stream().map(SourceAssessment::node).filter(node -&gt; node != null &amp;&amp; node.container())</span>
+<span class="pc" id="L202">                    .forEach(node -&gt; navigation.add(node.id()));</span>
+<span class="fc bfc" id="L203" title="All 2 branches covered.">            for (Edge edge : report.result().edges()) {</span>
+<span class="pc bpc" id="L204" title="3 of 6 branches missed.">                if (edge.contribution() == null || edge.target() == null || edge.direction() == null) continue;</span>
+<span class="pc bpc" id="L205" title="1 of 2 branches missed.">                if (edge.contribution().source().container()) navigation.add(edge.contribution().source().id());</span>
+<span class="pc bpc" id="L206" title="1 of 2 branches missed.">                if (edge.target().container()) navigation.add(edge.target().id());</span>
+<span class="fc" id="L207">                String peer = counterpart(focus, edge.sourceId(), edge.targetId());</span>
+<span class="pc bpc" id="L208" title="1 of 2 branches missed.">                if (peer == null) continue;</span>
+<span class="fc" id="L209">                covered.add(peer);</span>
+<span class="fc" id="L210">                byPeer.computeIfAbsent(peer, ignored -&gt; new ArrayList&lt;&gt;()).add(edge);</span>
+<span class="fc" id="L211">            }</span>
+<span class="fc bfc" id="L212" title="All 2 branches covered.">            for (Trace trace : report.result().trace()) {</span>
+<span class="pc bpc" id="L213" title="3 of 4 branches missed.">                if ((trace.phase() != Phase.VERIFY &amp;&amp; trace.outcome() != Outcome.REJECT)</span>
+<span class="pc bpc" id="L214" title="2 of 4 branches missed.">                        || trace.direction() == null || trace.type() == null) continue;</span>
+<span class="fc" id="L215">                String peer = counterpart(focus, trace.sourceId(), trace.targetId());</span>
+<span class="pc bpc" id="L216" title="1 of 2 branches missed.">                if (peer == null) continue;</span>
+<span class="fc" id="L217">                covered.add(peer);</span>
+<span class="pc bpc" id="L218" title="1 of 2 branches missed.">                if (trace.outcome() == Outcome.REJECT) {</span>
+<span class="pc bpc" id="L219" title="1 of 2 branches missed.">                    boolean outgoing = trace.direction() == Direction.OUTGOING;</span>
+<span class="pc bpc" id="L220" title="1 of 2 branches missed.">                    String key = keyFor(outgoing ? trace.sourceId() : trace.targetId(), trace.type(),</span>
+<span class="pc bpc" id="L221" title="1 of 2 branches missed.">                            outgoing ? trace.targetId() : trace.sourceId());</span>
+<span class="fc" id="L222">                    rejected.computeIfAbsent(key, ignored -&gt; new ArrayList&lt;&gt;()).add(trace);</span>
+                }
+<span class="fc" id="L224">            }</span>
+<span class="pc bpc" id="L225" title="1 of 2 branches missed.">            for (Unfinished work : report.result().unfinished()) {</span>
+<span class="nc bnc" id="L226" title="All 2 branches missed.">                for (String target : work.targets()) {</span>
+<span class="nc" id="L227">                    String peer = counterpart(focus, work.sourceId(), target);</span>
+<span class="nc bnc" id="L228" title="All 2 branches missed.">                    if (peer != null) covered.add(peer);</span>
+<span class="nc" id="L229">                }</span>
+<span class="nc" id="L230">            }</span>
+        }
+<span class="pc bpc" id="L232" title="3 of 8 branches missed.">        boolean verified = report != null &amp;&amp; original != null &amp;&amp; !original.isBlank() &amp;&amp; validUnicode(original)</span>
+<span class="pc bpc" id="L233" title="1 of 2 branches missed.">                &amp;&amp; StableIdentityHash.sha256(original).equals(report.originalSha256());</span>
+<span class="fc" id="L234">        return new ScopedSearch(byPeer, covered, rejected, navigation, verified);</span>
+    }
+
+    private static List&lt;Triple&gt; scopedTriples(ArchitectureElement focus, ArchitectureElement peer, ScopedSearch search,
+                                              CatalogueDefinition catalogue, Set&lt;String&gt; existing, List&lt;String&gt; types, String original) {
+<span class="pc bpc" id="L239" title="1 of 2 branches missed.">        if (!search.originalVerified()) return List.of();</span>
+<span class="fc" id="L240">        var witnesses = new LinkedHashMap&lt;String, List&lt;Edge&gt;&gt;();</span>
+<span class="fc bfc" id="L241" title="All 2 branches covered.">        for (Edge edge : search.edges().getOrDefault(peer.getId(), List.of())) {</span>
+<span class="fc" id="L242">            var decision = edge.evidence();</span>
+<span class="pc bpc" id="L243" title="1 of 2 branches missed.">            ArchitectureElement from = focus.getId().equals(edge.sourceId()) ? focus : peer;</span>
+<span class="pc bpc" id="L244" title="1 of 2 branches missed.">            ArchitectureElement to = from == focus ? peer : focus;</span>
+<span class="fc" id="L245">            String fromRoot = catalogue.rootFor(from.getType());</span>
+<span class="fc" id="L246">            String toRoot = catalogue.rootFor(to.getType());</span>
+<span class="pc bpc" id="L247" title="1 of 2 branches missed.">            boolean outgoing = edge.direction() == Direction.OUTGOING;</span>
+<span class="pc bpc" id="L248" title="3 of 6 branches missed.">            if (decision == null || !types.contains(edge.type()) || !eligible(from, to, edge.type(), existing, catalogue)</span>
+<span class="pc bpc" id="L249" title="2 of 6 branches missed.">                    || !validWitness(edge, outgoing ? fromRoot : toRoot, outgoing ? toRoot : fromRoot, original)) continue;</span>
+<span class="fc" id="L250">            String key = keyFor(from.getId(), edge.type(), to.getId());</span>
+<span class="fc" id="L251">            var rejected = search.rejected().getOrDefault(key, List.of());</span>
+<span class="fc bfc" id="L252" title="All 2 branches covered.">            if (!rejected.isEmpty()) {</span>
+<span class="fc" id="L253">                String contributionKey = ArchitectureFocusSuggestionService.retainedContributionKey(edge);</span>
+<span class="fc bfc" id="L254" title="All 2 branches covered.">                if (rejected.stream().anyMatch(trace -&gt; contributionKey.equals(trace.contributionKey()))) continue;</span>
+            }
+<span class="fc" id="L256">            witnesses.computeIfAbsent(key, ignored -&gt; new ArrayList&lt;&gt;()).add(edge);</span>
+<span class="fc" id="L257">        }</span>
+<span class="fc" id="L258">        var triples = new ArrayList&lt;Triple&gt;();</span>
+<span class="fc" id="L259">        witnesses.forEach((key, scopes) -&gt; {</span>
+            // A scoped alternative or optional witness must not disappear behind an unqualified relation.
+<span class="fc" id="L261">            var edge = scopes.stream().min(Comparator.comparingInt(ArchitectureFocusCandidates::scopeOrder)</span>
+<span class="pc" id="L262">                    .thenComparing(e -&gt; e.contribution().quote()).thenComparing(e -&gt; e.evidence().quote())).orElseThrow();</span>
+<span class="fc" id="L263">            var assessed = edge.contribution();</span>
+<span class="fc" id="L264">            var decision = edge.evidence();</span>
+<span class="fc" id="L265">            var scope = new Scope(decision.necessity(), edge.direction(), assessed.condition(), decision.condition(),</span>
+<span class="fc" id="L266">                    decision.alternativeGroup(), scopes.size() - 1, search.rejected().getOrDefault(key, List.of()).size());</span>
+<span class="fc" id="L267">            triples.add(new Triple(edge.sourceId(), edge.targetId(), edge.type(),</span>
+<span class="fc" id="L268">                    List.of(new Evidence(assessed.source().id(), &quot;requirement&quot;, assessed.quote()),</span>
+<span class="fc" id="L269">                            new Evidence(edge.target().id(), &quot;requirement&quot;, decision.quote())), List.of(), scope));</span>
+<span class="fc" id="L270">        });</span>
+<span class="fc" id="L271">        triples.sort(Comparator.comparing(Triple::key));</span>
+<span class="fc" id="L272">        return triples;</span>
+    }
+
+    private static boolean validWitness(Edge edge, String assessedRoot, String targetRoot, String original) {
+<span class="fc" id="L276">        var assessed = edge.contribution();</span>
+<span class="fc" id="L277">        var decision = edge.evidence();</span>
+<span class="pc bpc" id="L278" title="3 of 6 branches missed.">        return !assessed.source().container() &amp;&amp; !edge.target().container() &amp;&amp; assessed.source().root().equals(assessedRoot)</span>
+<span class="pc bpc" id="L279" title="2 of 4 branches missed.">                &amp;&amp; edge.target().root().equals(targetRoot) &amp;&amp; edge.target().id().equals(decision.targetId())</span>
+<span class="pc bpc" id="L280" title="3 of 6 branches missed.">                &amp;&amp; decision.outcome() == Outcome.VERIFIED &amp;&amp; decision.necessity() != null &amp;&amp; blank(decision.question())</span>
+<span class="pc bpc" id="L281" title="2 of 4 branches missed.">                &amp;&amp; decision.contribution() != null &amp;&amp; !decision.contribution().isBlank()</span>
+<span class="pc bpc" id="L282" title="1 of 4 branches missed.">                &amp;&amp; exactQuote(assessed.quote(), original) &amp;&amp; exactQuote(decision.quote(), original)</span>
+<span class="pc bpc" id="L283" title="3 of 6 branches missed.">                &amp;&amp; boundedQualifier(assessed.condition()) &amp;&amp; boundedQualifier(decision.condition()) &amp;&amp; boundedQualifier(decision.alternativeGroup())</span>
+<span class="pc bpc" id="L284" title="1 of 4 branches missed.">                &amp;&amp; (decision.necessity() != Necessity.OPTIONAL || !blank(decision.condition()))</span>
+<span class="pc bpc" id="L285" title="2 of 6 branches missed.">                &amp;&amp; (decision.necessity() == Necessity.ALTERNATIVE ? !blank(decision.alternativeGroup()) : blank(decision.alternativeGroup()));</span>
+    }
+
+    private static int scopeOrder(Edge edge) {
+<span class="nc bnc" id="L289" title="All 3 branches missed.">        return switch (edge.evidence().necessity()) {</span>
+<span class="nc" id="L290">            case ALTERNATIVE -&gt; 0;</span>
+<span class="nc" id="L291">            case OPTIONAL -&gt; 1;</span>
+<span class="nc bnc" id="L292" title="All 4 branches missed.">            case REQUIRED -&gt; blank(edge.contribution().condition()) &amp;&amp; blank(edge.evidence().condition()) ? 3 : 2;</span>
+        };
+    }
+
+    private static boolean exactQuote(String quote, String original) {
+<span class="pc bpc" id="L297" title="3 of 8 branches missed.">        return !blank(quote) &amp;&amp; quote.length() &lt;= MAX_QUOTE &amp;&amp; validUnicode(quote) &amp;&amp; original.contains(quote);</span>
+    }
+
+    private static boolean boundedQualifier(String value) {
+<span class="pc bpc" id="L301" title="2 of 6 branches missed.">        return value == null || value.length() &lt;= MAX_QUOTE &amp;&amp; validUnicode(value)</span>
+<span class="pc bpc" id="L302" title="4 of 8 branches missed.">                &amp;&amp; value.chars().noneMatch(c -&gt; Character.isISOControl(c) || c == 0xfffe || c == 0xffff);</span>
+    }
+
+    static boolean validUnicode(String value) {
+<span class="pc bpc" id="L306" title="3 of 4 branches missed.">        return value.codePoints().noneMatch(code -&gt; code &gt;= Character.MIN_SURROGATE &amp;&amp; code &lt;= Character.MAX_SURROGATE);</span>
+    }
+
+    private static void append(StringBuilder result, String label, String value) {
+<span class="fc bfc" id="L310" title="All 2 branches covered.">        if (!blank(value)) result.append(label).append(value).append('.');</span>
+<span class="fc" id="L311">    }</span>
+
+<span class="fc bfc" id="L313" title="All 4 branches covered.">    private static boolean blank(String value) { return value == null || value.isBlank(); }</span>
+
+    private static String counterpart(String focus, String source, String target) {
+<span class="pc bpc" id="L316" title="3 of 4 branches missed.">        return focus.equals(source) ? target : focus.equals(target) ? source : null;</span>
+    }
+
+    private static boolean eligible(ArchitectureElement from, ArchitectureElement to, String type, Set&lt;String&gt; existing,
+                                    CatalogueDefinition catalogue) {
+<span class="fc bfc" id="L321" title="All 2 branches covered.">        return catalogue.allows(catalogue.rootFor(from.getType()), type, catalogue.rootFor(to.getType()))</span>
+<span class="fc bfc" id="L322" title="All 2 branches covered.">                &amp;&amp; !existing.contains(keyFor(from.getId(), type, to.getId()));</span>
+    }
+
+    private static Map&lt;String, Word&gt; terms(ArchitectureElement element, Set&lt;String&gt; displayDescriptions) {
+<span class="fc" id="L326">        var terms = new HashMap&lt;String, Word&gt;();</span>
+<span class="fc bfc" id="L327" title="All 2 branches covered.">        if (!displayDescriptions.contains(element.getId())) addTerms(terms, &quot;description&quot;, element.getDescription());</span>
+<span class="fc" id="L328">        addTerms(terms, &quot;title&quot;, element.getTitle());</span>
+<span class="fc" id="L329">        return terms;</span>
+    }
+
+    private static void addTerms(Map&lt;String, Word&gt; terms, String field, String value) {
+<span class="pc bpc" id="L333" title="1 of 4 branches missed.">        if (blank(value) || !validUnicode(value)) return;</span>
+<span class="fc" id="L334">        var matcher = WORD.matcher(value);</span>
+<span class="pc bpc" id="L335" title="1 of 4 branches missed.">        while (matcher.find() &amp;&amp; matcher.start() &lt; 4_000) {</span>
+<span class="pc bpc" id="L336" title="1 of 4 branches missed.">            if (matcher.end() - matcher.start() &lt; 4 || matcher.end() - matcher.start() &gt; 40</span>
+<span class="pc bpc" id="L337" title="1 of 2 branches missed.">                    || !Character.isLetter(value.codePointAt(matcher.start()))) continue;</span>
+<span class="fc" id="L338">            String term = matcher.group().toLowerCase(Locale.ROOT);</span>
+<span class="fc bfc" id="L339" title="All 4 branches covered.">            if (GENERIC.contains(term) || term.codePoints().anyMatch(Character::isDigit)) continue;</span>
+<span class="fc" id="L340">            terms.putIfAbsent(term, new Word(field, value, matcher.end()));</span>
+<span class="fc" id="L341">        }</span>
+<span class="fc" id="L342">    }</span>
+
+<span class="fc" id="L344">    private static String keyFor(String source, String type, String target) { return source + &quot; &quot; + type + &quot; &quot; + target; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

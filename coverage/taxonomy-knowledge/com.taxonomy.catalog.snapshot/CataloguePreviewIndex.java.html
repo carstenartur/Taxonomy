@@ -1,0 +1,252 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>CataloguePreviewIndex.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-knowledge</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.catalog.snapshot</a> &gt; <span class="el_source">CataloguePreviewIndex.java</span></div><h1>CataloguePreviewIndex.java</h1><pre class="source lang-java linenums">package com.taxonomy.catalog.snapshot;
+
+import com.taxonomy.dto.TaxonomyNodeDto;
+import org.apache.lucene.analysis.Analyzer;
+import org.apache.lucene.analysis.LowerCaseFilter;
+import org.apache.lucene.analysis.StopFilter;
+import org.apache.lucene.analysis.de.GermanAnalyzer;
+import org.apache.lucene.analysis.en.EnglishAnalyzer;
+import org.apache.lucene.analysis.en.EnglishPossessiveFilter;
+import org.apache.lucene.analysis.en.KStemFilter;
+import org.apache.lucene.analysis.standard.StandardTokenizer;
+import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
+import org.apache.lucene.analysis.tokenattributes.OffsetAttribute;
+
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
+import java.util.TreeSet;
+import java.util.stream.Collectors;
+
+/** Read-only, requirement-independent index of one captured catalogue revision. */
+public final class CataloguePreviewIndex {
+<span class="fc" id="L32">    public record Match(String code, String root, String parentCode, String nameEn, String nameDe, double score,</span>
+                        String analysisRole, boolean architectureCandidate, Integer sourceOrder) {}
+    /** Undirected vocabulary overlap between two directly matched nodes, with catalogue title terms as evidence. */
+<span class="fc" id="L35">    public record Association(String sourceCode, String targetCode, List&lt;String&gt; sharedTerms) {}</span>
+<span class="fc" id="L36">    public record Result(List&lt;Match&gt; matches, List&lt;Match&gt; ancestors, List&lt;Association&gt; associations) {}</span>
+
+    private static final int MATCHES_PER_ROOT = 12;
+    private static final int MAX_ASSOCIATIONS = 24;
+<span class="fc" id="L40">    private static final Comparator&lt;Match&gt; RANK = Comparator.comparingDouble(Match::score).reversed()</span>
+<span class="fc" id="L41">            .thenComparing(Match::code);</span>
+    private final Set&lt;String&gt; roots;
+<span class="fc" id="L43">    private final Map&lt;String, RootCatalogueSnapshot.Node&gt; nodes = new HashMap&lt;&gt;();</span>
+    private final Set&lt;String&gt; navigationOnly;
+<span class="fc" id="L45">    private final LanguageIndex english = new LanguageIndex();</span>
+<span class="fc" id="L46">    private final LanguageIndex german = new LanguageIndex();</span>
+
+<span class="fc" id="L48">    public CataloguePreviewIndex(List&lt;RootCatalogueSnapshot&gt; snapshots) {</span>
+<span class="pc bpc" id="L49" title="1 of 2 branches missed.">        if (snapshots.isEmpty()) throw new IllegalArgumentException(&quot;Catalogue snapshots are required&quot;);</span>
+<span class="fc" id="L50">        roots = snapshots.stream().map(RootCatalogueSnapshot::rootCode).collect(Collectors.toUnmodifiableSet());</span>
+<span class="fc" id="L51">        new FrozenCatalogueView(snapshots.getFirst().source(), roots, snapshots);</span>
+<span class="fc" id="L52">        try (var en = new PreviewEnglishAnalyzer(); var de = new GermanAnalyzer()) {</span>
+<span class="fc bfc" id="L53" title="All 2 branches covered.">            for (var snapshot : snapshots) {</span>
+<span class="fc bfc" id="L54" title="All 2 branches covered.">                for (var node : snapshot.nodes()) {</span>
+<span class="fc" id="L55">                    nodes.put(node.code(), node);</span>
+<span class="fc" id="L56">                    english.add(node.code(), node.nameEn(), node.descriptionEn(), en);</span>
+<span class="fc" id="L57">                    german.add(node.code(), node.nameDe(), node.descriptionDe(), de);</span>
+<span class="fc" id="L58">                }</span>
+<span class="fc" id="L59">            }</span>
+        }
+<span class="fc" id="L61">        navigationOnly = navigationOnly(nodes);</span>
+<span class="fc" id="L62">        english.indexTopics(nodes);</span>
+<span class="fc" id="L63">        german.indexTopics(nodes);</span>
+<span class="fc" id="L64">    }</span>
+
+    /**
+     * Scores express weighted query-term coverage, not model probabilities. A term in a description
+     * contributes 65% of its title weight. Rarer terms carry more weight, including unmatched terms
+     * in the denominator. The better independently evaluated language wins. Path-only nodes have zero weight.
+     */
+    public Result query(String text, Set&lt;String&gt; selectedRoots) {
+<span class="fc" id="L72">        Map&lt;String, Double&gt; scores = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L73">        var terms = QueryTerms.from(text);</span>
+<span class="fc" id="L74">        english.score(terms.english(), scores);</span>
+<span class="fc" id="L75">        german.score(terms.german(), scores);</span>
+<span class="fc" id="L76">        return project(scores, selectedRoots, terms);</span>
+    }
+
+    Result project(Map&lt;String, Double&gt; scores, Set&lt;String&gt; selectedRoots, String text) {
+<span class="fc" id="L80">        return project(scores, selectedRoots, QueryTerms.from(text));</span>
+    }
+
+    private Result project(Map&lt;String, Double&gt; scores, Set&lt;String&gt; selectedRoots, QueryTerms terms) {
+<span class="fc bfc" id="L84" title="All 2 branches covered.">        if (!roots.containsAll(selectedRoots)) throw new IllegalArgumentException(&quot;Unknown preview taxonomy root&quot;);</span>
+<span class="fc" id="L85">        Map&lt;String, List&lt;Match&gt;&gt; byRoot = new TreeMap&lt;&gt;();</span>
+<span class="fc" id="L86">        scores.forEach((code, score) -&gt; {</span>
+<span class="fc" id="L87">            var node = nodes.get(code);</span>
+<span class="fc bfc" id="L88" title="All 4 branches covered.">            if (selectedRoots.isEmpty() || selectedRoots.contains(node.taxonomyRoot())) {</span>
+<span class="fc" id="L89">                byRoot.computeIfAbsent(node.taxonomyRoot(), ignored -&gt; new ArrayList&lt;&gt;()).add(match(node, score));</span>
+            }
+<span class="fc" id="L91">        });</span>
+<span class="fc" id="L92">        var matches = byRoot.values().stream().flatMap(group -&gt; group.stream().sorted(RANK).limit(MATCHES_PER_ROOT))</span>
+<span class="fc" id="L93">                .sorted(RANK).toList();</span>
+<span class="fc" id="L94">        var matched = matches.stream().map(Match::code).collect(Collectors.toSet());</span>
+<span class="fc" id="L95">        Set&lt;String&gt; ancestors = new HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L96" title="All 2 branches covered.">        for (var hit : matches) {</span>
+<span class="fc" id="L97">            String parent = hit.parentCode();</span>
+<span class="fc bfc" id="L98" title="All 4 branches covered.">            while (parent != null &amp;&amp; ancestors.add(parent)) parent = nodes.get(parent).parentCode();</span>
+<span class="fc" id="L99">        }</span>
+<span class="fc" id="L100">        ancestors.removeAll(matched);</span>
+<span class="fc" id="L101">        var path = ancestors.stream().map(nodes::get).sorted(Comparator.comparingInt(RootCatalogueSnapshot.Node::level)</span>
+<span class="fc" id="L102">                .thenComparing(RootCatalogueSnapshot.Node::code)).map(node -&gt; match(node, 0)).toList();</span>
+<span class="fc" id="L103">        return new Result(matches, path, associations(matches, matched, terms));</span>
+    }
+
+    private List&lt;Association&gt; associations(List&lt;Match&gt; hits, Set&lt;String&gt; matched, QueryTerms terms) {
+<span class="fc" id="L107">        Map&lt;Pair, Set&lt;String&gt;&gt; pairs = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L108" title="All 2 branches covered.">        for (var hit : hits) {</span>
+<span class="fc" id="L109">            english.collect(hit, matched, terms.english(), nodes, pairs);</span>
+<span class="fc" id="L110">            german.collect(hit, matched, terms.german(), nodes, pairs);</span>
+<span class="fc" id="L111">        }</span>
+        // Prefer more shared terms, then the weaker endpoint's own requirement fit, then stable IDs.
+<span class="fc" id="L113">        Map&lt;String, Double&gt; score = hits.stream().collect(Collectors.toMap(Match::code, Match::score));</span>
+<span class="fc" id="L114">        return pairs.entrySet().stream()</span>
+<span class="fc" id="L115">                .map(entry -&gt; new Association(entry.getKey().first(), entry.getKey().second(), List.copyOf(entry.getValue())))</span>
+<span class="pc" id="L116">                .sorted(Comparator.&lt;Association&gt;comparingInt(pair -&gt; pair.sharedTerms().size()).reversed()</span>
+<span class="fc" id="L117">                        .thenComparing(Comparator.comparingDouble((Association pair) -&gt;</span>
+<span class="pc" id="L118">                                Math.min(score.get(pair.sourceCode()), score.get(pair.targetCode()))).reversed())</span>
+<span class="fc" id="L119">                        .thenComparing(Association::sourceCode).thenComparing(Association::targetCode))</span>
+<span class="fc" id="L120">                .limit(MAX_ASSOCIATIONS).toList();</span>
+    }
+
+<span class="fc" id="L123">    private record Pair(String first, String second) {}</span>
+<span class="fc" id="L124">    private record Topic(String stem, Map&lt;String, String&gt; titleForms) {}</span>
+    /** Dictionary-based English stemming preserves distinctions such as &quot;emergency&quot; versus &quot;emergent&quot;. */
+    private static final class PreviewEnglishAnalyzer extends Analyzer {
+        @Override
+        protected TokenStreamComponents createComponents(String field) {
+<span class="fc" id="L129">            var source = new StandardTokenizer();</span>
+<span class="fc" id="L130">            var words = new LowerCaseFilter(new EnglishPossessiveFilter(source));</span>
+<span class="fc" id="L131">            return new TokenStreamComponents(source, new KStemFilter(new StopFilter(words, EnglishAnalyzer.getDefaultStopSet())));</span>
+        }
+    }
+
+<span class="fc" id="L135">    private record QueryTerms(Set&lt;String&gt; english, Set&lt;String&gt; german) {</span>
+        static QueryTerms from(String text) {
+<span class="fc" id="L137">            try (var en = new PreviewEnglishAnalyzer(); var de = new GermanAnalyzer()) {</span>
+<span class="fc" id="L138">                return new QueryTerms(LanguageIndex.terms(en, text).keySet(), LanguageIndex.terms(de, text).keySet());</span>
+            }
+        }
+    }
+
+    // Assess wrapper identity once on the entire admitted hierarchy, before per-root top-k filtering.
+    private static Set&lt;String&gt; navigationOnly(Map&lt;String, RootCatalogueSnapshot.Node&gt; recorded) {
+<span class="fc" id="L145">        var tree = new HashMap&lt;String, TaxonomyNodeDto&gt;();</span>
+<span class="fc bfc" id="L146" title="All 2 branches covered.">        for (var node : recorded.values()) {</span>
+<span class="fc" id="L147">            var dto = new TaxonomyNodeDto();</span>
+<span class="fc" id="L148">            dto.setCode(node.code());</span>
+<span class="fc" id="L149">            dto.setParentCode(node.parentCode());</span>
+<span class="fc" id="L150">            dto.setTaxonomyRoot(node.taxonomyRoot());</span>
+<span class="fc" id="L151">            dto.setLevel(node.level());</span>
+<span class="fc" id="L152">            dto.setAnalysisRole(node.analysisRole());</span>
+<span class="fc" id="L153">            tree.put(node.code(), dto);</span>
+<span class="fc" id="L154">        }</span>
+<span class="fc bfc" id="L155" title="All 2 branches covered.">        for (var node : tree.values()) {</span>
+<span class="fc" id="L156">            var parent = tree.get(node.getParentCode());</span>
+<span class="fc bfc" id="L157" title="All 2 branches covered.">            if (parent != null) parent.getChildren().add(node);</span>
+<span class="fc" id="L158">        }</span>
+<span class="fc" id="L159">        return tree.values().stream().filter(node -&gt; node.architectureNavigationOnly(tree.get(node.getParentCode())))</span>
+<span class="fc" id="L160">                .map(TaxonomyNodeDto::getCode).collect(Collectors.toUnmodifiableSet());</span>
+    }
+
+    private Match match(RootCatalogueSnapshot.Node node, double score) {
+<span class="fc" id="L164">        return new Match(node.code(), node.taxonomyRoot(), node.parentCode(), node.nameEn(), node.nameDe(), score,</span>
+<span class="fc bfc" id="L165" title="All 2 branches covered.">                node.analysisRole(), !navigationOnly.contains(node.code()), node.sortOrder());</span>
+    }
+
+<span class="fc" id="L168">    private static final class LanguageIndex {</span>
+<span class="fc" id="L169">        private final Map&lt;String, Map&lt;String, Boolean&gt;&gt; postings = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L170">        private final Map&lt;String, Map&lt;String, String&gt;&gt; titleForms = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L171">        private final Map&lt;String, List&lt;Topic&gt;&gt; topics = new HashMap&lt;&gt;();</span>
+        private int documents;
+
+        void add(String code, String name, String description, Analyzer analyzer) {
+<span class="fc" id="L175">            var title = terms(analyzer, name);</span>
+<span class="fc" id="L176">            var body = terms(analyzer, description);</span>
+<span class="pc bpc" id="L177" title="1 of 4 branches missed.">            if (title.isEmpty() &amp;&amp; body.isEmpty()) return;</span>
+<span class="fc" id="L178">            documents++;</span>
+<span class="fc bfc" id="L179" title="All 2 branches covered.">            for (String term : body.keySet()) postings.computeIfAbsent(term, key -&gt; new HashMap&lt;&gt;()).put(code, false);</span>
+<span class="fc" id="L180">            title.forEach((term, form) -&gt; {</span>
+<span class="fc" id="L181">                postings.computeIfAbsent(term, key -&gt; new HashMap&lt;&gt;()).put(code, true);</span>
+<span class="fc" id="L182">                titleForms.computeIfAbsent(term, ignored -&gt; new HashMap&lt;&gt;()).put(code, form);</span>
+<span class="fc" id="L183">            });</span>
+<span class="fc" id="L184">        }</span>
+
+        /** Store cross-root topic groups once; common headings would produce uninformative dense networks. */
+        void indexTopics(Map&lt;String, RootCatalogueSnapshot.Node&gt; nodes) {
+            // Never expand a title shared by more than 24 nodes; use a stricter relative cap for small catalogues.
+<span class="fc" id="L189">            int maxMembers = Math.min(24, Math.max(2, documents / 10));</span>
+<span class="fc" id="L190">            titleForms.forEach((stem, forms) -&gt; {</span>
+<span class="fc bfc" id="L191" title="All 4 branches covered.">                if (forms.size() &lt; 2 || forms.size() &gt; maxMembers) return;</span>
+<span class="fc bfc" id="L192" title="All 2 branches covered.">                if (forms.keySet().stream().map(code -&gt; nodes.get(code).taxonomyRoot()).distinct().limit(2).count() &lt; 2) return;</span>
+<span class="fc" id="L193">                var topic = new Topic(stem, Map.copyOf(forms));</span>
+<span class="fc bfc" id="L194" title="All 2 branches covered.">                for (String code : forms.keySet()) topics.computeIfAbsent(code, ignored -&gt; new ArrayList&lt;&gt;()).add(topic);</span>
+<span class="fc" id="L195">            });</span>
+<span class="fc" id="L196">            titleForms.clear();</span>
+<span class="fc" id="L197">        }</span>
+
+        void score(Set&lt;String&gt; terms, Map&lt;String, Double&gt; scores) {
+<span class="fc bfc" id="L200" title="All 2 branches covered.">            if (documents == 0) return;</span>
+<span class="fc" id="L201">            Map&lt;String, Double&gt; numerator = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L202">            double denominator = 0;</span>
+<span class="fc bfc" id="L203" title="All 2 branches covered.">            for (String term : terms) {</span>
+<span class="fc" id="L204">                var entries = postings.getOrDefault(term, Map.of());</span>
+<span class="fc" id="L205">                double weight = 1 + Math.log((documents + 1.0) / (entries.size() + 1.0));</span>
+<span class="fc" id="L206">                denominator += weight;</span>
+<span class="fc bfc" id="L207" title="All 2 branches covered.">                entries.forEach((code, title) -&gt; numerator.merge(code, title ? weight : 0.65 * weight, Double::sum));</span>
+<span class="fc" id="L208">            }</span>
+<span class="fc" id="L209">            double total = denominator;</span>
+            // Round only for display in callers. Preserve strict positive scores and deterministic ordering.
+<span class="fc" id="L211">            numerator.forEach((code, value) -&gt; scores.merge(code, Math.min(100, 100 * value / total), Math::max));</span>
+<span class="fc" id="L212">        }</span>
+
+        void collect(Match hit, Set&lt;String&gt; matched, Set&lt;String&gt; queryTerms, Map&lt;String, RootCatalogueSnapshot.Node&gt; nodes,
+                     Map&lt;Pair, Set&lt;String&gt;&gt; pairs) {
+<span class="fc bfc" id="L216" title="All 2 branches covered.">            for (var topic : topics.getOrDefault(hit.code(), List.of())) {</span>
+                // Two on-topic endpoints can share a different, incidental subject. Require text evidence for the link itself.
+<span class="fc bfc" id="L218" title="All 2 branches covered.">                if (!queryTerms.contains(topic.stem())) continue;</span>
+<span class="fc bfc" id="L219" title="All 2 branches covered.">                for (String peer : topic.titleForms().keySet()) {</span>
+<span class="fc bfc" id="L220" title="All 4 branches covered.">                    if (hit.code().compareTo(peer) &gt;= 0 || !matched.contains(peer)</span>
+<span class="fc bfc" id="L221" title="All 2 branches covered.">                            || hit.root().equals(nodes.get(peer).taxonomyRoot())) continue;</span>
+<span class="fc" id="L222">                    String evidence = shorterForm(topic.titleForms().get(hit.code()), topic.titleForms().get(peer));</span>
+<span class="fc" id="L223">                    pairs.computeIfAbsent(new Pair(hit.code(), peer), ignored -&gt; new TreeSet&lt;&gt;()).add(evidence);</span>
+<span class="fc" id="L224">                }</span>
+<span class="fc" id="L225">            }</span>
+<span class="fc" id="L226">        }</span>
+
+        private static String shorterForm(String a, String b) {
+<span class="pc bpc" id="L229" title="1 of 4 branches missed.">            if (a.length() != b.length()) return a.length() &lt; b.length() ? a : b;</span>
+<span class="pc bpc" id="L230" title="1 of 2 branches missed.">            return a.compareTo(b) &lt; 0 ? a : b;</span>
+        }
+
+        private static Map&lt;String, String&gt; terms(Analyzer analyzer, String text) {
+<span class="fc bfc" id="L234" title="All 4 branches covered.">            if (text == null || text.isBlank()) return Map.of();</span>
+<span class="fc" id="L235">            Map&lt;String, String&gt; terms = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L236">            try (var stream = analyzer.tokenStream(&quot;text&quot;, text)) {</span>
+<span class="fc" id="L237">                var term = stream.addAttribute(CharTermAttribute.class);</span>
+<span class="fc" id="L238">                var offsets = stream.addAttribute(OffsetAttribute.class);</span>
+<span class="fc" id="L239">                stream.reset();</span>
+<span class="fc bfc" id="L240" title="All 2 branches covered.">                while (stream.incrementToken()) {</span>
+<span class="fc" id="L241">                    var form = text.substring(offsets.startOffset(), offsets.endOffset()).toLowerCase(Locale.ROOT);</span>
+<span class="fc" id="L242">                    terms.putIfAbsent(term.toString(), form);</span>
+<span class="fc" id="L243">                }</span>
+<span class="fc" id="L244">                stream.end();</span>
+<span class="nc" id="L245">            } catch (IOException error) {</span>
+<span class="nc" id="L246">                throw new UncheckedIOException(error);</span>
+<span class="fc" id="L247">            }</span>
+<span class="fc" id="L248">            return terms;</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

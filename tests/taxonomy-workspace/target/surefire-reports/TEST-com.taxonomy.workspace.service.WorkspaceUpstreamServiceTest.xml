@@ -1,0 +1,845 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report.xsd" version="3.0.2" name="com.taxonomy.workspace.service.WorkspaceUpstreamServiceTest" time="1.791" tests="25" errors="0" skipped="0" failures="0" flakes="0">
+  <properties>
+    <property name="java.specification.version" value="25"/>
+    <property name="sun.jnu.encoding" value="UTF-8"/>
+    <property name="java.class.path" value="/home/runner/work/Taxonomy/Taxonomy/taxonomy-workspace/target/test-classes:/home/runner/work/Taxonomy/Taxonomy/taxonomy-workspace/target/classes:/home/runner/work/Taxonomy/Taxonomy/taxonomy-domain/target/taxonomy-domain-1.5.4-SNAPSHOT.jar:/home/runner/.m2/repository/com/fasterxml/jackson/core/jackson-annotations/2.22/jackson-annotations-2.22.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-dsl/target/taxonomy-dsl-1.5.4-SNAPSHOT.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-sparx-mapping/target/taxonomy-sparx-mapping-1.5.4-SNAPSHOT.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-export/target/taxonomy-export-1.5.4-SNAPSHOT.jar:/home/runner/.m2/repository/org/apache/jena/jena-arq/6.2.0/jena-arq-6.2.0.jar:/home/runner/.m2/repository/org/apache/jena/jena-core/6.2.0/jena-core-6.2.0.jar:/home/runner/.m2/repository/org/apache/jena/jena-base/6.2.0/jena-base-6.2.0.jar:/home/runner/.m2/repository/org/apache/commons/commons-csv/1.14.1/commons-csv-1.14.1.jar:/home/runner/.m2/repository/com/github/ben-manes/caffeine/caffeine/3.2.4/caffeine-3.2.4.jar:/home/runner/.m2/repository/com/github/andrewoma/dexx/collection/0.7/collection-0.7.jar:/home/runner/.m2/repository/org/apache/jena/jena-iri3986/6.2.0/jena-iri3986-6.2.0.jar:/home/runner/.m2/repository/org/apache/jena/jena-langtag/6.2.0/jena-langtag-6.2.0.jar:/home/runner/.m2/repository/org/roaringbitmap/RoaringBitmap/1.6.15/RoaringBitmap-1.6.15.jar:/home/runner/.m2/repository/com/google/code/gson/gson/2.13.2/gson-2.13.2.jar:/home/runner/.m2/repository/com/google/errorprone/error_prone_annotations/2.41.0/error_prone_annotations-2.41.0.jar:/home/runner/.m2/repository/org/slf4j/jcl-over-slf4j/2.0.20/jcl-over-slf4j-2.0.20.jar:/home/runner/.m2/repository/com/apicatalog/titanium-json-ld/1.7.0/titanium-json-ld-1.7.0.jar:/home/runner/.m2/repository/com/apicatalog/titanium-jcs/1.1.1/titanium-jcs-1.1.1.jar:/home/runner/.m2/repository/com/apicatalog/titanium-rdf-api/1.0.0/titanium-rdf-api-1.0.0.jar:/home/runner/.m2/repository/com/apicatalog/titanium-rdf-n-quads/1.0.2/titanium-rdf-n-quads-1.0.2.jar:/home/runner/.m2/repository/org/glassfish/jakarta.json/2.0.1/jakarta.json-2.0.1.jar:/home/runner/.m2/repository/com/google/protobuf/protobuf-java/4.36.2/protobuf-java-4.36.2.jar:/home/runner/.m2/repository/org/apache/thrift/libthrift/0.24.0/libthrift-0.24.0.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-extension-api/target/taxonomy-extension-api-1.5.4-SNAPSHOT.jar:/home/runner/.m2/repository/org/apache/commons/commons-text/1.15.0/commons-text-1.15.0.jar:/home/runner/.m2/repository/org/apache/pdfbox/pdfbox/3.0.8/pdfbox-3.0.8.jar:/home/runner/.m2/repository/org/apache/pdfbox/pdfbox-io/3.0.8/pdfbox-io-3.0.8.jar:/home/runner/.m2/repository/org/apache/pdfbox/fontbox/3.0.8/fontbox-3.0.8.jar:/home/runner/.m2/repository/commons-logging/commons-logging/1.3.6/commons-logging-1.3.6.jar:/home/runner/.m2/repository/com/thoughtworks/xstream/xstream/1.4.21/xstream-1.4.21.jar:/home/runner/.m2/repository/io/github/x-stream/mxparser/1.2.2/mxparser-1.2.2.jar:/home/runner/.m2/repository/xmlpull/xmlpull/1.1.3.1/xmlpull-1.1.3.1.jar:/home/runner/.m2/repository/org/slf4j/slf4j-api/2.0.20/slf4j-api-2.0.20.jar:/home/runner/.m2/repository/org/apache/poi/poi-ooxml/6.0.0/poi-ooxml-6.0.0.jar:/home/runner/.m2/repository/org/apache/poi/poi/6.0.0/poi-6.0.0.jar:/home/runner/.m2/repository/org/apache/commons/commons-math3/3.6.1/commons-math3-3.6.1.jar:/home/runner/.m2/repository/com/zaxxer/SparseBitSet/1.3/SparseBitSet-1.3.jar:/home/runner/.m2/repository/org/apache/xmlbeans/xmlbeans/5.4.1/xmlbeans-5.4.1.jar:/home/runner/.m2/repository/org/apache/commons/commons-compress/1.28.0/commons-compress-1.28.0.jar:/home/runner/.m2/repository/commons-io/commons-io/2.22.0/commons-io-2.22.0.jar:/home/runner/.m2/repository/com/github/virtuald/curvesapi/1.08/curvesapi-1.08.jar:/home/runner/.m2/repository/org/apache/logging/log4j/log4j-api/2.25.5/log4j-api-2.25.5.jar:/home/runner/.m2/repository/org/apache/commons/commons-collections4/4.6.0/commons-collections4-4.6.0.jar:/home/runner/.m2/repository/org/apache/poi/poi-ooxml-full/6.0.0/poi-ooxml-full-6.0.0.jar:/home/runner/.m2/repository/com/fasterxml/jackson/core/jackson-databind/2.22.4/jackson-databind-2.22.4.jar:/home/runner/.m2/repository/com/fasterxml/jackson/core/jackson-core/2.22.4/jackson-core-2.22.4.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-web/4.1.2/spring-boot-starter-web-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-jackson/4.1.2/spring-boot-starter-jackson-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-tomcat/4.1.2/spring-boot-starter-tomcat-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-tomcat-runtime/4.1.2/spring-boot-starter-tomcat-runtime-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-web-server/4.1.2/spring-boot-web-server-4.1.2.jar:/home/runner/.m2/repository/org/apache/tomcat/embed/tomcat-embed-core/11.0.27/tomcat-embed-core-11.0.27.jar:/home/runner/.m2/repository/org/apache/tomcat/embed/tomcat-embed-websocket/11.0.27/tomcat-embed-websocket-11.0.27.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-tomcat/4.1.2/spring-boot-tomcat-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-http-converter/4.1.2/spring-boot-http-converter-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot/4.1.2/spring-boot-4.1.2.jar:/home/runner/.m2/repository/org/springframework/spring-web/7.0.10/spring-web-7.0.10.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-webmvc/4.1.2/spring-boot-webmvc-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-servlet/4.1.2/spring-boot-servlet-4.1.2.jar:/home/runner/.m2/repository/org/springframework/spring-webmvc/7.0.10/spring-webmvc-7.0.10.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-data-jpa/4.1.2/spring-boot-starter-data-jpa-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter/4.1.2/spring-boot-starter-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-logging/4.1.2/spring-boot-starter-logging-4.1.2.jar:/home/runner/.m2/repository/ch/qos/logback/logback-classic/1.5.38/logback-classic-1.5.38.jar:/home/runner/.m2/repository/ch/qos/logback/logback-core/1.5.38/logback-core-1.5.38.jar:/home/runner/.m2/repository/org/apache/logging/log4j/log4j-to-slf4j/2.25.5/log4j-to-slf4j-2.25.5.jar:/home/runner/.m2/repository/org/slf4j/jul-to-slf4j/2.0.20/jul-to-slf4j-2.0.20.jar:/home/runner/.m2/repository/jakarta/annotation/jakarta.annotation-api/3.0.0/jakarta.annotation-api-3.0.0.jar:/home/runner/.m2/repository/org/yaml/snakeyaml/2.6/snakeyaml-2.6.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-jdbc/4.1.2/spring-boot-starter-jdbc-4.1.2.jar:/home/runner/.m2/repository/com/zaxxer/HikariCP/7.0.2/HikariCP-7.0.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-data-jpa/4.1.2/spring-boot-data-jpa-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-data-commons/4.1.2/spring-boot-data-commons-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-persistence/4.1.2/spring-boot-persistence-4.1.2.jar:/home/runner/.m2/repository/org/springframework/data/spring-data-commons/4.1.2/spring-data-commons-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-hibernate/4.1.2/spring-boot-hibernate-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-jpa/4.1.2/spring-boot-jpa-4.1.2.jar:/home/runner/.m2/repository/org/springframework/spring-orm/7.0.10/spring-orm-7.0.10.jar:/home/runner/.m2/repository/org/springframework/data/spring-data-jpa/4.1.2/spring-data-jpa-4.1.2.jar:/home/runner/.m2/repository/org/springframework/spring-tx/7.0.10/spring-tx-7.0.10.jar:/home/runner/.m2/repository/org/springframework/spring-aspects/7.0.10/spring-aspects-7.0.10.jar:/home/runner/.m2/repository/org/aspectj/aspectjweaver/1.9.25.1/aspectjweaver-1.9.25.1.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-jdbc/4.1.2/spring-boot-jdbc-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-sql/4.1.2/spring-boot-sql-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-transaction/4.1.2/spring-boot-transaction-4.1.2.jar:/home/runner/.m2/repository/org/springframework/spring-jdbc/7.0.10/spring-jdbc-7.0.10.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-flyway/4.1.2/spring-boot-starter-flyway-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-flyway/4.1.2/spring-boot-flyway-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-security/4.1.2/spring-boot-starter-security-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-security/4.1.2/spring-boot-security-4.1.2.jar:/home/runner/.m2/repository/org/springframework/security/spring-security-config/7.1.2/spring-security-config-7.1.2.jar:/home/runner/.m2/repository/org/springframework/spring-aop/7.0.10/spring-aop-7.0.10.jar:/home/runner/.m2/repository/org/springframework/spring-beans/7.0.10/spring-beans-7.0.10.jar:/home/runner/.m2/repository/org/hibernate/search/hibernate-search-mapper-orm/8.4.1.Final/hibernate-search-mapper-orm-8.4.1.Final.jar:/home/runner/.m2/repository/org/hibernate/search/hibernate-search-engine/8.4.1.Final/hibernate-search-engine-8.4.1.Final.jar:/home/runner/.m2/repository/org/hibernate/search/hibernate-search-mapper-pojo-base/8.4.1.Final/hibernate-search-mapper-pojo-base-8.4.1.Final.jar:/home/runner/.m2/repository/org/hibernate/search/hibernate-search-util-common/8.4.1.Final/hibernate-search-util-common-8.4.1.Final.jar:/home/runner/.m2/repository/org/hibernate/orm/hibernate-core/7.4.13.Final/hibernate-core-7.4.13.Final.jar:/home/runner/.m2/repository/net/bytebuddy/byte-buddy/1.18.15/byte-buddy-1.18.15.jar:/home/runner/.m2/repository/org/glassfish/jaxb/jaxb-runtime/4.0.9/jaxb-runtime-4.0.9.jar:/home/runner/.m2/repository/org/glassfish/jaxb/jaxb-core/4.0.9/jaxb-core-4.0.9.jar:/home/runner/.m2/repository/org/eclipse/angus/angus-activation/2.0.3/angus-activation-2.0.3.jar:/home/runner/.m2/repository/org/glassfish/jaxb/txw2/4.0.9/txw2-4.0.9.jar:/home/runner/.m2/repository/com/sun/istack/istack-commons-runtime/4.1.2/istack-commons-runtime-4.1.2.jar:/home/runner/.m2/repository/jakarta/inject/jakarta.inject-api/2.0.1/jakarta.inject-api-2.0.1.jar:/home/runner/.m2/repository/org/antlr/antlr4-runtime/4.13.2/antlr4-runtime-4.13.2.jar:/home/runner/.m2/repository/org/hibernate/models/hibernate-models/1.1.1/hibernate-models-1.1.1.jar:/home/runner/.m2/repository/jakarta/persistence/jakarta.persistence-api/3.2.0/jakarta.persistence-api-3.2.0.jar:/home/runner/.m2/repository/jakarta/transaction/jakarta.transaction-api/2.0.1/jakarta.transaction-api-2.0.1.jar:/home/runner/.m2/repository/io/smallrye/jandex/3.3.2/jandex-3.3.2.jar:/home/runner/.m2/repository/org/jboss/logging/jboss-logging/3.6.3.Final/jboss-logging-3.6.3.Final.jar:/home/runner/.m2/repository/jakarta/xml/bind/jakarta.xml.bind-api/4.0.5/jakarta.xml.bind-api-4.0.5.jar:/home/runner/.m2/repository/jakarta/activation/jakarta.activation-api/2.1.4/jakarta.activation-api-2.1.4.jar:/home/runner/.m2/repository/org/eclipse/jgit/org.eclipse.jgit/7.8.1.202611041320-r/org.eclipse.jgit-7.8.1.202611041320-r.jar:/home/runner/.m2/repository/com/googlecode/javaewah/JavaEWAH/1.2.3/JavaEWAH-1.2.3.jar:/home/runner/.m2/repository/commons-codec/commons-codec/1.21.0/commons-codec-1.21.0.jar:/home/runner/.m2/repository/org/eclipse/jgit/org.eclipse.jgit.gpg.bc/7.8.1.202611041320-r/org.eclipse.jgit.gpg.bc-7.8.1.202611041320-r.jar:/home/runner/.m2/repository/org/bouncycastle/bcpg-jdk18on/1.85/bcpg-jdk18on-1.85.jar:/home/runner/.m2/repository/org/bouncycastle/bcprov-jdk18on/1.85.2/bcprov-jdk18on-1.85.2.jar:/home/runner/.m2/repository/org/bouncycastle/bcutil-jdk18on/1.85/bcutil-jdk18on-1.85.jar:/home/runner/.m2/repository/org/bouncycastle/bcpkix-jdk18on/1.85/bcpkix-jdk18on-1.85.jar:/home/runner/.m2/repository/io/github/carstenartur/jgit-storage-hibernate-core/0.12.2/jgit-storage-hibernate-core-0.12.2.jar:/home/runner/.m2/repository/org/springdoc/springdoc-openapi-starter-common/3.2.1/springdoc-openapi-starter-common-3.2.1.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-autoconfigure/4.1.2/spring-boot-autoconfigure-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-validation/4.1.2/spring-boot-validation-4.1.2.jar:/home/runner/.m2/repository/org/apache/tomcat/embed/tomcat-embed-el/11.0.27/tomcat-embed-el-11.0.27.jar:/home/runner/.m2/repository/org/hibernate/validator/hibernate-validator/9.1.5.Final/hibernate-validator-9.1.5.Final.jar:/home/runner/.m2/repository/com/fasterxml/classmate/1.7.3/classmate-1.7.3.jar:/home/runner/.m2/repository/io/swagger/core/v3/swagger-core/3.0.0/swagger-core-3.0.0.jar:/home/runner/.m2/repository/tools/jackson/core/jackson-databind/3.1.7/jackson-databind-3.1.7.jar:/home/runner/.m2/repository/io/swagger/core/v3/swagger-annotations/3.0.0/swagger-annotations-3.0.0.jar:/home/runner/.m2/repository/io/swagger/core/v3/swagger-models/3.0.0/swagger-models-3.0.0.jar:/home/runner/.m2/repository/jakarta/validation/jakarta.validation-api/3.1.1/jakarta.validation-api-3.1.1.jar:/home/runner/.m2/repository/tools/jackson/dataformat/jackson-dataformat-yaml/3.1.7/jackson-dataformat-yaml-3.1.7.jar:/home/runner/.m2/repository/tools/jackson/core/jackson-core/3.1.7/jackson-core-3.1.7.jar:/home/runner/.m2/repository/org/snakeyaml/snakeyaml-engine/3.0.1/snakeyaml-engine-3.0.1.jar:/home/runner/.m2/repository/org/apache/commons/commons-lang3/3.20.0/commons-lang3-3.20.0.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-jackson/4.1.2/spring-boot-jackson-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-test/4.1.2/spring-boot-starter-test-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-test/4.1.2/spring-boot-test-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-test-autoconfigure/4.1.2/spring-boot-test-autoconfigure-4.1.2.jar:/home/runner/.m2/repository/com/jayway/jsonpath/json-path/2.10.0/json-path-2.10.0.jar:/home/runner/.m2/repository/net/minidev/json-smart/2.6.0/json-smart-2.6.0.jar:/home/runner/.m2/repository/net/minidev/accessors-smart/2.6.0/accessors-smart-2.6.0.jar:/home/runner/.m2/repository/org/ow2/asm/asm/9.7.1/asm-9.7.1.jar:/home/runner/.m2/repository/org/assertj/assertj-core/3.27.7/assertj-core-3.27.7.jar:/home/runner/.m2/repository/org/awaitility/awaitility/4.3.0/awaitility-4.3.0.jar:/home/runner/.m2/repository/org/hamcrest/hamcrest/3.0/hamcrest-3.0.jar:/home/runner/.m2/repository/org/junit/jupiter/junit-jupiter/6.0.3/junit-jupiter-6.0.3.jar:/home/runner/.m2/repository/org/junit/jupiter/junit-jupiter-api/6.0.3/junit-jupiter-api-6.0.3.jar:/home/runner/.m2/repository/org/opentest4j/opentest4j/1.3.0/opentest4j-1.3.0.jar:/home/runner/.m2/repository/org/junit/platform/junit-platform-commons/6.0.3/junit-platform-commons-6.0.3.jar:/home/runner/.m2/repository/org/apiguardian/apiguardian-api/1.1.2/apiguardian-api-1.1.2.jar:/home/runner/.m2/repository/org/junit/jupiter/junit-jupiter-params/6.0.3/junit-jupiter-params-6.0.3.jar:/home/runner/.m2/repository/org/junit/jupiter/junit-jupiter-engine/6.0.3/junit-jupiter-engine-6.0.3.jar:/home/runner/.m2/repository/org/junit/platform/junit-platform-engine/6.0.3/junit-platform-engine-6.0.3.jar:/home/runner/.m2/repository/org/mockito/mockito-core/5.23.0/mockito-core-5.23.0.jar:/home/runner/.m2/repository/net/bytebuddy/byte-buddy-agent/1.18.15/byte-buddy-agent-1.18.15.jar:/home/runner/.m2/repository/org/objenesis/objenesis/3.3/objenesis-3.3.jar:/home/runner/.m2/repository/org/mockito/mockito-junit-jupiter/5.23.0/mockito-junit-jupiter-5.23.0.jar:/home/runner/.m2/repository/org/skyscreamer/jsonassert/1.5.3/jsonassert-1.5.3.jar:/home/runner/.m2/repository/com/vaadin/external/google/android-json/0.0.20131108.vaadin1/android-json-0.0.20131108.vaadin1.jar:/home/runner/.m2/repository/org/springframework/spring-core/7.0.10/spring-core-7.0.10.jar:/home/runner/.m2/repository/org/jspecify/jspecify/1.0.1/jspecify-1.0.1.jar:/home/runner/.m2/repository/org/springframework/spring-test/7.0.10/spring-test-7.0.10.jar:/home/runner/.m2/repository/org/xmlunit/xmlunit-core/2.11.0/xmlunit-core-2.11.0.jar:/home/runner/.m2/repository/org/springframework/security/spring-security-test/7.1.2/spring-security-test-7.1.2.jar:/home/runner/.m2/repository/org/springframework/security/spring-security-core/7.1.2/spring-security-core-7.1.2.jar:/home/runner/.m2/repository/org/springframework/security/spring-security-crypto/7.1.2/spring-security-crypto-7.1.2.jar:/home/runner/.m2/repository/org/springframework/spring-context/7.0.10/spring-context-7.0.10.jar:/home/runner/.m2/repository/org/springframework/spring-expression/7.0.10/spring-expression-7.0.10.jar:/home/runner/.m2/repository/io/micrometer/micrometer-observation/1.17.2/micrometer-observation-1.17.2.jar:/home/runner/.m2/repository/io/micrometer/micrometer-commons/1.17.2/micrometer-commons-1.17.2.jar:/home/runner/.m2/repository/org/springframework/security/spring-security-web/7.1.2/spring-security-web-7.1.2.jar:/home/runner/.m2/repository/org/flywaydb/flyway-database-hsqldb/12.4.0/flyway-database-hsqldb-12.4.0.jar:/home/runner/.m2/repository/org/flywaydb/flyway-core/12.4.0/flyway-core-12.4.0.jar:/home/runner/.m2/repository/org/hsqldb/hsqldb/2.7.3/hsqldb-2.7.3.jar:/home/runner/.m2/repository/org/hibernate/search/hibernate-search-backend-lucene/8.4.1.Final/hibernate-search-backend-lucene-8.4.1.Final.jar:/home/runner/.m2/repository/org/apache/lucene/lucene-core/9.12.3/lucene-core-9.12.3.jar:/home/runner/.m2/repository/org/apache/lucene/lucene-analysis-common/9.12.3/lucene-analysis-common-9.12.3.jar:/home/runner/.m2/repository/org/apache/lucene/lucene-queryparser/9.12.3/lucene-queryparser-9.12.3.jar:/home/runner/.m2/repository/org/apache/lucene/lucene-queries/9.12.3/lucene-queries-9.12.3.jar:/home/runner/.m2/repository/org/apache/lucene/lucene-sandbox/9.12.3/lucene-sandbox-9.12.3.jar:/home/runner/.m2/repository/org/apache/lucene/lucene-facet/9.12.3/lucene-facet-9.12.3.jar:/home/runner/.m2/repository/org/apache/lucene/lucene-join/9.12.3/lucene-join-9.12.3.jar:/home/runner/.m2/repository/com/carrotsearch/hppc/0.10.0/hppc-0.10.0.jar:/home/runner/.m2/repository/org/apache/lucene/lucene-highlighter/9.12.3/lucene-highlighter-9.12.3.jar:/home/runner/.m2/repository/org/apache/lucene/lucene-memory/9.12.3/lucene-memory-9.12.3.jar:"/>
+    <property name="java.vm.vendor" value="Eclipse Adoptium"/>
+    <property name="sun.arch.data.model" value="64"/>
+    <property name="java.vendor.url" value="https://adoptium.net/"/>
+    <property name="user.timezone" value="Etc/UTC"/>
+    <property name="os.name" value="Linux"/>
+    <property name="java.vm.specification.version" value="25"/>
+    <property name="keycloak.container.image" value="quay.io/keycloak/keycloak:26.7.0"/>
+    <property name="taxonomy.test.browser.offline" value="maven:false"/>
+    <property name="sun.java.launcher" value="SUN_STANDARD"/>
+    <property name="sun.boot.library.path" value="/usr/lib/jvm/temurin-25-jdk-amd64/lib"/>
+    <property name="runKeycloakTests" value="true"/>
+    <property name="sun.java.command" value="/home/runner/work/Taxonomy/Taxonomy/taxonomy-workspace/target/surefire/surefirebooter-20261128050928835_51.jar /home/runner/work/Taxonomy/Taxonomy/taxonomy-workspace/target/surefire 2026-11-28T05-05-54_611-jvmRun1 surefire-20261128050928835_49tmp surefire_8-20261128050928835_50tmp"/>
+    <property name="jdk.debug" value="release"/>
+    <property name="surefire.test.class.path" value="/home/runner/work/Taxonomy/Taxonomy/taxonomy-workspace/target/test-classes:/home/runner/work/Taxonomy/Taxonomy/taxonomy-workspace/target/classes:/home/runner/work/Taxonomy/Taxonomy/taxonomy-domain/target/taxonomy-domain-1.5.4-SNAPSHOT.jar:/home/runner/.m2/repository/com/fasterxml/jackson/core/jackson-annotations/2.22/jackson-annotations-2.22.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-dsl/target/taxonomy-dsl-1.5.4-SNAPSHOT.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-sparx-mapping/target/taxonomy-sparx-mapping-1.5.4-SNAPSHOT.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-export/target/taxonomy-export-1.5.4-SNAPSHOT.jar:/home/runner/.m2/repository/org/apache/jena/jena-arq/6.2.0/jena-arq-6.2.0.jar:/home/runner/.m2/repository/org/apache/jena/jena-core/6.2.0/jena-core-6.2.0.jar:/home/runner/.m2/repository/org/apache/jena/jena-base/6.2.0/jena-base-6.2.0.jar:/home/runner/.m2/repository/org/apache/commons/commons-csv/1.14.1/commons-csv-1.14.1.jar:/home/runner/.m2/repository/com/github/ben-manes/caffeine/caffeine/3.2.4/caffeine-3.2.4.jar:/home/runner/.m2/repository/com/github/andrewoma/dexx/collection/0.7/collection-0.7.jar:/home/runner/.m2/repository/org/apache/jena/jena-iri3986/6.2.0/jena-iri3986-6.2.0.jar:/home/runner/.m2/repository/org/apache/jena/jena-langtag/6.2.0/jena-langtag-6.2.0.jar:/home/runner/.m2/repository/org/roaringbitmap/RoaringBitmap/1.6.15/RoaringBitmap-1.6.15.jar:/home/runner/.m2/repository/com/google/code/gson/gson/2.13.2/gson-2.13.2.jar:/home/runner/.m2/repository/com/google/errorprone/error_prone_annotations/2.41.0/error_prone_annotations-2.41.0.jar:/home/runner/.m2/repository/org/slf4j/jcl-over-slf4j/2.0.20/jcl-over-slf4j-2.0.20.jar:/home/runner/.m2/repository/com/apicatalog/titanium-json-ld/1.7.0/titanium-json-ld-1.7.0.jar:/home/runner/.m2/repository/com/apicatalog/titanium-jcs/1.1.1/titanium-jcs-1.1.1.jar:/home/runner/.m2/repository/com/apicatalog/titanium-rdf-api/1.0.0/titanium-rdf-api-1.0.0.jar:/home/runner/.m2/repository/com/apicatalog/titanium-rdf-n-quads/1.0.2/titanium-rdf-n-quads-1.0.2.jar:/home/runner/.m2/repository/org/glassfish/jakarta.json/2.0.1/jakarta.json-2.0.1.jar:/home/runner/.m2/repository/com/google/protobuf/protobuf-java/4.36.2/protobuf-java-4.36.2.jar:/home/runner/.m2/repository/org/apache/thrift/libthrift/0.24.0/libthrift-0.24.0.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-extension-api/target/taxonomy-extension-api-1.5.4-SNAPSHOT.jar:/home/runner/.m2/repository/org/apache/commons/commons-text/1.15.0/commons-text-1.15.0.jar:/home/runner/.m2/repository/org/apache/pdfbox/pdfbox/3.0.8/pdfbox-3.0.8.jar:/home/runner/.m2/repository/org/apache/pdfbox/pdfbox-io/3.0.8/pdfbox-io-3.0.8.jar:/home/runner/.m2/repository/org/apache/pdfbox/fontbox/3.0.8/fontbox-3.0.8.jar:/home/runner/.m2/repository/commons-logging/commons-logging/1.3.6/commons-logging-1.3.6.jar:/home/runner/.m2/repository/com/thoughtworks/xstream/xstream/1.4.21/xstream-1.4.21.jar:/home/runner/.m2/repository/io/github/x-stream/mxparser/1.2.2/mxparser-1.2.2.jar:/home/runner/.m2/repository/xmlpull/xmlpull/1.1.3.1/xmlpull-1.1.3.1.jar:/home/runner/.m2/repository/org/slf4j/slf4j-api/2.0.20/slf4j-api-2.0.20.jar:/home/runner/.m2/repository/org/apache/poi/poi-ooxml/6.0.0/poi-ooxml-6.0.0.jar:/home/runner/.m2/repository/org/apache/poi/poi/6.0.0/poi-6.0.0.jar:/home/runner/.m2/repository/org/apache/commons/commons-math3/3.6.1/commons-math3-3.6.1.jar:/home/runner/.m2/repository/com/zaxxer/SparseBitSet/1.3/SparseBitSet-1.3.jar:/home/runner/.m2/repository/org/apache/xmlbeans/xmlbeans/5.4.1/xmlbeans-5.4.1.jar:/home/runner/.m2/repository/org/apache/commons/commons-compress/1.28.0/commons-compress-1.28.0.jar:/home/runner/.m2/repository/commons-io/commons-io/2.22.0/commons-io-2.22.0.jar:/home/runner/.m2/repository/com/github/virtuald/curvesapi/1.08/curvesapi-1.08.jar:/home/runner/.m2/repository/org/apache/logging/log4j/log4j-api/2.25.5/log4j-api-2.25.5.jar:/home/runner/.m2/repository/org/apache/commons/commons-collections4/4.6.0/commons-collections4-4.6.0.jar:/home/runner/.m2/repository/org/apache/poi/poi-ooxml-full/6.0.0/poi-ooxml-full-6.0.0.jar:/home/runner/.m2/repository/com/fasterxml/jackson/core/jackson-databind/2.22.4/jackson-databind-2.22.4.jar:/home/runner/.m2/repository/com/fasterxml/jackson/core/jackson-core/2.22.4/jackson-core-2.22.4.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-web/4.1.2/spring-boot-starter-web-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-jackson/4.1.2/spring-boot-starter-jackson-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-tomcat/4.1.2/spring-boot-starter-tomcat-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-tomcat-runtime/4.1.2/spring-boot-starter-tomcat-runtime-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-web-server/4.1.2/spring-boot-web-server-4.1.2.jar:/home/runner/.m2/repository/org/apache/tomcat/embed/tomcat-embed-core/11.0.27/tomcat-embed-core-11.0.27.jar:/home/runner/.m2/repository/org/apache/tomcat/embed/tomcat-embed-websocket/11.0.27/tomcat-embed-websocket-11.0.27.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-tomcat/4.1.2/spring-boot-tomcat-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-http-converter/4.1.2/spring-boot-http-converter-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot/4.1.2/spring-boot-4.1.2.jar:/home/runner/.m2/repository/org/springframework/spring-web/7.0.10/spring-web-7.0.10.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-webmvc/4.1.2/spring-boot-webmvc-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-servlet/4.1.2/spring-boot-servlet-4.1.2.jar:/home/runner/.m2/repository/org/springframework/spring-webmvc/7.0.10/spring-webmvc-7.0.10.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-data-jpa/4.1.2/spring-boot-starter-data-jpa-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter/4.1.2/spring-boot-starter-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-logging/4.1.2/spring-boot-starter-logging-4.1.2.jar:/home/runner/.m2/repository/ch/qos/logback/logback-classic/1.5.38/logback-classic-1.5.38.jar:/home/runner/.m2/repository/ch/qos/logback/logback-core/1.5.38/logback-core-1.5.38.jar:/home/runner/.m2/repository/org/apache/logging/log4j/log4j-to-slf4j/2.25.5/log4j-to-slf4j-2.25.5.jar:/home/runner/.m2/repository/org/slf4j/jul-to-slf4j/2.0.20/jul-to-slf4j-2.0.20.jar:/home/runner/.m2/repository/jakarta/annotation/jakarta.annotation-api/3.0.0/jakarta.annotation-api-3.0.0.jar:/home/runner/.m2/repository/org/yaml/snakeyaml/2.6/snakeyaml-2.6.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-jdbc/4.1.2/spring-boot-starter-jdbc-4.1.2.jar:/home/runner/.m2/repository/com/zaxxer/HikariCP/7.0.2/HikariCP-7.0.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-data-jpa/4.1.2/spring-boot-data-jpa-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-data-commons/4.1.2/spring-boot-data-commons-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-persistence/4.1.2/spring-boot-persistence-4.1.2.jar:/home/runner/.m2/repository/org/springframework/data/spring-data-commons/4.1.2/spring-data-commons-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-hibernate/4.1.2/spring-boot-hibernate-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-jpa/4.1.2/spring-boot-jpa-4.1.2.jar:/home/runner/.m2/repository/org/springframework/spring-orm/7.0.10/spring-orm-7.0.10.jar:/home/runner/.m2/repository/org/springframework/data/spring-data-jpa/4.1.2/spring-data-jpa-4.1.2.jar:/home/runner/.m2/repository/org/springframework/spring-tx/7.0.10/spring-tx-7.0.10.jar:/home/runner/.m2/repository/org/springframework/spring-aspects/7.0.10/spring-aspects-7.0.10.jar:/home/runner/.m2/repository/org/aspectj/aspectjweaver/1.9.25.1/aspectjweaver-1.9.25.1.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-jdbc/4.1.2/spring-boot-jdbc-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-sql/4.1.2/spring-boot-sql-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-transaction/4.1.2/spring-boot-transaction-4.1.2.jar:/home/runner/.m2/repository/org/springframework/spring-jdbc/7.0.10/spring-jdbc-7.0.10.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-flyway/4.1.2/spring-boot-starter-flyway-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-flyway/4.1.2/spring-boot-flyway-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-security/4.1.2/spring-boot-starter-security-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-security/4.1.2/spring-boot-security-4.1.2.jar:/home/runner/.m2/repository/org/springframework/security/spring-security-config/7.1.2/spring-security-config-7.1.2.jar:/home/runner/.m2/repository/org/springframework/spring-aop/7.0.10/spring-aop-7.0.10.jar:/home/runner/.m2/repository/org/springframework/spring-beans/7.0.10/spring-beans-7.0.10.jar:/home/runner/.m2/repository/org/hibernate/search/hibernate-search-mapper-orm/8.4.1.Final/hibernate-search-mapper-orm-8.4.1.Final.jar:/home/runner/.m2/repository/org/hibernate/search/hibernate-search-engine/8.4.1.Final/hibernate-search-engine-8.4.1.Final.jar:/home/runner/.m2/repository/org/hibernate/search/hibernate-search-mapper-pojo-base/8.4.1.Final/hibernate-search-mapper-pojo-base-8.4.1.Final.jar:/home/runner/.m2/repository/org/hibernate/search/hibernate-search-util-common/8.4.1.Final/hibernate-search-util-common-8.4.1.Final.jar:/home/runner/.m2/repository/org/hibernate/orm/hibernate-core/7.4.13.Final/hibernate-core-7.4.13.Final.jar:/home/runner/.m2/repository/net/bytebuddy/byte-buddy/1.18.15/byte-buddy-1.18.15.jar:/home/runner/.m2/repository/org/glassfish/jaxb/jaxb-runtime/4.0.9/jaxb-runtime-4.0.9.jar:/home/runner/.m2/repository/org/glassfish/jaxb/jaxb-core/4.0.9/jaxb-core-4.0.9.jar:/home/runner/.m2/repository/org/eclipse/angus/angus-activation/2.0.3/angus-activation-2.0.3.jar:/home/runner/.m2/repository/org/glassfish/jaxb/txw2/4.0.9/txw2-4.0.9.jar:/home/runner/.m2/repository/com/sun/istack/istack-commons-runtime/4.1.2/istack-commons-runtime-4.1.2.jar:/home/runner/.m2/repository/jakarta/inject/jakarta.inject-api/2.0.1/jakarta.inject-api-2.0.1.jar:/home/runner/.m2/repository/org/antlr/antlr4-runtime/4.13.2/antlr4-runtime-4.13.2.jar:/home/runner/.m2/repository/org/hibernate/models/hibernate-models/1.1.1/hibernate-models-1.1.1.jar:/home/runner/.m2/repository/jakarta/persistence/jakarta.persistence-api/3.2.0/jakarta.persistence-api-3.2.0.jar:/home/runner/.m2/repository/jakarta/transaction/jakarta.transaction-api/2.0.1/jakarta.transaction-api-2.0.1.jar:/home/runner/.m2/repository/io/smallrye/jandex/3.3.2/jandex-3.3.2.jar:/home/runner/.m2/repository/org/jboss/logging/jboss-logging/3.6.3.Final/jboss-logging-3.6.3.Final.jar:/home/runner/.m2/repository/jakarta/xml/bind/jakarta.xml.bind-api/4.0.5/jakarta.xml.bind-api-4.0.5.jar:/home/runner/.m2/repository/jakarta/activation/jakarta.activation-api/2.1.4/jakarta.activation-api-2.1.4.jar:/home/runner/.m2/repository/org/eclipse/jgit/org.eclipse.jgit/7.8.1.202611041320-r/org.eclipse.jgit-7.8.1.202611041320-r.jar:/home/runner/.m2/repository/com/googlecode/javaewah/JavaEWAH/1.2.3/JavaEWAH-1.2.3.jar:/home/runner/.m2/repository/commons-codec/commons-codec/1.21.0/commons-codec-1.21.0.jar:/home/runner/.m2/repository/org/eclipse/jgit/org.eclipse.jgit.gpg.bc/7.8.1.202611041320-r/org.eclipse.jgit.gpg.bc-7.8.1.202611041320-r.jar:/home/runner/.m2/repository/org/bouncycastle/bcpg-jdk18on/1.85/bcpg-jdk18on-1.85.jar:/home/runner/.m2/repository/org/bouncycastle/bcprov-jdk18on/1.85.2/bcprov-jdk18on-1.85.2.jar:/home/runner/.m2/repository/org/bouncycastle/bcutil-jdk18on/1.85/bcutil-jdk18on-1.85.jar:/home/runner/.m2/repository/org/bouncycastle/bcpkix-jdk18on/1.85/bcpkix-jdk18on-1.85.jar:/home/runner/.m2/repository/io/github/carstenartur/jgit-storage-hibernate-core/0.12.2/jgit-storage-hibernate-core-0.12.2.jar:/home/runner/.m2/repository/org/springdoc/springdoc-openapi-starter-common/3.2.1/springdoc-openapi-starter-common-3.2.1.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-autoconfigure/4.1.2/spring-boot-autoconfigure-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-validation/4.1.2/spring-boot-validation-4.1.2.jar:/home/runner/.m2/repository/org/apache/tomcat/embed/tomcat-embed-el/11.0.27/tomcat-embed-el-11.0.27.jar:/home/runner/.m2/repository/org/hibernate/validator/hibernate-validator/9.1.5.Final/hibernate-validator-9.1.5.Final.jar:/home/runner/.m2/repository/com/fasterxml/classmate/1.7.3/classmate-1.7.3.jar:/home/runner/.m2/repository/io/swagger/core/v3/swagger-core/3.0.0/swagger-core-3.0.0.jar:/home/runner/.m2/repository/tools/jackson/core/jackson-databind/3.1.7/jackson-databind-3.1.7.jar:/home/runner/.m2/repository/io/swagger/core/v3/swagger-annotations/3.0.0/swagger-annotations-3.0.0.jar:/home/runner/.m2/repository/io/swagger/core/v3/swagger-models/3.0.0/swagger-models-3.0.0.jar:/home/runner/.m2/repository/jakarta/validation/jakarta.validation-api/3.1.1/jakarta.validation-api-3.1.1.jar:/home/runner/.m2/repository/tools/jackson/dataformat/jackson-dataformat-yaml/3.1.7/jackson-dataformat-yaml-3.1.7.jar:/home/runner/.m2/repository/tools/jackson/core/jackson-core/3.1.7/jackson-core-3.1.7.jar:/home/runner/.m2/repository/org/snakeyaml/snakeyaml-engine/3.0.1/snakeyaml-engine-3.0.1.jar:/home/runner/.m2/repository/org/apache/commons/commons-lang3/3.20.0/commons-lang3-3.20.0.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-jackson/4.1.2/spring-boot-jackson-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-test/4.1.2/spring-boot-starter-test-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-test/4.1.2/spring-boot-test-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-test-autoconfigure/4.1.2/spring-boot-test-autoconfigure-4.1.2.jar:/home/runner/.m2/repository/com/jayway/jsonpath/json-path/2.10.0/json-path-2.10.0.jar:/home/runner/.m2/repository/net/minidev/json-smart/2.6.0/json-smart-2.6.0.jar:/home/runner/.m2/repository/net/minidev/accessors-smart/2.6.0/accessors-smart-2.6.0.jar:/home/runner/.m2/repository/org/ow2/asm/asm/9.7.1/asm-9.7.1.jar:/home/runner/.m2/repository/org/assertj/assertj-core/3.27.7/assertj-core-3.27.7.jar:/home/runner/.m2/repository/org/awaitility/awaitility/4.3.0/awaitility-4.3.0.jar:/home/runner/.m2/repository/org/hamcrest/hamcrest/3.0/hamcrest-3.0.jar:/home/runner/.m2/repository/org/junit/jupiter/junit-jupiter/6.0.3/junit-jupiter-6.0.3.jar:/home/runner/.m2/repository/org/junit/jupiter/junit-jupiter-api/6.0.3/junit-jupiter-api-6.0.3.jar:/home/runner/.m2/repository/org/opentest4j/opentest4j/1.3.0/opentest4j-1.3.0.jar:/home/runner/.m2/repository/org/junit/platform/junit-platform-commons/6.0.3/junit-platform-commons-6.0.3.jar:/home/runner/.m2/repository/org/apiguardian/apiguardian-api/1.1.2/apiguardian-api-1.1.2.jar:/home/runner/.m2/repository/org/junit/jupiter/junit-jupiter-params/6.0.3/junit-jupiter-params-6.0.3.jar:/home/runner/.m2/repository/org/junit/jupiter/junit-jupiter-engine/6.0.3/junit-jupiter-engine-6.0.3.jar:/home/runner/.m2/repository/org/junit/platform/junit-platform-engine/6.0.3/junit-platform-engine-6.0.3.jar:/home/runner/.m2/repository/org/mockito/mockito-core/5.23.0/mockito-core-5.23.0.jar:/home/runner/.m2/repository/net/bytebuddy/byte-buddy-agent/1.18.15/byte-buddy-agent-1.18.15.jar:/home/runner/.m2/repository/org/objenesis/objenesis/3.3/objenesis-3.3.jar:/home/runner/.m2/repository/org/mockito/mockito-junit-jupiter/5.23.0/mockito-junit-jupiter-5.23.0.jar:/home/runner/.m2/repository/org/skyscreamer/jsonassert/1.5.3/jsonassert-1.5.3.jar:/home/runner/.m2/repository/com/vaadin/external/google/android-json/0.0.20131108.vaadin1/android-json-0.0.20131108.vaadin1.jar:/home/runner/.m2/repository/org/springframework/spring-core/7.0.10/spring-core-7.0.10.jar:/home/runner/.m2/repository/org/jspecify/jspecify/1.0.1/jspecify-1.0.1.jar:/home/runner/.m2/repository/org/springframework/spring-test/7.0.10/spring-test-7.0.10.jar:/home/runner/.m2/repository/org/xmlunit/xmlunit-core/2.11.0/xmlunit-core-2.11.0.jar:/home/runner/.m2/repository/org/springframework/security/spring-security-test/7.1.2/spring-security-test-7.1.2.jar:/home/runner/.m2/repository/org/springframework/security/spring-security-core/7.1.2/spring-security-core-7.1.2.jar:/home/runner/.m2/repository/org/springframework/security/spring-security-crypto/7.1.2/spring-security-crypto-7.1.2.jar:/home/runner/.m2/repository/org/springframework/spring-context/7.0.10/spring-context-7.0.10.jar:/home/runner/.m2/repository/org/springframework/spring-expression/7.0.10/spring-expression-7.0.10.jar:/home/runner/.m2/repository/io/micrometer/micrometer-observation/1.17.2/micrometer-observation-1.17.2.jar:/home/runner/.m2/repository/io/micrometer/micrometer-commons/1.17.2/micrometer-commons-1.17.2.jar:/home/runner/.m2/repository/org/springframework/security/spring-security-web/7.1.2/spring-security-web-7.1.2.jar:/home/runner/.m2/repository/org/flywaydb/flyway-database-hsqldb/12.4.0/flyway-database-hsqldb-12.4.0.jar:/home/runner/.m2/repository/org/flywaydb/flyway-core/12.4.0/flyway-core-12.4.0.jar:/home/runner/.m2/repository/org/hsqldb/hsqldb/2.7.3/hsqldb-2.7.3.jar:/home/runner/.m2/repository/org/hibernate/search/hibernate-search-backend-lucene/8.4.1.Final/hibernate-search-backend-lucene-8.4.1.Final.jar:/home/runner/.m2/repository/org/apache/lucene/lucene-core/9.12.3/lucene-core-9.12.3.jar:/home/runner/.m2/repository/org/apache/lucene/lucene-analysis-common/9.12.3/lucene-analysis-common-9.12.3.jar:/home/runner/.m2/repository/org/apache/lucene/lucene-queryparser/9.12.3/lucene-queryparser-9.12.3.jar:/home/runner/.m2/repository/org/apache/lucene/lucene-queries/9.12.3/lucene-queries-9.12.3.jar:/home/runner/.m2/repository/org/apache/lucene/lucene-sandbox/9.12.3/lucene-sandbox-9.12.3.jar:/home/runner/.m2/repository/org/apache/lucene/lucene-facet/9.12.3/lucene-facet-9.12.3.jar:/home/runner/.m2/repository/org/apache/lucene/lucene-join/9.12.3/lucene-join-9.12.3.jar:/home/runner/.m2/repository/com/carrotsearch/hppc/0.10.0/hppc-0.10.0.jar:/home/runner/.m2/repository/org/apache/lucene/lucene-highlighter/9.12.3/lucene-highlighter-9.12.3.jar:/home/runner/.m2/repository/org/apache/lucene/lucene-memory/9.12.3/lucene-memory-9.12.3.jar:"/>
+    <property name="sun.cpu.endian" value="little"/>
+    <property name="user.home" value="/home/runner"/>
+    <property name="user.language" value="en"/>
+    <property name="java.specification.vendor" value="Oracle Corporation"/>
+    <property name="java.version.date" value="2026-11-17"/>
+    <property name="java.home" value="/usr/lib/jvm/temurin-25-jdk-amd64"/>
+    <property name="file.separator" value="/"/>
+    <property name="basedir" value="/home/runner/work/Taxonomy/Taxonomy/taxonomy-workspace"/>
+    <property name="java.vm.compressedOopsMode" value="Zero based"/>
+    <property name="line.separator" value="&#10;"/>
+    <property name="java.vm.specification.vendor" value="Oracle Corporation"/>
+    <property name="java.specification.name" value="Java Platform API Specification"/>
+    <property name="taxonomy.test.browser.cache" value="/home/runner/work/Taxonomy/Taxonomy/target/test-runtime/selenium"/>
+    <property name="surefire.real.class.path" value="/home/runner/work/Taxonomy/Taxonomy/taxonomy-workspace/target/surefire/surefirebooter-20261128050928835_51.jar"/>
+    <property name="taxonomy.ui.skip" value="true"/>
+    <property name="polyglot.engine.WarnInterpreterOnly" value="false"/>
+    <property name="sun.management.compiler" value="HotSpot 64-Bit Tiered Compilers"/>
+    <property name="java.runtime.version" value="25.0.5.1+2-LTS"/>
+    <property name="user.name" value="runner"/>
+    <property name="stdout.encoding" value="UTF-8"/>
+    <property name="path.separator" value=":"/>
+    <property name="os.version" value="7.0.0-1020-azure"/>
+    <property name="java.runtime.name" value="OpenJDK Runtime Environment"/>
+    <property name="file.encoding" value="UTF-8"/>
+    <property name="taxonomy.test.browser.version" value="149.0.7827.55"/>
+    <property name="java.vm.name" value="OpenJDK 64-Bit Server VM"/>
+    <property name="java.vendor.version" value="Temurin-25.0.5.1+2"/>
+    <property name="localRepository" value="/home/runner/.m2/repository"/>
+    <property name="java.vendor.url.bug" value="https://github.com/adoptium/adoptium-support/issues"/>
+    <property name="java.io.tmpdir" value="/tmp"/>
+    <property name="java.version" value="25.0.5.1"/>
+    <property name="taxonomy.node.executable" value="/home/runner/work/Taxonomy/Taxonomy/target/test-runtime/frontend/node/node"/>
+    <property name="user.dir" value="/home/runner/work/Taxonomy/Taxonomy/taxonomy-workspace"/>
+    <property name="os.arch" value="amd64"/>
+    <property name="java.vm.specification.name" value="Java Virtual Machine Specification"/>
+    <property name="native.encoding" value="UTF-8"/>
+    <property name="java.library.path" value="/usr/java/packages/lib:/usr/lib64:/lib64:/lib:/usr/lib"/>
+    <property name="java.vm.info" value="mixed mode, sharing"/>
+    <property name="stderr.encoding" value="UTF-8"/>
+    <property name="java.vendor" value="Eclipse Adoptium"/>
+    <property name="java.vm.version" value="25.0.5.1+2-LTS"/>
+    <property name="stdin.encoding" value="UTF-8"/>
+    <property name="sun.io.unicode.encoding" value="UnicodeLittle"/>
+    <property name="java.class.version" value="69.0"/>
+    <property name="runOnnxTests" value="true"/>
+  </properties>
+  <testcase name="replayRejectsASelectedTagReplacedDuringFinalAuthorization(boolean)[1]" classname="com.taxonomy.workspace.service.WorkspaceUpstreamServiceTest" time="0.062">
+    <system-out><![CDATA[05:12:16.605 [main] INFO com.taxonomy.workspace.storage.DslGitRepositoryFactory -- Creating in-memory DslGitRepository 'central-source' (test mode)
+05:12:16.605 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Initialised DslGitRepository (InMemoryRepository)
+05:12:16.605 [main] INFO com.taxonomy.workspace.storage.DslGitRepositoryFactory -- Creating in-memory DslGitRepository 'ws-w1' (test mode)
+05:12:16.605 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Initialised DslGitRepository (InMemoryRepository)
+05:12:16.605 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'main': c57cffc1608690c698e085cd142c5bdb79bea618 (ref update: NEW)
+05:12:16.606 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'main': 9fc78e611235c2417282b96ac93b28a44b0dba4b (ref update: FAST_FORWARD)
+05:12:16.606 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'draft': 8d619f014a4fcd46d5b6b487072328121083d996 (ref update: NEW)
+05:12:16.615 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+05:12:16.618 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:wsfetchd8e7aeb7-11ca-40c4-a8c1-648d97c7b022]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 8
+05:12:16.627 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+05:12:16.646 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+05:12:16.662 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+05:12:16.662 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+05:12:16.662 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 0 ms
+]]></system-out>
+  </testcase>
+  <testcase name="replayRejectsASelectedTagReplacedDuringFinalAuthorization(boolean)[2]" classname="com.taxonomy.workspace.service.WorkspaceUpstreamServiceTest" time="0.055">
+    <system-out><![CDATA[05:12:16.668 [main] INFO com.taxonomy.workspace.storage.DslGitRepositoryFactory -- Creating in-memory DslGitRepository 'central-source' (test mode)
+05:12:16.668 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Initialised DslGitRepository (InMemoryRepository)
+05:12:16.668 [main] INFO com.taxonomy.workspace.storage.DslGitRepositoryFactory -- Creating in-memory DslGitRepository 'ws-w1' (test mode)
+05:12:16.668 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Initialised DslGitRepository (InMemoryRepository)
+05:12:16.668 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'main': c57cffc1608690c698e085cd142c5bdb79bea618 (ref update: NEW)
+05:12:16.669 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'main': 9fc78e611235c2417282b96ac93b28a44b0dba4b (ref update: FAST_FORWARD)
+05:12:16.669 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'draft': 8d619f014a4fcd46d5b6b487072328121083d996 (ref update: NEW)
+05:12:16.677 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+05:12:16.680 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:wsfetchb7f186e6-83bf-4633-869e-ebb522180cf9]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 8
+05:12:16.689 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+05:12:16.707 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+05:12:16.720 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+05:12:16.720 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+05:12:16.720 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 0 ms
+]]></system-out>
+  </testcase>
+  <testcase name="personalPostAdoptsExactlyTheReviewedReplayAndRetainsOtherBranches" classname="com.taxonomy.workspace.service.WorkspaceUpstreamServiceTest" time="0.097">
+    <system-out><![CDATA[05:12:16.723 [main] INFO com.taxonomy.workspace.storage.DslGitRepositoryFactory -- Creating in-memory DslGitRepository 'central-source' (test mode)
+05:12:16.723 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Initialised DslGitRepository (InMemoryRepository)
+05:12:16.723 [main] INFO com.taxonomy.workspace.storage.DslGitRepositoryFactory -- Creating in-memory DslGitRepository 'ws-w1' (test mode)
+05:12:16.723 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Initialised DslGitRepository (InMemoryRepository)
+05:12:16.724 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'main': c57cffc1608690c698e085cd142c5bdb79bea618 (ref update: NEW)
+05:12:16.724 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'main': 9fc78e611235c2417282b96ac93b28a44b0dba4b (ref update: FAST_FORWARD)
+05:12:16.724 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'draft': 8d619f014a4fcd46d5b6b487072328121083d996 (ref update: NEW)
+05:12:16.732 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+05:12:16.735 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:wsfetchae4c963c-9973-49e8-8c6e-8a1ad995dfe2]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 8
+05:12:16.743 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+05:12:16.760 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+05:12:16.773 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+05:12:16.773 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+05:12:16.773 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 0 ms
+05:12:16.775 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'feature': 429653afa58327a0ec50029172d55f0508fb67cb (ref update: FAST_FORWARD)
+05:12:16.798 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+05:12:16.798 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+05:12:16.799 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 1 ms
+]]></system-out>
+  </testcase>
+  <testcase name="upstreamUsesTheConfiguredSyncBranchAndTheCatalogueDefaultForOlderWorkingCopies" classname="com.taxonomy.workspace.service.WorkspaceUpstreamServiceTest" time="0.051">
+    <system-out><![CDATA[05:12:16.821 [main] INFO com.taxonomy.workspace.storage.DslGitRepositoryFactory -- Creating in-memory DslGitRepository 'central-source' (test mode)
+05:12:16.821 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Initialised DslGitRepository (InMemoryRepository)
+05:12:16.821 [main] INFO com.taxonomy.workspace.storage.DslGitRepositoryFactory -- Creating in-memory DslGitRepository 'ws-w1' (test mode)
+05:12:16.821 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Initialised DslGitRepository (InMemoryRepository)
+05:12:16.822 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'main': c57cffc1608690c698e085cd142c5bdb79bea618 (ref update: NEW)
+05:12:16.822 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'main': 9fc78e611235c2417282b96ac93b28a44b0dba4b (ref update: FAST_FORWARD)
+05:12:16.822 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'draft': 8d619f014a4fcd46d5b6b487072328121083d996 (ref update: NEW)
+05:12:16.830 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+05:12:16.834 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:wsfetchc58832a3-5e2a-4c5d-8ccd-1891f2a1952c]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 8
+05:12:16.841 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+05:12:16.858 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+05:12:16.870 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+05:12:16.870 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+05:12:16.870 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 0 ms
+]]></system-out>
+  </testcase>
+  <testcase name="personalPostRequiresCurrentSourceAuthorityAndOwnedReadyWorkingCopy" classname="com.taxonomy.workspace.service.WorkspaceUpstreamServiceTest" time="0.063">
+    <system-out><![CDATA[05:12:16.873 [main] INFO com.taxonomy.workspace.storage.DslGitRepositoryFactory -- Creating in-memory DslGitRepository 'central-source' (test mode)
+05:12:16.873 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Initialised DslGitRepository (InMemoryRepository)
+05:12:16.873 [main] INFO com.taxonomy.workspace.storage.DslGitRepositoryFactory -- Creating in-memory DslGitRepository 'ws-w1' (test mode)
+05:12:16.873 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Initialised DslGitRepository (InMemoryRepository)
+05:12:16.873 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'main': c57cffc1608690c698e085cd142c5bdb79bea618 (ref update: NEW)
+05:12:16.873 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'main': 9fc78e611235c2417282b96ac93b28a44b0dba4b (ref update: FAST_FORWARD)
+05:12:16.874 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'draft': 8d619f014a4fcd46d5b6b487072328121083d996 (ref update: NEW)
+05:12:16.881 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+05:12:16.884 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:wsfetch55bd3017-c72b-477f-8270-beaa86801322]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 8
+05:12:16.893 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+05:12:16.909 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+05:12:16.922 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+05:12:16.922 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+05:12:16.922 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 0 ms
+05:12:16.924 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'feature': 429653afa58327a0ec50029172d55f0508fb67cb (ref update: FAST_FORWARD)
+05:12:16.930 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+05:12:16.930 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+05:12:16.930 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 0 ms
+]]></system-out>
+  </testcase>
+  <testcase name="duplicateFetchPostReturnsTheOriginalReceiptDuringBackoffAndExplicitRetryCanResumeIt" classname="com.taxonomy.workspace.service.WorkspaceUpstreamServiceTest" time="0.093">
+    <system-out><![CDATA[05:12:16.937 [main] INFO com.taxonomy.workspace.storage.DslGitRepositoryFactory -- Creating in-memory DslGitRepository 'central-source' (test mode)
+05:12:16.937 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Initialised DslGitRepository (InMemoryRepository)
+05:12:16.937 [main] INFO com.taxonomy.workspace.storage.DslGitRepositoryFactory -- Creating in-memory DslGitRepository 'ws-w1' (test mode)
+05:12:16.937 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Initialised DslGitRepository (InMemoryRepository)
+05:12:16.937 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'main': c57cffc1608690c698e085cd142c5bdb79bea618 (ref update: NEW)
+05:12:16.938 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'main': 9fc78e611235c2417282b96ac93b28a44b0dba4b (ref update: FAST_FORWARD)
+05:12:16.938 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'draft': 8d619f014a4fcd46d5b6b487072328121083d996 (ref update: NEW)
+05:12:16.945 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+05:12:16.948 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:wsfetch11c30041-2b85-42fb-8d0e-ca01c8e9fdb7]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 8
+05:12:16.956 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+05:12:16.973 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+05:12:16.985 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+05:12:16.985 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+05:12:16.986 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 1 ms
+05:12:17.002 [main] WARN org.hibernate.orm.jdbc.warn -- HHH000247: ErrorCode: -1100, SQLState: 02000
+05:12:17.002 [main] WARN org.hibernate.orm.jdbc.warn -- no data
+05:12:17.005 [main] WARN org.hibernate.orm.jdbc.warn -- HHH000247: ErrorCode: -1100, SQLState: 02000
+05:12:17.005 [main] WARN org.hibernate.orm.jdbc.warn -- no data
+05:12:17.008 [main] WARN org.hibernate.orm.jdbc.warn -- HHH000247: ErrorCode: -1100, SQLState: 02000
+05:12:17.008 [main] WARN org.hibernate.orm.jdbc.warn -- no data
+05:12:17.011 [main] WARN org.hibernate.orm.jdbc.warn -- HHH000247: ErrorCode: -1100, SQLState: 02000
+05:12:17.011 [main] WARN org.hibernate.orm.jdbc.warn -- no data
+05:12:17.014 [main] WARN org.hibernate.orm.jdbc.warn -- HHH000247: ErrorCode: -1100, SQLState: 02000
+05:12:17.014 [main] WARN org.hibernate.orm.jdbc.warn -- no data
+05:12:17.017 [main] WARN org.hibernate.orm.jdbc.warn -- HHH000247: ErrorCode: -1100, SQLState: 02000
+05:12:17.017 [main] WARN org.hibernate.orm.jdbc.warn -- no data
+]]></system-out>
+  </testcase>
+  <testcase name="planUsesOnlyTheCapturedTrackingCommitAndListsLocalCommitsOldestFirst" classname="com.taxonomy.workspace.service.WorkspaceUpstreamServiceTest" time="0.064">
+    <system-out><![CDATA[05:12:17.031 [main] INFO com.taxonomy.workspace.storage.DslGitRepositoryFactory -- Creating in-memory DslGitRepository 'central-source' (test mode)
+05:12:17.031 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Initialised DslGitRepository (InMemoryRepository)
+05:12:17.031 [main] INFO com.taxonomy.workspace.storage.DslGitRepositoryFactory -- Creating in-memory DslGitRepository 'ws-w1' (test mode)
+05:12:17.031 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Initialised DslGitRepository (InMemoryRepository)
+05:12:17.031 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'main': 10fa128d80bbdc4884b7981f082c03675f61416e (ref update: NEW)
+05:12:17.032 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'main': a0d424931df73a5c3d686b8fed4dab25ebdaa9f8 (ref update: FAST_FORWARD)
+05:12:17.032 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'draft': 05094a875b6df7452dae2d96d6c23ed24b7ebe62 (ref update: NEW)
+05:12:17.041 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+05:12:17.044 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:wsfetchf5cd431d-4c8d-4128-a69a-21da5129a014]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 8
+05:12:17.052 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+05:12:17.069 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+05:12:17.081 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+05:12:17.081 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+05:12:17.081 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 0 ms
+05:12:17.084 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'feature': ef1d615b863a5f3753b6a59752556ea5cf3d86ca (ref update: FAST_FORWARD)
+05:12:17.084 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'feature': 133775c27618f0ee9577294f8fcb5f8f67f01810 (ref update: FAST_FORWARD)
+05:12:17.084 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'main': 6eae6bbf0b6032bce66b2afc18e56fa478d5ae0b (ref update: FAST_FORWARD)
+05:12:17.088 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+05:12:17.088 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+05:12:17.088 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 0 ms
+]]></system-out>
+  </testcase>
+  <testcase name="personalConflictReturnsThreeVersionsAndAcceptsTheReviewedResolution" classname="com.taxonomy.workspace.service.WorkspaceUpstreamServiceTest" time="0.083">
+    <system-out><![CDATA[05:12:17.095 [main] INFO com.taxonomy.workspace.storage.DslGitRepositoryFactory -- Creating in-memory DslGitRepository 'central-source' (test mode)
+05:12:17.095 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Initialised DslGitRepository (InMemoryRepository)
+05:12:17.095 [main] INFO com.taxonomy.workspace.storage.DslGitRepositoryFactory -- Creating in-memory DslGitRepository 'ws-w1' (test mode)
+05:12:17.095 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Initialised DslGitRepository (InMemoryRepository)
+05:12:17.095 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'main': 10fa128d80bbdc4884b7981f082c03675f61416e (ref update: NEW)
+05:12:17.096 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'main': a0d424931df73a5c3d686b8fed4dab25ebdaa9f8 (ref update: FAST_FORWARD)
+05:12:17.096 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'draft': 05094a875b6df7452dae2d96d6c23ed24b7ebe62 (ref update: NEW)
+05:12:17.106 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+05:12:17.111 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:wsfetch78fbb5a6-3d39-4398-a61c-bbcd7220e41e]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 8
+05:12:17.119 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+05:12:17.135 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+05:12:17.147 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+05:12:17.147 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+05:12:17.147 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 0 ms
+05:12:17.149 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'feature': 0e66de9b17c9dadd7d9968fc1d807c59ad2bce0f (ref update: FAST_FORWARD)
+05:12:17.154 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+05:12:17.154 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+05:12:17.154 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 0 ms
+]]></system-out>
+  </testcase>
+  <testcase name="revokedMembershipPreventsTrackingRefPublication" classname="com.taxonomy.workspace.service.WorkspaceUpstreamServiceTest" time="0.05">
+    <system-out><![CDATA[05:12:17.178 [main] INFO com.taxonomy.workspace.storage.DslGitRepositoryFactory -- Creating in-memory DslGitRepository 'central-source' (test mode)
+05:12:17.179 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Initialised DslGitRepository (InMemoryRepository)
+05:12:17.179 [main] INFO com.taxonomy.workspace.storage.DslGitRepositoryFactory -- Creating in-memory DslGitRepository 'ws-w1' (test mode)
+05:12:17.179 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Initialised DslGitRepository (InMemoryRepository)
+05:12:17.179 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'main': 10fa128d80bbdc4884b7981f082c03675f61416e (ref update: NEW)
+05:12:17.179 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'main': a0d424931df73a5c3d686b8fed4dab25ebdaa9f8 (ref update: FAST_FORWARD)
+05:12:17.179 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'draft': 05094a875b6df7452dae2d96d6c23ed24b7ebe62 (ref update: NEW)
+05:12:17.188 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+05:12:17.191 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:wsfetchd59958cc-0d63-4920-8480-4d3316afedaf]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 8
+05:12:17.199 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+05:12:17.215 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+05:12:17.227 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+05:12:17.227 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+05:12:17.227 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 0 ms
+]]></system-out>
+  </testcase>
+  <testcase name="failedMetadataWriteCanRetryTheSameCapturedCommitAfterSourceAdvancement" classname="com.taxonomy.workspace.service.WorkspaceUpstreamServiceTest" time="0.051">
+    <system-out><![CDATA[05:12:17.229 [main] INFO com.taxonomy.workspace.storage.DslGitRepositoryFactory -- Creating in-memory DslGitRepository 'central-source' (test mode)
+05:12:17.229 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Initialised DslGitRepository (InMemoryRepository)
+05:12:17.229 [main] INFO com.taxonomy.workspace.storage.DslGitRepositoryFactory -- Creating in-memory DslGitRepository 'ws-w1' (test mode)
+05:12:17.229 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Initialised DslGitRepository (InMemoryRepository)
+05:12:17.230 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'main': 10fa128d80bbdc4884b7981f082c03675f61416e (ref update: NEW)
+05:12:17.230 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'main': a0d424931df73a5c3d686b8fed4dab25ebdaa9f8 (ref update: FAST_FORWARD)
+05:12:17.230 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'draft': 05094a875b6df7452dae2d96d6c23ed24b7ebe62 (ref update: NEW)
+05:12:17.237 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+05:12:17.240 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:wsfetchbd7df2f1-0ace-463a-9416-53ce6a1cb06d]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 8
+05:12:17.248 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+05:12:17.264 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+05:12:17.277 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+05:12:17.277 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+05:12:17.277 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 0 ms
+05:12:17.279 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'main': 5571e8e76d85b474c7332ff1bde7ecee98bb1489 (ref update: FAST_FORWARD)
+]]></system-out>
+  </testcase>
+  <testcase name="acknowledgedSqlReplayWithResetGitRefKeepsRecoveryReceipt" classname="com.taxonomy.workspace.service.WorkspaceUpstreamServiceTest" time="0.072">
+    <system-out><![CDATA[05:12:17.280 [main] INFO com.taxonomy.workspace.storage.DslGitRepositoryFactory -- Creating in-memory DslGitRepository 'central-source' (test mode)
+05:12:17.280 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Initialised DslGitRepository (InMemoryRepository)
+05:12:17.280 [main] INFO com.taxonomy.workspace.storage.DslGitRepositoryFactory -- Creating in-memory DslGitRepository 'ws-w1' (test mode)
+05:12:17.280 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Initialised DslGitRepository (InMemoryRepository)
+05:12:17.281 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'main': 10fa128d80bbdc4884b7981f082c03675f61416e (ref update: NEW)
+05:12:17.281 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'main': a0d424931df73a5c3d686b8fed4dab25ebdaa9f8 (ref update: FAST_FORWARD)
+05:12:17.281 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'draft': 05094a875b6df7452dae2d96d6c23ed24b7ebe62 (ref update: NEW)
+05:12:17.288 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+05:12:17.291 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:wsfetcha5f28ca7-cdce-45b9-b5ae-43769aa383e0]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 8
+05:12:17.299 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+05:12:17.315 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+05:12:17.326 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+05:12:17.326 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+05:12:17.326 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 0 ms
+05:12:17.328 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'feature': 1633d8e70a467bf712d7bb3c98f47d1f9b2356df (ref update: FAST_FORWARD)
+05:12:17.333 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+05:12:17.333 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+05:12:17.333 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 0 ms
+]]></system-out>
+  </testcase>
+  <testcase name="selectedLightweightAndAnnotatedTagsRetainExactObjectsWithoutOverwritingOtherTags" classname="com.taxonomy.workspace.service.WorkspaceUpstreamServiceTest" time="0.064">
+    <system-out><![CDATA[05:12:17.353 [main] INFO com.taxonomy.workspace.storage.DslGitRepositoryFactory -- Creating in-memory DslGitRepository 'central-source' (test mode)
+05:12:17.353 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Initialised DslGitRepository (InMemoryRepository)
+05:12:17.353 [main] INFO com.taxonomy.workspace.storage.DslGitRepositoryFactory -- Creating in-memory DslGitRepository 'ws-w1' (test mode)
+05:12:17.353 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Initialised DslGitRepository (InMemoryRepository)
+05:12:17.353 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'main': 10fa128d80bbdc4884b7981f082c03675f61416e (ref update: NEW)
+05:12:17.353 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'main': a0d424931df73a5c3d686b8fed4dab25ebdaa9f8 (ref update: FAST_FORWARD)
+05:12:17.354 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'draft': 05094a875b6df7452dae2d96d6c23ed24b7ebe62 (ref update: NEW)
+05:12:17.361 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+05:12:17.365 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:wsfetchbe519545-10fd-46e1-94bb-7b238003b9fb]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 8
+05:12:17.373 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+05:12:17.390 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+05:12:17.402 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+05:12:17.402 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+05:12:17.402 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 0 ms
+]]></system-out>
+  </testcase>
+  <testcase name="acknowledgedReceiptSurvivingCleanupAllowsANewReviewedRebaseAfterFurtherWork" classname="com.taxonomy.workspace.service.WorkspaceUpstreamServiceTest" time="0.078">
+    <system-out><![CDATA[05:12:17.417 [main] INFO com.taxonomy.workspace.storage.DslGitRepositoryFactory -- Creating in-memory DslGitRepository 'central-source' (test mode)
+05:12:17.417 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Initialised DslGitRepository (InMemoryRepository)
+05:12:17.417 [main] INFO com.taxonomy.workspace.storage.DslGitRepositoryFactory -- Creating in-memory DslGitRepository 'ws-w1' (test mode)
+05:12:17.417 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Initialised DslGitRepository (InMemoryRepository)
+05:12:17.417 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'main': 10fa128d80bbdc4884b7981f082c03675f61416e (ref update: NEW)
+05:12:17.418 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'main': a0d424931df73a5c3d686b8fed4dab25ebdaa9f8 (ref update: FAST_FORWARD)
+05:12:17.418 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'draft': 05094a875b6df7452dae2d96d6c23ed24b7ebe62 (ref update: NEW)
+05:12:17.425 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+05:12:17.428 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:wsfetch05481985-fde4-4af9-825d-11b96b6af41d]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 8
+05:12:17.436 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+05:12:17.453 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+05:12:17.465 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+05:12:17.465 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+05:12:17.465 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 0 ms
+05:12:17.467 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'feature': 1633d8e70a467bf712d7bb3c98f47d1f9b2356df (ref update: FAST_FORWARD)
+05:12:17.472 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+05:12:17.472 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+05:12:17.473 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 1 ms
+05:12:17.483 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'feature': 8054cef3b7bae1598184aaf2ac94365b5e1fda13 (ref update: FAST_FORWARD)
+05:12:17.483 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'main': 504ccf4f4ea2682019e3dcee52198382cf0bca30 (ref update: FAST_FORWARD)
+]]></system-out>
+  </testcase>
+  <testcase name="localRefCompetitionPreservesTheCompetingWrite" classname="com.taxonomy.workspace.service.WorkspaceUpstreamServiceTest" time="0.063">
+    <system-out><![CDATA[05:12:17.495 [main] INFO com.taxonomy.workspace.storage.DslGitRepositoryFactory -- Creating in-memory DslGitRepository 'central-source' (test mode)
+05:12:17.495 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Initialised DslGitRepository (InMemoryRepository)
+05:12:17.495 [main] INFO com.taxonomy.workspace.storage.DslGitRepositoryFactory -- Creating in-memory DslGitRepository 'ws-w1' (test mode)
+05:12:17.495 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Initialised DslGitRepository (InMemoryRepository)
+05:12:17.496 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'main': 10fa128d80bbdc4884b7981f082c03675f61416e (ref update: NEW)
+05:12:17.496 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'main': a0d424931df73a5c3d686b8fed4dab25ebdaa9f8 (ref update: FAST_FORWARD)
+05:12:17.496 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'draft': 05094a875b6df7452dae2d96d6c23ed24b7ebe62 (ref update: NEW)
+05:12:17.504 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+05:12:17.508 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:wsfetch4debeb39-6628-4e61-b1fe-aace13099f00]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 8
+05:12:17.515 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+05:12:17.532 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+05:12:17.544 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+05:12:17.544 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+05:12:17.544 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 0 ms
+05:12:17.545 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'feature': 1633d8e70a467bf712d7bb3c98f47d1f9b2356df (ref update: FAST_FORWARD)
+05:12:17.550 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+05:12:17.550 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+05:12:17.551 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 1 ms
+05:12:17.556 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'feature': 8b57e66bd3f3b15d60895a569430f10e37827830 (ref update: FAST_FORWARD)
+]]></system-out>
+  </testcase>
+  <testcase name="archivedOrForeignWorkingCopiesAreRejectedBeforeFetch" classname="com.taxonomy.workspace.service.WorkspaceUpstreamServiceTest" time="0.054">
+    <system-out><![CDATA[05:12:17.559 [main] INFO com.taxonomy.workspace.storage.DslGitRepositoryFactory -- Creating in-memory DslGitRepository 'central-source' (test mode)
+05:12:17.559 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Initialised DslGitRepository (InMemoryRepository)
+05:12:17.559 [main] INFO com.taxonomy.workspace.storage.DslGitRepositoryFactory -- Creating in-memory DslGitRepository 'ws-w1' (test mode)
+05:12:17.559 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Initialised DslGitRepository (InMemoryRepository)
+05:12:17.559 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'main': 10fa128d80bbdc4884b7981f082c03675f61416e (ref update: NEW)
+05:12:17.560 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'main': a0d424931df73a5c3d686b8fed4dab25ebdaa9f8 (ref update: FAST_FORWARD)
+05:12:17.560 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'draft': 05094a875b6df7452dae2d96d6c23ed24b7ebe62 (ref update: NEW)
+05:12:17.568 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+05:12:17.572 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:wsfetchc7cb5d94-8983-4500-b15a-e877e8d4a715]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 8
+05:12:17.580 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+05:12:17.599 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+05:12:17.612 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+05:12:17.612 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+05:12:17.612 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 0 ms
+]]></system-out>
+  </testcase>
+  <testcase name="boundWorkingCopyFetchUsesTheFencedOriginalActor" classname="com.taxonomy.workspace.service.WorkspaceUpstreamServiceTest" time="0.161">
+    <system-out><![CDATA[05:12:17.614 [main] INFO com.taxonomy.workspace.storage.DslGitRepositoryFactory -- Creating in-memory DslGitRepository 'central-source' (test mode)
+05:12:17.614 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Initialised DslGitRepository (InMemoryRepository)
+05:12:17.614 [main] INFO com.taxonomy.workspace.storage.DslGitRepositoryFactory -- Creating in-memory DslGitRepository 'ws-w1' (test mode)
+05:12:17.614 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Initialised DslGitRepository (InMemoryRepository)
+05:12:17.614 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'main': 10fa128d80bbdc4884b7981f082c03675f61416e (ref update: NEW)
+05:12:17.615 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'main': a0d424931df73a5c3d686b8fed4dab25ebdaa9f8 (ref update: FAST_FORWARD)
+05:12:17.615 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'draft': 05094a875b6df7452dae2d96d6c23ed24b7ebe62 (ref update: NEW)
+05:12:17.622 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+05:12:17.626 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:wsfetchcebe5942-6152-4128-9851-e1420efe8972]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 8
+05:12:17.634 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+05:12:17.651 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+05:12:17.663 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+05:12:17.663 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+05:12:17.663 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 0 ms
+]]></system-out>
+  </testcase>
+  <testcase name="aPortfolioWithoutCheckpointSupportRejectsTheReviewedPostBeforePublication" classname="com.taxonomy.workspace.service.WorkspaceUpstreamServiceTest" time="0.065">
+    <system-out><![CDATA[05:12:17.776 [main] INFO com.taxonomy.workspace.storage.DslGitRepositoryFactory -- Creating in-memory DslGitRepository 'central-source' (test mode)
+05:12:17.776 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Initialised DslGitRepository (InMemoryRepository)
+05:12:17.776 [main] INFO com.taxonomy.workspace.storage.DslGitRepositoryFactory -- Creating in-memory DslGitRepository 'ws-w1' (test mode)
+05:12:17.776 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Initialised DslGitRepository (InMemoryRepository)
+05:12:17.776 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'main': 10fa128d80bbdc4884b7981f082c03675f61416e (ref update: NEW)
+05:12:17.776 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'main': a0d424931df73a5c3d686b8fed4dab25ebdaa9f8 (ref update: FAST_FORWARD)
+05:12:17.776 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'draft': 05094a875b6df7452dae2d96d6c23ed24b7ebe62 (ref update: NEW)
+05:12:17.784 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+05:12:17.787 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:wsfetch6da5c37e-5026-4869-905a-aecd0a4adf22]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 8
+05:12:17.796 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+05:12:17.814 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+05:12:17.825 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+05:12:17.825 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+05:12:17.826 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 1 ms
+05:12:17.827 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'feature': 1633d8e70a467bf712d7bb3c98f47d1f9b2356df (ref update: FAST_FORWARD)
+05:12:17.833 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+05:12:17.833 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+05:12:17.833 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 0 ms
+]]></system-out>
+  </testcase>
+  <testcase name="lostSqlAdoptionCanFinishFromFreshPlanWithoutASecondReplay" classname="com.taxonomy.workspace.service.WorkspaceUpstreamServiceTest" time="0.081">
+    <system-out><![CDATA[05:12:17.842 [main] INFO com.taxonomy.workspace.storage.DslGitRepositoryFactory -- Creating in-memory DslGitRepository 'central-source' (test mode)
+05:12:17.842 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Initialised DslGitRepository (InMemoryRepository)
+05:12:17.842 [main] INFO com.taxonomy.workspace.storage.DslGitRepositoryFactory -- Creating in-memory DslGitRepository 'ws-w1' (test mode)
+05:12:17.842 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Initialised DslGitRepository (InMemoryRepository)
+05:12:17.842 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'main': 10fa128d80bbdc4884b7981f082c03675f61416e (ref update: NEW)
+05:12:17.843 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'main': a0d424931df73a5c3d686b8fed4dab25ebdaa9f8 (ref update: FAST_FORWARD)
+05:12:17.843 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'draft': 05094a875b6df7452dae2d96d6c23ed24b7ebe62 (ref update: NEW)
+05:12:17.853 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+05:12:17.858 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:wsfetch34d9c956-d311-4e89-8d28-51a704b0413f]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 8
+05:12:17.867 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+05:12:17.883 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+05:12:17.895 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+05:12:17.895 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+05:12:17.895 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 0 ms
+05:12:17.896 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'feature': 1633d8e70a467bf712d7bb3c98f47d1f9b2356df (ref update: FAST_FORWARD)
+05:12:17.902 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+05:12:17.902 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+05:12:17.902 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 0 ms
+]]></system-out>
+  </testcase>
+  <testcase name="upstreamMovementAfterReviewRequiresANewFetchAndPlan" classname="com.taxonomy.workspace.service.WorkspaceUpstreamServiceTest" time="0.06">
+    <system-out><![CDATA[05:12:17.924 [main] INFO com.taxonomy.workspace.storage.DslGitRepositoryFactory -- Creating in-memory DslGitRepository 'central-source' (test mode)
+05:12:17.924 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Initialised DslGitRepository (InMemoryRepository)
+05:12:17.924 [main] INFO com.taxonomy.workspace.storage.DslGitRepositoryFactory -- Creating in-memory DslGitRepository 'ws-w1' (test mode)
+05:12:17.924 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Initialised DslGitRepository (InMemoryRepository)
+05:12:17.924 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'main': 10fa128d80bbdc4884b7981f082c03675f61416e (ref update: NEW)
+05:12:17.925 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'main': a0d424931df73a5c3d686b8fed4dab25ebdaa9f8 (ref update: FAST_FORWARD)
+05:12:17.925 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'draft': 05094a875b6df7452dae2d96d6c23ed24b7ebe62 (ref update: NEW)
+05:12:17.933 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+05:12:17.936 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:wsfetch2e9abb0a-5182-4650-a785-5a56212ce45e]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 8
+05:12:17.944 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+05:12:17.961 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+05:12:17.974 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+05:12:17.974 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+05:12:17.974 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 0 ms
+05:12:17.975 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'feature': 1633d8e70a467bf712d7bb3c98f47d1f9b2356df (ref update: FAST_FORWARD)
+05:12:17.980 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+05:12:17.980 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+05:12:17.980 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 0 ms
+05:12:17.980 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'main': ef5c62088225e95624f92b63e431e76df0cf1fe8 (ref update: FAST_FORWARD)
+]]></system-out>
+  </testcase>
+  <testcase name="planDoesNotFetchACommitOrBorrowAnotherBranchsHistory" classname="com.taxonomy.workspace.service.WorkspaceUpstreamServiceTest" time="0.057">
+    <system-out><![CDATA[05:12:17.985 [main] INFO com.taxonomy.workspace.storage.DslGitRepositoryFactory -- Creating in-memory DslGitRepository 'central-source' (test mode)
+05:12:17.985 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Initialised DslGitRepository (InMemoryRepository)
+05:12:17.985 [main] INFO com.taxonomy.workspace.storage.DslGitRepositoryFactory -- Creating in-memory DslGitRepository 'ws-w1' (test mode)
+05:12:17.985 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Initialised DslGitRepository (InMemoryRepository)
+05:12:17.985 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'main': 10fa128d80bbdc4884b7981f082c03675f61416e (ref update: NEW)
+05:12:17.985 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'main': a0d424931df73a5c3d686b8fed4dab25ebdaa9f8 (ref update: FAST_FORWARD)
+05:12:17.985 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'draft': 05094a875b6df7452dae2d96d6c23ed24b7ebe62 (ref update: NEW)
+05:12:17.993 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+05:12:17.996 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:wsfetch0d233dbd-31c0-4287-846e-cd1ec4aee1b6]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 8
+05:12:18.004 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+05:12:18.020 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+05:12:18.032 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+05:12:18.032 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+05:12:18.032 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 0 ms
+]]></system-out>
+  </testcase>
+  <testcase name="anUnsettledReplayAtADifferentHeadRequiresExplicitAdoptionOfThatExactHead(boolean)[1]" classname="com.taxonomy.workspace.service.WorkspaceUpstreamServiceTest" time="0.079">
+    <system-out><![CDATA[05:12:18.042 [main] INFO com.taxonomy.workspace.storage.DslGitRepositoryFactory -- Creating in-memory DslGitRepository 'central-source' (test mode)
+05:12:18.042 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Initialised DslGitRepository (InMemoryRepository)
+05:12:18.042 [main] INFO com.taxonomy.workspace.storage.DslGitRepositoryFactory -- Creating in-memory DslGitRepository 'ws-w1' (test mode)
+05:12:18.042 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Initialised DslGitRepository (InMemoryRepository)
+05:12:18.043 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'main': 83d5f79ad479c5701d45d67be02bd2841e47eee4 (ref update: NEW)
+05:12:18.043 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'main': b5b6f7f1b3af502f92eac675377c6399834e320a (ref update: FAST_FORWARD)
+05:12:18.043 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'draft': 25a1b9578cf92fcf031d077e630631af936ff4b9 (ref update: NEW)
+05:12:18.051 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+05:12:18.054 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:wsfetch03478323-a6d9-4cca-bf9c-77dd572bfd42]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 8
+05:12:18.063 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+05:12:18.082 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+05:12:18.095 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+05:12:18.095 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+05:12:18.095 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 0 ms
+05:12:18.096 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'feature': 23a59791fbf1755cf4de76f443e3e35f2371c5a8 (ref update: FAST_FORWARD)
+05:12:18.101 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+05:12:18.101 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+05:12:18.101 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 0 ms
+05:12:18.109 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'feature': 53e357e3bf76cea64ac9dc814f52165e420628bb (ref update: FAST_FORWARD)
+]]></system-out>
+  </testcase>
+  <testcase name="anUnsettledReplayAtADifferentHeadRequiresExplicitAdoptionOfThatExactHead(boolean)[2]" classname="com.taxonomy.workspace.service.WorkspaceUpstreamServiceTest" time="0.077">
+    <system-out><![CDATA[05:12:18.122 [main] INFO com.taxonomy.workspace.storage.DslGitRepositoryFactory -- Creating in-memory DslGitRepository 'central-source' (test mode)
+05:12:18.123 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Initialised DslGitRepository (InMemoryRepository)
+05:12:18.123 [main] INFO com.taxonomy.workspace.storage.DslGitRepositoryFactory -- Creating in-memory DslGitRepository 'ws-w1' (test mode)
+05:12:18.123 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Initialised DslGitRepository (InMemoryRepository)
+05:12:18.123 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'main': 83d5f79ad479c5701d45d67be02bd2841e47eee4 (ref update: NEW)
+05:12:18.123 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'main': b5b6f7f1b3af502f92eac675377c6399834e320a (ref update: FAST_FORWARD)
+05:12:18.123 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'draft': 25a1b9578cf92fcf031d077e630631af936ff4b9 (ref update: NEW)
+05:12:18.131 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+05:12:18.135 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:wsfetch14f76d21-bbdf-4007-9ab6-9446b6bd2486]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 8
+05:12:18.143 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+05:12:18.163 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+05:12:18.178 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+05:12:18.178 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+05:12:18.178 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 0 ms
+05:12:18.179 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'feature': 23a59791fbf1755cf4de76f443e3e35f2371c5a8 (ref update: FAST_FORWARD)
+05:12:18.184 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+05:12:18.184 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+05:12:18.184 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 0 ms
+]]></system-out>
+  </testcase>
+  <testcase name="planValidatorTracksIndependentLocalSourceAndTrackingRefMoves" classname="com.taxonomy.workspace.service.WorkspaceUpstreamServiceTest" time="0.06">
+    <system-out><![CDATA[05:12:18.200 [main] INFO com.taxonomy.workspace.storage.DslGitRepositoryFactory -- Creating in-memory DslGitRepository 'central-source' (test mode)
+05:12:18.200 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Initialised DslGitRepository (InMemoryRepository)
+05:12:18.200 [main] INFO com.taxonomy.workspace.storage.DslGitRepositoryFactory -- Creating in-memory DslGitRepository 'ws-w1' (test mode)
+05:12:18.200 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Initialised DslGitRepository (InMemoryRepository)
+05:12:18.200 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'main': 83d5f79ad479c5701d45d67be02bd2841e47eee4 (ref update: NEW)
+05:12:18.200 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'main': b5b6f7f1b3af502f92eac675377c6399834e320a (ref update: FAST_FORWARD)
+05:12:18.201 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'draft': 25a1b9578cf92fcf031d077e630631af936ff4b9 (ref update: NEW)
+05:12:18.208 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+05:12:18.211 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:wsfetch7ab47850-1c42-4602-bb45-fa41f6a3a4c2]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 8
+05:12:18.219 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+05:12:18.235 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+05:12:18.247 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+05:12:18.247 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+05:12:18.247 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 0 ms
+05:12:18.253 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'draft': f00b9e5a6dbee64ae08156df5265f516d79ace4c (ref update: FAST_FORWARD)
+05:12:18.255 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'main': 7fab13ed270d335cdc8824d28dd604b0bb503271 (ref update: FAST_FORWARD)
+]]></system-out>
+  </testcase>
+  <testcase name="routeFetchesOnlyTheReviewedSourceAndRetainsBothWorkingAndIntegrationHeads" classname="com.taxonomy.workspace.service.WorkspaceUpstreamServiceTest" time="0.071">
+    <system-out><![CDATA[05:12:18.260 [main] INFO com.taxonomy.workspace.storage.DslGitRepositoryFactory -- Creating in-memory DslGitRepository 'central-source' (test mode)
+05:12:18.260 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Initialised DslGitRepository (InMemoryRepository)
+05:12:18.260 [main] INFO com.taxonomy.workspace.storage.DslGitRepositoryFactory -- Creating in-memory DslGitRepository 'ws-w1' (test mode)
+05:12:18.260 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Initialised DslGitRepository (InMemoryRepository)
+05:12:18.261 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'main': 83d5f79ad479c5701d45d67be02bd2841e47eee4 (ref update: NEW)
+05:12:18.261 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'main': b5b6f7f1b3af502f92eac675377c6399834e320a (ref update: FAST_FORWARD)
+05:12:18.261 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'draft': 25a1b9578cf92fcf031d077e630631af936ff4b9 (ref update: NEW)
+05:12:18.269 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+05:12:18.272 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:wsfetchf3284cce-3b5c-4ab8-8d4f-e0c08dea512f]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 8
+05:12:18.280 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+05:12:18.297 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+05:12:18.309 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+05:12:18.309 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+05:12:18.309 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 0 ms
+05:12:18.324 [main] WARN org.hibernate.orm.jdbc.warn -- HHH000247: ErrorCode: -1100, SQLState: 02000
+05:12:18.324 [main] WARN org.hibernate.orm.jdbc.warn -- no data
+]]></system-out>
+  </testcase>
+  <testcase name="movedWorkspaceBranchOrBrowserSelectionRejectsTheReviewedPost" classname="com.taxonomy.workspace.service.WorkspaceUpstreamServiceTest" time="0.062">
+    <system-out><![CDATA[05:12:18.332 [main] INFO com.taxonomy.workspace.storage.DslGitRepositoryFactory -- Creating in-memory DslGitRepository 'central-source' (test mode)
+05:12:18.332 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Initialised DslGitRepository (InMemoryRepository)
+05:12:18.332 [main] INFO com.taxonomy.workspace.storage.DslGitRepositoryFactory -- Creating in-memory DslGitRepository 'ws-w1' (test mode)
+05:12:18.332 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Initialised DslGitRepository (InMemoryRepository)
+05:12:18.332 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'main': 83d5f79ad479c5701d45d67be02bd2841e47eee4 (ref update: NEW)
+05:12:18.333 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'main': b5b6f7f1b3af502f92eac675377c6399834e320a (ref update: FAST_FORWARD)
+05:12:18.333 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'draft': 25a1b9578cf92fcf031d077e630631af936ff4b9 (ref update: NEW)
+05:12:18.340 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+05:12:18.343 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:wsfetch2bc4e633-afe8-4d41-b26b-b034f467b285]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 8
+05:12:18.351 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+05:12:18.368 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+05:12:18.380 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+05:12:18.380 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+05:12:18.380 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 0 ms
+05:12:18.382 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'feature': 23a59791fbf1755cf4de76f443e3e35f2371c5a8 (ref update: FAST_FORWARD)
+05:12:18.387 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+05:12:18.387 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+05:12:18.387 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 0 ms
+05:12:18.391 [main] INFO com.taxonomy.versioning.service.ContextNavigationService -- User 'alice' switched context: branch='feature', commit='23a5979'
+05:12:18.392 [main] INFO com.taxonomy.versioning.service.ContextNavigationService -- User 'alice' opened read-only context: branch='feature', commit='23a5979'
+]]></system-out>
+  </testcase>
+</testsuite>

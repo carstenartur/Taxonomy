@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>SnapshotEvidence.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-dsl</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dsl.command</a> &gt; <span class="el_source">SnapshotEvidence.java</span></div><h1>SnapshotEvidence.java</h1><pre class="source lang-java linenums">package com.taxonomy.dsl.command;
+
+import com.taxonomy.dsl.command.ArchitectureCommand.RelationKey;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.*;
+
+/** One source observation about a directed relation. Only the frozen snapshot adapter builds these. */
+public record SnapshotEvidence(RelationKey relation, String origin, Double confidence, Map&lt;String, String&gt; details) {
+    public static final String FINGERPRINT = &quot;x-analysis-evidence-fingerprint&quot;;
+    public static final String GENERATED_DESCRIPTION_HASH = &quot;x-analysis-generated-description-sha256&quot;;
+    static final String VIEW = &quot;x-analysis-view-id&quot;;
+    static final String SNAPSHOT = &quot;x-analysis-snapshot-id&quot;;
+    public static final int MAX_RECORDS = 10000;
+<span class="fc" id="L16">    private static final Set&lt;String&gt; FIELDS = Set.of(&quot;summary&quot;, &quot;x-analysis-derivation&quot;, &quot;x-analysis-presence&quot;,</span>
+            &quot;x-analysis-included-because&quot;, &quot;x-analysis-seed-type&quot;, &quot;x-analysis-direction&quot;, &quot;x-analysis-outcome&quot;,
+            &quot;x-analysis-necessity&quot;, &quot;x-analysis-assessed-id&quot;, &quot;x-analysis-assessed-contribution&quot;,
+            &quot;x-analysis-assessed-quote&quot;, &quot;x-analysis-assessed-condition&quot;, &quot;x-analysis-candidate-id&quot;,
+            &quot;x-analysis-candidate-contribution&quot;, &quot;x-analysis-candidate-quote&quot;, &quot;x-analysis-candidate-condition&quot;,
+            &quot;x-analysis-alternative-group&quot;, &quot;x-analysis-question&quot;);
+
+<span class="fc" id="L23">    public SnapshotEvidence {</span>
+<span class="fc" id="L24">        Objects.requireNonNull(relation);</span>
+<span class="fc" id="L25">        requireUtf8(relation.id());</span>
+<span class="fc bfc" id="L26" title="All 4 branches covered.">        if (origin != null &amp;&amp; !origin.matches(&quot;[A-Za-z0-9_-]{1,100}&quot;)) throw invalid(&quot;Invalid recorded origin&quot;);</span>
+<span class="pc bpc" id="L27" title="2 of 8 branches missed.">        if (confidence != null &amp;&amp; (!Double.isFinite(confidence) || confidence &lt; 0 || confidence &gt; 1))</span>
+<span class="fc" id="L28">            throw invalid(&quot;Recorded confidence must be finite and between zero and one&quot;);</span>
+<span class="pc bpc" id="L29" title="1 of 2 branches missed.">        if (!FIELDS.containsAll(details.keySet())) throw invalid(&quot;Unknown snapshot evidence field&quot;);</span>
+<span class="fc" id="L30">        details = Map.copyOf(details);</span>
+<span class="fc bfc" id="L31" title="All 2 branches covered.">        for (String value : details.values()) {</span>
+<span class="fc" id="L32">            requireUtf8(value);</span>
+<span class="pc bpc" id="L33" title="10 of 16 branches missed.">            if (value.length() &gt; 8000 || value.chars().anyMatch(c -&gt; Character.isISOControl(c)</span>
+                    &amp;&amp; c != '\n' &amp;&amp; c != '\r' &amp;&amp; c != '\t' || c == 0xfffe || c == 0xffff))
+<span class="fc" id="L35">                throw invalid(&quot;Snapshot evidence contains an unsupported character or exceeds 8000 characters per field&quot;);</span>
+<span class="fc" id="L36">        }</span>
+<span class="fc" id="L37">    }</span>
+
+    Map&lt;String, String&gt; relationProperties() {
+<span class="fc" id="L40">        Map&lt;String, String&gt; fields = new TreeMap&lt;&gt;();</span>
+<span class="fc bfc" id="L41" title="All 2 branches covered.">        if (origin != null) fields.put(&quot;provenance&quot;, origin);</span>
+<span class="fc bfc" id="L42" title="All 2 branches covered.">        if (confidence != null) fields.put(&quot;confidence&quot;, confidence.toString());</span>
+<span class="fc" id="L43">        return fields;</span>
+    }
+
+    Map&lt;String, String&gt; properties(String viewId, String snapshotId) {
+<span class="fc" id="L47">        var fields = new TreeMap&lt;&gt;(details);</span>
+<span class="fc" id="L48">        fields.put(&quot;for-relation&quot;, relation.id());</span>
+<span class="fc bfc" id="L49" title="All 2 branches covered.">        fields.put(&quot;type&quot;, details.containsKey(&quot;x-analysis-outcome&quot;) ? &quot;requirement-relation&quot; : &quot;analysis-relationship&quot;);</span>
+<span class="fc" id="L50">        fields.put(VIEW, viewId);</span>
+<span class="fc" id="L51">        fields.put(SNAPSHOT, snapshotId);</span>
+<span class="fc bfc" id="L52" title="All 2 branches covered.">        if (origin != null) fields.put(&quot;x-analysis-origin&quot;, origin);</span>
+<span class="fc bfc" id="L53" title="All 2 branches covered.">        if (confidence != null) fields.put(&quot;confidence&quot;, confidence.toString());</span>
+<span class="fc" id="L54">        return fields;</span>
+    }
+
+    /** Field names are fixed, and values cannot contain NUL, so this framing preserves field boundaries. */
+    static String id(Map&lt;String, String&gt; fields) {
+<span class="fc" id="L59">        StringJoiner parts = new StringJoiner(&quot;\u0000&quot;);</span>
+<span class="fc" id="L60">        new TreeMap&lt;&gt;(fields).forEach((name, value) -&gt; { parts.add(name); parts.add(value); });</span>
+<span class="fc" id="L61">        return &quot;analysis-evidence-&quot; + digest(parts.toString());</span>
+    }
+
+    static String fingerprint(String viewId, String snapshotId, List&lt;SnapshotEvidence&gt; evidence) {
+<span class="pc bpc" id="L65" title="1 of 2 branches missed.">        if (evidence.size() &gt; MAX_RECORDS) throw invalid(&quot;At most 10000 evidence records can be adopted&quot;);</span>
+<span class="pc bpc" id="L66" title="3 of 8 branches missed.">        if (!evidence.isEmpty() &amp;&amp; (snapshotId == null || snapshotId.isBlank() || viewId == null))</span>
+<span class="nc" id="L67">            throw invalid(&quot;Evidence requires an exact source snapshot and view&quot;);</span>
+<span class="fc" id="L68">        var ids = new TreeSet&lt;String&gt;();</span>
+<span class="fc" id="L69">        long bytes = 0;</span>
+<span class="fc" id="L70">        Map&lt;RelationKey, Map&lt;String, String&gt;&gt; edges = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L71" title="All 2 branches covered.">        for (var entry : evidence) {</span>
+<span class="fc" id="L72">            var fields = entry.properties(viewId, snapshotId);</span>
+<span class="fc bfc" id="L73" title="All 2 branches covered.">            for (var field : fields.entrySet()) bytes += field.getKey().length() + field.getValue().getBytes(StandardCharsets.UTF_8).length;</span>
+<span class="pc bpc" id="L74" title="1 of 2 branches missed.">            if (bytes &gt; 4 * 1024 * 1024) throw invalid(&quot;Snapshot evidence exceeds 4 MiB&quot;);</span>
+<span class="pc bpc" id="L75" title="1 of 2 branches missed.">            if (!ids.add(id(fields))) throw invalid(&quot;Duplicate source evidence identity&quot;);</span>
+<span class="fc" id="L76">            var relationProperties = entry.relationProperties();</span>
+<span class="fc" id="L77">            var prior = edges.putIfAbsent(entry.relation(), relationProperties);</span>
+<span class="pc bpc" id="L78" title="1 of 4 branches missed.">            if (prior != null &amp;&amp; !prior.equals(relationProperties)) throw invalid(&quot;Conflicting metadata on the same snapshot relation&quot;);</span>
+<span class="fc" id="L79">        }</span>
+<span class="fc" id="L80">        return fingerprint(ids);</span>
+    }
+
+    static String fingerprint(SortedSet&lt;String&gt; evidenceIds) {
+<span class="fc" id="L84">        return digest(String.join(&quot;\n&quot;, evidenceIds));</span>
+    }
+
+    static String digest(String value) {
+<span class="fc" id="L88">        requireUtf8(value);</span>
+        try {
+<span class="fc" id="L90">            return HexFormat.of().formatHex(MessageDigest.getInstance(&quot;SHA-256&quot;).digest(value.getBytes(StandardCharsets.UTF_8)));</span>
+<span class="nc" id="L91">        } catch (NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }</span>
+    }
+
+    /** UTF-8 is the byte representation for both frozen fingerprints and Git checkpoint contents. */
+    public static void requireUtf8(String value) {
+<span class="pc bpc" id="L96" title="1 of 4 branches missed.">        if (value != null &amp;&amp; !StandardCharsets.UTF_8.newEncoder().canEncode(value))</span>
+<span class="fc" id="L97">            throw invalid(&quot;Frozen snapshot text contains an unpaired UTF-16 surrogate&quot;);</span>
+<span class="fc" id="L98">    }</span>
+
+    public static ArchitectureDslCommands.CommandProblem invalid(String message) {
+<span class="fc" id="L101">        return new ArchitectureDslCommands.CommandProblem(&quot;INVALID_SNAPSHOT_EVIDENCE&quot;, &quot;evidence&quot;, message, List.of());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

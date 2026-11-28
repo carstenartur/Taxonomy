@@ -1,0 +1,738 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>MailAnalysisQueue.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.mail</a> &gt; <span class="el_source">MailAnalysisQueue.java</span></div><h1>MailAnalysisQueue.java</h1><pre class="source lang-java linenums">package com.taxonomy.mail;
+
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileLock;
+import java.nio.channels.OverlappingFileLockException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.NavigableSet;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import java.util.TreeSet;
+import java.util.UUID;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.function.BooleanSupplier;
+
+import com.fasterxml.jackson.annotation.JsonUnwrapped;
+import com.taxonomy.identity.StableIdentityHash;
+import com.taxonomy.shared.features.ConditionalOnFeature;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.DisposableBean;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.ApplicationListener;
+import org.springframework.core.Ordered;
+import org.springframework.stereotype.Service;
+import tools.jackson.databind.ObjectMapper;
+
+/** Durable admission receipts and delivery jobs owned by one mailbox coordinator. */
+@Service
+@ConditionalOnProperty(name = &quot;taxonomy.mail.enabled&quot;, havingValue = &quot;true&quot;)
+@ConditionalOnFeature({&quot;analysis&quot;, &quot;architecture&quot;, &quot;reporting&quot;})
+public final class MailAnalysisQueue implements ApplicationListener&lt;ApplicationReadyEvent&gt;, DisposableBean, Ordered {
+<span class="fc" id="L53">    private static final Logger log = LoggerFactory.getLogger(MailAnalysisQueue.class);</span>
+<span class="fc" id="L54">    private static final Duration DELIVERY_RETRY = Duration.ofMinutes(1);</span>
+<span class="fc" id="L55">    private static final Duration STORAGE_RETRY = Duration.ofMinutes(1);</span>
+<span class="fc" id="L56">    private static final Duration SOURCE_RETRY = Duration.ofSeconds(5);</span>
+<span class="fc" id="L57">    private static final Comparator&lt;Job&gt; FIFO = Comparator.comparingLong(Job::sequence).thenComparing(Job::token);</span>
+<span class="fc" id="L58">    private static final Comparator&lt;Job&gt; DELIVERY_ORDER = Comparator</span>
+<span class="fc" id="L59">            .comparing(Job::retryAfter, Comparator.nullsFirst(Comparator.naturalOrder())).thenComparing(FIFO);</span>
+
+<span class="fc" id="L61">    public enum State { QUEUED, RUNNING, DELIVERING, COMPLETED, PARTIAL, FAILED, REJECTED }</span>
+
+<span class="fc" id="L63">    public enum WorkerState { STOPPED, IDLE, RUNNING, WAITING_FOR_SOURCE, RETRYING, DELIVERING }</span>
+
+    private static final int MAX_DURATION_SAMPLES = 32;
+    private static final int MIN_DURATION_SAMPLES = 3;
+    private static final String CAPACITY_REJECTION = &quot;Die Warteschlange ist voll. Bitte senden Sie den Auftrag später erneut.&quot;;
+
+<span class="fc" id="L69">    public record Submission(String jobToken, Integer position, boolean accepted, boolean duplicate,</span>
+                             boolean receiptConfirmed, String rejectionReason) {}
+
+    /** The bearer link deliberately has no request, address, or attachment data. */
+<span class="fc" id="L73">    public record Status(State state, Integer position, int queuedJobs, int capacity,</span>
+                         int runningJobs, int deliveringJobs, boolean finished) {}
+
+<span class="fc" id="L76">    public record SettingsView(MailAnalysisCommand.Mode mode, List&lt;String&gt; taxonomyCodes, int taxonomyCount,</span>
+                               List&lt;MailAnalysisCommand.Format&gt; exports) {}
+
+    /** A display identifier refers to a queue row. Only the receipt token authorizes access. */
+<span class="fc" id="L80">    public record JobView(String displayId, boolean own, State state, Integer position,</span>
+                          Instant submittedAt, Instant startedAt, SettingsView settings,
+                          Long estimatedWaitSeconds) {}
+
+<span class="fc" id="L84">    public record Snapshot(@JsonUnwrapped Status summary, Instant observedAt, boolean workerOnline,</span>
+                           int workerCount, WorkerState workerState, int estimateSamples, Long typicalDurationSeconds,
+                           JobView job, List&lt;JobView&gt; jobs) {}
+
+<span class="fc" id="L88">    record Outcome(String summary, List&lt;MailAnalysisAttachment&gt; attachments, boolean successful, boolean partial) {</span>
+        Outcome(String summary, List&lt;MailAnalysisAttachment&gt; attachments, boolean successful) {
+<span class="fc" id="L90">            this(summary, attachments, successful, false);</span>
+<span class="fc" id="L91">        }</span>
+
+        State deliveredState() {
+<span class="fc bfc" id="L94" title="All 2 branches covered.">            if (!successful) return State.FAILED;</span>
+<span class="fc bfc" id="L95" title="All 2 branches covered.">            return partial ? State.PARTIAL : State.COMPLETED;</span>
+        }
+
+        static Outcome failed(String summary) {
+<span class="fc" id="L99">            return new Outcome(summary, List.of(), false);</span>
+        }
+    }
+
+<span class="fc" id="L103">    private record Prepared(String token, MailAnalysisCommand command) {}</span>
+
+<span class="fc" id="L105">    private record Execution(String id, MailAnalysisCommand command) {}</span>
+
+<span class="fc" id="L107">    private record Job(String token, String identity, long sequence, IncomingMail mail, State state,</span>
+                       boolean receiptConfirmed, Instant submittedAt, Instant updatedAt, Instant retryAfter,
+                       Instant deliveryStartedAt, Integer admissionPosition, Execution execution,
+                       Instant startedAt, MailAnalysisCommand classifiedSettings) {
+        MailAnalysisCommand settings() {
+<span class="fc bfc" id="L112" title="All 4 branches covered.">            return execution != null &amp;&amp; execution.command() != null ? execution.command() : classifiedSettings;</span>
+        }
+
+        boolean terminal() {
+<span class="fc bfc" id="L116" title="All 8 branches covered.">            return state == State.COMPLETED || state == State.PARTIAL || state == State.FAILED || state == State.REJECTED;</span>
+        }
+
+        Instant retentionStart() {
+<span class="fc bfc" id="L120" title="All 4 branches covered.">            if (terminal() || !receiptConfirmed) return updatedAt;</span>
+<span class="fc bfc" id="L121" title="All 2 branches covered.">            return state == State.DELIVERING ? Objects.requireNonNullElse(deliveryStartedAt, updatedAt) : null;</span>
+        }
+
+        Job update(State next, boolean confirmed, Instant updated, Instant retry) {
+<span class="fc bfc" id="L125" title="All 3 branches covered.">            IncomingMail retained = switch (next) {</span>
+<span class="fc" id="L126">                case COMPLETED, PARTIAL, FAILED, REJECTED -&gt; null;</span>
+<span class="fc" id="L127">                case DELIVERING -&gt; new IncomingMail(null, mail.sender(), mail.subject(), null);</span>
+<span class="fc" id="L128">                default -&gt; mail;</span>
+            };
+<span class="fc bfc" id="L130" title="All 4 branches covered.">            Instant firstDelivery = next == State.DELIVERING &amp;&amp; deliveryStartedAt == null ? updated : deliveryStartedAt;</span>
+<span class="fc bfc" id="L131" title="All 4 branches covered.">            Execution retainedExecution = next == State.QUEUED || next == State.RUNNING ? execution : null;</span>
+<span class="pc bpc" id="L132" title="1 of 4 branches missed.">            Instant start = next == State.RUNNING &amp;&amp; state == State.QUEUED ? updated : startedAt;</span>
+<span class="fc" id="L133">            return new Job(token, identity, sequence, retained, next, confirmed,</span>
+                    submittedAt, updated, retry, firstDelivery, admissionPosition, retainedExecution,
+<span class="fc bfc" id="L135" title="All 2 branches covered.">                    start, retainedExecution == null ? settings() : null);</span>
+        }
+
+        Job withExecution(Execution value) {
+<span class="fc" id="L139">            return new Job(token, identity, sequence, mail, state, receiptConfirmed, submittedAt, updatedAt,</span>
+                    retryAfter, deliveryStartedAt, admissionPosition, value, startedAt, classifiedSettings);
+        }
+    }
+
+    private final Path directory;
+    private final int capacity;
+    private final int deliveryCapacity;
+    private final Duration retention;
+    private final Clock clock;
+    private final ObjectMapper mapper;
+    private final MailAnalysisProcessor processor;
+    private final MailAnalysisDelivery delivery;
+    private final BooleanSupplier sourceReady;
+    // Rebuilt from the durable job files on startup. Only active jobs participate in scheduling.
+<span class="fc" id="L154">    private final Map&lt;String, Job&gt; jobs = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L155">    private final Map&lt;String, String&gt; tokenByIdentity = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L156">    private final NavigableSet&lt;Job&gt; queued = new TreeSet&lt;&gt;(FIFO);</span>
+<span class="fc" id="L157">    private final NavigableSet&lt;Job&gt; running = new TreeSet&lt;&gt;(FIFO);</span>
+<span class="fc" id="L158">    private final NavigableSet&lt;Job&gt; deliveries = new TreeSet&lt;&gt;(DELIVERY_ORDER);</span>
+<span class="fc" id="L159">    private final NavigableSet&lt;Job&gt; expiring = new TreeSet&lt;&gt;(Comparator.comparing(Job::retentionStart).thenComparing(FIFO));</span>
+<span class="fc" id="L160">    private final NavigableSet&lt;Job&gt; measured = new TreeSet&lt;&gt;(Comparator.comparing(Job::deliveryStartedAt).thenComparing(FIFO));</span>
+<span class="fc" id="L161">    private final Map&lt;State, NavigableSet&lt;Job&gt;&gt; active = Map.of(</span>
+            State.QUEUED, queued, State.RUNNING, running, State.DELIVERING, deliveries);
+    private FileChannel lockChannel;
+    private FileLock directoryLock;
+    private ScheduledExecutorService executor;
+    private ScheduledFuture&lt;?&gt; workerTask;
+    private long lastSequence;
+    private volatile boolean warned;
+    private volatile boolean sending;
+    private boolean lastClaimWasDeliveryRetry;
+    // One worker owns the running job and retains at most one computed result during a storage outage.
+    private MailAnalysisCommand unpersistedCommand;
+    private Outcome unspooledOutcome;
+    private volatile Instant runningRetryAt;
+    private volatile boolean waitingForSource;
+    // One preparation lane shares the classifier with execution. A successful inference survives
+    // transient spool writes in memory until the command or the RUNNING transition is durable.
+    private String preparingToken;
+    private Prepared prepared;
+    private Instant preparationRetryAt;
+<span class="fc" id="L181">    private final Set&lt;String&gt; failedPreparations = new HashSet&lt;&gt;();</span>
+
+    @Autowired
+    public MailAnalysisQueue(
+            @Value(&quot;${taxonomy.mail.queue.directory:./data/mail-analysis}&quot;) Path directory,
+            @Value(&quot;${taxonomy.mail.queue.capacity:16}&quot;) int capacity,
+            @Value(&quot;${taxonomy.mail.queue.retention:PT48H}&quot;) Duration retention,
+            ObjectMapper mapper, MailAnalysisProcessor processor, MailAnalysisDelivery delivery) {
+<span class="fc" id="L189">        this(directory, capacity, retention, mapper, processor, delivery, Clock.systemUTC(), processor::sourceReady);</span>
+<span class="fc" id="L190">    }</span>
+
+    MailAnalysisQueue(Path directory, int capacity, Duration retention, ObjectMapper mapper,
+            MailAnalysisProcessor processor, MailAnalysisDelivery delivery, Clock clock) {
+<span class="fc" id="L194">        this(directory, capacity, retention, mapper, processor, delivery, clock, () -&gt; true);</span>
+<span class="fc" id="L195">    }</span>
+
+    private MailAnalysisQueue(Path directory, int capacity, Duration retention, ObjectMapper mapper,
+<span class="fc" id="L198">            MailAnalysisProcessor processor, MailAnalysisDelivery delivery, Clock clock, BooleanSupplier sourceReady) {</span>
+<span class="pc bpc" id="L199" title="4 of 8 branches missed.">        if (capacity &lt; 0 || capacity &gt; 1_000 || retention.isNegative() || retention.isZero()) {</span>
+<span class="nc" id="L200">            throw new IllegalArgumentException(&quot;Invalid email queue capacity or retention&quot;);</span>
+        }
+<span class="fc" id="L202">        this.directory = directory.toAbsolutePath().normalize();</span>
+<span class="fc" id="L203">        this.capacity = capacity;</span>
+<span class="fc" id="L204">        this.deliveryCapacity = Math.max(1, capacity);</span>
+<span class="fc" id="L205">        this.retention = retention;</span>
+<span class="fc" id="L206">        this.clock = clock;</span>
+<span class="fc" id="L207">        this.mapper = mapper;</span>
+<span class="fc" id="L208">        this.processor = processor;</span>
+<span class="fc" id="L209">        this.delivery = delivery;</span>
+<span class="fc" id="L210">        this.sourceReady = sourceReady;</span>
+<span class="fc" id="L211">        openDirectory();</span>
+<span class="fc" id="L212">    }</span>
+
+    public synchronized Submission submit(IncomingMail mail) {
+<span class="fc" id="L215">        Objects.requireNonNull(mail);</span>
+<span class="fc" id="L216">        pruneExpired();</span>
+<span class="fc" id="L217">        String identity = StableIdentityHash.sha256(mail.sender() + &quot;\n&quot; + mail.messageId());</span>
+<span class="fc" id="L218">        Job existing = jobs.get(tokenByIdentity.get(identity));</span>
+<span class="fc bfc" id="L219" title="All 2 branches covered.">        if (existing != null) return submission(existing, true);</span>
+
+<span class="fc" id="L221">        int waiting = queued.size();</span>
+<span class="fc bfc" id="L222" title="All 2 branches covered.">        boolean accepted = waiting &lt; capacity;</span>
+<span class="fc" id="L223">        Instant admitted = clock.instant();</span>
+        // Record each decision before SMTP. A retry of the same IMAP UID must never change the answer.
+<span class="fc bfc" id="L225" title="All 2 branches covered.">        Job job = new Job(UUID.randomUUID().toString(), identity, ++lastSequence, accepted ? mail : null,</span>
+<span class="fc bfc" id="L226" title="All 2 branches covered.">                accepted ? State.QUEUED : State.REJECTED, false, admitted, admitted, null, null,</span>
+<span class="fc bfc" id="L227" title="All 4 branches covered.">                accepted ? waiting + 1 : null, accepted ? newExecution() : null, null, null);</span>
+<span class="fc" id="L228">        store(job);</span>
+<span class="fc" id="L229">        return submission(job, false);</span>
+    }
+
+    private static Execution newExecution() {
+<span class="fc" id="L233">        return new Execution(UUID.randomUUID().toString(), null);</span>
+    }
+
+    private Submission submission(Job job, boolean duplicate) {
+<span class="fc bfc" id="L237" title="All 2 branches covered.">        boolean accepted = job.state() != State.REJECTED;</span>
+<span class="fc" id="L238">        Integer admittedAt = job.admissionPosition();</span>
+<span class="pc bpc" id="L239" title="1 of 4 branches missed.">        if (admittedAt == null &amp;&amp; job.state() == State.QUEUED) admittedAt = position(job);</span>
+<span class="fc" id="L240">        return new Submission(job.token(), admittedAt, accepted, duplicate, job.receiptConfirmed(),</span>
+<span class="fc bfc" id="L241" title="All 2 branches covered.">                accepted ? null : CAPACITY_REJECTION);</span>
+    }
+
+    /** The worker starts only after the mailbox adapter successfully sent the admission receipt. */
+    public synchronized void confirmReceipt(String jobToken) {
+<span class="fc" id="L246">        Job job = jobs.get(jobToken);</span>
+<span class="pc bpc" id="L247" title="2 of 4 branches missed.">        if (job != null &amp;&amp; !job.receiptConfirmed()) {</span>
+<span class="fc" id="L248">            store(job.update(job.state(), true, clock.instant(), null));</span>
+        }
+<span class="fc" id="L250">    }</span>
+
+    public synchronized Optional&lt;Status&gt; status(String jobToken) {
+<span class="fc" id="L253">        Job job = jobs.get(jobToken);</span>
+<span class="pc bpc" id="L254" title="1 of 6 branches missed.">        if (job == null || job.state() == State.REJECTED || removable(job, clock.instant())) return Optional.empty();</span>
+<span class="fc bfc" id="L255" title="All 2 branches covered.">        Integer position = job.state() == State.QUEUED ? position(job) : null;</span>
+<span class="fc" id="L256">        return Optional.of(new Status(job.state(), position, queued.size(), capacity,</span>
+<span class="fc" id="L257">                running.size(), deliveries.size(), job.terminal()));</span>
+    }
+
+    /**
+     * One lock covers all rows and counters, so a running job cannot also appear in the waiting list.
+     * Public rows contain only classified options and operational data.
+     */
+    public synchronized Optional&lt;Snapshot&gt; snapshot(String jobToken) {
+<span class="fc" id="L265">        var summary = status(jobToken);</span>
+<span class="pc bpc" id="L266" title="1 of 2 branches missed.">        if (summary.isEmpty()) return Optional.empty();</span>
+<span class="fc" id="L267">        Instant now = clock.instant();</span>
+<span class="fc" id="L268">        Job own = jobs.get(jobToken);</span>
+<span class="fc" id="L269">        long[] durations = measured.descendingSet().stream()</span>
+<span class="pc bpc" id="L270" title="1 of 2 branches missed.">                .filter(job -&gt; !removable(job, now))</span>
+<span class="fc" id="L271">                .limit(MAX_DURATION_SAMPLES)</span>
+<span class="fc" id="L272">                .mapToLong(job -&gt; Math.max(1L, Duration.between(job.startedAt(), job.deliveryStartedAt()).toSeconds()))</span>
+<span class="fc" id="L273">                .sorted().toArray();</span>
+<span class="fc" id="L274">        Long typical = null;</span>
+<span class="fc bfc" id="L275" title="All 2 branches covered.">        if (durations.length &gt;= MIN_DURATION_SAMPLES) {</span>
+<span class="fc" id="L276">            long lower = durations[(durations.length - 1) / 2];</span>
+<span class="fc" id="L277">            typical = lower + (durations[durations.length / 2] - lower) / 2;</span>
+        }
+<span class="fc" id="L279">        WorkerState worker = workerState(now);</span>
+<span class="fc bfc" id="L280" title="All 4 branches covered.">        Long wait = worker == WorkerState.IDLE || worker == WorkerState.RUNNING ? initialWaitSeconds(typical, now) : null;</span>
+<span class="fc" id="L281">        var entries = new ArrayList&lt;JobView&gt;(queued.size() + running.size() + deliveries.size());</span>
+<span class="fc bfc" id="L282" title="All 2 branches covered.">        for (Job job : running) entries.add(view(job, own, null, null));</span>
+<span class="fc" id="L283">        int position = 0;</span>
+<span class="fc bfc" id="L284" title="All 2 branches covered.">        for (Job job : queued) {</span>
+<span class="fc bfc" id="L285" title="All 2 branches covered.">            entries.add(view(job, own, ++position, job.receiptConfirmed() ? wait : null));</span>
+<span class="fc bfc" id="L286" title="All 4 branches covered.">            if (job.receiptConfirmed() &amp;&amp; wait != null) wait += typical;</span>
+<span class="fc" id="L287">        }</span>
+<span class="fc bfc" id="L288" title="All 2 branches covered.">        for (Job job : deliveries) entries.add(view(job, own, null, null));</span>
+<span class="fc" id="L289">        JobView ownView = entries.stream().filter(JobView::own).findFirst()</span>
+<span class="fc" id="L290">                .orElseGet(() -&gt; view(own, own, null, null));</span>
+<span class="fc bfc" id="L291" title="All 2 branches covered.">        return Optional.of(new Snapshot(summary.get(), now, worker != WorkerState.STOPPED, 1, worker, durations.length,</span>
+<span class="fc" id="L292">                typical, ownView, List.copyOf(entries)));</span>
+    }
+
+    private WorkerState workerState(Instant now) {
+<span class="pc bpc" id="L296" title="1 of 6 branches missed.">        if (workerTask == null || workerTask.isDone() || executor.isShutdown()) return WorkerState.STOPPED;</span>
+<span class="fc bfc" id="L297" title="All 2 branches covered.">        if (sending) return WorkerState.DELIVERING;</span>
+<span class="pc bpc" id="L298" title="3 of 6 branches missed.">        if (waitingForSource &amp;&amp; (!queued.isEmpty() || !running.isEmpty())) return WorkerState.WAITING_FOR_SOURCE;</span>
+<span class="pc bpc" id="L299" title="4 of 6 branches missed.">        if (warned || runningRetryAt != null &amp;&amp; runningRetryAt.isAfter(now)) return WorkerState.RETRYING;</span>
+<span class="fc bfc" id="L300" title="All 2 branches covered.">        if (!running.isEmpty()) return WorkerState.RUNNING;</span>
+<span class="pc bpc" id="L301" title="1 of 4 branches missed.">        if (!deliveries.isEmpty()) return dueDelivery(now) == null ? WorkerState.RETRYING : WorkerState.DELIVERING;</span>
+<span class="pc bpc" id="L302" title="1 of 2 branches missed.">        return preparingToken == null ? WorkerState.IDLE : WorkerState.RUNNING;</span>
+    }
+
+    private Long initialWaitSeconds(Long typical, Instant now) {
+<span class="pc bpc" id="L306" title="3 of 8 branches missed.">        if (typical == null || waitingForSource || runningRetryAt != null || !deliveries.isEmpty()) return null;</span>
+<span class="pc bpc" id="L307" title="3 of 4 branches missed.">        if (running.isEmpty()) return preparingToken == null ? 0L : null;</span>
+<span class="fc" id="L308">        Instant start = running.first().startedAt();</span>
+<span class="pc bpc" id="L309" title="1 of 2 branches missed.">        if (start == null) return null;</span>
+<span class="fc" id="L310">        long elapsed = Math.max(0L, Duration.between(start, now).toSeconds());</span>
+        // An overrun has no defensible remaining-time estimate.
+<span class="fc bfc" id="L312" title="All 2 branches covered.">        return elapsed &lt; typical ? typical - elapsed : null;</span>
+    }
+
+    private static JobView view(Job job, Job own, Integer position, Long wait) {
+<span class="fc" id="L316">        boolean owner = job.token().equals(own.token());</span>
+<span class="fc" id="L317">        var options = job.settings();</span>
+<span class="fc bfc" id="L318" title="All 2 branches covered.">        var settings = options == null ? null : new SettingsView(options.mode(),</span>
+<span class="fc bfc" id="L319" title="All 2 branches covered.">                owner ? options.taxonomyCodes() : List.of(), options.taxonomyCodes().size(), options.exports());</span>
+<span class="fc" id="L320">        return new JobView(&quot;TX-&quot; + job.sequence(), owner, job.state(), position, job.submittedAt(),</span>
+<span class="fc" id="L321">                job.startedAt(), settings, wait);</span>
+    }
+
+    private int position(Job job) {
+<span class="fc" id="L325">        return 1 + queued.headSet(job).size();</span>
+    }
+
+    @Override
+    public synchronized void onApplicationEvent(ApplicationReadyEvent event) {
+<span class="pc bpc" id="L330" title="1 of 2 branches missed.">        if (executor != null) return;</span>
+<span class="fc" id="L331">        executor = Executors.newScheduledThreadPool(2, Thread.ofPlatform().daemon().name(&quot;mail-analysis-&quot;, 1).factory());</span>
+<span class="fc" id="L332">        workerTask = executor.scheduleWithFixedDelay(this::tick, 0, 1, TimeUnit.SECONDS);</span>
+<span class="fc" id="L333">        executor.scheduleWithFixedDelay(this::prepareWaiting, 1, 1, TimeUnit.SECONDS);</span>
+<span class="fc" id="L334">    }</span>
+
+    @Override
+    public int getOrder() {
+<span class="fc" id="L338">        return Ordered.LOWEST_PRECEDENCE;</span>
+    }
+
+    /** Classify one confirmed waiting job while execution or result delivery is occupied. */
+    private void prepareWaiting() {
+        Job candidate;
+<span class="fc" id="L344">        synchronized (this) {</span>
+<span class="pc bpc" id="L345" title="1 of 2 branches missed.">            if (prepared != null) {</span>
+<span class="nc bnc" id="L346" title="All 2 branches missed.">                if (!clock.instant().isBefore(preparationRetryAt)) persistPrepared();</span>
+<span class="nc" id="L347">                return;</span>
+            }
+<span class="pc bpc" id="L349" title="1 of 6 branches missed.">            if (waitingForSource || running.isEmpty() &amp;&amp; deliveries.isEmpty()) return;</span>
+<span class="pc bpc" id="L350" title="1 of 4 branches missed.">            candidate = queued.stream().filter(job -&gt; job.receiptConfirmed() &amp;&amp; job.settings() == null</span>
+<span class="pc bpc" id="L351" title="1 of 2 branches missed.">                    &amp;&amp; !failedPreparations.contains(job.token())).findFirst().orElse(null);</span>
+<span class="pc bpc" id="L352" title="1 of 2 branches missed.">            if (candidate == null) return;</span>
+<span class="fc" id="L353">            preparingToken = candidate.token();</span>
+<span class="fc" id="L354">        }</span>
+        try {
+<span class="pc bpc" id="L356" title="2 of 4 branches missed.">            if (!sourceReady.getAsBoolean() || Thread.currentThread().isInterrupted()) return;</span>
+<span class="fc" id="L357">            var command = processor.classify(candidate.mail().subject(), candidate.mail().requirementText());</span>
+<span class="fc" id="L358">            synchronized (this) {</span>
+<span class="fc" id="L359">                prepared = new Prepared(candidate.token(), command);</span>
+<span class="fc" id="L360">                persistPrepared();</span>
+<span class="fc" id="L361">            }</span>
+<span class="fc" id="L362">        } catch (RuntimeException unavailable) {</span>
+            // The ordinary worker must still decide the outcome (including transient provider failures).
+<span class="fc" id="L364">            synchronized (this) {</span>
+<span class="fc" id="L365">                failedPreparations.add(candidate.token());</span>
+<span class="fc" id="L366">            }</span>
+        } finally {
+<span class="fc" id="L368">            synchronized (this) {</span>
+<span class="fc" id="L369">                preparingToken = null;</span>
+<span class="fc" id="L370">            }</span>
+        }
+<span class="fc" id="L372">    }</span>
+
+    /** Called with the queue lock held. Keep the validated command if the spool is temporarily unavailable. */
+    private void persistPrepared() {
+<span class="fc" id="L376">        Job current = jobs.get(prepared.token());</span>
+<span class="pc bpc" id="L377" title="3 of 6 branches missed.">        if (current != null &amp;&amp; current.state() == State.QUEUED &amp;&amp; current.settings() == null) {</span>
+            try {
+<span class="fc" id="L379">                store(applyPrepared(current));</span>
+<span class="nc" id="L380">            } catch (RuntimeException unavailable) {</span>
+<span class="nc bnc" id="L381" title="All 2 branches missed.">                if (preparationRetryAt == null) {</span>
+<span class="nc" id="L382">                    log.warn(&quot;Email job settings could not be persisted; the classified command will be retried ({})&quot;,</span>
+<span class="nc" id="L383">                            unavailable.getClass().getSimpleName());</span>
+                }
+<span class="nc" id="L385">                preparationRetryAt = clock.instant().plus(STORAGE_RETRY);</span>
+<span class="nc" id="L386">                return;</span>
+<span class="fc" id="L387">            }</span>
+        }
+<span class="fc" id="L389">        prepared = null;</span>
+<span class="fc" id="L390">        preparationRetryAt = null;</span>
+<span class="fc" id="L391">    }</span>
+
+    private Job applyPrepared(Job job) {
+<span class="pc bpc" id="L394" title="1 of 2 branches missed.">        Execution execution = job.execution() == null ? newExecution() : job.execution();</span>
+<span class="fc" id="L395">        return job.withExecution(new Execution(execution.id(), prepared.command()));</span>
+    }
+
+    private void tick() {
+        try {
+<span class="fc" id="L400">            processNext();</span>
+<span class="fc" id="L401">            warned = false;</span>
+<span class="nc" id="L402">        } catch (RuntimeException unavailable) {</span>
+<span class="nc bnc" id="L403" title="All 2 branches missed.">            if (!warned) log.warn(&quot;Email analysis queue unavailable; durable jobs will be retried ({})&quot;,</span>
+<span class="nc" id="L404">                    unavailable.getClass().getSimpleName());</span>
+<span class="nc" id="L405">            warned = true;</span>
+<span class="fc" id="L406">        }</span>
+<span class="fc" id="L407">    }</span>
+
+    void processNext() {
+<span class="fc" id="L410">        Job job = claimNext();</span>
+<span class="fc bfc" id="L411" title="All 2 branches covered.">        if (job == null) return;</span>
+<span class="fc" id="L412">        Path outgoing = file(job.token(), &quot;.outgoing&quot;);</span>
+<span class="fc" id="L413">        Outcome computed = null;</span>
+<span class="fc bfc" id="L414" title="All 2 branches covered.">        if (job.state() == State.RUNNING) {</span>
+<span class="fc" id="L415">            job = stageForDelivery(job, outgoing);</span>
+<span class="fc bfc" id="L416" title="All 2 branches covered.">            if (job == null) return;</span>
+<span class="fc" id="L417">            computed = unspooledOutcome;</span>
+<span class="fc" id="L418">            unspooledOutcome = null;</span>
+        }
+
+        Outcome outcome;
+<span class="fc" id="L422">        sending = true;</span>
+        try {
+<span class="fc bfc" id="L424" title="All 2 branches covered.">            outcome = computed != null ? computed : read(outgoing, Outcome.class);</span>
+<span class="fc bfc" id="L425" title="All 2 branches covered.">            if (outcome.successful()) {</span>
+<span class="fc" id="L426">                delivery.sendResult(job.mail().sender(), job.mail().subject(), outcome.summary(), outcome.attachments());</span>
+            } else {
+<span class="fc" id="L428">                delivery.sendFailure(job.mail().sender(), job.mail().subject(), outcome.summary());</span>
+            }
+<span class="fc" id="L430">        } catch (RuntimeException unavailable) {</span>
+<span class="fc" id="L431">            var now = clock.instant();</span>
+<span class="fc" id="L432">            update(job.update(State.DELIVERING, true, now, now.plus(DELIVERY_RETRY)));</span>
+<span class="fc" id="L433">            log.warn(&quot;Email job delivery will be retried ({})&quot;, unavailable.getClass().getSimpleName());</span>
+<span class="fc" id="L434">            return;</span>
+        } finally {
+<span class="fc" id="L436">            sending = false;</span>
+        }
+<span class="fc" id="L438">        update(job.update(outcome.deliveredState(), true, clock.instant(), null));</span>
+<span class="fc" id="L439">        delete(outgoing);</span>
+<span class="fc" id="L440">    }</span>
+
+    private Job stageForDelivery(Job job, Path outgoing) {
+        try {
+            // An existing stage also covers a restart between storing the result and recording DELIVERING.
+<span class="pc bpc" id="L445" title="1 of 2 branches missed.">            if (!Files.exists(outgoing)) {</span>
+<span class="fc bfc" id="L446" title="All 2 branches covered.">                if (unspooledOutcome == null) unspooledOutcome = analyze(job);</span>
+<span class="fc" id="L447">                write(outgoing, unspooledOutcome);</span>
+            }
+<span class="fc" id="L449">            synchronized (this) {</span>
+                // Classification persisted its command after this worker originally claimed the job.
+<span class="fc" id="L451">                Job staged = jobs.get(job.token()).update(State.DELIVERING, true, clock.instant(), null);</span>
+<span class="fc" id="L452">                store(staged);</span>
+<span class="fc" id="L453">                waitingForSource = false;</span>
+<span class="fc" id="L454">                runningRetryAt = null;</span>
+<span class="fc" id="L455">                return staged;</span>
+            }
+<span class="fc" id="L457">        } catch (MailAnalysisProcessor.SourceUnavailable unavailable) {</span>
+<span class="fc" id="L458">            waitingForSource = true;</span>
+<span class="fc" id="L459">            runningRetryAt = clock.instant().plus(SOURCE_RETRY);</span>
+<span class="fc" id="L460">        } catch (RuntimeException unavailable) {</span>
+<span class="pc bpc" id="L461" title="1 of 2 branches missed.">            if (Thread.currentThread().isInterrupted()) throw unavailable;</span>
+<span class="fc" id="L462">            runningRetryAt = clock.instant().plus(STORAGE_RETRY);</span>
+<span class="fc" id="L463">            log.warn(&quot;Email analysis storage unavailable; staging will be retried ({})&quot;,</span>
+<span class="fc" id="L464">                    unavailable.getClass().getSimpleName());</span>
+<span class="fc" id="L465">        }</span>
+<span class="fc" id="L466">        return null;</span>
+    }
+
+    private Outcome analyze(Job job) {
+<span class="fc" id="L470">        Execution execution = job.execution();</span>
+<span class="fc bfc" id="L471" title="All 2 branches covered.">        if (execution == null) {</span>
+<span class="fc" id="L472">            execution = newExecution();</span>
+<span class="fc" id="L473">            job = job.withExecution(execution);</span>
+<span class="fc" id="L474">            update(job);</span>
+        }
+<span class="fc bfc" id="L476" title="All 2 branches covered.">        if (execution.command() == null) {</span>
+<span class="pc bpc" id="L477" title="1 of 2 branches missed.">            if (unpersistedCommand == null) {</span>
+                try {
+<span class="fc" id="L479">                    unpersistedCommand = processor.classify(job.mail().subject(), job.mail().requirementText());</span>
+<span class="nc" id="L480">                } catch (RuntimeException failure) {</span>
+<span class="nc" id="L481">                    return analysisFailure(failure);</span>
+<span class="fc" id="L482">                }</span>
+            }
+<span class="fc" id="L484">            execution = new Execution(execution.id(), unpersistedCommand);</span>
+<span class="fc" id="L485">            update(job.withExecution(execution));</span>
+<span class="fc" id="L486">            unpersistedCommand = null;</span>
+        }
+        try {
+<span class="fc" id="L489">            return processor.process(execution.id(), execution.command(), job.mail().requirementText(), sourceReady);</span>
+<span class="fc" id="L490">        } catch (RuntimeException failure) {</span>
+<span class="nc" id="L491">            return analysisFailure(failure);</span>
+        }
+    }
+
+    private static Outcome analysisFailure(RuntimeException failure) {
+<span class="pc bpc" id="L496" title="3 of 4 branches missed.">        if (failure instanceof MailAnalysisProcessor.SourceUnavailable || Thread.currentThread().isInterrupted()) throw failure;</span>
+<span class="nc bnc" id="L497" title="All 2 branches missed.">        if (failure instanceof MailAnalysisProcessor.Rejected rejection) return Outcome.failed(rejection.getMessage());</span>
+<span class="nc" id="L498">        log.warn(&quot;Email analysis could not be completed ({})&quot;, failure.getClass().getSimpleName());</span>
+<span class="nc" id="L499">        return Outcome.failed(&quot;Die Analyse oder der Export konnte nicht fertiggestellt werden.&quot;);</span>
+    }
+
+    private Job claimNext() {
+<span class="fc" id="L503">        Job candidate = nextCandidate();</span>
+<span class="fc bfc" id="L504" title="All 2 branches covered.">        if (candidate == null) return null;</span>
+        // Probe catalogue/Git readiness outside the queue lock so mailbox intake and status can continue.
+<span class="fc bfc" id="L506" title="All 2 branches covered.">        if (needsSource(candidate)) {</span>
+<span class="fc bfc" id="L507" title="All 2 branches covered.">            waitingForSource = !sourceReady.getAsBoolean();</span>
+<span class="fc bfc" id="L508" title="All 2 branches covered.">            if (waitingForSource) return claimDueDelivery();</span>
+<span class="fc bfc" id="L509" title="All 2 branches covered.">        } else if (candidate.state() == State.RUNNING) {</span>
+            // The persisted command retries the source inside the processor itself.
+<span class="fc" id="L511">            waitingForSource = false;</span>
+        }
+<span class="fc bfc" id="L513" title="All 2 branches covered.">        if (candidate.state() != State.QUEUED) return candidate;</span>
+<span class="fc" id="L514">        synchronized (this) {</span>
+<span class="fc bfc" id="L515" title="All 2 branches covered.">            if (candidate.token().equals(preparingToken)) return null;</span>
+            // A completed preparation may have changed this row while the source probe ran.
+<span class="fc" id="L517">            Job latest = jobs.get(candidate.token());</span>
+<span class="pc bpc" id="L518" title="2 of 4 branches missed.">            if (latest == null || latest.state() != State.QUEUED) return null;</span>
+<span class="pc bpc" id="L519" title="3 of 4 branches missed.">            boolean pending = prepared != null &amp;&amp; prepared.token().equals(latest.token());</span>
+<span class="pc bpc" id="L520" title="1 of 2 branches missed.">            Job claimed = pending ? applyPrepared(latest) : latest;</span>
+<span class="fc" id="L521">            Job started = claimed.update(State.RUNNING, true, clock.instant(), null);</span>
+<span class="fc" id="L522">            store(started);</span>
+<span class="pc bpc" id="L523" title="1 of 2 branches missed.">            if (pending) {</span>
+<span class="nc" id="L524">                prepared = null;</span>
+<span class="nc" id="L525">                preparationRetryAt = null;</span>
+            }
+<span class="fc" id="L527">            lastClaimWasDeliveryRetry = false;</span>
+<span class="fc" id="L528">            return started;</span>
+        }
+    }
+
+    private boolean needsSource(Job job) {
+<span class="fc bfc" id="L533" title="All 2 branches covered.">        if (job.state() == State.QUEUED) return true;</span>
+<span class="pc bpc" id="L534" title="3 of 10 branches missed.">        return job.state() == State.RUNNING &amp;&amp; (job.execution() == null || job.execution().command() == null)</span>
+<span class="pc bpc" id="L535" title="1 of 2 branches missed.">                &amp;&amp; unpersistedCommand == null &amp;&amp; unspooledOutcome == null &amp;&amp; !Files.exists(file(job.token(), &quot;.outgoing&quot;));</span>
+    }
+
+    private synchronized Job nextCandidate() {
+<span class="fc" id="L539">        pruneExpired();</span>
+<span class="fc" id="L540">        Instant now = clock.instant();</span>
+<span class="fc" id="L541">        Job due = dueDelivery(now);</span>
+<span class="fc bfc" id="L542" title="All 2 branches covered.">        if (!running.isEmpty()) {</span>
+<span class="fc bfc" id="L543" title="All 4 branches covered.">            return runningRetryAt == null || !runningRetryAt.isAfter(now) ? running.first() : claimDelivery(due);</span>
+        }
+<span class="fc bfc" id="L545" title="All 2 branches covered.">        Job waiting = deliveries.size() &lt; deliveryCapacity</span>
+<span class="fc" id="L546">                ? queued.stream().filter(Job::receiptConfirmed).findFirst().orElse(null) : null;</span>
+        // Long SMTP timeouts across several due retries must still leave turns for admitted analyses.
+<span class="fc bfc" id="L548" title="All 6 branches covered.">        if (due != null &amp;&amp; (waiting == null || !lastClaimWasDeliveryRetry)) {</span>
+<span class="fc" id="L549">            return claimDelivery(due);</span>
+        }
+<span class="fc" id="L551">        return waiting;</span>
+    }
+
+    private synchronized Job claimDueDelivery() {
+<span class="fc" id="L555">        return claimDelivery(dueDelivery(clock.instant()));</span>
+    }
+
+    private Job dueDelivery(Instant now) {
+<span class="fc bfc" id="L559" title="All 2 branches covered.">        Job due = deliveries.isEmpty() ? null : deliveries.first();</span>
+<span class="pc bpc" id="L560" title="1 of 6 branches missed.">        return due != null &amp;&amp; due.retryAfter() != null &amp;&amp; due.retryAfter().isAfter(now) ? null : due;</span>
+    }
+
+    private Job claimDelivery(Job due) {
+<span class="fc bfc" id="L564" title="All 2 branches covered.">        if (due != null) lastClaimWasDeliveryRetry = true;</span>
+<span class="fc" id="L565">        return due;</span>
+    }
+
+    private synchronized void update(Job job) {
+<span class="fc" id="L569">        store(job);</span>
+<span class="fc" id="L570">    }</span>
+
+    private void openDirectory() {
+        try {
+<span class="pc bpc" id="L574" title="1 of 2 branches missed.">            if (directory.getFileSystem().supportedFileAttributeViews().contains(&quot;posix&quot;)) {</span>
+<span class="fc" id="L575">                Files.createDirectories(directory, java.nio.file.attribute.PosixFilePermissions.asFileAttribute(</span>
+<span class="fc" id="L576">                        java.nio.file.attribute.PosixFilePermissions.fromString(&quot;rwx------&quot;)));</span>
+            } else {
+<span class="nc" id="L578">                Files.createDirectories(directory);</span>
+            }
+<span class="fc" id="L580">            lockChannel = FileChannel.open(directory.resolve(&quot;coordinator.lock&quot;), StandardOpenOption.CREATE, StandardOpenOption.WRITE);</span>
+<span class="fc" id="L581">            directoryLock = lockChannel.tryLock();</span>
+<span class="pc bpc" id="L582" title="1 of 2 branches missed.">            if (directoryLock == null) throw new IllegalStateException(&quot;Another email queue coordinator owns the configured directory&quot;);</span>
+<span class="fc" id="L583">            try (var files = Files.list(directory)) {</span>
+<span class="fc bfc" id="L584" title="All 2 branches covered.">                for (Path path : files.filter(item -&gt; item.getFileName().toString().endsWith(&quot;.job&quot;)).toList()) {</span>
+<span class="fc" id="L585">                    Job job = read(path, Job.class);</span>
+<span class="pc bpc" id="L586" title="1 of 2 branches missed.">                    if (!path.equals(file(job.token(), &quot;.job&quot;))) throw new IllegalStateException(&quot;Invalid email job file identity&quot;);</span>
+<span class="pc bpc" id="L587" title="3 of 6 branches missed.">                    if (job.state() == State.RUNNING &amp;&amp; job.retryAfter() != null &amp;&amp; Files.exists(file(job.token(), &quot;.outgoing&quot;))) {</span>
+                        // Jobs written before delivery had its own state retain their existing backoff on upgrade.
+<span class="nc" id="L589">                        job = job.update(State.DELIVERING, true, job.updatedAt(), job.retryAfter());</span>
+<span class="nc" id="L590">                        store(job);</span>
+<span class="fc" id="L591">                    } else index(job);</span>
+<span class="fc" id="L592">                    lastSequence = Math.max(lastSequence, job.sequence());</span>
+<span class="fc bfc" id="L593" title="All 2 branches covered.">                    if (job.terminal()) delete(file(job.token(), &quot;.outgoing&quot;));</span>
+<span class="fc" id="L594">                }</span>
+            }
+<span class="fc" id="L596">            try (var files = Files.list(directory)) {</span>
+<span class="pc bpc" id="L597" title="1 of 2 branches missed.">                for (Path path : files.filter(item -&gt; item.getFileName().toString().startsWith(&quot;.tmp-&quot;)).toList()) delete(path);</span>
+            }
+<span class="fc" id="L599">            pruneExpired();</span>
+<span class="fc" id="L600">        } catch (OverlappingFileLockException locked) {</span>
+<span class="fc" id="L601">            releaseLock();</span>
+<span class="fc" id="L602">            throw new IllegalStateException(&quot;Another email queue coordinator owns the configured directory&quot;, locked);</span>
+<span class="nc" id="L603">        } catch (IOException unavailable) {</span>
+<span class="nc" id="L604">            releaseLock();</span>
+<span class="nc" id="L605">            throw new UncheckedIOException(&quot;Email queue storage is unavailable&quot;, unavailable);</span>
+<span class="nc" id="L606">        } catch (RuntimeException invalid) {</span>
+<span class="nc" id="L607">            releaseLock();</span>
+<span class="nc" id="L608">            throw invalid;</span>
+<span class="fc" id="L609">        }</span>
+<span class="fc" id="L610">    }</span>
+
+    private Path file(String token, String suffix) {
+<span class="pc bpc" id="L613" title="2 of 4 branches missed.">        if (token == null || !UUID.fromString(token).toString().equals(token)) {</span>
+<span class="nc" id="L614">            throw new IllegalArgumentException(&quot;Invalid email job identity&quot;);</span>
+        }
+<span class="fc" id="L616">        return directory.resolve(token + suffix);</span>
+    }
+
+    private &lt;T&gt; T read(Path path, Class&lt;T&gt; type) {
+<span class="fc" id="L620">        try (var input = Files.newInputStream(path)) {</span>
+<span class="fc" id="L621">            return mapper.readValue(input, type);</span>
+<span class="nc" id="L622">        } catch (IOException failure) {</span>
+<span class="nc" id="L623">            throw new UncheckedIOException(&quot;Could not read an email job&quot;, failure);</span>
+        }
+    }
+
+    private void write(Path path, Object data) {
+<span class="fc" id="L628">        Path temporary = null;</span>
+        try {
+<span class="fc" id="L630">            temporary = Files.createTempFile(directory, &quot;.tmp-&quot;, null);</span>
+<span class="fc" id="L631">            try (var output = Files.newOutputStream(temporary)) {</span>
+<span class="fc" id="L632">                mapper.writeValue(output, data);</span>
+            }
+<span class="fc" id="L634">            try (var channel = FileChannel.open(temporary, StandardOpenOption.WRITE)) {</span>
+<span class="fc" id="L635">                channel.force(true);</span>
+            }
+<span class="fc" id="L637">            Files.move(temporary, path, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);</span>
+<span class="fc" id="L638">        } catch (IOException failure) {</span>
+<span class="fc" id="L639">            throw new UncheckedIOException(&quot;Could not persist an email job&quot;, failure);</span>
+        } finally {
+<span class="fc bfc" id="L641" title="All 2 branches covered.">            if (temporary != null) delete(temporary);</span>
+        }
+<span class="fc" id="L643">    }</span>
+
+    private void store(Job job) {
+<span class="fc" id="L646">        write(file(job.token(), &quot;.job&quot;), job);</span>
+<span class="fc" id="L647">        index(job);</span>
+<span class="fc" id="L648">    }</span>
+
+    private void index(Job job) {
+<span class="fc" id="L651">        Job previous = jobs.put(job.token(), job);</span>
+<span class="fc bfc" id="L652" title="All 2 branches covered.">        if (previous == null) tokenByIdentity.put(job.identity(), job.token());</span>
+<span class="fc" id="L653">        else removeFromSchedule(previous);</span>
+
+<span class="fc" id="L655">        var stateJobs = active.get(job.state());</span>
+<span class="fc bfc" id="L656" title="All 2 branches covered.">        if (stateJobs != null) stateJobs.add(job);</span>
+<span class="fc bfc" id="L657" title="All 2 branches covered.">        if (job.state() != State.QUEUED) failedPreparations.remove(job.token());</span>
+<span class="fc bfc" id="L658" title="All 2 branches covered.">        if (job.retentionStart() != null) expiring.add(job);</span>
+<span class="fc bfc" id="L659" title="All 2 branches covered.">        if (hasMeasuredDuration(job)) measured.add(job);</span>
+<span class="fc" id="L660">    }</span>
+
+    private void removeFromSchedule(Job job) {
+<span class="fc" id="L663">        var stateJobs = active.get(job.state());</span>
+<span class="fc bfc" id="L664" title="All 2 branches covered.">        if (stateJobs != null) stateJobs.remove(job);</span>
+<span class="fc bfc" id="L665" title="All 2 branches covered.">        if (job.retentionStart() != null) expiring.remove(job);</span>
+<span class="pc bpc" id="L666" title="1 of 2 branches missed.">        if (hasMeasuredDuration(job)) measured.remove(job);</span>
+<span class="fc" id="L667">    }</span>
+
+    private static boolean hasMeasuredDuration(Job job) {
+<span class="fc bfc" id="L670" title="All 4 branches covered.">        return (job.state() == State.COMPLETED || job.state() == State.PARTIAL)</span>
+<span class="pc bpc" id="L671" title="1 of 4 branches missed.">                &amp;&amp; job.startedAt() != null &amp;&amp; job.deliveryStartedAt() != null</span>
+<span class="pc bpc" id="L672" title="1 of 2 branches missed.">                &amp;&amp; !job.deliveryStartedAt().isBefore(job.startedAt());</span>
+    }
+
+    private void pruneExpired() {
+<span class="fc" id="L676">        Instant now = clock.instant();</span>
+<span class="fc bfc" id="L677" title="All 2 branches covered.">        while (!expiring.isEmpty()) {</span>
+<span class="fc" id="L678">            Job job = expiring.first();</span>
+<span class="fc bfc" id="L679" title="All 2 branches covered.">            if (!retainedTooLong(job.retentionStart(), now)) return;</span>
+<span class="pc bpc" id="L680" title="1 of 4 branches missed.">            if (job.state() == State.DELIVERING &amp;&amp; job.receiptConfirmed()) {</span>
+<span class="fc" id="L681">                store(job.update(State.FAILED, true, now, null));</span>
+<span class="fc" id="L682">                delete(file(job.token(), &quot;.outgoing&quot;));</span>
+            } else {
+<span class="fc" id="L684">                delete(file(job.token(), &quot;.outgoing&quot;));</span>
+<span class="fc" id="L685">                delete(file(job.token(), &quot;.job&quot;));</span>
+<span class="fc" id="L686">                removeFromSchedule(job);</span>
+<span class="fc" id="L687">                jobs.remove(job.token());</span>
+<span class="fc" id="L688">                tokenByIdentity.remove(job.identity());</span>
+            }
+<span class="fc" id="L690">        }</span>
+<span class="fc" id="L691">    }</span>
+
+    private boolean removable(Job job, Instant now) {
+<span class="pc bpc" id="L694" title="1 of 6 branches missed.">        return (job.terminal() || !job.receiptConfirmed()) &amp;&amp; retainedTooLong(job.updatedAt(), now);</span>
+    }
+
+    private boolean retainedTooLong(Instant since, Instant now) {
+<span class="fc bfc" id="L698" title="All 2 branches covered.">        return Duration.between(since, now).compareTo(retention) &gt;= 0;</span>
+    }
+
+    private static void delete(Path file) {
+        try {
+<span class="fc" id="L703">            Files.deleteIfExists(file);</span>
+<span class="nc" id="L704">        } catch (IOException failure) {</span>
+<span class="nc" id="L705">            throw new UncheckedIOException(&quot;Could not remove an email job file&quot;, failure);</span>
+<span class="fc" id="L706">        }</span>
+<span class="fc" id="L707">    }</span>
+
+    private void releaseLock() {
+<span class="pc bpc" id="L710" title="1 of 2 branches missed.">        if (lockChannel != null) {</span>
+            try {
+<span class="fc" id="L712">                lockChannel.close();</span>
+<span class="nc" id="L713">            } catch (IOException failure) {</span>
+<span class="nc" id="L714">                log.warn(&quot;Could not close email queue storage ({})&quot;, failure.getClass().getSimpleName());</span>
+<span class="fc" id="L715">            }</span>
+        }
+<span class="fc" id="L717">    }</span>
+
+    @Override
+    public void destroy() {
+        final ScheduledExecutorService worker;
+<span class="fc" id="L722">        synchronized (this) {</span>
+<span class="fc" id="L723">            worker = executor;</span>
+<span class="fc bfc" id="L724" title="All 2 branches covered.">            if (worker != null) worker.shutdownNow();</span>
+<span class="fc" id="L725">        }</span>
+        try {
+<span class="pc bpc" id="L727" title="1 of 4 branches missed.">            if (worker != null &amp;&amp; !worker.awaitTermination(10, TimeUnit.SECONDS)) {</span>
+<span class="nc" id="L728">                log.warn(&quot;Email analysis worker is still stopping; keeping the coordinator lock until process exit&quot;);</span>
+<span class="nc" id="L729">                return;</span>
+            }
+<span class="nc" id="L731">        } catch (InterruptedException interrupted) {</span>
+<span class="nc" id="L732">            Thread.currentThread().interrupt();</span>
+<span class="nc" id="L733">            return;</span>
+<span class="fc" id="L734">        }</span>
+<span class="fc" id="L735">        releaseLock();</span>
+<span class="fc" id="L736">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

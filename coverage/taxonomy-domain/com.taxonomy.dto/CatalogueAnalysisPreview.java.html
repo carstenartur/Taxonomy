@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>CatalogueAnalysisPreview.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-domain</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dto</a> &gt; <span class="el_source">CatalogueAnalysisPreview.java</span></div><h1>CatalogueAnalysisPreview.java</h1><pre class="source lang-java linenums">package com.taxonomy.dto;
+
+import java.util.List;
+import java.util.Set;
+
+/** Read-only interactive catalogue suggestions with their admitted architecture revision. */
+<span class="fc" id="L7">public record CatalogueAnalysisPreview(String method, String catalogueRevision, String commit, Long semanticRevision,</span>
+                                      List&lt;Node&gt; nodes, List&lt;Association&gt; associations) {
+<span class="fc" id="L9">    public record Request(String businessText, Set&lt;String&gt; taxonomyRoots, String expectedCommit,</span>
+                          Long expectedSemanticRevision) { }
+
+    /** A null score identifies an ancestor included solely to display the tree. */
+<span class="fc" id="L13">    public record Node(String code, String parentCode, String taxonomyRoot, String nameEn, String nameDe,</span>
+                       Double score, String analysisRole, boolean architectureCandidate, Integer sourceOrder) { }
+
+<span class="nc" id="L16">    public record Association(String sourceCode, String targetCode, List&lt;String&gt; sharedTerms) { }</span>
+
+<span class="fc" id="L18">    public record Ranking(String method, List&lt;Node&gt; nodes, List&lt;Association&gt; associations) {</span>
+        public CatalogueAnalysisPreview at(String catalogueRevision, String commit, Long semanticRevision) {
+<span class="fc" id="L20">            return new CatalogueAnalysisPreview(method, catalogueRevision, commit, semanticRevision, nodes, associations);</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

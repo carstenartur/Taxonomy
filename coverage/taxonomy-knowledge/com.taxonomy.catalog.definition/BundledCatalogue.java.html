@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>BundledCatalogue.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-knowledge</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.catalog.definition</a> &gt; <span class="el_source">BundledCatalogue.java</span></div><h1>BundledCatalogue.java</h1><pre class="source lang-java linenums">package com.taxonomy.catalog.definition;
+
+import com.taxonomy.catalog.definition.CatalogueParentIndex.Entry;
+import com.taxonomy.catalog.service.TaxonomyService;
+import com.taxonomy.dsl.model.CatalogueDefinitionResolver.Node;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.springframework.core.io.ClassPathResource;
+
+import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
+
+/** The project edition has the same source rows and additional German title and description columns. */
+public final class BundledCatalogue {
+    public static final String BILINGUAL_PATH = &quot;data/bilingual/C3_Taxonomy_Catalogue_25AUG2025.xlsx&quot;;
+    public static final String BILINGUAL_RESOURCE = &quot;classpath:&quot; + BILINGUAL_PATH;
+    public static final String ORIGINAL_SHA256 = &quot;6b19743eff1487a76ea3e5b788d90831ba1705da31790cf58f2d69a979b14130&quot;;
+    public static final String TITLES_ONLY_SHA256 = &quot;4963672a78db08d2dfc2c8605fd3765d24859da8c713607a06b9cdf5dac23e3a&quot;;
+    private BundledCatalogue() {}
+
+    /** Both earlier editions share the original English catalogue cells. */
+    public static boolean needsTranslationUpgrade(String sha256) {
+<span class="pc bpc" id="L23" title="1 of 4 branches missed.">        return ORIGINAL_SHA256.equals(sha256) || TITLES_ONLY_SHA256.equals(sha256);</span>
+    }
+
+    private static class TranslationIndex {
+<span class="fc" id="L27">        private static final Map&lt;String, Entry&gt; NODES = read();</span>
+        private static Map&lt;String, Entry&gt; read() {
+<span class="fc" id="L29">            try (var input = new ClassPathResource(BILINGUAL_PATH).getInputStream(); var book = new XSSFWorkbook(input)) {</span>
+<span class="fc" id="L30">                var result = new HashMap&lt;String, Entry&gt;();</span>
+<span class="fc" id="L31">                TaxonomyService.readWorkbookNodes(book).nodes().forEach((id, node) -&gt; {</span>
+<span class="fc bfc" id="L32" title="All 2 branches covered.">                    if (node.getUuid() != null) result.put(id, new Entry(new Node(id,</span>
+<span class="fc" id="L33">                            node.getTaxonomyRoot(), node.getParentCode(), node.getNameEn(), node.getNameDe(),</span>
+<span class="fc" id="L34">                            node.getSortOrder(), node.getUuid()), node.getDescriptionEn(), node.getDescriptionDe()));</span>
+<span class="fc" id="L35">                });</span>
+<span class="fc" id="L36">                return Map.copyOf(result);</span>
+<span class="nc" id="L37">            } catch (IOException failure) {</span>
+<span class="nc" id="L38">                throw new IllegalStateException(&quot;Cannot read the packaged German catalogue text&quot;, failure);</span>
+            }
+        }
+    }
+
+<span class="fc" id="L43">    static Map&lt;String, Entry&gt; originalEditionTranslations() { return TranslationIndex.NODES; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

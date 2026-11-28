@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DecisionRationaleVisioRenderer.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-reporting</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.reporting.render.decision</a> &gt; <span class="el_source">DecisionRationaleVisioRenderer.java</span></div><h1>DecisionRationaleVisioRenderer.java</h1><pre class="source lang-java linenums">package com.taxonomy.reporting.render.decision;
+
+import com.taxonomy.diagram.DiagramLayout;
+import com.taxonomy.diagram.DiagramModel;
+import com.taxonomy.diagram.DiagramNode;
+import com.taxonomy.diagram.VisioDrawingOptions;
+import com.taxonomy.export.VisioDecisionTree;
+import com.taxonomy.export.VisioDiagramService;
+import com.taxonomy.export.VisioPackageBuilder;
+import com.taxonomy.extension.api.report.ReportFormatDescriptor;
+import com.taxonomy.extension.api.report.ReportRenderContext;
+import com.taxonomy.extension.api.report.ReportRenderResult;
+import com.taxonomy.extension.api.report.ReportRendererExtension;
+import com.taxonomy.reporting.api.decision.DecisionRationaleReport;
+import com.taxonomy.reporting.api.decision.DecisionRationaleReportPlugin;
+import com.taxonomy.reporting.api.decision.DecisionReportOptions.Section;
+import com.taxonomy.visio.VisioExportMetadata;
+import com.taxonomy.visio.VisioProperty;
+import org.springframework.beans.factory.ObjectProvider;
+
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+/** Native Visio drawings from the same captured hierarchy and architecture as the other decision reports. */
+public class DecisionRationaleVisioRenderer implements ReportRendererExtension {
+<span class="fc" id="L29">    private static final ReportFormatDescriptor DESCRIPTOR = new ReportFormatDescriptor(</span>
+            &quot;visio&quot;, &quot;Visio&quot;, &quot;vsdx&quot;, &quot;application/vnd.ms-visio.drawing&quot;, true);
+
+    private final VisioDiagramService diagrams;
+    private final VisioPackageBuilder packages;
+
+    public DecisionRationaleVisioRenderer(ObjectProvider&lt;VisioDiagramService&gt; diagrams,
+<span class="fc" id="L36">                                           ObjectProvider&lt;VisioPackageBuilder&gt; packages) {</span>
+<span class="fc" id="L37">        this.diagrams = diagrams.getIfAvailable(VisioDiagramService::new);</span>
+<span class="fc" id="L38">        this.packages = packages.getIfAvailable(VisioPackageBuilder::new);</span>
+<span class="fc" id="L39">    }</span>
+
+<span class="fc" id="L41">    @Override public String reportTypeId() { return DecisionRationaleReportPlugin.REPORT_TYPE_ID; }</span>
+<span class="fc" id="L42">    @Override public Class&lt;?&gt; reportModelType() { return DecisionRationaleReport.class; }</span>
+<span class="fc" id="L43">    @Override public ReportFormatDescriptor descriptor() { return DESCRIPTOR; }</span>
+
+    @Override
+    public ReportRenderResult render(ReportRenderContext context) {
+<span class="fc" id="L47">        var report = context.payloadAs(DecisionRationaleReport.class);</span>
+<span class="fc" id="L48">        boolean german = report.languageTag().startsWith(&quot;de&quot;);</span>
+<span class="fc" id="L49">        var reasons = report.scope().recordedReasons();</span>
+<span class="fc" id="L50">        var options = report.scope().options();</span>
+        // Visio always draws the recorded hierarchy for the selected taxonomies.
+<span class="fc" id="L52">        var nodes = report.scope().decisionTree().rows().stream()</span>
+<span class="fc" id="L53">                .map(row -&gt; new VisioDecisionTree.Node(row.depth(), row.code(), row.title(), row.score(),</span>
+<span class="fc bfc" id="L54" title="All 2 branches covered.">                        reasons.get(row.code()), options.showResponsibilities() ? row.responsibility() : null)).toList();</span>
+<span class="fc bfc" id="L55" title="All 4 branches covered.">        DiagramModel architecture = options.includes(Section.ARCHITECTURE) &amp;&amp; report.architecture() != null</span>
+<span class="fc" id="L56">                ? report.architecture().diagram() : null;</span>
+<span class="fc bfc" id="L57" title="All 2 branches covered.">        if (architecture == null) {</span>
+<span class="fc" id="L58">            architecture = new DiagramModel(report.title(), List.of(), List.of(), new DiagramLayout(&quot;LR&quot;, false));</span>
+<span class="fc bfc" id="L59" title="All 2 branches covered.">        } else if (!options.showResponsibilities()) {</span>
+            // A frozen architecture can already contain assignments independent of the decision tree.
+<span class="fc" id="L61">            var visibleNodes = architecture.nodes().stream().map(node -&gt; new DiagramNode(node.id(), node.label(),</span>
+<span class="fc" id="L62">                    node.type(), node.relevance(), node.anchor(), node.layer(), node.depth(), node.selectedForImpact(),</span>
+<span class="fc" id="L63">                    node.parentId(), node.container(), null, node.missingMeasurements(), node.catalogueUuid())).toList();</span>
+<span class="fc" id="L64">            architecture = new DiagramModel(architecture.title(), visibleNodes, architecture.edges(), architecture.layout());</span>
+        }
+<span class="pc bpc" id="L66" title="3 of 4 branches missed.">        if (nodes.isEmpty() &amp;&amp; architecture.nodes().isEmpty()) {</span>
+<span class="nc" id="L67">            throw new IllegalArgumentException(&quot;The selection contains no Visio drawing.&quot;);</span>
+        }
+<span class="fc" id="L69">        var documentProperties = new LinkedHashMap&lt;String, VisioProperty&gt;();</span>
+<span class="fc" id="L70">        documentProperties.put(&quot;taxonomy.requirementText&quot;, VisioProperty.text(report.requirement()));</span>
+<span class="fc" id="L71">        var metadata = report.metadata();</span>
+<span class="pc bpc" id="L72" title="1 of 2 branches missed.">        if (metadata != null) {</span>
+<span class="fc" id="L73">            put(documentProperties, &quot;snapshotId&quot;, metadata.analysisSnapshotId());</span>
+<span class="fc" id="L74">            put(documentProperties, &quot;analysisSha256&quot;, metadata.analysisSnapshotFingerprintSha256());</span>
+<span class="fc" id="L75">            put(documentProperties, &quot;projectId&quot;, metadata.projectId());</span>
+<span class="fc" id="L76">            put(documentProperties, &quot;requirementId&quot;, metadata.requirementId());</span>
+<span class="fc" id="L77">            put(documentProperties, &quot;requirementVersionId&quot;, metadata.requirementVersionId());</span>
+<span class="fc" id="L78">            put(documentProperties, &quot;requirementVersion&quot;, metadata.requirementVersionNumber());</span>
+<span class="fc" id="L79">            put(documentProperties, &quot;snapshotCreatedAt&quot;, metadata.analysisCreatedAt());</span>
+<span class="fc" id="L80">            put(documentProperties, &quot;workspaceId&quot;, metadata.workspaceId());</span>
+<span class="fc" id="L81">            put(documentProperties, &quot;branch&quot;, metadata.branch());</span>
+        }
+<span class="fc" id="L83">        var elements = new LinkedHashMap&lt;String, Map&lt;String, VisioProperty&gt;&gt;();</span>
+<span class="fc" id="L84">        var relations = new LinkedHashMap&lt;String, Map&lt;String, VisioProperty&gt;&gt;();</span>
+<span class="fc bfc" id="L85" title="All 4 branches covered.">        if (options.includes(Section.ARCHITECTURE) &amp;&amp; report.architecture() != null) {</span>
+<span class="fc" id="L86">            report.architecture().nodeReasons().forEach((id, reason) -&gt;</span>
+<span class="nc" id="L87">                    elements.put(id, Map.of(&quot;taxonomy.presenceReason&quot;, VisioProperty.text(reason))));</span>
+<span class="fc" id="L88">            report.architecture().relationReasons().forEach((id, fields) -&gt; {</span>
+<span class="nc" id="L89">                var properties = new LinkedHashMap&lt;String, VisioProperty&gt;();</span>
+<span class="nc" id="L90">                put(properties, &quot;selectionReason&quot;, fields.get(&quot;presenceReason&quot;));</span>
+<span class="nc" id="L91">                put(properties, &quot;decisionRationale&quot;, fields.get(&quot;decisionComment&quot;));</span>
+<span class="nc" id="L92">                relations.put(id, properties);</span>
+<span class="nc" id="L93">            });</span>
+        }
+<span class="fc" id="L95">        var drawing = diagrams.convert(architecture, new VisioExportMetadata(documentProperties, elements, relations, List.of()),</span>
+                new VisioDecisionTree(nodes, german),
+<span class="fc bfc" id="L97" title="All 2 branches covered.">                options.visio() == null ? VisioDrawingOptions.screen(german) : options.visio().drawingOptions(german));</span>
+        try {
+<span class="fc" id="L99">            return new ReportRenderResult(packages.build(drawing));</span>
+<span class="nc" id="L100">        } catch (IOException failure) {</span>
+<span class="nc" id="L101">            throw new UncheckedIOException(&quot;Could not export the decision drawings as Visio&quot;, failure);</span>
+        }
+    }
+
+    private static void put(Map&lt;String, VisioProperty&gt; properties, String field, Object value) {
+<span class="fc bfc" id="L106" title="All 2 branches covered.">        if (value != null) properties.put(&quot;taxonomy.&quot; + field, VisioProperty.text(value.toString()));</span>
+<span class="fc" id="L107">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

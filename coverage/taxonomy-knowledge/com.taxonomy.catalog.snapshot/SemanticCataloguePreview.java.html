@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>SemanticCataloguePreview.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-knowledge</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.catalog.snapshot</a> &gt; <span class="el_source">SemanticCataloguePreview.java</span></div><h1>SemanticCataloguePreview.java</h1><pre class="source lang-java linenums">package com.taxonomy.catalog.snapshot;
+
+import com.taxonomy.catalog.service.LocalEmbeddingService;
+import jakarta.annotation.PreDestroy;
+import org.apache.lucene.util.VectorUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+
+import java.nio.file.Path;
+import java.time.Duration;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+
+/** Reuses local document vectors from immutable catalogue inputs across interactive edits. */
+@Service
+public class SemanticCataloguePreview {
+<span class="fc" id="L23">    private static final Logger log = LoggerFactory.getLogger(SemanticCataloguePreview.class);</span>
+    private static final int MAX_REVISIONS = 2;
+<span class="fc" id="L25">    private static final long RETRY_DELAY = Duration.ofMinutes(1).toNanos();</span>
+    private final LocalEmbeddingService model;
+<span class="fc" id="L27">    @Value(&quot;${embedding.preview.cache-directory:}&quot;)</span>
+    private String cacheDirectory = &quot;&quot;;
+    // Identity of the lexical index binds a generation to exactly the same immutable catalogue rows.
+<span class="fc" id="L30">    private final Map&lt;CataloguePreviewIndex, Generation&gt; ready = new LinkedHashMap&lt;&gt;(4, 0.75f, true);</span>
+    private Thread preparing;
+    private CataloguePreviewIndex failed;
+    private long failedAt;
+    private boolean closed;
+
+<span class="fc" id="L36">    private record Generation(String modelKey, Map&lt;String, float[]&gt; vectors) {}</span>
+
+<span class="fc" id="L38">    public SemanticCataloguePreview(LocalEmbeddingService model) {</span>
+<span class="fc" id="L39">        this.model = model;</span>
+<span class="fc" id="L40">    }</span>
+
+    /** Start document inference before a requirement exists, without delaying the caller. */
+    public void prepare(CataloguePreviewIndex index, List&lt;RootCatalogueSnapshot&gt; snapshots) {
+<span class="pc bpc" id="L44" title="1 of 2 branches missed.">        if (model.isAvailable()) generation(index, snapshots);</span>
+<span class="fc" id="L45">    }</span>
+
+    public Optional&lt;CataloguePreviewIndex.Result&gt; query(CataloguePreviewIndex index,
+            List&lt;RootCatalogueSnapshot&gt; snapshot, String text, Set&lt;String&gt; roots) {
+<span class="fc bfc" id="L49" title="All 2 branches covered.">        if (!model.isAvailable()) return Optional.empty();</span>
+<span class="fc" id="L50">        Generation generation = generation(index, snapshot);</span>
+<span class="fc bfc" id="L51" title="All 2 branches covered.">        if (generation == null) return Optional.empty();</span>
+        try {
+<span class="fc bfc" id="L53" title="All 2 branches covered.">            if (!generation.modelKey().equals(model.embeddingIndexKey())) {</span>
+<span class="fc" id="L54">                synchronized (this) {</span>
+<span class="fc" id="L55">                    ready.remove(index, generation);</span>
+<span class="fc" id="L56">                }</span>
+<span class="fc" id="L57">                return Optional.empty();</span>
+            }
+<span class="fc" id="L59">            float[] query = model.embedQuery(text);</span>
+<span class="pc bpc" id="L60" title="1 of 4 branches missed.">            if (!PreviewVectorStore.valid(query) || !generation.modelKey().equals(model.embeddingIndexKey()))</span>
+<span class="fc" id="L61">                return Optional.empty();</span>
+<span class="fc" id="L62">            var scores = new HashMap&lt;String, Double&gt;();</span>
+<span class="fc" id="L63">            generation.vectors().forEach((code, vector) -&gt; {</span>
+<span class="fc" id="L64">                double similarity = VectorUtil.cosine(query, vector);</span>
+<span class="fc bfc" id="L65" title="All 2 branches covered.">                if (similarity &gt; 0) scores.put(code, Math.min(100.0, 100.0 * similarity));</span>
+<span class="fc" id="L66">            });</span>
+<span class="fc" id="L67">            return Optional.of(index.project(scores, roots, text));</span>
+<span class="nc" id="L68">        } catch (InterruptedException e) {</span>
+<span class="nc" id="L69">            Thread.currentThread().interrupt();</span>
+<span class="nc" id="L70">            return Optional.empty();</span>
+<span class="nc" id="L71">        } catch (Exception e) {</span>
+<span class="nc" id="L72">            log.warn(&quot;Semantic catalogue preview query unavailable ({})&quot;, e.getClass().getSimpleName());</span>
+<span class="nc" id="L73">            return Optional.empty();</span>
+        }
+    }
+
+    private synchronized Generation generation(CataloguePreviewIndex index, List&lt;RootCatalogueSnapshot&gt; snapshot) {
+<span class="pc bpc" id="L78" title="1 of 2 branches missed.">        if (closed) return null;</span>
+<span class="fc" id="L79">        Generation existing = ready.get(index);</span>
+<span class="fc bfc" id="L80" title="All 6 branches covered.">        if (existing == null &amp;&amp; preparing == null</span>
+<span class="pc bpc" id="L81" title="1 of 2 branches missed.">                &amp;&amp; (failed != index || System.nanoTime() - failedAt &gt;= RETRY_DELAY)) {</span>
+            // No unbounded queue on a burst of edits or branch switches. A later request can admit another revision.
+<span class="fc" id="L83">            preparing = Thread.ofVirtual().name(&quot;catalogue-preview-vectors&quot;).unstarted(() -&gt; build(index, snapshot));</span>
+<span class="fc" id="L84">            preparing.start();</span>
+        }
+<span class="fc" id="L86">        return existing;</span>
+    }
+
+    private void build(CataloguePreviewIndex index, List&lt;RootCatalogueSnapshot&gt; snapshots) {
+        try {
+<span class="fc" id="L91">            String key = model.embeddingIndexKey();</span>
+<span class="pc bpc" id="L92" title="1 of 2 branches missed.">            var store = new PreviewVectorStore(cacheDirectory.isBlank() ? null : Path.of(cacheDirectory));</span>
+<span class="fc" id="L93">            var manifest = PreviewVectorStore.manifest(snapshots, key);</span>
+<span class="fc" id="L94">            Map&lt;String, float[]&gt; vectors = store.read(manifest).orElse(null);</span>
+<span class="pc bpc" id="L95" title="1 of 2 branches missed.">            if (vectors == null) {</span>
+<span class="fc" id="L96">                vectors = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L97" title="All 2 branches covered.">                for (var entry : manifest.documents().entrySet()) {</span>
+<span class="pc bpc" id="L98" title="1 of 2 branches missed.">                    if (Thread.currentThread().isInterrupted()) return;</span>
+<span class="fc" id="L99">                    float[] vector = model.embedDocument(entry.getValue());</span>
+<span class="pc bpc" id="L100" title="1 of 2 branches missed.">                    if (!PreviewVectorStore.valid(vector))</span>
+<span class="nc" id="L101">                        throw new IllegalStateException(&quot;Invalid catalogue document vector&quot;);</span>
+<span class="fc" id="L102">                    vectors.put(entry.getKey(), vector);</span>
+<span class="fc" id="L103">                }</span>
+<span class="pc bpc" id="L104" title="1 of 2 branches missed.">                if (!key.equals(model.embeddingIndexKey())) return;</span>
+<span class="fc" id="L105">                store.write(manifest, vectors);</span>
+            }
+<span class="fc" id="L107">            synchronized (this) {</span>
+<span class="pc bpc" id="L108" title="2 of 4 branches missed.">                if (!closed &amp;&amp; key.equals(model.embeddingIndexKey())) {</span>
+<span class="pc bpc" id="L109" title="1 of 2 branches missed.">                    if (ready.size() &gt;= MAX_REVISIONS) ready.remove(ready.keySet().iterator().next());</span>
+<span class="fc" id="L110">                    ready.put(index, new Generation(key, Map.copyOf(vectors)));</span>
+<span class="fc" id="L111">                    failed = null;</span>
+                }
+<span class="fc" id="L113">            }</span>
+<span class="nc" id="L114">        } catch (InterruptedException e) {</span>
+<span class="nc" id="L115">            Thread.currentThread().interrupt();</span>
+<span class="fc" id="L116">        } catch (Exception e) {</span>
+<span class="fc" id="L117">            synchronized (this) {</span>
+<span class="fc" id="L118">                failed = index;</span>
+<span class="fc" id="L119">                failedAt = System.nanoTime();</span>
+<span class="fc" id="L120">            }</span>
+<span class="fc" id="L121">            log.warn(&quot;Semantic catalogue preview preparation unavailable ({})&quot;, e.getClass().getSimpleName());</span>
+        } finally {
+<span class="fc" id="L123">            synchronized (this) {</span>
+<span class="fc" id="L124">                preparing = null;</span>
+<span class="fc" id="L125">            }</span>
+        }
+<span class="fc" id="L127">    }</span>
+
+    @PreDestroy
+    synchronized void stop() {
+<span class="fc" id="L131">        closed = true;</span>
+<span class="pc bpc" id="L132" title="1 of 2 branches missed.">        if (preparing != null) preparing.interrupt();</span>
+<span class="fc" id="L133">        ready.clear();</span>
+<span class="fc" id="L134">        failed = null;</span>
+<span class="fc" id="L135">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

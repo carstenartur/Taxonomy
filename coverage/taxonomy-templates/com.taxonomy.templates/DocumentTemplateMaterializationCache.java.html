@@ -1,0 +1,202 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DocumentTemplateMaterializationCache.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-templates</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.templates</a> &gt; <span class="el_source">DocumentTemplateMaterializationCache.java</span></div><h1>DocumentTemplateMaterializationCache.java</h1><pre class="source lang-java linenums">package com.taxonomy.templates;
+
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.stereotype.Component;
+
+import java.io.IOException;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Objects;
+
+/**
+ * Bounded, commit-keyed cache for deterministic DOTX projections and validation results.
+ *
+ * &lt;p&gt;A Git commit is immutable, so changing a template naturally changes the key. The
+ * synchronized single-flight boundary also prevents parallel WebDAV, health and export
+ * requests from repeatedly packing the same large OOXML tree.&lt;/p&gt;
+ */
+@Component
+public final class DocumentTemplateMaterializationCache {
+
+    static final int DEFAULT_MAX_ENTRIES = 64;
+    static final long DEFAULT_MAX_BYTES = 100L * 1024 * 1024;
+    static final int MAX_LENGTH_ENTRIES = 1024;
+    private static final String BUILDER_VERSION = &quot;dotx-v1&quot;;
+
+    private final int maxEntries;
+    private final long maxBytes;
+<span class="fc" id="L31">    private final LinkedHashMap&lt;Key, byte[]&gt; packed =</span>
+            new LinkedHashMap&lt;&gt;(16, 0.75f, true);
+<span class="fc" id="L33">    private final LinkedHashMap&lt;Key, Boolean&gt; validated =</span>
+            new LinkedHashMap&lt;&gt;(16, 0.75f, true);
+    // Exact lengths of previously validated, immutable representations stay useful
+    // after the much larger downloadable archives leave their own cache.
+<span class="fc" id="L37">    private final LinkedHashMap&lt;Key, Integer&gt; lengths = new LinkedHashMap&lt;&gt;(16, 0.75f, true);</span>
+    private long currentBytes;
+
+    private final Counter packHits;
+    private final Counter packMisses;
+    private final Counter validationHits;
+    private final Counter validationMisses;
+    private final Counter evictions;
+    private final Timer packTimer;
+
+    public DocumentTemplateMaterializationCache(
+            ObjectProvider&lt;MeterRegistry&gt; registries) {
+<span class="nc" id="L49">        this(DEFAULT_MAX_ENTRIES, DEFAULT_MAX_BYTES,</span>
+<span class="nc bnc" id="L50" title="All 2 branches missed.">                registries == null ? null : registries.getIfAvailable());</span>
+<span class="nc" id="L51">    }</span>
+
+    DocumentTemplateMaterializationCache() {
+<span class="fc" id="L54">        this(DEFAULT_MAX_ENTRIES, DEFAULT_MAX_BYTES, null);</span>
+<span class="fc" id="L55">    }</span>
+
+    DocumentTemplateMaterializationCache(
+            int maxEntries,
+            long maxBytes,
+<span class="fc" id="L60">            MeterRegistry registry) {</span>
+<span class="pc bpc" id="L61" title="2 of 4 branches missed.">        if (maxEntries &lt; 1 || maxBytes &lt; 1) {</span>
+<span class="nc" id="L62">            throw new IllegalArgumentException(&quot;Template cache limits must be positive&quot;);</span>
+        }
+<span class="fc" id="L64">        this.maxEntries = maxEntries;</span>
+<span class="fc" id="L65">        this.maxBytes = maxBytes;</span>
+<span class="fc" id="L66">        packHits = counter(registry, &quot;taxonomy.document.template.cache.pack.hits&quot;);</span>
+<span class="fc" id="L67">        packMisses = counter(registry, &quot;taxonomy.document.template.cache.pack.misses&quot;);</span>
+<span class="fc" id="L68">        validationHits = counter(registry,</span>
+                &quot;taxonomy.document.template.cache.validation.hits&quot;);
+<span class="fc" id="L70">        validationMisses = counter(registry,</span>
+                &quot;taxonomy.document.template.cache.validation.misses&quot;);
+<span class="fc" id="L72">        evictions = counter(registry, &quot;taxonomy.document.template.cache.evictions&quot;);</span>
+<span class="fc bfc" id="L73" title="All 2 branches covered.">        packTimer = registry == null ? null : Timer.builder(</span>
+                &quot;taxonomy.document.template.materialization&quot;)
+<span class="fc" id="L75">                .description(&quot;Time spent producing deterministic DOTX bytes&quot;)</span>
+<span class="fc" id="L76">                .register(registry);</span>
+<span class="fc bfc" id="L77" title="All 2 branches covered.">        if (registry != null) {</span>
+<span class="fc" id="L78">            registry.gauge(&quot;taxonomy.document.template.cache.entries&quot;, packed,</span>
+                    Map::size);
+<span class="fc" id="L80">            registry.gauge(&quot;taxonomy.document.template.cache.bytes&quot;, this,</span>
+<span class="nc" id="L81">                    cache -&gt; cache.sizeBytes());</span>
+        }
+<span class="fc" id="L83">    }</span>
+
+    public synchronized byte[] packed(
+            String templateId,
+            String commitId,
+            IoSupplier&lt;byte[]&gt; materializer) throws IOException {
+<span class="fc" id="L89">        Key key = key(templateId, commitId);</span>
+<span class="fc" id="L90">        byte[] present = packed.get(key);</span>
+<span class="fc bfc" id="L91" title="All 2 branches covered.">        if (present != null) {</span>
+<span class="fc" id="L92">            increment(packHits);</span>
+<span class="fc" id="L93">            return present.clone();</span>
+        }
+<span class="fc" id="L95">        increment(packMisses);</span>
+        byte[] produced;
+<span class="fc bfc" id="L97" title="All 2 branches covered.">        if (packTimer == null) {</span>
+<span class="fc" id="L98">            produced = materializer.get();</span>
+        } else {
+            try {
+<span class="fc" id="L101">                produced = packTimer.recordCallable(materializer::get);</span>
+<span class="nc" id="L102">            } catch (IOException exception) {</span>
+<span class="nc" id="L103">                throw exception;</span>
+<span class="nc" id="L104">            } catch (Exception exception) {</span>
+<span class="nc" id="L105">                throw new IOException(&quot;Could not materialize DOTX template&quot;, exception);</span>
+<span class="fc" id="L106">            }</span>
+        }
+<span class="fc" id="L108">        Objects.requireNonNull(produced, &quot;materialized DOTX&quot;);</span>
+<span class="pc bpc" id="L109" title="1 of 2 branches missed.">        if (produced.length &lt;= maxBytes) {</span>
+<span class="fc" id="L110">            packed.put(key, produced.clone());</span>
+<span class="fc" id="L111">            currentBytes += produced.length;</span>
+<span class="fc" id="L112">            trim();</span>
+        }
+<span class="fc" id="L114">        return produced.clone();</span>
+    }
+
+    int packedLength(String templateId, String commitId, IoSupplier&lt;Integer&gt; materializer) throws IOException {
+<span class="fc" id="L118">        Key key = key(templateId, commitId);</span>
+<span class="fc" id="L119">        synchronized (this) {</span>
+<span class="fc" id="L120">            Integer present = lengths.get(key);</span>
+<span class="fc bfc" id="L121" title="All 2 branches covered.">            if (present != null) return present;</span>
+<span class="fc" id="L122">        }</span>
+        // Materialization reads Git and validates the exact revision outside this monitor.
+<span class="fc" id="L124">        int length = materializer.get();</span>
+<span class="fc" id="L125">        synchronized (this) {</span>
+<span class="fc" id="L126">            lengths.put(key, length);</span>
+<span class="fc bfc" id="L127" title="All 2 branches covered.">            if (lengths.size() &gt; MAX_LENGTH_ENTRIES) lengths.pollFirstEntry();</span>
+<span class="fc" id="L128">        }</span>
+<span class="fc" id="L129">        return length;</span>
+    }
+
+    public synchronized void validateOnce(
+            String templateId,
+            String commitId,
+            CheckedRunnable validation) throws IOException {
+<span class="fc" id="L136">        Key key = key(templateId, commitId);</span>
+<span class="fc bfc" id="L137" title="All 2 branches covered.">        if (Boolean.TRUE.equals(validated.get(key))) {</span>
+<span class="fc" id="L138">            increment(validationHits);</span>
+<span class="fc" id="L139">            return;</span>
+        }
+<span class="fc" id="L141">        increment(validationMisses);</span>
+<span class="fc" id="L142">        validation.run();</span>
+<span class="fc" id="L143">        validated.put(key, Boolean.TRUE);</span>
+<span class="fc bfc" id="L144" title="All 2 branches covered.">        while (validated.size() &gt; maxEntries) {</span>
+<span class="fc" id="L145">            Key eldest = validated.keySet().iterator().next();</span>
+<span class="fc" id="L146">            validated.remove(eldest);</span>
+<span class="fc" id="L147">        }</span>
+<span class="fc" id="L148">    }</span>
+
+    synchronized int lengthEntries() {
+<span class="fc" id="L151">        return lengths.size();</span>
+    }
+
+    synchronized int entries() {
+<span class="fc" id="L155">        return packed.size();</span>
+    }
+
+    synchronized long sizeBytes() {
+<span class="fc" id="L159">        return currentBytes;</span>
+    }
+
+    private void trim() {
+<span class="fc bfc" id="L163" title="All 4 branches covered.">        while (packed.size() &gt; maxEntries || currentBytes &gt; maxBytes) {</span>
+<span class="fc" id="L164">            Map.Entry&lt;Key, byte[]&gt; eldest = packed.entrySet().iterator().next();</span>
+<span class="fc" id="L165">            packed.remove(eldest.getKey());</span>
+<span class="fc" id="L166">            validated.remove(eldest.getKey());</span>
+<span class="fc" id="L167">            currentBytes -= eldest.getValue().length;</span>
+<span class="fc" id="L168">            increment(evictions);</span>
+<span class="fc" id="L169">        }</span>
+<span class="fc" id="L170">    }</span>
+
+    private static Key key(String templateId, String commitId) {
+<span class="fc" id="L173">        return new Key(</span>
+<span class="fc" id="L174">                Objects.requireNonNull(templateId, &quot;templateId&quot;),</span>
+<span class="fc" id="L175">                Objects.requireNonNull(commitId, &quot;commitId&quot;),</span>
+                BUILDER_VERSION);
+    }
+
+    private static Counter counter(MeterRegistry registry, String name) {
+<span class="fc bfc" id="L180" title="All 2 branches covered.">        return registry == null ? null : Counter.builder(name).register(registry);</span>
+    }
+
+    private static void increment(Counter counter) {
+<span class="fc bfc" id="L184" title="All 2 branches covered.">        if (counter != null) {</span>
+<span class="fc" id="L185">            counter.increment();</span>
+        }
+<span class="fc" id="L187">    }</span>
+
+<span class="fc" id="L189">    private record Key(String templateId, String commitId, String builderVersion) {</span>
+    }
+
+    @FunctionalInterface
+    public interface IoSupplier&lt;T&gt; {
+        T get() throws IOException;
+    }
+
+    @FunctionalInterface
+    public interface CheckedRunnable {
+        void run() throws IOException;
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

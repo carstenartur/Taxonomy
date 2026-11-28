@@ -1,0 +1,253 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchitectureReportDocument.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-reporting-api</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.reporting.api.document</a> &gt; <span class="el_source">ArchitectureReportDocument.java</span></div><h1>ArchitectureReportDocument.java</h1><pre class="source lang-java linenums">package com.taxonomy.reporting.api.document;
+
+import com.taxonomy.diagram.*;
+import com.taxonomy.dto.RequirementNodeAssessment;
+
+import java.io.*;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.util.*;
+
+/**
+ * Immutable evidence shared by both frozen Word artifacts. The graph content digest includes saved
+ * node labels as frozen evidence; report, diagram and scene presentation titles are excluded.
+ * This is a content digest, not a name-insensitive identity digest.
+ */
+public record ArchitectureReportDocument(
+        String title,
+        String languageTag,
+        String requirement,
+        String scope,
+        String recommendation,
+        List&lt;String&gt; unresolvedGaps,
+        DiagramModel diagram,
+        DiagramScene scene,
+        List&lt;ElementRow&gt; elements,
+        List&lt;RelationRow&gt; relations,
+        List&lt;LegendEntry&gt; legend,
+        DecisionTreeOverview decisionTree,
+        SnapshotEvidence evidence,
+        Map&lt;String, String&gt; nodeReasons,
+        Map&lt;String, Map&lt;String, String&gt;&gt; relationReasons,
+        Map&lt;String, List&lt;RequirementNodeAssessment&gt;&gt; nodeAssessments) {
+
+    /** Older callers retain their captured graph without inventing missing explanation evidence. */
+    public ArchitectureReportDocument(String title, String languageTag, String requirement, String scope,
+            String recommendation, List&lt;String&gt; unresolvedGaps, DiagramModel diagram, DiagramScene scene,
+            List&lt;ElementRow&gt; elements, List&lt;RelationRow&gt; relations, List&lt;LegendEntry&gt; legend,
+            DecisionTreeOverview decisionTree, SnapshotEvidence evidence) {
+<span class="fc" id="L39">        this(title, languageTag, requirement, scope, recommendation, unresolvedGaps, diagram, scene,</span>
+<span class="fc" id="L40">                elements, relations, legend, decisionTree, evidence, Map.of(), Map.of());</span>
+<span class="fc" id="L41">    }</span>
+
+    /** Source-compatible constructor for reports created before separate relation mapping evidence. */
+    public ArchitectureReportDocument(String title, String languageTag, String requirement, String scope,
+            String recommendation, List&lt;String&gt; unresolvedGaps, DiagramModel diagram, DiagramScene scene,
+            List&lt;ElementRow&gt; elements, List&lt;RelationRow&gt; relations, List&lt;LegendEntry&gt; legend,
+            DecisionTreeOverview decisionTree, SnapshotEvidence evidence, Map&lt;String, String&gt; nodeReasons) {
+<span class="nc" id="L48">        this(title, languageTag, requirement, scope, recommendation, unresolvedGaps, diagram, scene,</span>
+<span class="nc" id="L49">                elements, relations, legend, decisionTree, evidence, nodeReasons, Map.of());</span>
+<span class="nc" id="L50">    }</span>
+
+    public ArchitectureReportDocument(String title, String languageTag, String requirement, String scope,
+            String recommendation, List&lt;String&gt; unresolvedGaps, DiagramModel diagram, DiagramScene scene,
+            List&lt;ElementRow&gt; elements, List&lt;RelationRow&gt; relations, List&lt;LegendEntry&gt; legend,
+            DecisionTreeOverview decisionTree, SnapshotEvidence evidence, Map&lt;String, String&gt; nodeReasons,
+            Map&lt;String, Map&lt;String, String&gt;&gt; relationReasons) {
+<span class="fc" id="L57">        this(title, languageTag, requirement, scope, recommendation, unresolvedGaps, diagram, scene,</span>
+<span class="fc" id="L58">                elements, relations, legend, decisionTree, evidence, nodeReasons, relationReasons, Map.of());</span>
+<span class="fc" id="L59">    }</span>
+
+    public ArchitectureReportDocument withNodeAssessments(Map&lt;String, List&lt;RequirementNodeAssessment&gt;&gt; assessments) {
+<span class="fc" id="L62">        return new ArchitectureReportDocument(title, languageTag, requirement, scope, recommendation,</span>
+                unresolvedGaps, diagram, scene, elements, relations, legend, decisionTree, evidence,
+                nodeReasons, relationReasons, assessments);
+    }
+
+    public ArchitectureReportDocument withNodeReasons(Map&lt;String, String&gt; reasons) {
+<span class="fc" id="L68">        return new ArchitectureReportDocument(title, languageTag, requirement, scope, recommendation,</span>
+                unresolvedGaps, diagram, scene, elements, relations, legend, decisionTree, evidence, reasons, relationReasons, nodeAssessments);
+    }
+
+    public ArchitectureReportDocument withRelationReasons(Map&lt;String, Map&lt;String, String&gt;&gt; reasons) {
+<span class="fc" id="L73">        return new ArchitectureReportDocument(title, languageTag, requirement, scope, recommendation,</span>
+                unresolvedGaps, diagram, scene, elements, relations, legend, decisionTree, evidence, nodeReasons, reasons, nodeAssessments);
+    }
+<span class="fc" id="L76">    public record ElementRow(</span>
+            String id,
+            String title,
+            String type,
+            Double relevance,
+            boolean anchor,
+            String parentId,
+            boolean container,
+            Integer depth) {
+        public ElementRow(String id, String title, String type, double relevance, boolean anchor,
+                          String parentId, boolean container) {
+<span class="nc" id="L87">            this(id, title, type, relevance, anchor, parentId, container, null);</span>
+<span class="nc" id="L88">        }</span>
+    }
+
+<span class="fc" id="L91">    public record RelationRow(</span>
+            String id,
+            String sourceId,
+            String targetId,
+            String type,
+            String category,
+            double relevance) {}
+
+<span class="fc" id="L99">    public record LegendEntry(String symbol, String meaning) {}</span>
+
+<span class="fc" id="L101">    public record SnapshotEvidence(</span>
+            Long projectId,
+            Long requirementId,
+            Long requirementVersionId,
+            Integer requirementVersionNumber,
+            String snapshotId,
+            String repositoryId,
+            String workspaceId,
+            String branch,
+            String commit,
+            String provider,
+            String model,
+            String taxonomyFingerprint,
+            String graphSha256) {}
+
+<span class="fc" id="L116">    public ArchitectureReportDocument {</span>
+<span class="fc" id="L117">        ArchitectureEvidence.validateEvidence(diagram, scene);</span>
+<span class="fc" id="L118">        diagram =</span>
+                new DiagramModel(
+<span class="fc" id="L120">                        diagram.title(),</span>
+<span class="fc" id="L121">                        List.copyOf(diagram.nodes()),</span>
+<span class="fc" id="L122">                        List.copyOf(diagram.edges()),</span>
+<span class="fc" id="L123">                        diagram.layout());</span>
+<span class="fc" id="L124">        unresolvedGaps = List.copyOf(unresolvedGaps);</span>
+<span class="fc" id="L125">        elements = List.copyOf(elements);</span>
+<span class="fc" id="L126">        relations = List.copyOf(relations);</span>
+<span class="fc" id="L127">        legend = List.copyOf(legend);</span>
+<span class="pc bpc" id="L128" title="1 of 2 branches missed.">        nodeReasons = nodeReasons == null ? Map.of() : Map.copyOf(nodeReasons);</span>
+<span class="fc" id="L129">        var selectedReasons = new LinkedHashMap&lt;String, Map&lt;String, String&gt;&gt;();</span>
+<span class="pc bpc" id="L130" title="1 of 2 branches missed.">        if (relationReasons != null) {</span>
+<span class="fc bfc" id="L131" title="All 2 branches covered.">            for (var edge : diagram.edges()) {</span>
+<span class="fc" id="L132">                var fields = relationReasons.get(edge.id());</span>
+<span class="fc bfc" id="L133" title="All 2 branches covered.">                if (fields == null) continue;</span>
+<span class="fc" id="L134">                var copied = new LinkedHashMap&lt;String, String&gt;();</span>
+<span class="fc bfc" id="L135" title="All 2 branches covered.">                for (String field : List.of(&quot;presenceReason&quot;, &quot;decisionComment&quot;)) {</span>
+<span class="fc" id="L136">                    String value = fields.get(field);</span>
+<span class="pc bpc" id="L137" title="1 of 4 branches missed.">                    if (value != null &amp;&amp; !value.isBlank()) copied.put(field, value);</span>
+<span class="fc" id="L138">                }</span>
+<span class="pc bpc" id="L139" title="1 of 2 branches missed.">                if (!copied.isEmpty()) selectedReasons.put(edge.id(), Map.copyOf(copied));</span>
+<span class="fc" id="L140">            }</span>
+        }
+<span class="fc" id="L142">        relationReasons = Map.copyOf(selectedReasons);</span>
+<span class="fc" id="L143">        nodeAssessments = RequirementNodeAssessment.immutableMap(nodeAssessments);</span>
+<span class="pc bpc" id="L144" title="1 of 4 branches missed.">        if (evidence == null || !graphSha256(diagram).equals(evidence.graphSha256()))</span>
+<span class="fc" id="L145">            throw new IllegalArgumentException(</span>
+                    &quot;Frozen graph digest disagrees with source evidence&quot;);
+<span class="fc" id="L147">    }</span>
+
+    public static String graphSha256(DiagramModel graph) {
+        try {
+<span class="fc" id="L151">            var bytes = new ByteArrayOutputStream();</span>
+<span class="fc" id="L152">            var out = new DataOutputStream(bytes);</span>
+<span class="fc" id="L153">            field(out, &quot;taxonomy-frozen-graph-v1&quot;);</span>
+            for (var n :
+<span class="fc bfc" id="L155" title="All 2 branches covered.">                    graph.nodes().stream().sorted(Comparator.comparing(DiagramNode::id)).toList()) {</span>
+<span class="fc" id="L156">                field(out, &quot;node&quot;);</span>
+<span class="fc" id="L157">                field(out, n.id());</span>
+<span class="fc" id="L158">                field(out, n.label());</span>
+<span class="fc" id="L159">                field(out, n.type());</span>
+<span class="fc" id="L160">                out.writeDouble(n.relevance());</span>
+<span class="fc" id="L161">                out.writeBoolean(n.anchor());</span>
+<span class="fc" id="L162">                out.writeInt(n.layer());</span>
+<span class="fc" id="L163">                out.writeInt(n.depth());</span>
+<span class="fc" id="L164">                out.writeBoolean(n.selectedForImpact());</span>
+<span class="fc" id="L165">                field(out, n.parentId());</span>
+<span class="fc" id="L166">                out.writeBoolean(n.container());</span>
+<span class="fc bfc" id="L167" title="All 2 branches covered.">                if (n.catalogueUuid() != null) {</span>
+<span class="fc" id="L168">                    field(out, &quot;catalogue-uuid-v1&quot;);</span>
+<span class="fc" id="L169">                    field(out, n.catalogueUuid());</span>
+                }
+<span class="fc" id="L171">                var assignment = n.responsibility();</span>
+<span class="fc bfc" id="L172" title="All 2 branches covered.">                if (assignment != null) {</span>
+<span class="fc" id="L173">                    field(out, &quot;organizational-responsibility-v1&quot;);</span>
+<span class="fc" id="L174">                    field(out, assignment.unitId());</span>
+<span class="fc" id="L175">                    field(out, assignment.name());</span>
+<span class="fc" id="L176">                    field(out, assignment.sourceId());</span>
+                }
+<span class="fc bfc" id="L178" title="All 2 branches covered.">                if (n.missingMeasurements() != null) {</span>
+<span class="fc" id="L179">                    field(out, &quot;missing-measurements-v1&quot;);</span>
+<span class="fc" id="L180">                    out.writeBoolean(n.missingMeasurements().relevance());</span>
+<span class="fc" id="L181">                    out.writeBoolean(n.missingMeasurements().depth());</span>
+                }
+<span class="fc" id="L183">            }</span>
+            for (var e :
+<span class="fc bfc" id="L185" title="All 2 branches covered.">                    graph.edges().stream().sorted(Comparator.comparing(DiagramEdge::id)).toList()) {</span>
+<span class="fc" id="L186">                field(out, &quot;edge&quot;);</span>
+<span class="fc" id="L187">                field(out, e.id());</span>
+<span class="fc" id="L188">                field(out, e.sourceId());</span>
+<span class="fc" id="L189">                field(out, e.targetId());</span>
+<span class="fc" id="L190">                field(out, e.relationType());</span>
+<span class="fc" id="L191">                out.writeDouble(e.relevance());</span>
+<span class="fc" id="L192">                field(out, e.relationCategory());</span>
+                // Preserve historical digests when provenance was absent; newly recorded evidence participates fully.
+<span class="fc bfc" id="L194" title="All 2 branches covered.">                if (e.metadata() != null) {</span>
+<span class="fc" id="L195">                    field(out, &quot;relationship-provenance-v1&quot;);</span>
+<span class="fc" id="L196">                    provenance(out, e.metadata());</span>
+                }
+<span class="fc" id="L198">            }</span>
+<span class="fc" id="L199">            return HexFormat.of()</span>
+<span class="fc" id="L200">                    .formatHex(MessageDigest.getInstance(&quot;SHA-256&quot;).digest(bytes.toByteArray()));</span>
+<span class="nc" id="L201">        } catch (Exception exception) {</span>
+<span class="nc" id="L202">            throw new IllegalStateException(&quot;Could not fingerprint architecture graph&quot;, exception);</span>
+        }
+    }
+
+    private static void provenance(DataOutputStream out, DiagramRelationMetadata m) throws IOException {
+<span class="fc bfc" id="L207" title="All 2 branches covered.">        field(out, m.relationId() == null ? null : m.relationId().toString());</span>
+<span class="fc bfc" id="L208" title="All 2 branches covered.">        field(out, m.origin() == null ? null : m.origin().name());</span>
+<span class="fc bfc" id="L209" title="All 2 branches covered.">        out.writeBoolean(m.confidence() != null);</span>
+<span class="fc bfc" id="L210" title="All 2 branches covered.">        if (m.confidence() != null) out.writeDouble(m.confidence());</span>
+<span class="fc" id="L211">        field(out, m.includedBecause()); field(out, m.derivationReason()); field(out, m.presenceReason());</span>
+<span class="pc bpc" id="L212" title="1 of 2 branches missed.">        field(out, m.seedType() == null ? null : m.seedType().name());</span>
+        // Evidence collection order is presentation only; fingerprint every field in canonical byte order.
+<span class="fc" id="L214">        var evidence = new ArrayList&lt;byte[]&gt;();</span>
+<span class="fc bfc" id="L215" title="All 2 branches covered.">        for (var item : m.requirementEvidence()) {</span>
+<span class="fc" id="L216">            var bytes = new ByteArrayOutputStream();</span>
+<span class="fc" id="L217">            evidence(new DataOutputStream(bytes), item);</span>
+<span class="fc" id="L218">            evidence.add(bytes.toByteArray());</span>
+<span class="fc" id="L219">        }</span>
+<span class="fc" id="L220">        evidence.sort(Arrays::compareUnsigned);</span>
+<span class="fc" id="L221">        out.writeInt(evidence.size());</span>
+<span class="fc bfc" id="L222" title="All 2 branches covered.">        for (byte[] item : evidence) { out.writeInt(item.length); out.write(item); }</span>
+<span class="fc" id="L223">    }</span>
+
+    private static void evidence(DataOutputStream out, com.taxonomy.dto.RelationSearchModel.Edge edge) throws IOException {
+<span class="fc" id="L226">        var c = edge.contribution();</span>
+<span class="fc" id="L227">        evidenceNode(out, c.source()); field(out, c.text()); field(out, c.quote()); field(out, c.condition());</span>
+<span class="fc" id="L228">        evidenceNode(out, edge.target()); field(out, edge.type()); field(out, edge.direction().name());</span>
+<span class="fc" id="L229">        var d = edge.evidence();</span>
+<span class="fc bfc" id="L230" title="All 2 branches covered.">        out.writeBoolean(d != null);</span>
+<span class="fc bfc" id="L231" title="All 2 branches covered.">        if (d != null) {</span>
+<span class="pc bpc" id="L232" title="1 of 2 branches missed.">            field(out, d.targetId()); field(out, d.outcome() == null ? null : d.outcome().name());</span>
+<span class="pc bpc" id="L233" title="1 of 2 branches missed.">            field(out, d.contribution()); field(out, d.quote()); field(out, d.necessity() == null ? null : d.necessity().name());</span>
+<span class="fc" id="L234">            field(out, d.condition()); field(out, d.alternativeGroup()); field(out, d.rationale()); field(out, d.question());</span>
+        }
+<span class="fc" id="L236">    }</span>
+
+    private static void evidenceNode(DataOutputStream out, com.taxonomy.dto.RelationSearchModel.Node node) throws IOException {
+<span class="fc" id="L239">        field(out, node.id()); field(out, node.root()); field(out, node.name()); field(out, node.description());</span>
+<span class="fc" id="L240">        out.writeBoolean(node.container());</span>
+<span class="fc" id="L241">    }</span>
+
+    private static void field(DataOutputStream out, String value) throws IOException {
+<span class="fc bfc" id="L244" title="All 2 branches covered.">        if (value == null) {</span>
+<span class="fc" id="L245">            out.writeInt(-1);</span>
+<span class="fc" id="L246">            return;</span>
+        }
+<span class="fc" id="L248">        byte[] bytes = value.getBytes(StandardCharsets.UTF_8);</span>
+<span class="fc" id="L249">        out.writeInt(bytes.length);</span>
+<span class="fc" id="L250">        out.write(bytes);</span>
+<span class="fc" id="L251">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

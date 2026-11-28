@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchitectureAdmbwPreparationController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.composition.architecture</a> &gt; <span class="el_source">ArchitectureAdmbwPreparationController.java</span></div><h1>ArchitectureAdmbwPreparationController.java</h1><pre class="source lang-java linenums">package com.taxonomy.composition.architecture;
+
+import com.taxonomy.extension.api.integration.AdmbwQeaExport;
+import io.swagger.v3.oas.annotations.Operation;
+import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+import tools.jackson.databind.ObjectMapper;
+
+import java.io.IOException;
+import java.io.InputStream;
+
+/** Native basis bytes are bounded and multipart files spool to disk before the reviewed operation. */
+@RestController
+@com.taxonomy.shared.features.ConditionalOnFeature(&quot;portfolio&quot;)
+@RequestMapping(&quot;/api/architecture/editor/admbw&quot;)
+public class ArchitectureAdmbwPreparationController {
+    private final ArchitectureAdmbwPreparationService service;
+    private final LifecycleHttpContext contexts;
+    private final ObjectMapper json;
+    private static final int MAX_REVIEW_BYTES = 64 * 1024;
+
+<span class="fc" id="L26">    public ArchitectureAdmbwPreparationController(ArchitectureAdmbwPreparationService service, LifecycleHttpContext contexts, ObjectMapper json) {</span>
+<span class="fc" id="L27">        this.service = service;</span>
+<span class="fc" id="L28">        this.contexts = contexts;</span>
+<span class="fc" id="L29">        this.json = json;</span>
+<span class="fc" id="L30">    }</span>
+
+    @PostMapping(value = &quot;/basis&quot;, consumes = {AdmbwQeaExport.MEDIA_TYPE, MediaType.APPLICATION_OCTET_STREAM_VALUE})
+    @Operation(summary = &quot;Inspect actual ADMBw reference identities in a supplied QEA basis without changing it&quot;,
+            description = &quot;Reads a nonempty QEA file up to 32 MiB in the selected repository and branch, and returns its native identity choices for review.&quot;)
+    public ResponseEntity&lt;ArchitectureAdmbwPreparationService.InspectedBasis&gt; basis(@RequestParam String repositoryId,
+            @RequestParam String workspaceScopeKey, @RequestParam String branch, HttpServletRequest request) throws IOException {
+<span class="nc" id="L37">        var context = contexts.resolveForRead(repositoryId, workspaceScopeKey, branch);</span>
+<span class="nc" id="L38">        var result = service.inspect(context, read(request.getInputStream()));</span>
+<span class="nc" id="L39">        return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.noStore()).body(result);</span>
+    }
+
+    @PostMapping(value = &quot;/preview&quot;, consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @Operation(summary = &quot;Preview a version-bound C1–S1 and R7 draft using actual native references&quot;,
+            description = &quot;Evaluates the requested mappings against the supplied QEA basis and workspace revision, returning proposed changes, findings and omitted model content for review.&quot;)
+    public ResponseEntity&lt;ArchitectureAdmbwPreparationService.Preview&gt; preview(
+            @RequestPart(&quot;request&quot;) MultipartFile review,
+            @RequestPart(&quot;basis&quot;) MultipartFile basis,
+            @RequestHeader(value = HttpHeaders.IF_MATCH, required = false) String ifMatch,
+            @RequestHeader(value = HttpHeaders.IF_NONE_MATCH, required = false) String ifNoneMatch) throws IOException {
+<span class="fc" id="L50">        var request = review(review);</span>
+<span class="fc" id="L51">        LifecycleHttpContext.requireRevision(request.context(), ifMatch, ifNoneMatch);</span>
+<span class="fc" id="L52">        var result = service.preview(contexts.resolveForRead(), request, read(basis));</span>
+<span class="fc" id="L53">        return LifecycleHttpContext.response(result.context()).body(result);</span>
+    }
+
+    @PostMapping(value = &quot;/accept&quot;, consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @Operation(summary = &quot;Apply explicitly reviewed ADMBw assignments atomically and retain their checkpoint receipt&quot;,
+            description = &quot;Validates the reviewed mappings, rationale, native basis and revision, then records the accepted changes and returns the resulting checkpoint and operation receipt.&quot;)
+    public ResponseEntity&lt;ArchitectureLifecycleService.Publication&gt; accept(
+            @RequestPart(&quot;request&quot;) MultipartFile review,
+            @RequestPart(&quot;basis&quot;) MultipartFile basis,
+            @RequestHeader(value = HttpHeaders.IF_MATCH, required = false) String ifMatch,
+            @RequestHeader(value = HttpHeaders.IF_NONE_MATCH, required = false) String ifNoneMatch) throws IOException {
+<span class="nc" id="L64">        var request = review(review);</span>
+<span class="nc" id="L65">        LifecycleHttpContext.requireRevision(request.context(), ifMatch, ifNoneMatch);</span>
+<span class="nc" id="L66">        var result = service.accept(contexts.resolveForRead(), request, read(basis));</span>
+<span class="nc" id="L67">        return LifecycleHttpContext.response(result.context()).body(result);</span>
+    }
+
+    @GetMapping(&quot;/operations/{operationId}&quot;)
+    @Operation(summary=&quot;Recover the selected user's accepted ADMBw delivery after reload&quot;,
+            description=&quot;Looks up the original operation and reachable checkpoint in the authenticated workspace. Returns basis identity and coverage without uploading a QEA or changing the model.&quot;)
+    public ResponseEntity&lt;ArchitectureAdmbwPreparationService.Recovery&gt; receipt(@PathVariable String operationId,
+            @RequestParam String repositoryId, @RequestParam String workspaceScopeKey, @RequestParam String branch) throws IOException {
+<span class="fc" id="L75">        var result = service.recover(contexts.resolveForRead(repositoryId, workspaceScopeKey, branch), operationId);</span>
+<span class="fc" id="L76">        return LifecycleHttpContext.response(result.publication().context()).body(result);</span>
+    }
+
+    @PostMapping(&quot;/operations/{operationId}/resume&quot;)
+    @Operation(summary=&quot;Finish the checkpoint of an already accepted ADMBw delivery&quot;,
+            description=&quot;Resumes only the authenticated user's exact durable checkpoint intent. The original assignments are never resubmitted.&quot;)
+    public ResponseEntity&lt;ArchitectureAdmbwPreparationService.Recovery&gt; resume(@PathVariable String operationId,
+            @RequestParam String repositoryId, @RequestParam String workspaceScopeKey, @RequestParam String branch) throws IOException {
+<span class="fc" id="L84">        var result = service.resume(contexts.resolveForRead(repositoryId, workspaceScopeKey, branch), operationId);</span>
+<span class="fc" id="L85">        return LifecycleHttpContext.response(result.publication().context()).body(result);</span>
+    }
+
+    private ArchitectureAdmbwPreparationService.Request review(MultipartFile part) throws IOException {
+<span class="fc bfc" id="L89" title="All 2 branches covered.">        if (part.getSize() &gt; MAX_REVIEW_BYTES) throw new IllegalArgumentException(&quot;The ADMBw review exceeds 64 KiB&quot;);</span>
+<span class="fc" id="L90">        try (var stream = part.getInputStream()) {</span>
+<span class="fc" id="L91">            byte[] bytes = stream.readNBytes(MAX_REVIEW_BYTES + 1);</span>
+<span class="pc bpc" id="L92" title="2 of 4 branches missed.">            if (bytes.length == 0 || bytes.length &gt; MAX_REVIEW_BYTES)</span>
+<span class="nc" id="L93">                throw new IllegalArgumentException(&quot;Supply a nonempty ADMBw review up to 64 KiB&quot;);</span>
+            try {
+<span class="fc" id="L95">                var request = json.readValue(bytes, ArchitectureAdmbwPreparationService.Request.class);</span>
+<span class="fc bfc" id="L96" title="All 2 branches covered.">                if (request == null) throw new IllegalArgumentException(&quot;The ADMBw review must be an object&quot;);</span>
+<span class="fc" id="L97">                return request;</span>
+            }
+<span class="nc" id="L99">            catch (tools.jackson.core.JacksonException invalid) {</span>
+<span class="nc" id="L100">                throw new IllegalArgumentException(&quot;The ADMBw review is not a valid preparation request&quot;, invalid);</span>
+            }
+        }
+    }
+
+    private static byte[] read(MultipartFile file) throws IOException {
+<span class="pc bpc" id="L106" title="1 of 2 branches missed.">        if (file.getSize() &gt; AdmbwQeaExport.MAX_BASIS_BYTES) throw new IllegalArgumentException(&quot;QEA basis exceeds 32 MiB&quot;);</span>
+<span class="fc" id="L107">        try (var stream = file.getInputStream()) { return read(stream); }</span>
+    }
+
+    private static byte[] read(InputStream stream) throws IOException {
+<span class="fc" id="L111">        byte[] bytes = stream.readNBytes(AdmbwQeaExport.MAX_BASIS_BYTES + 1);</span>
+<span class="pc bpc" id="L112" title="2 of 4 branches missed.">        if (bytes.length == 0 || bytes.length &gt; AdmbwQeaExport.MAX_BASIS_BYTES)</span>
+<span class="nc" id="L113">            throw new IllegalArgumentException(&quot;Supply a nonempty QEA basis up to 32 MiB&quot;);</span>
+<span class="fc" id="L114">        return bytes;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

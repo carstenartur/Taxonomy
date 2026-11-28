@@ -1,0 +1,171 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AnalysisSnapshotAdoption.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-dsl</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dsl.command</a> &gt; <span class="el_source">AnalysisSnapshotAdoption.java</span></div><h1>AnalysisSnapshotAdoption.java</h1><pre class="source lang-java linenums">package com.taxonomy.dsl.command;
+
+import com.taxonomy.dsl.ast.BlockAst;
+import com.taxonomy.dsl.ast.PropertyAst;
+import com.taxonomy.dsl.model.CatalogueReference;
+import com.taxonomy.dsl.command.ArchitectureCommand.*;
+import java.util.*;
+
+/** Frozen-source adoption only. Nothing here reads renderer or review-overlay state. */
+final class AnalysisSnapshotAdoption {
+    static final String RELATIONS = &quot;x-analysis-relation-members&quot;;
+    private AnalysisSnapshotAdoption() {}
+
+    static String apply(ArchitectureDslCommands commands, String source, AdoptAnalysisSnapshot adoption) {
+<span class="pc bpc" id="L15" title="3 of 6 branches missed.">        if (adoption.elements().isEmpty() || adoption.elements().size() &gt; 2000 || adoption.relations().size() &gt; 10000)</span>
+<span class="nc" id="L16">            throw problem(&quot;ITEM_LIMIT&quot;, &quot;Snapshot must contain 1–2000 elements and at most 10000 relations&quot;);</span>
+<span class="pc bpc" id="L17" title="2 of 4 branches missed.">        if (adoption.viewId() == null || !adoption.viewId().matches(&quot;analysis-[A-Za-z0-9.-]{1,100}&quot;)</span>
+<span class="pc bpc" id="L18" title="2 of 4 branches missed.">                || adoption.graphFingerprint() == null || !adoption.graphFingerprint().matches(&quot;[a-f0-9]{64}&quot;))</span>
+<span class="nc" id="L19">            throw problem(&quot;INVALID_VALUE&quot;, &quot;Snapshot view identity and graph fingerprint are required&quot;);</span>
+<span class="pc bpc" id="L20" title="1 of 2 branches missed.">        if (adoption.provenance().size() &gt; 32) throw problem(&quot;ITEM_LIMIT&quot;, &quot;Too much source metadata&quot;);</span>
+<span class="fc" id="L21">        adoption.provenance().forEach((key, value) -&gt; {</span>
+<span class="pc bpc" id="L22" title="3 of 6 branches missed.">            if (!key.matches(&quot;x-analysis-[a-z-]{1,60}&quot;) || value.length() &gt; 8000 || value.chars().anyMatch(Character::isISOControl))</span>
+<span class="nc" id="L23">                throw problem(&quot;INVALID_VALUE&quot;, &quot;Source metadata must be bounded analysis provenance&quot;);</span>
+<span class="fc" id="L24">        });</span>
+        // Validate strings even when an existing edited object will be reused.
+<span class="pc bpc" id="L26" title="3 of 6 branches missed.">        if (adoption.title() == null || adoption.title().isBlank() || adoption.title().length() &gt; 8000</span>
+<span class="pc bpc" id="L27" title="2 of 4 branches missed.">                || adoption.description() == null || adoption.description().length() &gt; 8000)</span>
+<span class="nc" id="L28">            throw problem(&quot;INVALID_VALUE&quot;, &quot;Snapshot title and description must be bounded&quot;);</span>
+<span class="fc" id="L29">        Map&lt;String, SnapshotElement&gt; elements = new TreeMap&lt;&gt;();</span>
+<span class="fc bfc" id="L30" title="All 2 branches covered.">        for (var element : adoption.elements()) {</span>
+<span class="pc bpc" id="L31" title="3 of 8 branches missed.">            if (element.id() == null || element.type() == null || element.title() == null || element.description() == null)</span>
+<span class="fc" id="L32">                throw problem(&quot;INVALID_VALUE&quot;, &quot;Snapshot element identity, type, title and description must be present&quot;);</span>
+<span class="fc bfc" id="L33" title="All 2 branches covered.">            if (elements.putIfAbsent(element.id(), element) != null)</span>
+<span class="fc" id="L34">                throw problem(&quot;AMBIGUOUS_SNAPSHOT_IDENTITY&quot;, &quot;Duplicate snapshot element identity&quot;);</span>
+<span class="fc" id="L35">            commands.requireType(element.type());</span>
+<span class="fc" id="L36">            commands.apply(&quot;&quot;, new CreateArchitectureElement(element.id(), element.type(),</span>
+<span class="fc" id="L37">                    Map.of(&quot;title&quot;, element.title(), &quot;description&quot;, element.description())));</span>
+<span class="fc" id="L38">        }</span>
+<span class="fc" id="L39">        Set&lt;String&gt; relations = new TreeSet&lt;&gt;();</span>
+<span class="fc bfc" id="L40" title="All 2 branches covered.">        for (var relation : adoption.relations()) {</span>
+<span class="pc bpc" id="L41" title="1 of 4 branches missed.">            if (!elements.containsKey(relation.sourceId()) || !elements.containsKey(relation.targetId()))</span>
+<span class="fc" id="L42">                throw problem(&quot;MISSING_SNAPSHOT_ENDPOINT&quot;, &quot;Snapshot relation references a missing snapshot endpoint&quot;);</span>
+<span class="pc bpc" id="L43" title="1 of 2 branches missed.">            if (!relations.add(relation.id())) throw problem(&quot;AMBIGUOUS_SNAPSHOT_IDENTITY&quot;, &quot;Duplicate snapshot relation identity&quot;);</span>
+<span class="fc" id="L44">        }</span>
+<span class="fc" id="L45">        Set&lt;RelationKey&gt; directed = Set.copyOf(adoption.relations());</span>
+<span class="fc" id="L46">        Map&lt;RelationKey, Map&lt;String, String&gt;&gt; recorded = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L47" title="All 2 branches covered.">        for (var observation : adoption.evidence()) {</span>
+<span class="fc bfc" id="L48" title="All 2 branches covered.">            if (!directed.contains(observation.relation()))</span>
+<span class="fc" id="L49">                throw SnapshotEvidence.invalid(&quot;Observation does not belong to a directed snapshot relation&quot;);</span>
+<span class="fc" id="L50">            recorded.put(observation.relation(), observation.relationProperties());</span>
+<span class="fc" id="L51">        }</span>
+<span class="fc" id="L52">        Map&lt;String, BlockAst&gt; blocks = ArchitectureSemanticPatch.index(source);</span>
+<span class="fc" id="L53">        var existingView = blocks.get(&quot;view:&quot; + adoption.viewId());</span>
+<span class="fc bfc" id="L54" title="All 2 branches covered.">        if (existingView != null) {</span>
+<span class="fc" id="L55">            String priorEvidence = existingView.property(SnapshotEvidence.FINGERPRINT);</span>
+<span class="fc bfc" id="L56" title="All 2 branches covered.">            if (!adoption.graphFingerprint().equals(existingView.property(&quot;x-analysis-graph-fingerprint&quot;))</span>
+<span class="fc" id="L57">                    || adoption.provenance().entrySet().stream()</span>
+<span class="fc bfc" id="L58" title="All 2 branches covered.">                            .filter(entry -&gt; !entry.getKey().equals(SnapshotEvidence.FINGERPRINT))</span>
+<span class="fc bfc" id="L59" title="All 6 branches covered.">                            .anyMatch(entry -&gt; !entry.getValue().equals(existingView.property(entry.getKey())))</span>
+<span class="fc bfc" id="L60" title="All 2 branches covered.">                    || priorEvidence != null &amp;&amp; !priorEvidence.equals(adoption.provenance().get(SnapshotEvidence.FINGERPRINT)))</span>
+<span class="fc" id="L61">                throw problem(&quot;SNAPSHOT_IDENTITY_CONFLICT&quot;, &quot;The exact source identity already has a different frozen graph&quot;);</span>
+<span class="fc" id="L62">            return source; // Later ordinary edits remain authoritative; reopening never reapplies the graph.</span>
+        }
+<span class="fc" id="L64">        String next = source;</span>
+<span class="fc bfc" id="L65" title="All 2 branches covered.">        for (var element : elements.values()) {</span>
+<span class="fc" id="L66">            var existing = blocks.get(&quot;element:&quot; + element.id());</span>
+<span class="fc bfc" id="L67" title="All 2 branches covered.">            if (existing != null) {</span>
+<span class="fc" id="L68">                var header = existing.getHeaderTokens();</span>
+<span class="pc bpc" id="L69" title="2 of 6 branches missed.">                if (header.size() != 3 || !&quot;type&quot;.equals(header.get(1)) || !element.type().equals(header.get(2)))</span>
+<span class="fc" id="L70">                    throw problem(&quot;SNAPSHOT_TYPE_CONFLICT&quot;, &quot;Existing element identity has a different type: &quot; + element.id());</span>
+<span class="fc" id="L71">                String existingUuid = existing.property(CatalogueReference.UUID_PROPERTY);</span>
+<span class="fc" id="L72">                var reference = element.catalogueReference();</span>
+<span class="pc bpc" id="L73" title="2 of 6 branches missed.">                if (existingUuid != null &amp;&amp; reference != null &amp;&amp; reference.uuid() != null</span>
+<span class="pc bpc" id="L74" title="1 of 2 branches missed.">                        &amp;&amp; !existingUuid.equalsIgnoreCase(reference.uuid()))</span>
+<span class="fc" id="L75">                    throw problem(&quot;SNAPSHOT_IDENTITY_CONFLICT&quot;, &quot;Existing element has a different source catalogue UUID: &quot; + element.id());</span>
+<span class="pc bpc" id="L76" title="1 of 2 branches missed.">                if (existing.getProperties().stream().map(PropertyAst::key).distinct().count() != existing.getProperties().size())</span>
+<span class="nc" id="L77">                    throw problem(&quot;DUPLICATE_PROPERTY&quot;, &quot;Existing element has ambiguous properties&quot;);</span>
+<span class="fc" id="L78">            } else {</span>
+                // The element inputs were validated above. Mark only the generated value we actually install.
+<span class="fc" id="L80">                var properties = new LinkedHashMap&lt;String, String&gt;();</span>
+<span class="fc" id="L81">                properties.put(&quot;title&quot;, element.title());</span>
+<span class="fc" id="L82">                properties.put(&quot;description&quot;, element.description());</span>
+<span class="fc bfc" id="L83" title="All 2 branches covered.">                if (element.catalogueReference() != null) element.catalogueReference().writeTo(properties);</span>
+<span class="fc bfc" id="L84" title="All 2 branches covered.">                if (!element.description().isBlank())</span>
+<span class="fc" id="L85">                    properties.put(SnapshotEvidence.GENERATED_DESCRIPTION_HASH, SnapshotEvidence.digest(element.description()));</span>
+<span class="fc" id="L86">                next = ArchitectureSemanticPatch.replace(next, null,</span>
+<span class="fc" id="L87">                        ArchitectureDslCommands.block(&quot;element&quot;, List.of(element.id(), &quot;type&quot;, element.type()), properties, null));</span>
+            }
+<span class="fc bfc" id="L89" title="All 2 branches covered.">            if (element.responsibility() != null) {</span>
+                // Earlier inserts can move source offsets. Use the current block for the exact replacement.
+<span class="fc" id="L91">                var current = ArchitectureSemanticPatch.index(next).get(&quot;element:&quot; + element.id());</span>
+<span class="fc" id="L92">                next = commands.retainSnapshotResponsibility(next, current, element.responsibility());</span>
+            }
+<span class="fc" id="L94">        }</span>
+<span class="fc bfc" id="L95" title="All 2 branches covered.">        for (var relation : adoption.relations().stream().sorted(Comparator.comparing(RelationKey::id)).toList()) {</span>
+<span class="fc" id="L96">            var current = ArchitectureSemanticPatch.index(next);</span>
+<span class="fc bfc" id="L97" title="All 2 branches covered.">            if (blocks.containsKey(&quot;relation:&quot; + relation.id())) commands.validateRelation(current, relation);</span>
+<span class="fc" id="L98">            else next = commands.createRelation(next, current, relation, &quot;proposed&quot;, recorded.getOrDefault(relation, Map.of()));</span>
+<span class="fc" id="L99">        }</span>
+        // Content-addressed observations from this source are additive even on an existing reviewed relation.
+<span class="fc" id="L101">        var observations = new TreeMap&lt;String, Map&lt;String, String&gt;&gt;();</span>
+<span class="fc bfc" id="L102" title="All 2 branches covered.">        for (var observation : adoption.evidence()) {</span>
+<span class="fc" id="L103">            var fields = observation.properties(adoption.viewId(), adoption.provenance().get(SnapshotEvidence.SNAPSHOT));</span>
+<span class="fc" id="L104">            String id = SnapshotEvidence.id(fields);</span>
+<span class="pc bpc" id="L105" title="1 of 2 branches missed.">            if (blocks.containsKey(&quot;evidence:&quot; + id))</span>
+<span class="nc" id="L106">                throw problem(&quot;SNAPSHOT_IDENTITY_CONFLICT&quot;, &quot;A source evidence identity already exists without its view&quot;);</span>
+<span class="fc" id="L107">            observations.put(id, fields);</span>
+<span class="fc" id="L108">        }</span>
+<span class="fc bfc" id="L109" title="All 2 branches covered.">        if (!observations.isEmpty()) {</span>
+<span class="fc" id="L110">            var appended = new StringBuilder(next);</span>
+<span class="pc bpc" id="L111" title="2 of 4 branches missed.">            if (!next.isEmpty() &amp;&amp; !next.endsWith(&quot;\n&quot;)) appended.append('\n');</span>
+<span class="fc" id="L112">            observations.forEach((id, fields) -&gt; appended.append(ArchitectureSemanticPatch.replace(&quot;&quot;, null,</span>
+<span class="fc" id="L113">                    ArchitectureDslCommands.block(&quot;evidence&quot;, List.of(id), fields, null))));</span>
+<span class="fc" id="L114">            next = appended.toString();</span>
+        }
+<span class="fc" id="L116">        Map&lt;String, String&gt; properties = new TreeMap&lt;&gt;(adoption.provenance());</span>
+<span class="fc" id="L117">        properties.put(&quot;x-analysis-graph-fingerprint&quot;, adoption.graphFingerprint());</span>
+<span class="fc" id="L118">        properties.put(RELATIONS, String.join(&quot;\n&quot;, relations));</span>
+<span class="fc" id="L119">        List&lt;PropertyAst&gt; values = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L120">        values.add(new PropertyAst(&quot;title&quot;, adoption.title(), null));</span>
+<span class="fc" id="L121">        values.add(new PropertyAst(&quot;description&quot;, adoption.description(), null));</span>
+<span class="fc" id="L122">        elements.keySet().forEach(id -&gt; values.add(new PropertyAst(&quot;include&quot;, id, null)));</span>
+<span class="fc" id="L123">        properties.forEach((key, value) -&gt; values.add(new PropertyAst(key, value, null)));</span>
+<span class="fc" id="L124">        return ArchitectureSemanticPatch.replace(next, null,</span>
+<span class="fc" id="L125">                new BlockAst(&quot;view&quot;, List.of(adoption.viewId()), values, List.of(), properties, null));</span>
+    }
+
+    static boolean isAdoptionView(ArchitectureSemanticPatch.BlockChange change) {
+<span class="fc bfc" id="L129" title="All 2 branches covered.">        if (!change.id().startsWith(&quot;view:analysis-&quot;)) return false;</span>
+<span class="fc bfc" id="L130" title="All 2 branches covered.">        String source = change.after() == null ? change.before() : change.after();</span>
+<span class="fc" id="L131">        var view = ArchitectureSemanticPatch.index(source).get(change.id());</span>
+<span class="pc bpc" id="L132" title="2 of 4 branches missed.">        return view != null &amp;&amp; view.property(&quot;x-analysis-graph-fingerprint&quot;) != null;</span>
+    }
+    /** Only an entire content-addressed evidence set created or removed together with its owning view is invertible. */
+    static Set&lt;String&gt; ownedEvidence(List&lt;ArchitectureSemanticPatch.BlockChange&gt; changes) {
+<span class="fc" id="L136">        Map&lt;String, ArchitectureSemanticPatch.BlockChange&gt; views = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L137" title="All 4 branches covered.">        for (var change : changes) if (isAdoptionView(change)) views.put(change.id(), change);</span>
+<span class="fc" id="L138">        Map&lt;String, SortedSet&lt;String&gt;&gt; byView = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L139" title="All 2 branches covered.">        for (var change : changes) {</span>
+<span class="pc bpc" id="L140" title="1 of 6 branches missed.">            if (!change.id().startsWith(&quot;evidence:analysis-evidence-&quot;) || change.before() != null &amp;&amp; change.after() != null) continue;</span>
+<span class="fc bfc" id="L141" title="All 2 branches covered.">            String source = change.after() == null ? change.before() : change.after();</span>
+<span class="fc" id="L142">            var block = ArchitectureSemanticPatch.index(source).get(change.id());</span>
+<span class="fc" id="L143">            String owner = &quot;view:&quot; + block.property(SnapshotEvidence.VIEW);</span>
+<span class="fc" id="L144">            var viewChange = views.get(owner);</span>
+<span class="pc bpc" id="L145" title="2 of 8 branches missed.">            if (viewChange == null || (viewChange.before() == null) != (change.before() == null)</span>
+<span class="pc bpc" id="L146" title="1 of 6 branches missed.">                    || (viewChange.after() == null) != (change.after() == null)) continue;</span>
+<span class="fc" id="L147">            var fields = new TreeMap&lt;String, String&gt;();</span>
+<span class="fc bfc" id="L148" title="All 2 branches covered.">            for (var property : block.getProperties()) fields.put(property.key(), property.value());</span>
+<span class="fc" id="L149">            String id = SnapshotEvidence.id(fields);</span>
+<span class="pc bpc" id="L150" title="2 of 4 branches missed.">            if (fields.size() != block.getProperties().size() || !change.id().equals(&quot;evidence:&quot; + id)) continue;</span>
+<span class="fc" id="L151">            byView.computeIfAbsent(owner, ignored -&gt; new TreeSet&lt;&gt;()).add(id);</span>
+<span class="fc" id="L152">        }</span>
+<span class="fc" id="L153">        Set&lt;String&gt; owned = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L154">        byView.forEach((owner, ids) -&gt; {</span>
+<span class="fc" id="L155">            var change = views.get(owner);</span>
+<span class="fc bfc" id="L156" title="All 2 branches covered.">            var view = ArchitectureSemanticPatch.index(change.after() == null ? change.before() : change.after()).get(owner);</span>
+<span class="pc bpc" id="L157" title="1 of 2 branches missed.">            if (SnapshotEvidence.fingerprint(ids).equals(view.property(SnapshotEvidence.FINGERPRINT)))</span>
+<span class="fc" id="L158">                ids.forEach(id -&gt; owned.add(&quot;evidence:&quot; + id));</span>
+<span class="fc" id="L159">        });</span>
+<span class="fc" id="L160">        return owned;</span>
+    }
+
+    static Set&lt;String&gt; relationMembers(BlockAst view) {
+<span class="fc" id="L164">        String value = view.property(RELATIONS);</span>
+<span class="pc bpc" id="L165" title="1 of 4 branches missed.">        return value == null || value.isEmpty() ? Set.of() : Set.copyOf(Arrays.asList(value.split(&quot;\n&quot;)));</span>
+    }
+    private static ArchitectureDslCommands.CommandProblem problem(String code, String message) {
+<span class="fc" id="L168">        return new ArchitectureDslCommands.CommandProblem(code, &quot;snapshot&quot;, message, List.of());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

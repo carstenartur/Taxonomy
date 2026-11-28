@@ -1,0 +1,686 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DecisionRationaleHtmlRenderer.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-reporting</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.reporting.render.decision</a> &gt; <span class="el_source">DecisionRationaleHtmlRenderer.java</span></div><h1>DecisionRationaleHtmlRenderer.java</h1><pre class="source lang-java linenums">package com.taxonomy.reporting.render.decision;
+
+import com.taxonomy.reporting.api.document.DecisionTreeOverview;
+import com.taxonomy.reporting.render.document.DecisionTreeFigureRenderer;
+import com.taxonomy.reporting.render.document.RequirementReportText;
+import com.taxonomy.reporting.render.document.RequirementEvidenceSection;
+
+import com.taxonomy.reporting.api.decision.DecisionRationaleReport;
+import com.taxonomy.reporting.api.decision.DecisionReportOptions;
+import com.taxonomy.reporting.api.decision.DecisionRationaleReportPlugin;
+
+import com.taxonomy.reporting.render.decision.DecisionChapterDiagramRenderer.DiagramPanel;
+import com.taxonomy.reporting.api.decision.DecisionRationaleReport.ChildDecision;
+import com.taxonomy.reporting.api.decision.DecisionRationaleReport.DecisionChapter;
+import com.taxonomy.reporting.api.decision.DecisionRationaleReport.LeafCandidate;
+import com.taxonomy.reporting.api.decision.DecisionRationaleReport.PathStep;
+import com.taxonomy.extension.api.report.ReportFormatDescriptor;
+import com.taxonomy.extension.api.report.ReportRenderContext;
+import com.taxonomy.extension.api.report.ReportRenderResult;
+import com.taxonomy.extension.api.report.ReportRendererExtension;
+import org.springframework.stereotype.Component;
+import com.taxonomy.export.DiagramPresentation;
+import com.taxonomy.export.ExportThemeProvider;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
+
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
+import java.util.List;
+import java.util.Locale;
+
+/** Produces a self-contained, print-ready HTML decision report. */
+@Component
+@SuppressWarnings(&quot;serial&quot;)
+public class DecisionRationaleHtmlRenderer implements ReportRendererExtension {
+
+<span class="fc" id="L39">    private static final ReportFormatDescriptor DESCRIPTOR = new ReportFormatDescriptor(</span>
+            &quot;html&quot;, &quot;HTML&quot;, &quot;html&quot;, &quot;text/html; charset=UTF-8&quot;, false);
+
+    private final DecisionChapterDiagramRenderer diagramRenderer;
+    private final ExportThemeProvider themes;
+
+    public DecisionRationaleHtmlRenderer(DecisionChapterDiagramRenderer diagramRenderer) {
+<span class="fc" id="L46">        this(diagramRenderer, ExportThemeProvider.defaults());</span>
+<span class="fc" id="L47">    }</span>
+
+<span class="fc" id="L49">    public DecisionRationaleHtmlRenderer(DecisionChapterDiagramRenderer diagramRenderer, ExportThemeProvider themes) {</span>
+<span class="fc" id="L50">        this.diagramRenderer = diagramRenderer;</span>
+<span class="fc" id="L51">        this.themes = java.util.Objects.requireNonNull(themes, &quot;themes&quot;);</span>
+<span class="fc" id="L52">    }</span>
+
+    @Autowired
+    DecisionRationaleHtmlRenderer(DecisionChapterDiagramRenderer diagramRenderer, ObjectProvider&lt;ExportThemeProvider&gt; themes) {
+<span class="fc" id="L56">        this(diagramRenderer, themes.getIfAvailable(ExportThemeProvider::defaults));</span>
+<span class="fc" id="L57">    }</span>
+
+    @Override
+    public String reportTypeId() {
+<span class="fc" id="L61">        return DecisionRationaleReportPlugin.REPORT_TYPE_ID;</span>
+    }
+
+    @Override
+    public Class&lt;?&gt; reportModelType() {
+<span class="fc" id="L66">        return DecisionRationaleReport.class;</span>
+    }
+
+    @Override
+    public ReportFormatDescriptor descriptor() {
+<span class="fc" id="L71">        return DESCRIPTOR;</span>
+    }
+
+    @Override
+    public ReportRenderResult render(ReportRenderContext context) {
+<span class="fc" id="L76">        return new ReportRenderResult(render(</span>
+<span class="fc" id="L77">                context.payloadAs(DecisionRationaleReport.class))</span>
+<span class="fc" id="L78">                .getBytes(java.nio.charset.StandardCharsets.UTF_8));</span>
+    }
+
+    public String render(DecisionRationaleReport report) {
+<span class="fc" id="L82">        DecisionReportLabels labels = new DecisionReportLabels(report.languageTag());</span>
+<span class="fc" id="L83">        StringBuilder html = new StringBuilder(64_000);</span>
+<span class="fc" id="L84">        html.append(&quot;&lt;!doctype html&gt;&lt;html lang=\&quot;&quot;)</span>
+<span class="fc" id="L85">                .append(attr(report.languageTag())).append(&quot;\&quot;&gt;&lt;head&gt;&lt;meta charset=\&quot;utf-8\&quot;&gt;&quot;)</span>
+<span class="fc" id="L86">                .append(&quot;&lt;meta name=\&quot;viewport\&quot; content=\&quot;width=device-width,initial-scale=1\&quot;&gt;&quot;)</span>
+<span class="fc" id="L87">                .append(&quot;&lt;title&gt;&quot;).append(text(report.title())).append(&quot;&lt;/title&gt;&quot;)</span>
+<span class="fc" id="L88">                .append(styles(report, labels))</span>
+<span class="fc" id="L89">                .append(themes.current().htmlReportStyles())</span>
+<span class="fc" id="L90">                .append(&quot;&lt;/head&gt;&lt;body&gt;&quot;);</span>
+
+<span class="fc" id="L92">        html.append(&quot;&lt;footer class=\&quot;running-footer\&quot;&gt;&lt;span&gt;&quot;)</span>
+<span class="fc" id="L93">                .append(text(footerText(report, labels)))</span>
+<span class="fc" id="L94">                .append(&quot;&lt;/span&gt;&lt;/footer&gt;&quot;);</span>
+
+<span class="fc" id="L96">        var options = report.scope().options();</span>
+<span class="fc" id="L97">        var visibleTree = visibleTree(report);</span>
+<span class="fc" id="L98">        var nodeEvidence = new DecisionNodeEvidence(report);</span>
+<span class="fc" id="L99">        var reasonCodes = nodeEvidence.linkedReasonCodes();</span>
+<span class="fc" id="L100">        boolean hasTitlePage = options.includes(DecisionReportOptions.Section.TITLE_PAGE);</span>
+<span class="fc bfc" id="L101" title="All 2 branches covered.">        if (hasTitlePage) renderTitlePage(html, report, labels);</span>
+<span class="fc" id="L102">        html.append(&quot;&lt;section class=\&quot;source-notice\&quot;&gt;&quot;);</span>
+<span class="fc bfc" id="L103" title="All 2 branches covered.">        if (!hasTitlePage) {</span>
+<span class="fc" id="L104">            html.append(&quot;&lt;h1&gt;&quot;).append(text(report.title())).append(&quot;&lt;/h1&gt;&lt;div class=\&quot;requirement-text\&quot;&gt;&quot;)</span>
+<span class="fc" id="L105">                    .append(RequirementReportText.html(report.requirement())).append(&quot;&lt;/div&gt;&quot;);</span>
+        }
+<span class="fc" id="L107">        DecisionReportPresentation.sourceNotice(report).forEach(line -&gt; html.append(&quot;&lt;p&gt;&quot;).append(text(line)).append(&quot;&lt;/p&gt;&quot;));</span>
+<span class="fc" id="L108">        html.append(&quot;&lt;/section&gt;&quot;);</span>
+<span class="fc" id="L109">        var navigation = new java.util.LinkedHashMap&lt;String, String&gt;();</span>
+<span class="pc bpc" id="L110" title="1 of 2 branches missed.">        if (options.includes(DecisionReportOptions.Section.SUMMARY)) navigation.put(&quot;decision_summary&quot;, labels.executiveSummary());</span>
+<span class="fc bfc" id="L111" title="All 2 branches covered.">        if (options.includes(DecisionReportOptions.Section.TREE)) navigation.put(&quot;decision_tree&quot;, labels.treeOverview());</span>
+<span class="fc bfc" id="L112" title="All 4 branches covered.">        if (options.includes(DecisionReportOptions.Section.ARCHITECTURE) &amp;&amp; report.architecture() != null) navigation.put(&quot;architecture_figures&quot;, labels.architectureOverview());</span>
+<span class="fc bfc" id="L113" title="All 2 branches covered.">        if (options.includes(DecisionReportOptions.Section.CHAPTERS)) navigation.put(&quot;decision_chapters&quot;, labels.decisionChapters());</span>
+<span class="fc bfc" id="L114" title="All 2 branches covered.">        if (options.includes(DecisionReportOptions.Section.EVIDENCE)) navigation.put(&quot;decision_evidence&quot;, labels.appendix());</span>
+<span class="fc bfc" id="L115" title="All 2 branches covered.">        if (!reasonCodes.isEmpty()) navigation.put(&quot;decision_node_reasons&quot;, labels.recordedNodeReasons());</span>
+<span class="fc bfc" id="L116" title="All 2 branches covered.">        if (options.contents() != DecisionReportOptions.Contents.NONE) {</span>
+<span class="fc" id="L117">            html.append(&quot;&lt;nav aria-label=\&quot;&quot;).append(attr(labels.contents())).append(&quot;\&quot;&gt;&lt;h2&gt;&quot;).append(text(labels.contents())).append(&quot;&lt;/h2&gt;&lt;ul&gt;&quot;);</span>
+<span class="fc" id="L118">            navigation.forEach((id, title) -&gt; html.append(&quot;&lt;li&gt;&lt;a href=\&quot;#&quot;).append(id).append(&quot;\&quot;&gt;&quot;).append(text(title)).append(&quot;&lt;/a&gt;&lt;/li&gt;&quot;));</span>
+<span class="pc bpc" id="L119" title="1 of 4 branches missed.">            if (options.contents() == DecisionReportOptions.Contents.FULL &amp;&amp; options.includes(DecisionReportOptions.Section.CHAPTERS))</span>
+<span class="fc" id="L120">                report.chapters().forEach(chapter -&gt; html.append(&quot;&lt;li&gt;&lt;a href=\&quot;#chapter-&quot;).append(chapter.number()).append(&quot;\&quot;&gt;&quot;).append(text(chapter.parentCode())).append(&quot;&lt;/a&gt;&lt;/li&gt;&quot;));</span>
+<span class="fc" id="L121">            html.append(&quot;&lt;/ul&gt;&lt;/nav&gt;&quot;);</span>
+        }
+<span class="pc bpc" id="L123" title="1 of 2 branches missed.">        if (options.includes(DecisionReportOptions.Section.SUMMARY)) {</span>
+<span class="fc" id="L124">            html.append(&quot;&lt;div id=\&quot;decision_summary\&quot;&gt;&quot;);</span>
+<span class="fc bfc" id="L125" title="All 2 branches covered.">            if (options.profile() == DecisionReportOptions.Profile.COMPACT) {</span>
+<span class="fc" id="L126">                html.append(&quot;&lt;h2&gt;&quot;).append(text(labels.executiveSummary())).append(&quot;&lt;/h2&gt;&lt;p&gt;&quot;).append(text(report.executiveSummary().conciseConclusion())).append(&quot;&lt;/p&gt;&quot;);</span>
+<span class="fc" id="L127">                DecisionReportPresentation.compactReasons(report).forEach(line -&gt; html.append(&quot;&lt;p&gt;&quot;).append(text(line)).append(&quot;&lt;/p&gt;&quot;));</span>
+<span class="fc" id="L128">                var summaryCodes = new java.util.LinkedHashSet&lt;String&gt;();</span>
+<span class="fc bfc" id="L129" title="All 2 branches covered.">                report.scope().decisionTree().rows().stream().filter(row -&gt; row.depth() == 0).forEach(row -&gt; summaryCodes.add(row.code()));</span>
+<span class="fc" id="L130">                report.leadingLeaves().forEach(leaf -&gt; summaryCodes.add(leaf.code()));</span>
+<span class="fc" id="L131">                renderNodeKey(html, summaryCodes, reasonCodes, java.util.Map.of(), labels);</span>
+<span class="fc" id="L132">            }</span>
+<span class="fc" id="L133">            else renderExecutiveSummary(html, report, labels, reasonCodes);</span>
+<span class="fc" id="L134">            html.append(&quot;&lt;/div&gt;&quot;);</span>
+        }
+<span class="fc" id="L136">        RequirementEvidenceSection.appendHtml(html, report.nodeAssessments(), report.scope().selectedNodeCodes(), labels);</span>
+<span class="fc bfc" id="L137" title="All 2 branches covered.">        if (options.includes(DecisionReportOptions.Section.TREE)) renderTree(html, report, labels, reasonCodes, visibleTree);</span>
+<span class="fc bfc" id="L138" title="All 4 branches covered.">        if (options.includes(DecisionReportOptions.Section.ARCHITECTURE) &amp;&amp; report.architecture() != null) {</span>
+<span class="fc" id="L139">            var architecture = report.architecture();</span>
+<span class="fc" id="L140">            html.append(&quot;&lt;section id=\&quot;architecture_figures\&quot;&gt;&lt;h2&gt;&quot;).append(text(labels.architectureOverview())).append(&quot;&lt;/h2&gt;&lt;p&gt;&quot;)</span>
+<span class="fc" id="L141">                    .append(text(architecture.scope())).append(&quot;&lt;/p&gt;&quot;);</span>
+<span class="pc bpc" id="L142" title="1 of 4 branches missed.">            if (architecture.recommendation() != null &amp;&amp; !architecture.recommendation().isBlank()) {</span>
+<span class="fc" id="L143">                html.append(&quot;&lt;h3&gt;&quot;).append(text(labels.recommendation())).append(&quot;&lt;/h3&gt;&lt;p&gt;&quot;)</span>
+<span class="fc" id="L144">                        .append(text(architecture.recommendation())).append(&quot;&lt;/p&gt;&quot;);</span>
+            }
+<span class="fc bfc" id="L146" title="All 2 branches covered.">            if (!architecture.unresolvedGaps().isEmpty()) {</span>
+<span class="fc" id="L147">                html.append(&quot;&lt;h3&gt;&quot;).append(text(labels.gaps())).append(&quot;&lt;/h3&gt;&lt;ul&gt;&quot;);</span>
+<span class="fc" id="L148">                architecture.unresolvedGaps().forEach(gap -&gt; html.append(&quot;&lt;li&gt;&quot;).append(text(com.taxonomy.export.GeneratedDiagnosticText.display(gap, labels.german()))).append(&quot;&lt;/li&gt;&quot;));</span>
+<span class="fc" id="L149">                html.append(&quot;&lt;/ul&gt;&quot;);</span>
+            }
+<span class="fc" id="L151">            html.append(&quot;&lt;table&gt;&lt;thead&gt;&lt;tr&gt;&lt;th&gt;&quot;).append(text(labels.node())).append(&quot;&lt;/th&gt;&lt;th&gt;&quot;)</span>
+<span class="fc" id="L152">                    .append(text(labels.titleLabel())).append(&quot;&lt;/th&gt;&lt;th&gt;&quot;).append(text(labels.score())).append(&quot;&lt;/th&gt;&lt;/tr&gt;&lt;/thead&gt;&lt;tbody&gt;&quot;);</span>
+<span class="fc" id="L153">            architecture.elements().forEach(e -&gt; html.append(&quot;&lt;tr&gt;&lt;td&gt;&quot;).append(text(e.id())).append(&quot;&lt;/td&gt;&lt;td&gt;&quot;)</span>
+<span class="fc" id="L154">                    .append(text(e.title())).append(&quot;&lt;/td&gt;&lt;td&gt;&quot;).append(percent(e.relevance() * 100)).append(&quot;&lt;/td&gt;&lt;/tr&gt;&quot;));</span>
+<span class="fc" id="L155">            html.append(&quot;&lt;/tbody&gt;&lt;/table&gt;&lt;ul&gt;&quot;);</span>
+<span class="fc" id="L156">            architecture.relations().forEach(e -&gt; html.append(&quot;&lt;li&gt;&quot;).append(text(e.sourceId())).append(&quot; → &quot;).append(text(e.targetId())).append(&quot; · &quot;).append(text(e.type())).append(&quot;&lt;/li&gt;&quot;));</span>
+<span class="fc" id="L157">            html.append(&quot;&lt;/ul&gt;&quot;);</span>
+<span class="fc bfc" id="L158" title="All 2 branches covered.">            if (!architecture.nodeReasons().isEmpty()) {</span>
+<span class="fc" id="L159">                html.append(&quot;&lt;div class=\&quot;recorded-reasons\&quot;&gt;&lt;h3&gt;&quot;).append(text(labels.recordedNodeReasons())).append(&quot;&lt;/h3&gt;&quot;);</span>
+<span class="fc" id="L160">                architecture.nodeReasons().entrySet().stream().sorted(java.util.Map.Entry.comparingByKey())</span>
+<span class="fc" id="L161">                        .forEach(entry -&gt; html.append(&quot;&lt;h4&gt;&quot;).append(text(entry.getKey())).append(&quot;&lt;/h4&gt;&lt;p&gt;&quot;)</span>
+<span class="fc" id="L162">                                .append(text(DecisionReportPresentation.nodeReason(entry.getValue(), labels))).append(&quot;&lt;/p&gt;&quot;));</span>
+<span class="fc" id="L163">                html.append(&quot;&lt;/div&gt;&quot;);</span>
+            }
+<span class="fc bfc" id="L165" title="All 2 branches covered.">            if (!architecture.diagram().edges().isEmpty()) {</span>
+<span class="fc" id="L166">                html.append(&quot;&lt;div class=\&quot;recorded-reasons\&quot;&gt;&lt;h3&gt;&quot;).append(text(labels.relationshipProvenance())).append(&quot;&lt;/h3&gt;&quot;);</span>
+<span class="fc" id="L167">                architecture.diagram().edges().forEach(edge -&gt; {</span>
+<span class="fc" id="L168">                    html.append(&quot;&lt;article class=\&quot;relationship-evidence\&quot;&gt;&lt;h4&gt;&quot;)</span>
+<span class="fc" id="L169">                            .append(text(edge.id() + &quot; · &quot; + edge.sourceId() + &quot; → &quot; + edge.targetId()))</span>
+<span class="fc" id="L170">                            .append(&quot;&lt;/h4&gt;&quot;);</span>
+<span class="fc" id="L171">                    DiagramPresentation.relationshipReportDetails(edge.metadata(),</span>
+<span class="fc" id="L172">                            architecture.relationReasons().get(edge.id()), labels.german())</span>
+<span class="fc" id="L173">                            .forEach(detail -&gt; html.append(&quot;&lt;p&gt;&quot;).append(text(detail)).append(&quot;&lt;/p&gt;&quot;));</span>
+<span class="fc" id="L174">                    html.append(&quot;&lt;/article&gt;&quot;);</span>
+<span class="fc" id="L175">                });</span>
+<span class="fc" id="L176">                html.append(&quot;&lt;/div&gt;&quot;);</span>
+            }
+<span class="fc bfc" id="L178" title="All 2 branches covered.">            var owners = architecture.diagram().nodes().stream().filter(node -&gt; node.responsibility() != null).toList();</span>
+<span class="pc bpc" id="L179" title="1 of 4 branches missed.">            if (options.showResponsibilities() &amp;&amp; !owners.isEmpty()) {</span>
+<span class="fc" id="L180">                html.append(&quot;&lt;h3&gt;&quot;).append(text(labels.organizationalResponsibilities())).append(&quot;&lt;/h3&gt;&lt;dl class=\&quot;evidence-list\&quot;&gt;&quot;);</span>
+<span class="fc" id="L181">                owners.forEach(node -&gt; evidence(html, node.id(), node.responsibility().name() + &quot; · &quot;</span>
+<span class="fc" id="L182">                        + labels.responsibilityUnitId() + &quot;: &quot; + node.responsibility().unitId() + &quot; · &quot;</span>
+<span class="fc" id="L183">                        + labels.responsibilitySource() + &quot;: &quot; + node.responsibility().sourceId()));</span>
+<span class="fc" id="L184">                html.append(&quot;&lt;/dl&gt;&quot;);</span>
+            }
+<span class="fc" id="L186">            var saved = architecture.evidence();</span>
+<span class="fc" id="L187">            html.append(&quot;&lt;h3&gt;&quot;).append(text(labels.architectureProvenance())).append(&quot;&lt;/h3&gt;&lt;dl class=\&quot;evidence-list\&quot;&gt;&quot;);</span>
+<span class="fc" id="L188">            evidence(html, labels.analysisSnapshot(), saved.snapshotId());</span>
+<span class="fc" id="L189">            evidence(html, labels.graphDigest(), saved.graphSha256());</span>
+<span class="fc" id="L190">            evidence(html, labels.repository(), saved.repositoryId());</span>
+<span class="fc" id="L191">            evidence(html, labels.workspace(), saved.workspaceId());</span>
+<span class="fc" id="L192">            evidence(html, labels.branch(), saved.branch());</span>
+<span class="fc" id="L193">            evidence(html, labels.basedOnCommit(), saved.commit());</span>
+<span class="fc" id="L194">            evidence(html, labels.analysisProvider(), saved.provider());</span>
+<span class="fc" id="L195">            evidence(html, labels.analysisModel(), labels.modelName(saved.model()));</span>
+<span class="fc" id="L196">            evidence(html, labels.recordedTaxonomyDigest(), saved.taxonomyFingerprint());</span>
+<span class="fc" id="L197">            html.append(&quot;&lt;/dl&gt;&quot;);</span>
+<span class="fc" id="L198">            html.append(&quot;&lt;/section&gt;&quot;);</span>
+        }
+<span class="fc bfc" id="L200" title="All 2 branches covered.">        if (options.includes(DecisionReportOptions.Section.CHAPTERS)) { html.append(&quot;&lt;div id=\&quot;decision_chapters\&quot;&gt;&quot;); renderChapters(html, report, labels, visibleTree); html.append(&quot;&lt;/div&gt;&quot;); }</span>
+<span class="fc" id="L201">        renderRecordedReasons(html, nodeEvidence, labels);</span>
+<span class="fc bfc" id="L202" title="All 2 branches covered.">        if (options.includes(DecisionReportOptions.Section.EVIDENCE)) { html.append(&quot;&lt;div id=\&quot;decision_evidence\&quot;&gt;&quot;); renderAppendix(html, report, labels); html.append(&quot;&lt;/div&gt;&quot;); }</span>
+<span class="fc" id="L203">        html.append(&quot;&lt;/body&gt;&lt;/html&gt;&quot;);</span>
+<span class="fc" id="L204">        return html.toString();</span>
+    }
+
+    private void renderRecordedReasons(StringBuilder html, DecisionNodeEvidence evidence, DecisionReportLabels labels) {
+<span class="fc bfc" id="L208" title="All 2 branches covered.">        if (evidence.linkedReasonCodes().isEmpty()) return;</span>
+<span class="fc" id="L209">        html.append(&quot;&lt;section class=\&quot;report-section recorded-reasons\&quot; id=\&quot;decision_node_reasons\&quot;&gt;&lt;h2&gt;&quot;)</span>
+<span class="fc" id="L210">                .append(text(labels.recordedNodeReasons())).append(&quot;&lt;/h2&gt;&quot;);</span>
+<span class="fc" id="L211">        evidence.linkedReasonCodes().stream().sorted().forEach(code -&gt; {</span>
+<span class="fc" id="L212">            var node = evidence.node(code);</span>
+<span class="fc" id="L213">            html.append(&quot;&lt;h3 id=\&quot;&quot;).append(DecisionNodeEvidence.reasonBookmark(code)).append(&quot;\&quot;&gt;&quot;)</span>
+<span class="fc" id="L214">                    .append(text(code + &quot; · &quot; + node.row().title())).append(&quot;&lt;/h3&gt;&lt;p class=\&quot;muted\&quot;&gt;&quot;)</span>
+<span class="fc" id="L215">                    .append(text(DecisionNodeEvidence.source(node.evidence(), labels))).append(&quot;&lt;/p&gt;&lt;p&gt;&quot;)</span>
+<span class="fc" id="L216">                    .append(text(DecisionReportPresentation.reason(node.evidence().text(), node.evidence().source(), labels))).append(&quot;&lt;/p&gt;&quot;);</span>
+<span class="fc" id="L217">        });</span>
+<span class="fc" id="L218">        html.append(&quot;&lt;/section&gt;&quot;);</span>
+<span class="fc" id="L219">    }</span>
+
+    private static DecisionTreeOverview visibleTree(DecisionRationaleReport report) {
+<span class="fc" id="L222">        var tree = report.scope().decisionTree();</span>
+<span class="fc bfc" id="L223" title="All 6 branches covered.">        if (report.scope().options().showResponsibilities() || tree.rows().stream().noneMatch(row -&gt; row.responsibility() != null))</span>
+<span class="fc" id="L224">            return tree;</span>
+<span class="fc" id="L225">        return new DecisionTreeOverview(tree.rows().stream().map(row -&gt; new DecisionTreeOverview.DecisionTreeRow(</span>
+<span class="fc" id="L226">                row.depth(), row.code(), row.title(), row.score(), row.disposition(), row.chapterNumber(), row.bookmark()))</span>
+<span class="fc" id="L227">                .toList(), tree.warnings());</span>
+    }
+
+    private void renderTree(StringBuilder html, DecisionRationaleReport report, DecisionReportLabels labels,
+            java.util.Set&lt;String&gt; reasonCodes, DecisionTreeOverview tree) {
+<span class="fc" id="L232">        html.append(&quot;&lt;section id=\&quot;decision_tree\&quot;&gt;&lt;h2&gt;&quot;).append(text(labels.treeOverview())).append(&quot;&lt;/h2&gt;&quot;);</span>
+<span class="pc bpc" id="L233" title="1 of 4 branches missed.">        if (report.scope().options().showResponsibilities() &amp;&amp; tree.responsibilitiesByCode().isEmpty())</span>
+<span class="nc" id="L234">            html.append(&quot;&lt;p&gt;&quot;).append(text(labels.noResponsibilities())).append(&quot;&lt;/p&gt;&quot;);</span>
+<span class="fc" id="L235">        var chapters = new java.util.LinkedHashMap&lt;String, Integer&gt;();</span>
+<span class="fc bfc" id="L236" title="All 2 branches covered.">        if (report.scope().options().includes(DecisionReportOptions.Section.CHAPTERS))</span>
+<span class="fc" id="L237">            report.chapters().forEach(chapter -&gt; chapters.put(chapter.parentCode(), chapter.number()));</span>
+<span class="fc bfc" id="L238" title="All 2 branches covered.">        if (report.scope().options().treeLayout() == DecisionReportOptions.TreeLayout.TABLE) {</span>
+<span class="fc" id="L239">            html.append(&quot;&lt;table&gt;&lt;thead&gt;&lt;tr&gt;&lt;th&gt;&quot;).append(text(labels.node())).append(&quot;&lt;/th&gt;&lt;th&gt;&quot;).append(text(labels.score()))</span>
+<span class="fc" id="L240">                    .append(&quot;&lt;/th&gt;&lt;th&gt;&quot;).append(text(labels.disposition())).append(&quot;&lt;/th&gt;&lt;th&gt;&quot;).append(text(labels.chapter()))</span>
+<span class="fc" id="L241">                    .append(&quot;&lt;/th&gt;&lt;/tr&gt;&lt;/thead&gt;&lt;tbody&gt;&quot;);</span>
+<span class="fc bfc" id="L242" title="All 2 branches covered.">            for (var row : tree.rows()) {</span>
+<span class="fc" id="L243">                html.append(&quot;&lt;tr&gt;&lt;td style=\&quot;padding-left:&quot;).append(Math.min(12, row.depth()) * 12 + 8).append(&quot;px\&quot;&gt;&quot;)</span>
+<span class="fc" id="L244">                        .append(text(row.code() + &quot; · &quot; + row.title()));</span>
+<span class="fc" id="L245">                var owner = row.responsibility();</span>
+<span class="fc bfc" id="L246" title="All 2 branches covered.">                if (owner != null) html.append(&quot;&lt;br&gt;&lt;span style=\&quot;border-left:4px solid &quot;).append(owner.color())</span>
+<span class="fc" id="L247">                        .append(&quot;;padding-left:6px\&quot;&gt;&quot;).append(text(labels.responsibility() + &quot;: &quot; + owner.name())).append(&quot;&lt;/span&gt;&quot;);</span>
+<span class="fc bfc" id="L248" title="All 2 branches covered.">                html.append(&quot;&lt;/td&gt;&lt;td&gt;&quot;).append(row.score() == null ? text(labels.notEvaluated()) : com.taxonomy.dto.AnalysisPercentages.display(row.score()))</span>
+<span class="fc" id="L249">                        .append(&quot;&lt;/td&gt;&lt;td&gt;&quot;).append(text(DecisionNodeEvidence.status(row, labels))).append(&quot;&lt;/td&gt;&lt;td&gt;&quot;);</span>
+<span class="fc" id="L250">                renderNodeActions(html, row.code(), reasonCodes, chapters, labels);</span>
+<span class="fc" id="L251">                html.append(&quot;&lt;/td&gt;&lt;/tr&gt;&quot;);</span>
+<span class="fc" id="L252">            }</span>
+<span class="fc" id="L253">            html.append(&quot;&lt;/tbody&gt;&lt;/table&gt;&quot;);</span>
+        } else {
+<span class="fc" id="L255">            var panels = new DecisionTreeFigureRenderer().render(tree, report.languageTag(), report.scope().options().treeLayout());</span>
+<span class="fc bfc" id="L256" title="All 2 branches covered.">            for (var panel : panels) {</span>
+<span class="fc bfc" id="L257" title="All 2 branches covered.">                html.append(&quot;&lt;figure class=\&quot;tree-figure &quot;).append(panel.a3() ? &quot;a3&quot; : &quot;a4&quot;)</span>
+<span class="fc" id="L258">                        .append(&quot;\&quot; style=\&quot;break-inside:avoid\&quot;&gt;&quot;).append(panel.svg()).append(&quot;&lt;figcaption&gt;&quot;)</span>
+<span class="fc" id="L259">                        .append(text(panel.rootCode()));</span>
+<span class="fc" id="L260">                renderNodeKey(html, panel.nodeCodes(), reasonCodes, chapters, labels);</span>
+<span class="fc" id="L261">                html.append(&quot;&lt;/figcaption&gt;&lt;/figure&gt;&quot;);</span>
+<span class="fc" id="L262">            }</span>
+        }
+<span class="fc" id="L264">        html.append(&quot;&lt;/section&gt;&lt;style&gt;.tree-figure svg{width:100%;height:auto}.source-notice{overflow-wrap:anywhere} @page treeA4{size:A4 landscape} @page treeA3{size:A3 landscape} @media print{.tree-figure.a4{page:treeA4}.tree-figure.a3{page:treeA3}}&lt;/style&gt;&quot;);</span>
+<span class="fc" id="L265">    }</span>
+
+    private void renderNodeKey(StringBuilder html, Iterable&lt;String&gt; codes, java.util.Set&lt;String&gt; reasonCodes,
+            java.util.Map&lt;String, Integer&gt; chapters, DecisionReportLabels labels) {
+<span class="fc" id="L269">        var links = new StringBuilder();</span>
+<span class="fc bfc" id="L270" title="All 2 branches covered.">        for (String code : codes) {</span>
+<span class="fc bfc" id="L271" title="All 4 branches covered.">            if (!reasonCodes.contains(code) &amp;&amp; !chapters.containsKey(code)) continue;</span>
+<span class="fc bfc" id="L272" title="All 2 branches covered.">            if (!links.isEmpty()) links.append(&quot; · &quot;);</span>
+<span class="fc" id="L273">            renderNodeActions(links, code, reasonCodes, chapters, labels);</span>
+<span class="fc" id="L274">        }</span>
+<span class="fc bfc" id="L275" title="All 2 branches covered.">        if (!links.isEmpty()) html.append(&quot;&lt;p class=\&quot;tree-actions\&quot;&gt;&quot;).append(links).append(&quot;&lt;/p&gt;&quot;);</span>
+<span class="fc" id="L276">    }</span>
+
+    private void renderNodeActions(StringBuilder html, String code, java.util.Set&lt;String&gt; reasonCodes,
+            java.util.Map&lt;String, Integer&gt; chapters, DecisionReportLabels labels) {
+<span class="fc bfc" id="L280" title="All 2 branches covered.">        if (reasonCodes.contains(code)) {</span>
+<span class="fc" id="L281">            html.append(&quot;&lt;a href=\&quot;#&quot;).append(DecisionNodeEvidence.reasonBookmark(code)).append(&quot;\&quot;&gt;&quot;)</span>
+<span class="fc" id="L282">                    .append(text(code + &quot; · &quot; + labels.rationale())).append(&quot;&lt;/a&gt;&quot;);</span>
+        }
+<span class="fc" id="L284">        var chapter = chapters.get(code);</span>
+<span class="fc bfc" id="L285" title="All 2 branches covered.">        if (chapter != null) {</span>
+<span class="fc bfc" id="L286" title="All 2 branches covered.">            if (reasonCodes.contains(code)) html.append(&quot; · &quot;);</span>
+<span class="fc" id="L287">            html.append(&quot;&lt;a href=\&quot;#chapter-&quot;).append(chapter).append(&quot;\&quot;&gt;&quot;)</span>
+<span class="fc" id="L288">                    .append(text(labels.chapter() + &quot; &quot; + chapter)).append(&quot;&lt;/a&gt;&quot;);</span>
+        }
+<span class="fc" id="L290">    }</span>
+
+    private void renderTitlePage(
+            StringBuilder html,
+            DecisionRationaleReport report,
+            DecisionReportLabels labels) {
+<span class="fc" id="L296">        DecisionRationaleReport.ReportMetadata metadata = report.metadata();</span>
+<span class="fc" id="L297">        html.append(&quot;&lt;section class=\&quot;title-page\&quot;&gt;&quot;)</span>
+<span class="fc" id="L298">                .append(&quot;&lt;div class=\&quot;brand-rule\&quot;&gt;&lt;/div&gt;&quot;)</span>
+<span class="fc" id="L299">                .append(&quot;&lt;div class=\&quot;eyebrow\&quot;&gt;&quot;).append(text(labels.evidenceEyebrow())).append(&quot;&lt;/div&gt;&quot;)</span>
+<span class="fc" id="L300">                .append(&quot;&lt;h1&gt;&quot;).append(text(report.title())).append(&quot;&lt;/h1&gt;&quot;)</span>
+<span class="fc" id="L301">                .append(&quot;&lt;p class=\&quot;subtitle\&quot;&gt;&quot;).append(text(labels.subtitle())).append(&quot;&lt;/p&gt;&quot;)</span>
+<span class="fc" id="L302">                .append(&quot;&lt;div class=\&quot;status status-&quot;)</span>
+<span class="fc" id="L303">                .append(attr(report.status().name().toLowerCase(Locale.ROOT)))</span>
+<span class="fc" id="L304">                .append(&quot;\&quot;&gt;&quot;).append(text(statusLabel(report, labels))).append(&quot;&lt;/div&gt;&quot;)</span>
+<span class="fc" id="L305">                .append(&quot;&lt;div class=\&quot;requirement-card\&quot;&gt;&lt;h2&gt;&quot;)</span>
+<span class="fc" id="L306">                .append(text(labels.requirement())).append(&quot;&lt;/h2&gt;&lt;div class=\&quot;requirement-text\&quot;&gt;&quot;)</span>
+<span class="fc" id="L307">                .append(RequirementReportText.html(report.requirement())).append(&quot;&lt;/div&gt;&lt;/div&gt;&quot;)</span>
+<span class="fc" id="L308">                .append(&quot;&lt;div class=\&quot;metadata-grid\&quot;&gt;&quot;);</span>
+<span class="fc" id="L309">        metadataItem(html, labels.dataVersion(), metadata.taxonomyDataVersion());</span>
+<span class="fc" id="L310">        metadataItem(html, labels.sourceFile(), metadata.taxonomyCatalogueFile());</span>
+<span class="fc" id="L311">        metadataItem(html, labels.dataDigest(), shortHash(metadata.taxonomyDataFingerprintSha256()));</span>
+<span class="fc bfc" id="L312" title="All 2 branches covered.">        metadataItem(html, labels.hierarchyEvidence(), metadata.hierarchyFromImmutableSnapshot()</span>
+<span class="fc" id="L313">                ? labels.frozenHierarchy() : labels.liveHierarchy());</span>
+<span class="fc" id="L314">        metadataItem(html, labels.nodes(), metadata.taxonomyNodeCount() + &quot; / &quot; + metadata.taxonomyRootCount());</span>
+<span class="fc" id="L315">        metadataItem(html, labels.analysisSnapshot(), metadata.analysisSnapshotId());</span>
+<span class="fc" id="L316">        metadataItem(html, labels.requirementVersion(), requirementVersion(report, labels));</span>
+<span class="fc" id="L317">        metadataItem(html, labels.analysisProvider(), metadata.analysisProvider());</span>
+<span class="fc" id="L318">        metadataItem(html, labels.analysisModel(), labels.modelName(metadata.analysisModel()));</span>
+<span class="fc" id="L319">        metadataItem(html, labels.analysisCreatedAt(),</span>
+<span class="fc" id="L320">                formatInstant(metadata.analysisCreatedAt(), metadata.reportTimeZone()));</span>
+<span class="fc" id="L321">        metadataItem(html, labels.analysisCreatedBy(), metadata.analysisCreatedBy());</span>
+<span class="fc" id="L322">        metadataItem(html, labels.analysisDuration(), labels.durationMillis(metadata.analysisDurationMillis()));</span>
+<span class="fc" id="L323">        metadataItem(html, labels.generatedAt(), formatInstant(metadata.generatedAt(), metadata.reportTimeZone()));</span>
+<span class="fc" id="L324">        metadataItem(html, labels.generatedBy(), metadata.generatedBy());</span>
+<span class="fc" id="L325">        metadataItem(html, labels.applicationVersion(), metadata.taxonomyApplicationVersion());</span>
+<span class="fc" id="L326">        metadataItem(html, labels.basedOnCommit(), shortHash(metadata.basedOnCommit()));</span>
+<span class="fc" id="L327">        html.append(&quot;&lt;/div&gt;&lt;div class=\&quot;classification-note\&quot;&gt;&quot;)</span>
+<span class="fc" id="L328">                .append(text(labels.methodology())).append(&quot;: &quot;)</span>
+<span class="fc" id="L329">                .append(text(report.executiveSummary().methodologyNote()))</span>
+<span class="fc" id="L330">                .append(&quot;&lt;/div&gt;&lt;/section&gt;&quot;);</span>
+<span class="fc" id="L331">    }</span>
+
+    private void renderExecutiveSummary(
+            StringBuilder html,
+            DecisionRationaleReport report,
+            DecisionReportLabels labels,
+            java.util.Set&lt;String&gt; reasonCodes) {
+<span class="fc" id="L338">        html.append(&quot;&lt;section class=\&quot;report-section executive\&quot;&gt;&lt;div class=\&quot;section-kicker\&quot;&gt;01&lt;/div&gt;&lt;h2&gt;&quot;)</span>
+<span class="fc" id="L339">                .append(text(labels.executiveSummary())).append(&quot;&lt;/h2&gt;&quot;)</span>
+<span class="fc" id="L340">                .append(&quot;&lt;p class=\&quot;lead\&quot;&gt;&quot;)</span>
+<span class="fc" id="L341">                .append(text(report.executiveSummary().conciseConclusion())).append(&quot;&lt;/p&gt;&quot;);</span>
+
+<span class="fc" id="L343">        LeafCandidate leading = report.executiveSummary().leadingLeaf();</span>
+<span class="fc bfc" id="L344" title="All 2 branches covered.">        if (leading != null) {</span>
+<span class="fc" id="L345">            html.append(&quot;&lt;div class=\&quot;leading-leaf\&quot;&gt;&lt;div&gt;&lt;span class=\&quot;small-label\&quot;&gt;&quot;)</span>
+<span class="fc" id="L346">                    .append(text(labels.leadingLeaf())).append(&quot;&lt;/span&gt;&lt;strong&gt;&quot;)</span>
+<span class="fc" id="L347">                    .append(text(leading.code())).append(&quot; · &quot;).append(text(leading.title()))</span>
+<span class="fc" id="L348">                    .append(&quot;&lt;/strong&gt;&lt;span&gt;&quot;).append(text(leading.taxonomyRoot())).append(&quot;&lt;/span&gt;&quot;);</span>
+<span class="fc" id="L349">            renderNodeActions(html, leading.code(), reasonCodes, java.util.Map.of(), labels);</span>
+<span class="fc" id="L350">            html.append(&quot;&lt;/div&gt;&lt;div class=\&quot;score-orb\&quot;&gt;&quot;)</span>
+<span class="fc" id="L351">                    .append(leading.score()).append(&quot;&lt;small&gt;%&lt;/small&gt;&lt;/div&gt;&lt;/div&gt;&quot;);</span>
+        }
+
+<span class="fc" id="L354">        html.append(&quot;&lt;h3 id=\&quot;decision_highest_path\&quot;&gt;&quot;).append(text(labels.highestPath())).append(&quot;&lt;/h3&gt;&quot;)</span>
+<span class="fc" id="L355">                .append(&quot;&lt;div class=\&quot;decision-table-scroll\&quot; role=\&quot;region\&quot; aria-labelledby=\&quot;decision_highest_path\&quot; tabindex=\&quot;0\&quot;&gt;&quot;)</span>
+<span class="fc" id="L356">                .append(&quot;&lt;table class=\&quot;path-table\&quot;&gt;&lt;thead&gt;&lt;tr&gt;&lt;th&gt;&quot;)</span>
+<span class="fc" id="L357">                .append(text(labels.step())).append(&quot;&lt;/th&gt;&lt;th&gt;&quot;)</span>
+<span class="fc" id="L358">                .append(text(labels.node())).append(&quot;&lt;/th&gt;&lt;th&gt;&quot;)</span>
+<span class="fc" id="L359">                .append(text(labels.score())).append(&quot;&lt;/th&gt;&lt;th&gt;&quot;)</span>
+<span class="fc" id="L360">                .append(text(labels.localShare())).append(&quot;&lt;/th&gt;&lt;th&gt;&quot;)</span>
+<span class="fc" id="L361">                .append(text(labels.rationale())).append(&quot;&lt;/th&gt;&lt;th&gt;&quot;)</span>
+<span class="fc" id="L362">                .append(text(labels.reasonSource())).append(&quot;&lt;/th&gt;&lt;/tr&gt;&lt;/thead&gt;&lt;tbody&gt;&quot;);</span>
+<span class="fc bfc" id="L363" title="All 2 branches covered.">        for (PathStep step : report.executiveSummary().path()) {</span>
+<span class="fc" id="L364">            html.append(&quot;&lt;tr&gt;&lt;td&gt;&quot;).append(step.position()).append(&quot;&lt;/td&gt;&lt;td&gt;&lt;code&gt;&quot;)</span>
+<span class="fc" id="L365">                    .append(text(step.code())).append(&quot;&lt;/code&gt;&lt;br&gt;&lt;span class=\&quot;muted\&quot;&gt;&quot;)</span>
+<span class="fc" id="L366">                    .append(text(step.title())).append(&quot;&lt;/span&gt;&lt;/td&gt;&lt;td&gt;&quot;)</span>
+<span class="fc" id="L367">                    .append(score(step.absoluteScore())).append(&quot;&lt;/td&gt;&lt;td&gt;&quot;)</span>
+<span class="fc" id="L368">                    .append(percent(step.localSharePercent())).append(&quot;&lt;/td&gt;&lt;td&gt;&quot;)</span>
+<span class="fc" id="L369">                    .append(text(DecisionReportPresentation.reason(step.reason(), step.reasonSource(), labels)));</span>
+<span class="pc bpc" id="L370" title="1 of 2 branches missed.">            if (reasonCodes.contains(step.code())) {</span>
+<span class="fc" id="L371">                html.append(&quot;&lt;br&gt;&quot;);</span>
+<span class="fc" id="L372">                renderNodeActions(html, step.code(), reasonCodes, java.util.Map.of(), labels);</span>
+            }
+<span class="fc" id="L374">            html.append(&quot;&lt;/td&gt;&lt;td&gt;&quot;).append(text(reasonSource(step.reasonSource(), labels))).append(&quot;&lt;/td&gt;&lt;/tr&gt;&quot;);</span>
+<span class="fc" id="L375">        }</span>
+<span class="fc" id="L376">        html.append(&quot;&lt;/tbody&gt;&lt;/table&gt;&lt;/div&gt;&quot;);</span>
+
+<span class="fc bfc" id="L378" title="All 2 branches covered.">        if (!report.warnings().isEmpty()) {</span>
+<span class="fc" id="L379">            html.append(&quot;&lt;div class=\&quot;warning-box\&quot;&gt;&lt;h3&gt;&quot;)</span>
+<span class="fc" id="L380">                    .append(text(labels.warnings())).append(&quot;&lt;/h3&gt;&lt;ul&gt;&quot;);</span>
+<span class="fc" id="L381">            report.warnings().forEach(warning -&gt; html.append(&quot;&lt;li&gt;&quot;)</span>
+<span class="fc" id="L382">                    .append(text(com.taxonomy.export.GeneratedDiagnosticText.display(warning, labels.german()))).append(&quot;&lt;/li&gt;&quot;));</span>
+<span class="fc" id="L383">            html.append(&quot;&lt;/ul&gt;&lt;/div&gt;&quot;);</span>
+        }
+<span class="fc" id="L385">        html.append(&quot;&lt;/section&gt;&quot;);</span>
+<span class="fc" id="L386">    }</span>
+
+    private void renderChapters(
+            StringBuilder html,
+            DecisionRationaleReport report,
+            DecisionReportLabels labels, DecisionTreeOverview tree) {
+<span class="fc" id="L392">        html.append(&quot;&lt;section class=\&quot;report-section chapter-intro\&quot;&gt;&lt;div class=\&quot;section-kicker\&quot;&gt;02&lt;/div&gt;&lt;h2&gt;&quot;)</span>
+<span class="fc" id="L393">                .append(text(labels.decisionChapters())).append(&quot;&lt;/h2&gt;&lt;p&gt;&quot;)</span>
+<span class="fc bfc" id="L394" title="All 2 branches covered.">                .append(text(labels.german()</span>
+<span class="fc" id="L395">                        ? &quot;Jedes folgende Kapitel entspricht genau einem Vaterknoten, dessen direkte Kindknoten mindestens einen von Null verschiedenen Bewertungswert enthalten.&quot;</span>
+<span class="fc" id="L396">                        : &quot;Each following chapter corresponds to one parent node whose direct children contain at least one non-zero score.&quot;))</span>
+<span class="fc" id="L397">                .append(&quot;&lt;/p&gt;&lt;/section&gt;&quot;);</span>
+
+<span class="fc" id="L399">        var owners = tree.responsibilitiesByCode();</span>
+<span class="fc bfc" id="L400" title="All 2 branches covered.">        for (DecisionChapter chapter : report.chapters()) {</span>
+<span class="fc" id="L401">            html.append(&quot;&lt;section id=\&quot;chapter-&quot;).append(chapter.number()).append(&quot;\&quot; class=\&quot;report-section decision-chapter\&quot;&gt;&lt;div class=\&quot;chapter-number\&quot;&gt;&quot;)</span>
+<span class="fc" id="L402">                    .append(chapter.number()).append(&quot;&lt;/div&gt;&lt;div class=\&quot;chapter-heading\&quot;&gt;&lt;div&gt;&lt;span class=\&quot;small-label\&quot;&gt;&quot;)</span>
+<span class="fc" id="L403">                    .append(text(labels.parentNode())).append(&quot;&lt;/span&gt;&lt;h2&gt;&lt;code&gt;&quot;)</span>
+<span class="fc" id="L404">                    .append(text(chapter.parentCode())).append(&quot;&lt;/code&gt; · &quot;)</span>
+<span class="fc" id="L405">                    .append(text(chapter.parentTitle())).append(&quot;&lt;/h2&gt;&lt;/div&gt;&lt;div class=\&quot;parent-score\&quot;&gt;&quot;)</span>
+<span class="fc" id="L406">                    .append(score(chapter.parentScore())).append(&quot;&lt;/div&gt;&lt;/div&gt;&quot;);</span>
+<span class="pc bpc" id="L407" title="1 of 4 branches missed.">            if (chapter.parentDescription() != null &amp;&amp; !chapter.parentDescription().isBlank()) {</span>
+<span class="fc" id="L408">                html.append(&quot;&lt;p class=\&quot;parent-description\&quot;&gt;&quot;)</span>
+<span class="fc" id="L409">                        .append(text(chapter.parentDescription())).append(&quot;&lt;/p&gt;&quot;);</span>
+            }
+
+<span class="fc" id="L412">            List&lt;DiagramPanel&gt; panels = diagramRenderer.render(chapter, report.languageTag(), owners);</span>
+<span class="fc bfc" id="L413" title="All 2 branches covered.">            for (DiagramPanel panel : panels) {</span>
+<span class="fc" id="L414">                html.append(&quot;&lt;figure class=\&quot;decision-diagram\&quot;&gt;&quot;)</span>
+<span class="fc" id="L415">                        .append(panel.svg())</span>
+<span class="fc" id="L416">                        .append(&quot;&lt;figcaption&gt;&quot;)</span>
+<span class="fc" id="L417">                        .append(text(labels.parentNode() + &quot; &quot; + chapter.parentCode()))</span>
+<span class="fc bfc" id="L418" title="All 2 branches covered.">                        .append(panel.panelCount() &gt; 1</span>
+<span class="fc" id="L419">                                ? &quot; · &quot; + panel.panelNumber() + &quot;/&quot; + panel.panelCount() : &quot;&quot;)</span>
+<span class="pc bpc" id="L420" title="1 of 2 branches missed.">                        .append(panel.responsibilityCaption().isEmpty() ? &quot;&quot; : &quot;&lt;br&gt;&quot; + text(panel.responsibilityCaption()))</span>
+<span class="fc" id="L421">                        .append(&quot;&lt;/figcaption&gt;&lt;/figure&gt;&quot;);</span>
+<span class="fc" id="L422">            }</span>
+
+<span class="fc" id="L424">            html.append(&quot;&lt;div class=\&quot;rationale-grid\&quot;&gt;&lt;div&gt;&lt;h3&gt;&quot;)</span>
+<span class="fc" id="L425">                    .append(text(labels.decisionResult())).append(&quot;&lt;/h3&gt;&lt;p&gt;&quot;)</span>
+<span class="fc" id="L426">                    .append(text(chapter.decisionSummary())).append(&quot;&lt;/p&gt;&lt;/div&gt;&lt;div&gt;&lt;h3&gt;&quot;)</span>
+<span class="fc" id="L427">                    .append(text(labels.comparison())).append(&quot;&lt;/h3&gt;&lt;p&gt;&quot;)</span>
+<span class="fc" id="L428">                    .append(text(chapter.comparativeRationale())).append(&quot;&lt;/p&gt;&lt;/div&gt;&lt;/div&gt;&quot;)</span>
+<span class="fc" id="L429">                    .append(&quot;&lt;h3 id=\&quot;decision_alternatives_&quot;).append(chapter.number()).append(&quot;\&quot;&gt;&quot;)</span>
+<span class="fc" id="L430">                    .append(text(labels.alternatives())).append(&quot;&lt;/h3&gt;&quot;)</span>
+<span class="fc" id="L431">                    .append(&quot;&lt;div class=\&quot;decision-table-scroll\&quot; role=\&quot;region\&quot; aria-labelledby=\&quot;decision_alternatives_&quot;)</span>
+<span class="fc" id="L432">                    .append(chapter.number()).append(&quot;\&quot; tabindex=\&quot;0\&quot;&gt;&quot;)</span>
+<span class="fc" id="L433">                    .append(&quot;&lt;table&gt;&lt;thead&gt;&lt;tr&gt;&lt;th&gt;&quot;).append(text(labels.rank()))</span>
+<span class="fc" id="L434">                    .append(&quot;&lt;/th&gt;&lt;th&gt;&quot;).append(text(labels.node()))</span>
+<span class="fc" id="L435">                    .append(&quot;&lt;/th&gt;&lt;th&gt;&quot;).append(text(labels.score()))</span>
+<span class="fc" id="L436">                    .append(&quot;&lt;/th&gt;&lt;th&gt;&quot;).append(text(labels.localShare()))</span>
+<span class="fc" id="L437">                    .append(&quot;&lt;/th&gt;&lt;th&gt;&quot;).append(text(labels.disposition()))</span>
+<span class="fc" id="L438">                    .append(&quot;&lt;/th&gt;&lt;th&gt;&quot;).append(text(labels.rationale()))</span>
+<span class="fc" id="L439">                    .append(&quot;&lt;/th&gt;&lt;th&gt;&quot;).append(text(labels.reasonSource()))</span>
+<span class="fc" id="L440">                    .append(&quot;&lt;/th&gt;&lt;/tr&gt;&lt;/thead&gt;&lt;tbody&gt;&quot;);</span>
+<span class="fc bfc" id="L441" title="All 2 branches covered.">            for (ChildDecision child : chapter.children()) {</span>
+<span class="fc" id="L442">                html.append(&quot;&lt;tr class=\&quot;&quot;).append(rowClass(child)).append(&quot;\&quot;&gt;&lt;td&gt;&quot;)</span>
+<span class="fc bfc" id="L443" title="All 2 branches covered.">                        .append(child.rank() == null ? &quot;—&quot; : child.rank()).append(&quot;&lt;/td&gt;&lt;td&gt;&lt;code&gt;&quot;)</span>
+<span class="fc" id="L444">                        .append(text(child.code())).append(&quot;&lt;/code&gt;&lt;br&gt;&lt;span class=\&quot;muted\&quot;&gt;&quot;)</span>
+<span class="fc" id="L445">                        .append(text(child.title())).append(&quot;&lt;/span&gt;&lt;/td&gt;&lt;td&gt;&quot;)</span>
+<span class="fc" id="L446">                        .append(score(child.absoluteScore())).append(&quot;&lt;/td&gt;&lt;td&gt;&quot;)</span>
+<span class="fc" id="L447">                        .append(percent(child.localSharePercent())).append(&quot;&lt;/td&gt;&lt;td&gt;&quot;)</span>
+<span class="fc" id="L448">                        .append(text(disposition(child, labels))).append(&quot;&lt;/td&gt;&lt;td&gt;&quot;)</span>
+<span class="fc" id="L449">                        .append(text(DecisionReportPresentation.reason(child.reason(), child.reasonSource(), labels))).append(&quot;&lt;/td&gt;&lt;td&gt;&quot;)</span>
+<span class="fc" id="L450">                        .append(text(reasonSource(child.reasonSource(), labels))).append(&quot;&lt;/td&gt;&lt;/tr&gt;&quot;);</span>
+<span class="fc" id="L451">            }</span>
+<span class="fc" id="L452">            html.append(&quot;&lt;/tbody&gt;&lt;/table&gt;&lt;/div&gt;&quot;);</span>
+<span class="pc bpc" id="L453" title="1 of 2 branches missed.">            if (!chapter.complete()) {</span>
+<span class="nc" id="L454">                html.append(&quot;&lt;div class=\&quot;warning-box compact\&quot;&gt;&quot;)</span>
+<span class="nc bnc" id="L455" title="All 2 branches missed.">                        .append(text(labels.german()</span>
+<span class="nc" id="L456">                                ? &quot;Nicht bewertete direkte Kinder: &quot;</span>
+<span class="nc" id="L457">                                : &quot;Unevaluated direct children: &quot;))</span>
+<span class="nc" id="L458">                        .append(text(String.join(&quot;, &quot;, chapter.missingChildCodes())))</span>
+<span class="nc" id="L459">                        .append(&quot;&lt;/div&gt;&quot;);</span>
+            }
+<span class="fc" id="L461">            html.append(&quot;&lt;/section&gt;&quot;);</span>
+<span class="fc" id="L462">        }</span>
+<span class="fc" id="L463">    }</span>
+
+    private void renderAppendix(
+            StringBuilder html,
+            DecisionRationaleReport report,
+            DecisionReportLabels labels) {
+<span class="fc" id="L469">        html.append(&quot;&lt;section class=\&quot;report-section appendix\&quot;&gt;&lt;div class=\&quot;section-kicker\&quot;&gt;03&lt;/div&gt;&lt;h2&gt;&quot;)</span>
+<span class="fc" id="L470">                .append(text(labels.appendix())).append(&quot;&lt;/h2&gt;&lt;h3 id=\&quot;decision_leaf_ranking\&quot;&gt;&quot;)</span>
+<span class="fc" id="L471">                .append(text(labels.leadingLeaves())).append(&quot;&lt;/h3&gt;&quot;)</span>
+<span class="fc" id="L472">                .append(&quot;&lt;div class=\&quot;decision-table-scroll\&quot; role=\&quot;region\&quot; aria-labelledby=\&quot;decision_leaf_ranking\&quot; tabindex=\&quot;0\&quot;&gt;&quot;)</span>
+<span class="fc" id="L473">                .append(&quot;&lt;table&gt;&lt;thead&gt;&lt;tr&gt;&lt;th&gt;&quot;).append(text(labels.rank()))</span>
+<span class="fc" id="L474">                .append(&quot;&lt;/th&gt;&lt;th&gt;&quot;).append(text(labels.node()))</span>
+<span class="fc" id="L475">                .append(&quot;&lt;/th&gt;&lt;th&gt;&quot;).append(text(labels.score()))</span>
+<span class="fc" id="L476">                .append(&quot;&lt;/th&gt;&lt;th&gt;&quot;).append(text(labels.taxonomyRoot()))</span>
+<span class="fc" id="L477">                .append(&quot;&lt;/th&gt;&lt;th&gt;&quot;).append(text(labels.hierarchyPath()))</span>
+<span class="fc" id="L478">                .append(&quot;&lt;/th&gt;&lt;th&gt;&quot;).append(text(labels.rationale()))</span>
+<span class="fc" id="L479">                .append(&quot;&lt;/th&gt;&lt;/tr&gt;&lt;/thead&gt;&lt;tbody&gt;&quot;);</span>
+<span class="fc" id="L480">        int rank = 1;</span>
+<span class="fc bfc" id="L481" title="All 2 branches covered.">        for (LeafCandidate leaf : report.leadingLeaves()) {</span>
+<span class="fc" id="L482">            html.append(&quot;&lt;tr&gt;&lt;td&gt;&quot;).append(rank++).append(&quot;&lt;/td&gt;&lt;td&gt;&lt;code&gt;&quot;)</span>
+<span class="fc" id="L483">                    .append(text(leaf.code())).append(&quot;&lt;/code&gt;&lt;br&gt;&lt;span class=\&quot;muted\&quot;&gt;&quot;)</span>
+<span class="fc" id="L484">                    .append(text(leaf.title())).append(&quot;&lt;/span&gt;&lt;/td&gt;&lt;td&gt;&quot;)</span>
+<span class="fc" id="L485">                    .append(leaf.score()).append(&quot; %&lt;/td&gt;&lt;td&gt;&quot;)</span>
+<span class="fc" id="L486">                    .append(text(leaf.taxonomyRoot())).append(&quot;&lt;/td&gt;&lt;td&gt;&quot;)</span>
+<span class="fc" id="L487">                    .append(text(leaf.hierarchyPath())).append(&quot;&lt;/td&gt;&lt;td&gt;&quot;)</span>
+<span class="fc" id="L488">                    .append(text(DecisionReportPresentation.reason(leaf.reason(), leaf.reasonSource(), labels))).append(&quot;&lt;/td&gt;&lt;/tr&gt;&quot;);</span>
+<span class="fc" id="L489">        }</span>
+<span class="fc" id="L490">        html.append(&quot;&lt;/tbody&gt;&lt;/table&gt;&lt;/div&gt;&lt;h3&gt;&quot;).append(text(labels.taxonomyBasis()))</span>
+<span class="fc" id="L491">                .append(&quot;&lt;/h3&gt;&lt;dl class=\&quot;evidence-list\&quot;&gt;&quot;);</span>
+<span class="fc" id="L492">        evidence(html, labels.catalogue(), report.metadata().taxonomyDataSource());</span>
+<span class="fc" id="L493">        evidence(html, labels.sourceFile(), report.metadata().taxonomyCatalogueFile());</span>
+<span class="fc" id="L494">        evidence(html, labels.sourceDigest(), report.metadata().taxonomyCatalogueResourceSha256());</span>
+<span class="fc" id="L495">        evidence(html, labels.dataDigest(), report.metadata().taxonomyDataFingerprintSha256());</span>
+<span class="fc" id="L496">        evidence(html, labels.recordedTaxonomyDigest(),</span>
+<span class="fc" id="L497">                report.metadata().recordedTaxonomyFingerprintSha256());</span>
+<span class="fc" id="L498">        evidence(html, labels.promptDigest(), report.metadata().promptFingerprintSha256());</span>
+<span class="fc" id="L499">        evidence(html, labels.analysisDigest(), report.metadata().analysisSnapshotFingerprintSha256());</span>
+<span class="fc" id="L500">        evidence(html, labels.analysisSnapshot(), report.metadata().analysisSnapshotId());</span>
+<span class="fc" id="L501">        evidence(html, labels.requirementVersion(), requirementVersion(report, labels));</span>
+<span class="fc" id="L502">        evidence(html, labels.analysisCreatedAt(),</span>
+<span class="fc" id="L503">                formatInstant(report.metadata().analysisCreatedAt(), report.metadata().reportTimeZone()));</span>
+<span class="fc" id="L504">        evidence(html, labels.analysisCreatedBy(), report.metadata().analysisCreatedBy());</span>
+<span class="fc" id="L505">        evidence(html, labels.repository(), report.metadata().repositoryId());</span>
+<span class="fc" id="L506">        evidence(html, labels.workspace(), report.metadata().workspaceId());</span>
+<span class="fc" id="L507">        evidence(html, labels.branch(), report.metadata().branch());</span>
+<span class="fc" id="L508">        evidence(html, labels.basedOnCommit(), report.metadata().basedOnCommit());</span>
+<span class="fc" id="L509">        evidence(html, labels.analysisProvider(), report.metadata().analysisProvider());</span>
+<span class="fc" id="L510">        evidence(html, labels.analysisModel(), labels.modelName(report.metadata().analysisModel()));</span>
+<span class="fc" id="L511">        evidence(html, labels.analysisStatus(), labels.analysisState(report.metadata().analysisStatus()));</span>
+<span class="fc" id="L512">        evidence(html, labels.analysisDuration(), labels.durationMillis(report.metadata().analysisDurationMillis()));</span>
+<span class="fc" id="L513">        evidence(html, labels.decisionTreeCompleteness(), percent(report.metadata().completenessPercent()));</span>
+<span class="fc" id="L514">        html.append(&quot;&lt;/dl&gt;&lt;h3&gt;&quot;).append(text(labels.methodology())).append(&quot;&lt;/h3&gt;&lt;p&gt;&quot;)</span>
+<span class="fc" id="L515">                .append(text(report.executiveSummary().methodologyNote())).append(&quot;&lt;/p&gt;&quot;);</span>
+<span class="pc bpc" id="L516" title="1 of 2 branches missed.">        if (!report.discrepancies().isEmpty()) {</span>
+<span class="nc bnc" id="L517" title="All 2 branches missed.">            html.append(&quot;&lt;h3&gt;&quot;).append(text(labels.german()</span>
+<span class="nc" id="L518">                    ? &quot;Dokumentierte Bewertungsabweichungen&quot;</span>
+<span class="nc" id="L519">                    : &quot;Documented scoring discrepancies&quot;))</span>
+<span class="nc" id="L520">                    .append(&quot;&lt;/h3&gt;&lt;pre&gt;&quot;)</span>
+<span class="nc" id="L521">                    .append(text(report.discrepancies().toString())).append(&quot;&lt;/pre&gt;&quot;);</span>
+        }
+<span class="fc" id="L523">        html.append(&quot;&lt;/section&gt;&quot;);</span>
+<span class="fc" id="L524">    }</span>
+
+    private String styles(DecisionRationaleReport report, DecisionReportLabels labels) {
+<span class="fc" id="L527">        String pageCounter = &quot;\&quot;&quot; + cssString(labels.page() + &quot; &quot;)</span>
+<span class="fc" id="L528">                + &quot;\&quot; counter(page) \&quot; &quot; + cssString(labels.of())</span>
+                + &quot; \&quot; counter(pages)&quot;;
+<span class="fc" id="L530">        return &quot;&quot;&quot;</span>
+                &lt;style&gt;
+                :root{--navy:#0b1f33;--teal:#007a78;--teal-light:#e1f4f3;--blue-light:#e9f0f7;--ink:#26303a;--muted:#64707c;--line:#cdd5dc;--paper:#fff;--warning:#fff4d6;--warning-border:#b98200}
+                *{box-sizing:border-box}html{background:#eef1f4}body{margin:0 auto;max-width:1120px;background:var(--paper);color:var(--ink);font:16px/1.5 &quot;Segoe UI&quot;,Arial,sans-serif;box-shadow:0 0 30px rgba(11,31,51,.12)}
+                .running-footer{position:fixed;left:0;right:0;bottom:0;height:34px;padding:8px 18mm;border-top:1px solid var(--line);background:#fff;color:var(--muted);font-size:10px;display:flex;justify-content:space-between;z-index:20}
+                .title-page,.report-section{padding:20mm 18mm 24mm}.title-page{min-height:285mm;position:relative;page-break-after:always;background:linear-gradient(150deg,#fff 0,#fff 70%,#edf7f6 100%)}
+                .brand-rule{height:8px;background:linear-gradient(90deg,var(--navy) 0 72%,var(--teal) 72%);margin-bottom:36px}.eyebrow,.section-kicker,.small-label{color:var(--teal);font-weight:700;letter-spacing:.12em;text-transform:uppercase;font-size:12px}
+                h1{font-size:44px;line-height:1.12;color:var(--navy);max-width:800px;margin:18px 0}.subtitle{font-size:21px;color:var(--muted);max-width:760px}.status{display:inline-block;margin-top:18px;padding:8px 14px;border-radius:999px;font-weight:700;background:var(--teal-light);color:var(--teal)}.status-draft_incomplete,.status-no_result{background:var(--warning);color:#745400}
+                .requirement-card{margin-top:42px;padding:20px 24px;border-left:6px solid var(--teal);background:#f6f8fa}.requirement-card&gt;h2{margin:0 0 8px;font-size:15px;color:var(--teal);text-transform:uppercase;letter-spacing:.08em}.requirement-text{font-size:15px;overflow-wrap:anywhere}.requirement-text p{margin:0 0 .6em}.requirement-text h1,.requirement-text h2,.requirement-text h3,.requirement-text h4,.requirement-text h5,.requirement-text h6{font-size:1em;margin:.6em 0 .25em;break-after:avoid}
+                .metadata-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:1px;background:var(--line);border:1px solid var(--line);margin-top:30px}.metadata-item{background:#fff;padding:13px 16px}.metadata-item span{display:block;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.05em}.metadata-item strong{display:block;margin-top:3px;overflow-wrap:anywhere}.classification-note{margin-top:1em;color:var(--muted);font-size:11px}
+                .report-section{page-break-before:auto}.decision-chapter{page-break-before:always}.section-kicker{margin-bottom:5px}.report-section&gt;h2{font-size:32px;color:var(--navy);margin:0 0 20px}.report-section h3{color:var(--navy);margin:26px 0 10px}.lead{font-size:20px;color:var(--navy)}
+                .leading-leaf{display:flex;justify-content:space-between;align-items:center;background:var(--navy);color:#fff;padding:22px 26px;border-radius:8px;margin:24px 0}.leading-leaf strong,.leading-leaf span{display:block}.leading-leaf .small-label{color:#8de0dd}.score-orb{width:92px;height:92px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--teal);font-size:35px;font-weight:800}.score-orb small{font-size:18px;margin-left:2px}
+                table{width:100%;border-collapse:collapse;margin:12px 0 24px;font-size:13px;page-break-inside:auto}thead{display:table-header-group}tr{page-break-inside:avoid}th{background:var(--navy);color:#fff;text-align:left;padding:9px 8px;font-weight:650}td{border-bottom:1px solid var(--line);padding:9px 8px;vertical-align:top}tbody tr:nth-child(even){background:#f7f9fa}code{font-family:&quot;Cascadia Mono&quot;,Consolas,monospace;color:var(--navy);font-weight:700}.muted{color:var(--muted)}
+                .warning-box{background:var(--warning);border-left:5px solid var(--warning-border);padding:14px 18px;margin:22px 0}.warning-box h3{margin-top:0}.warning-box.compact{font-size:13px}.chapter-number{color:var(--teal);font-weight:800;font-size:14px}.chapter-heading{display:flex;align-items:flex-start;justify-content:space-between;border-bottom:3px solid var(--navy);padding-bottom:12px}.chapter-heading h2{margin:4px 0 0;color:var(--navy);font-size:29px}.parent-score{background:var(--teal);color:#fff;padding:10px 16px;border-radius:6px;font-weight:800;font-size:24px;white-space:nowrap}.parent-description{color:var(--muted)}
+                .decision-diagram{margin:24px 0;page-break-inside:avoid}.decision-diagram svg{width:100%;height:auto;border:1px solid var(--line);border-radius:6px;background:#fff}.decision-diagram figcaption{font-size:11px;color:var(--muted);text-align:right}.rationale-grid{display:grid;grid-template-columns:1fr 1.3fr;gap:22px}.rationale-grid&gt;div{background:#f6f8fa;padding:14px 18px;border-top:4px solid var(--teal)}.rationale-grid h3{margin-top:0}.row-leading{background:var(--teal-light)!important}.row-rejected{color:var(--muted)}.row-missing{font-style:italic;color:var(--muted)}
+                .evidence-list{display:grid;grid-template-columns:210px 1fr;border-top:1px solid var(--line)}.evidence-list dt,.evidence-list dd{margin:0;padding:8px;border-bottom:1px solid var(--line)}.evidence-list dt{font-weight:700;color:var(--navy)}.evidence-list dd{overflow-wrap:anywhere}pre{white-space:pre-wrap;background:#f6f8fa;padding:12px;border:1px solid var(--line)}
+                .recorded-reasons p{white-space:pre-wrap;overflow-wrap:anywhere;break-inside:auto}.recorded-reasons h3,.recorded-reasons h4{break-after:avoid}.relationship-evidence{break-inside:avoid;margin-bottom:1em}.relationship-evidence p{margin:.4em 0}td{overflow-wrap:anywhere}
+                @media screen and (max-width:760px){body{box-shadow:none}.title-page,.report-section{padding:28px 20px}.metadata-grid,.rationale-grid{grid-template-columns:1fr}.chapter-heading{display:block}.parent-score{display:inline-block;margin-top:12px}.running-footer{display:none}}
+                @media screen and (max-width:760px){.decision-table-scroll{overflow-x:auto}}
+                @media print{html,body{background:#fff;box-shadow:none;max-width:none}.running-footer{display:none}
+                @page{size:A4;margin:14mm 12mm 18mm;@bottom-left{content:&quot;FOOTER_TEXT&quot;;width:145mm;font:8pt Arial,sans-serif;color:#485568}@bottom-right{content:PAGE_COUNTER;font:8pt Arial,sans-serif;color:#485568;white-space:nowrap}}.title-page,.report-section{padding:12mm 10mm 18mm}.title-page{min-height:255mm;padding:8mm}.title-page .brand-rule{margin-bottom:5mm}.title-page h1{font-size:30pt;margin:3mm 0}.title-page .subtitle{font-size:14pt;margin:2mm 0}.title-page .status{margin-top:3mm}.title-page .requirement-card{margin-top:5mm;padding:3mm 4mm}.title-page .metadata-grid{margin-top:4mm}.title-page .metadata-item{padding:2mm 3mm;font-size:10pt;break-inside:avoid}}
+                &lt;/style&gt;
+<span class="fc" id="L552">                &quot;&quot;&quot;.replace(&quot;PAGE_COUNTER&quot;, pageCounter).replace(&quot;FOOTER_TEXT&quot;, cssString(footerText(report, labels)));</span>
+    }
+
+    private void metadataItem(StringBuilder html, String label, String value) {
+<span class="fc" id="L556">        html.append(&quot;&lt;div class=\&quot;metadata-item\&quot;&gt;&lt;span&gt;&quot;).append(text(label))</span>
+<span class="fc" id="L557">                .append(&quot;&lt;/span&gt;&lt;strong&gt;&quot;).append(text(value)).append(&quot;&lt;/strong&gt;&lt;/div&gt;&quot;);</span>
+<span class="fc" id="L558">    }</span>
+
+    private void evidence(StringBuilder html, String label, String value) {
+<span class="fc" id="L561">        html.append(&quot;&lt;dt&gt;&quot;).append(text(label)).append(&quot;&lt;/dt&gt;&lt;dd&gt;&quot;)</span>
+<span class="fc" id="L562">                .append(text(value)).append(&quot;&lt;/dd&gt;&quot;);</span>
+<span class="fc" id="L563">    }</span>
+
+    private String statusLabel(DecisionRationaleReport report, DecisionReportLabels labels) {
+<span class="pc bpc" id="L566" title="1 of 4 branches missed.">        return switch (report.status()) {</span>
+<span class="fc" id="L567">            case FINAL -&gt; labels.finalStatus();</span>
+<span class="fc" id="L568">            case FINAL_WITH_WARNINGS -&gt; labels.finalWarnings();</span>
+<span class="fc" id="L569">            case DRAFT_INCOMPLETE -&gt; labels.draft();</span>
+<span class="nc" id="L570">            case NO_RESULT -&gt; labels.noResult();</span>
+        };
+    }
+
+    private String disposition(ChildDecision child, DecisionReportLabels labels) {
+<span class="pc bpc" id="L575" title="1 of 4 branches missed.">        return switch (child.disposition()) {</span>
+<span class="fc" id="L576">            case CONTINUED -&gt; labels.continued();</span>
+<span class="fc" id="L577">            case LEAF_CANDIDATE -&gt; labels.leafCandidate();</span>
+<span class="fc" id="L578">            case REJECTED -&gt; labels.rejected();</span>
+<span class="nc" id="L579">            case NOT_EVALUATED -&gt; labels.notEvaluated();</span>
+        };
+    }
+
+    private String reasonSource(
+            DecisionRationaleReport.ReasonSource source,
+            DecisionReportLabels labels) {
+<span class="pc bpc" id="L586" title="1 of 2 branches missed.">        if (source == null) {</span>
+<span class="nc" id="L587">            return labels.missingReason();</span>
+        }
+<span class="pc bpc" id="L589" title="1 of 3 branches missed.">        return switch (source) {</span>
+<span class="fc" id="L590">            case AI_SCORING -&gt; labels.aiReason();</span>
+<span class="fc" id="L591">            case DETERMINISTIC_TRACE -&gt; labels.deterministicReason();</span>
+<span class="nc" id="L592">            case MISSING -&gt; labels.missingReason();</span>
+        };
+    }
+
+    private String rowClass(ChildDecision child) {
+<span class="fc bfc" id="L597" title="All 2 branches covered.">        if (child.leadingSibling()) {</span>
+<span class="fc" id="L598">            return &quot;row-leading&quot;;</span>
+        }
+<span class="pc bpc" id="L600" title="1 of 3 branches missed.">        return switch (child.disposition()) {</span>
+<span class="fc" id="L601">            case REJECTED -&gt; &quot;row-rejected&quot;;</span>
+<span class="nc" id="L602">            case NOT_EVALUATED -&gt; &quot;row-missing&quot;;</span>
+<span class="fc" id="L603">            default -&gt; &quot;&quot;;</span>
+        };
+    }
+
+    private String requirementVersion(DecisionRationaleReport report, DecisionReportLabels labels) {
+<span class="fc bfc" id="L608" title="All 2 branches covered.">        if (report.metadata().requirementVersionNumber() == null) {</span>
+<span class="fc" id="L609">            return &quot;—&quot;;</span>
+        }
+<span class="fc" id="L611">        StringBuilder value = new StringBuilder(&quot;v&quot;)</span>
+<span class="fc" id="L612">                .append(report.metadata().requirementVersionNumber());</span>
+<span class="pc bpc" id="L613" title="1 of 2 branches missed.">        if (report.metadata().requirementId() != null) {</span>
+<span class="fc" id="L614">            value.append(&quot; · &quot;).append(labels.requirementId()).append(' ').append(report.metadata().requirementId());</span>
+        }
+<span class="pc bpc" id="L616" title="1 of 2 branches missed.">        if (report.metadata().projectId() != null) {</span>
+<span class="fc" id="L617">            value.append(&quot; · &quot;).append(labels.project()).append(' ').append(report.metadata().projectId());</span>
+        }
+<span class="fc" id="L619">        return value.toString();</span>
+    }
+
+    private String footerText(DecisionRationaleReport report, DecisionReportLabels labels) {
+<span class="fc" id="L623">        return labels.generatedNotice() + &quot; · &quot;</span>
+<span class="fc" id="L624">                + formatInstant(report.metadata().generatedAt(), report.metadata().reportTimeZone())</span>
+<span class="fc" id="L625">                + &quot; · &quot; + report.metadata().generatedBy()</span>
+<span class="fc" id="L626">                + &quot; · Taxonomy &quot; + report.metadata().taxonomyApplicationVersion()</span>
+<span class="fc" id="L627">                + &quot; · &quot; + report.metadata().taxonomyDataVersion();</span>
+    }
+
+    private String formatInstant(Instant instant, String zone) {
+<span class="fc bfc" id="L631" title="All 2 branches covered.">        if (instant == null) {</span>
+<span class="fc" id="L632">            return &quot;—&quot;;</span>
+        }
+        ZoneId zoneId;
+        try {
+<span class="fc" id="L636">            zoneId = ZoneId.of(zone);</span>
+<span class="nc" id="L637">        } catch (Exception ignored) {</span>
+<span class="nc" id="L638">            zoneId = ZoneOffset.UTC;</span>
+<span class="fc" id="L639">        }</span>
+<span class="fc" id="L640">        return DateTimeFormatter.ofPattern(&quot;dd.MM.yyyy HH:mm:ss z&quot;, Locale.GERMANY)</span>
+<span class="fc" id="L641">                .withZone(zoneId)</span>
+<span class="fc" id="L642">                .format(instant);</span>
+    }
+
+    private String score(Double value) {
+<span class="pc bpc" id="L646" title="1 of 2 branches missed.">        return value == null ? &quot;—&quot; : com.taxonomy.dto.AnalysisPercentages.display(value).replace(&quot;%&quot;, &quot; %&quot;);</span>
+    }
+
+    private String percent(Double value) {
+<span class="fc bfc" id="L650" title="All 2 branches covered.">        if (value == null) {</span>
+<span class="fc" id="L651">            return &quot;—&quot;;</span>
+        }
+<span class="fc" id="L653">        return com.taxonomy.dto.AnalysisPercentages.display(value).replace(&quot;%&quot;, &quot; %&quot;);</span>
+    }
+
+    private String shortHash(String value) {
+<span class="pc bpc" id="L657" title="2 of 4 branches missed.">        if (value == null || value.isBlank()) {</span>
+<span class="nc" id="L658">            return &quot;—&quot;;</span>
+        }
+<span class="fc bfc" id="L660" title="All 2 branches covered.">        return value.length() &lt;= 16 ? value : value.substring(0, 16) + &quot;…&quot;;</span>
+    }
+
+    private String text(String value) {
+<span class="pc bpc" id="L664" title="1 of 2 branches missed.">        if (value == null) {</span>
+<span class="nc" id="L665">            return &quot;&quot;;</span>
+        }
+<span class="fc" id="L667">        return value.replace(&quot;&amp;&quot;, &quot;&amp;amp;&quot;)</span>
+<span class="fc" id="L668">                .replace(&quot;&lt;&quot;, &quot;&amp;lt;&quot;)</span>
+<span class="fc" id="L669">                .replace(&quot;&gt;&quot;, &quot;&amp;gt;&quot;)</span>
+<span class="fc" id="L670">                .replace(&quot;\&quot;&quot;, &quot;&amp;quot;&quot;)</span>
+<span class="fc" id="L671">                .replace(&quot;'&quot;, &quot;&amp;#39;&quot;);</span>
+    }
+
+    static String cssString(String value) {
+<span class="pc bpc" id="L675" title="1 of 2 branches missed.">        if (value == null) return &quot;&quot;;</span>
+        // This CSS string is embedded in an HTML style element. A literal less-than sign
+        // could close the element even when it appears inside CSS quotes.
+<span class="fc" id="L678">        return value.replace(&quot;\\&quot;, &quot;\\\\&quot;).replace(&quot;\&quot;&quot;, &quot;\\\&quot;&quot;).replace(&quot;&lt;&quot;, &quot;\\3C &quot;)</span>
+<span class="fc" id="L679">                .replace(&quot;\r&quot;, &quot;\\D &quot;).replace(&quot;\n&quot;, &quot;\\A &quot;).replace(&quot;\f&quot;, &quot;\\C &quot;);</span>
+    }
+
+    private String attr(String value) {
+<span class="fc" id="L683">        return text(value);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

@@ -1,0 +1,232 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ExportTheme.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-export</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.export</a> &gt; <span class="el_source">ExportTheme.java</span></div><h1>ExportTheme.java</h1><pre class="source lang-java linenums">package com.taxonomy.export;
+
+import java.awt.Color;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+import java.util.regex.Pattern;
+import static com.taxonomy.export.DiagramPresentation.layer;
+
+/**
+ * Immutable export interpretation of the shared customer color tokens. This is
+ * deliberately not a CSS engine: only literal opaque hexadecimal declarations
+ * in top-level, unqualified {@code :root} blocks are portable to vector exports.
+ */
+public final class ExportTheme {
+<span class="fc" id="L18">    private static final ExportTheme DEFAULT = new ExportTheme(Map.of());</span>
+<span class="fc" id="L19">    private static final Set&lt;String&gt; SURFACES = Set.of(&quot;navigation-background&quot;, &quot;navigation-foreground&quot;,</span>
+            &quot;surface-background&quot;, &quot;surface-foreground&quot;, &quot;panel-background&quot;, &quot;panel-border&quot;,
+            &quot;canvas-background&quot;, &quot;canvas-foreground&quot;);
+<span class="fc" id="L22">    private static final Set&lt;String&gt; LAYERS = Set.of(&quot;cap&quot;, &quot;proc&quot;, &quot;svc&quot;, &quot;app&quot;, &quot;info&quot;, &quot;comm&quot;, &quot;system&quot;, &quot;component&quot;, &quot;default&quot;);</span>
+<span class="fc" id="L23">    private static final Set&lt;String&gt; RELATIONS = Set.of(&quot;supports&quot;, &quot;realizes&quot;, &quot;realized-by&quot;, &quot;uses&quot;, &quot;requires&quot;,</span>
+            &quot;depends-on&quot;, &quot;fulfills&quot;, &quot;consumes&quot;, &quot;assigned-to&quot;, &quot;produces&quot;, &quot;communicates-with&quot;, &quot;contains&quot;, &quot;related-to&quot;);
+<span class="fc" id="L25">    private static final Pattern HEX = Pattern.compile(&quot;#[0-9a-fA-F]{3}(?:[0-9a-fA-F]{3})?&quot;);</span>
+    private final Map&lt;String, String&gt; colors;
+
+<span class="fc" id="L28">    private ExportTheme(Map&lt;String, String&gt; colors) {</span>
+<span class="fc" id="L29">        this.colors = Map.copyOf(colors);</span>
+<span class="fc" id="L30">    }</span>
+
+<span class="fc" id="L32">    public static ExportTheme defaults() { return DEFAULT; }</span>
+
+    public static ExportTheme fromStylesheet(String css) {
+<span class="pc bpc" id="L35" title="1 of 4 branches missed.">        if (css == null || css.isBlank()) return DEFAULT;</span>
+<span class="fc" id="L36">        var values = new HashMap&lt;String, String&gt;();</span>
+<span class="fc" id="L37">        var priorities = new HashMap&lt;String, Boolean&gt;();</span>
+<span class="fc" id="L38">        StringBuilder clean = new StringBuilder(css.length());</span>
+<span class="fc" id="L39">        int depth = 0, parentheses = 0, brackets = 0, selectorStart = 0, bodyStart = -1;</span>
+<span class="fc" id="L40">        boolean root = false;</span>
+<span class="fc" id="L41">        char quote = 0;</span>
+<span class="fc bfc" id="L42" title="All 2 branches covered.">        for (int index = 0; index &lt; css.length(); index++) {</span>
+<span class="fc" id="L43">            char c = css.charAt(index);</span>
+<span class="fc bfc" id="L44" title="All 2 branches covered.">            if (quote != 0) {</span>
+<span class="fc" id="L45">                clean.append(c);</span>
+<span class="pc bpc" id="L46" title="3 of 4 branches missed.">                if (c == '\\' &amp;&amp; index + 1 &lt; css.length()) clean.append(css.charAt(++index));</span>
+<span class="fc bfc" id="L47" title="All 2 branches covered.">                else if (c == quote) quote = 0;</span>
+                continue;
+            }
+<span class="pc bpc" id="L50" title="1 of 6 branches missed.">            if (c == '/' &amp;&amp; index + 1 &lt; css.length() &amp;&amp; css.charAt(index + 1) == '*') {</span>
+<span class="fc" id="L51">                int end = css.indexOf(&quot;*/&quot;, index + 2);</span>
+<span class="pc bpc" id="L52" title="1 of 2 branches missed.">                if (end &lt; 0) break;</span>
+<span class="fc" id="L53">                clean.append(' ');</span>
+<span class="fc" id="L54">                index = end + 1;</span>
+<span class="fc" id="L55">                continue;</span>
+            }
+<span class="fc bfc" id="L57" title="All 2 branches covered.">            if (c == '\\') {</span>
+<span class="fc" id="L58">                clean.append(c);</span>
+<span class="pc bpc" id="L59" title="1 of 2 branches missed.">                if (index + 1 &lt; css.length()) clean.append(css.charAt(++index));</span>
+                continue;
+            }
+<span class="fc bfc" id="L62" title="All 4 branches covered.">            if (c == '\'' || c == '&quot;') { quote = c; clean.append(c); continue; }</span>
+<span class="fc bfc" id="L63" title="All 2 branches covered.">            if (c == '(') parentheses++;</span>
+<span class="fc bfc" id="L64" title="All 2 branches covered.">            else if (c == ')') parentheses = Math.max(0, parentheses - 1);</span>
+<span class="fc bfc" id="L65" title="All 2 branches covered.">            else if (c == '[') brackets++;</span>
+<span class="fc bfc" id="L66" title="All 2 branches covered.">            else if (c == ']') brackets = Math.max(0, brackets - 1);</span>
+            // A URL, function or attribute prelude cannot introduce a root rule.
+<span class="fc bfc" id="L68" title="All 4 branches covered.">            if (parentheses &gt; 0 || brackets &gt; 0) { clean.append(c); continue; }</span>
+<span class="fc bfc" id="L69" title="All 2 branches covered.">            if (c == '{') {</span>
+<span class="fc bfc" id="L70" title="All 2 branches covered.">                if (depth == 0) {</span>
+<span class="fc" id="L71">                    root = clean.substring(selectorStart).strip().equals(&quot;:root&quot;);</span>
+<span class="fc" id="L72">                    bodyStart = clean.length() + 1;</span>
+<span class="fc" id="L73">                } else root = false; // Nested rules are outside the supported subset.</span>
+<span class="fc" id="L74">                depth++;</span>
+<span class="pc bpc" id="L75" title="1 of 4 branches missed.">            } else if (c == '}' &amp;&amp; depth &gt; 0) {</span>
+<span class="fc" id="L76">                depth--;</span>
+<span class="fc bfc" id="L77" title="All 2 branches covered.">                if (depth == 0) {</span>
+<span class="fc bfc" id="L78" title="All 2 branches covered.">                    if (root) readDeclarations(clean.substring(bodyStart), values, priorities);</span>
+<span class="fc" id="L79">                    selectorStart = clean.length() + 1;</span>
+<span class="fc" id="L80">                    root = false;</span>
+                }
+<span class="fc bfc" id="L82" title="All 4 branches covered.">            } else if (c == ';' &amp;&amp; depth == 0) selectorStart = clean.length() + 1;</span>
+<span class="fc" id="L83">            clean.append(c);</span>
+        }
+<span class="fc bfc" id="L85" title="All 2 branches covered.">        return values.isEmpty() ? DEFAULT : new ExportTheme(values);</span>
+    }
+
+    private static void readDeclarations(String declarations, Map&lt;String, String&gt; values, Map&lt;String, Boolean&gt; priorities) {
+<span class="fc" id="L89">        var entries = new ArrayList&lt;String&gt;();</span>
+<span class="fc" id="L90">        char quote = 0;</span>
+<span class="fc" id="L91">        int parentheses = 0, brackets = 0, start = 0;</span>
+<span class="fc bfc" id="L92" title="All 2 branches covered.">        for (int index = 0; index &lt; declarations.length(); index++) {</span>
+<span class="fc" id="L93">            char c = declarations.charAt(index);</span>
+<span class="fc bfc" id="L94" title="All 2 branches covered.">            if (quote != 0) {</span>
+<span class="pc bpc" id="L95" title="1 of 2 branches missed.">                if (c == '\\') index++;</span>
+<span class="fc bfc" id="L96" title="All 2 branches covered.">                else if (c == quote) quote = 0;</span>
+<span class="fc bfc" id="L97" title="All 2 branches covered.">            } else if (c == '\\') index++;</span>
+<span class="pc bpc" id="L98" title="1 of 4 branches missed.">            else if (c == '\'' || c == '&quot;') quote = c;</span>
+<span class="fc bfc" id="L99" title="All 2 branches covered.">            else if (c == '(') parentheses++;</span>
+<span class="fc bfc" id="L100" title="All 2 branches covered.">            else if (c == ')') parentheses = Math.max(0, parentheses - 1);</span>
+<span class="fc bfc" id="L101" title="All 2 branches covered.">            else if (c == '[') brackets++;</span>
+<span class="fc bfc" id="L102" title="All 2 branches covered.">            else if (c == ']') brackets = Math.max(0, brackets - 1);</span>
+<span class="fc bfc" id="L103" title="All 6 branches covered.">            else if (c == ';' &amp;&amp; parentheses == 0 &amp;&amp; brackets == 0) {</span>
+<span class="fc" id="L104">                entries.add(declarations.substring(start, index));</span>
+<span class="fc" id="L105">                start = index + 1;</span>
+            }
+        }
+<span class="pc bpc" id="L108" title="3 of 6 branches missed.">        if (quote == 0 &amp;&amp; parentheses == 0 &amp;&amp; brackets == 0) entries.add(declarations.substring(start));</span>
+<span class="fc bfc" id="L109" title="All 2 branches covered.">        for (String declaration : entries) {</span>
+<span class="fc" id="L110">            int colon = declaration.indexOf(':');</span>
+<span class="fc bfc" id="L111" title="All 2 branches covered.">            if (colon &lt; 0) continue;</span>
+<span class="fc" id="L112">            String name = declaration.substring(0, colon).strip();</span>
+<span class="fc bfc" id="L113" title="All 2 branches covered.">            if (!supported(name)) continue;</span>
+<span class="fc" id="L114">            String value = declaration.substring(colon + 1).strip();</span>
+<span class="fc" id="L115">            boolean important = value.matches(&quot;(?is).*!\\s*important\\s*$&quot;);</span>
+<span class="fc bfc" id="L116" title="All 2 branches covered.">            if (important) value = value.replaceFirst(&quot;(?is)\\s*!\\s*important\\s*$&quot;, &quot;&quot;).strip();</span>
+<span class="pc bpc" id="L117" title="1 of 6 branches missed.">            if (!HEX.matcher(value).matches() || (priorities.getOrDefault(name, false) &amp;&amp; !important)) continue;</span>
+<span class="fc bfc" id="L118" title="All 2 branches covered.">            if (value.length() == 4) value = &quot;#&quot; + value.charAt(1) + value.charAt(1)</span>
+<span class="fc" id="L119">                    + value.charAt(2) + value.charAt(2) + value.charAt(3) + value.charAt(3);</span>
+<span class="fc" id="L120">            values.put(name, value.toUpperCase(Locale.ROOT));</span>
+<span class="fc" id="L121">            priorities.put(name, important);</span>
+<span class="fc" id="L122">        }</span>
+<span class="fc" id="L123">    }</span>
+
+    private static boolean supported(String name) {
+<span class="fc bfc" id="L126" title="All 2 branches covered.">        if (!name.startsWith(&quot;--taxonomy-&quot;)) return false;</span>
+<span class="fc" id="L127">        String key = name.substring(&quot;--taxonomy-&quot;.length());</span>
+<span class="fc bfc" id="L128" title="All 2 branches covered.">        if (SURFACES.contains(key)) return true;</span>
+<span class="pc bpc" id="L129" title="1 of 4 branches missed.">        if (key.startsWith(&quot;layer-&quot;) &amp;&amp; key.endsWith(&quot;-surface&quot;)) {</span>
+<span class="fc" id="L130">            int start = &quot;layer-&quot;.length(), end = key.length() - &quot;-surface&quot;.length();</span>
+<span class="fc bfc" id="L131" title="All 4 branches covered.">            return end &gt; start &amp;&amp; LAYERS.contains(key.substring(start, end));</span>
+        }
+<span class="pc bpc" id="L133" title="2 of 4 branches missed.">        return key.startsWith(&quot;relation-&quot;) &amp;&amp; RELATIONS.contains(key.substring(9));</span>
+    }
+
+<span class="fc" id="L136">    public String canvasBackground() { return color(&quot;canvas-background&quot;, &quot;#ffffff&quot;); }</span>
+
+    public String canvasText(String fallback) {
+<span class="fc" id="L139">        String preferred = color(&quot;canvas-foreground&quot;, fallback);</span>
+<span class="pc bpc" id="L140" title="1 of 4 branches missed.">        return has(&quot;canvas-background&quot;) || has(&quot;canvas-foreground&quot;) ? readable(canvasBackground(), preferred) : preferred;</span>
+    }
+
+    public String nodeFill(String type) {
+<span class="fc" id="L144">        return color(&quot;layer-&quot; + layer(type) + &quot;-surface&quot;, DiagramPresentation.fill(type));</span>
+    }
+
+    public String nodeText(String type, String fallback) {
+<span class="fc bfc" id="L148" title="All 2 branches covered.">        return has(&quot;layer-&quot; + layer(type) + &quot;-surface&quot;) ? readable(nodeFill(type), fallback) : fallback;</span>
+    }
+
+    public String nodeBorder(String type, boolean anchor) {
+<span class="fc bfc" id="L152" title="All 2 branches covered.">        return nodeBorder(type, anchor, anchor ? &quot;#172554&quot; : &quot;#64748b&quot;, nodeFill(type));</span>
+    }
+
+    /** Native formats can supply their existing stroke and actual rendered background. */
+    public String nodeBorder(String type, boolean anchor, String fallback, String background) {
+<span class="fc bfc" id="L157" title="All 2 branches covered.">        String border = color(anchor ? &quot;navigation-background&quot; : &quot;panel-border&quot;, fallback);</span>
+<span class="pc bpc" id="L158" title="1 of 4 branches missed.">        return has(&quot;layer-&quot; + layer(type) + &quot;-surface&quot;) || !border.equals(fallback)</span>
+<span class="fc" id="L159">                ? contrasting(background, border, 3) : border;</span>
+    }
+
+    public String relationshipStroke(String type, boolean proposed) {
+<span class="fc bfc" id="L163" title="All 2 branches covered.">        String stroke = relationshipStroke(type, proposed ? &quot;#9333ea&quot; : &quot;#586174&quot;, canvasBackground());</span>
+<span class="pc bpc" id="L164" title="1 of 2 branches missed.">        return has(&quot;canvas-background&quot;) ? contrasting(canvasBackground(), stroke, 3) : stroke;</span>
+    }
+
+    public String relationshipStroke(String type, String fallback, String background) {
+<span class="pc bpc" id="L168" title="1 of 2 branches missed.">        String key = &quot;relation-&quot; + (type == null ? &quot;&quot; : type.toLowerCase(Locale.ROOT).replace('_', '-'));</span>
+<span class="fc" id="L169">        String stroke = color(key, fallback);</span>
+<span class="fc bfc" id="L170" title="All 2 branches covered.">        return has(key) ? contrasting(background, stroke, 3) : stroke;</span>
+    }
+
+    /** Self-contained, bounded HTML surface branding; no operator CSS is embedded. */
+    public String htmlReportStyles() {
+<span class="fc bfc" id="L175" title="All 4 branches covered.">        if (SURFACES.stream().filter(key -&gt; !key.startsWith(&quot;canvas-&quot;)).noneMatch(this::has)) return &quot;&quot;;</span>
+<span class="fc" id="L176">        String paper = color(&quot;surface-background&quot;, &quot;#FFFFFF&quot;);</span>
+<span class="fc" id="L177">        String ink = readable(paper, color(&quot;surface-foreground&quot;, &quot;#26303A&quot;));</span>
+<span class="fc" id="L178">        String panel = color(&quot;panel-background&quot;, paper);</span>
+<span class="fc" id="L179">        String panelInk = readable(panel, ink);</span>
+<span class="fc" id="L180">        String accent = color(&quot;navigation-background&quot;, &quot;#0B1F33&quot;);</span>
+<span class="fc" id="L181">        String heading = readable(paper, accent);</span>
+<span class="fc" id="L182">        String accentInk = readable(accent, color(&quot;navigation-foreground&quot;, &quot;#FFFFFF&quot;));</span>
+<span class="fc" id="L183">        String border = color(&quot;panel-border&quot;, &quot;#CDD5DC&quot;);</span>
+<span class="fc" id="L184">        return &quot;&lt;style data-taxonomy-export-theme&gt;&quot;</span>
+                + &quot;:root{--navy:&quot; + heading + &quot;;--ink:&quot; + ink + &quot;;--muted:&quot; + ink
+                + &quot;;--paper:&quot; + paper + &quot;;--line:&quot; + border + &quot;}&quot;
+                + &quot;html,body{background:&quot; + paper + &quot;;color:&quot; + ink + &quot;}&quot;
+                + &quot;a:link,a:visited{color:inherit;text-decoration:underline}&quot;
+                + &quot;.small-label{color:&quot; + ink + &quot;}&quot;
+                + &quot;h1,h2,h3,h4,strong,.eyebrow,.section-kicker,.chapter-number{color:&quot; + heading + &quot;;border-color:&quot; + border + &quot;}&quot;
+                + &quot;th,.leading-leaf{background:&quot; + accent + &quot;;color:&quot; + accentInk + &quot;}&quot;
+                + &quot;th strong,.leading-leaf strong,.leading-leaf .small-label{color:&quot; + accentInk + &quot;}&quot;
+                + &quot;td,th,hr,pre{border-color:&quot; + border + &quot;}&quot;
+                + &quot;tbody tr:nth-child(even),code,pre,.mermaid,.metadata-item,.requirement-card,.rationale-grid&gt;div,.running-footer&quot;
+                + &quot;{background:&quot; + panel + &quot;;color:&quot; + panelInk + &quot;}&quot;
+                + &quot;.metadata-item span,.metadata-item strong,.requirement-card h2,.rationale-grid h3,.rationale-grid strong,.rationale-grid .muted{color:&quot; + panelInk + &quot;}&quot;
+                + &quot;.title-page{background:&quot; + paper + &quot;}.subtitle,.parent-description,.classification-note{color:&quot; + ink + &quot;}&quot;
+                + &quot;.muted,.row-rejected,.row-missing{color:inherit}td strong{color:inherit}&quot;
+                // Score, warning and leading-row backgrounds keep their semantic palette.
+                + &quot;.score-orb,.parent-score{color:#FFFFFF}.warning-box,.warning-box h3{color:#745400}&quot;
+                + &quot;.row-leading,.row-leading td{color:#0B1F33}.row-leading code{background:#E1F4F3;color:#0B1F33}&quot;
+                + &quot;&lt;/style&gt;&quot;;
+    }
+
+<span class="fc" id="L205">    private boolean has(String key) { return colors.containsKey(&quot;--taxonomy-&quot; + key); }</span>
+<span class="fc" id="L206">    private String color(String key, String fallback) { return colors.getOrDefault(&quot;--taxonomy-&quot; + key, fallback); }</span>
+
+<span class="fc" id="L208">    private static String readable(String background, String preferred) { return contrasting(background, preferred, 4.5); }</span>
+
+    private static String contrasting(String background, String preferred, double minimum) {
+<span class="fc bfc" id="L211" title="All 2 branches covered.">        if (contrast(background, preferred) &gt;= minimum) return preferred;</span>
+<span class="fc bfc" id="L212" title="All 2 branches covered.">        if (contrast(background, &quot;#FFFFFF&quot;) &gt;= minimum) return &quot;#FFFFFF&quot;;</span>
+<span class="fc bfc" id="L213" title="All 2 branches covered.">        if (contrast(background, &quot;#17212B&quot;) &gt;= minimum) return &quot;#17212B&quot;;</span>
+<span class="fc" id="L214">        return &quot;#000000&quot;;</span>
+    }
+
+    private static double contrast(String first, String second) {
+<span class="fc" id="L218">        double a = luminance(first), b = luminance(second);</span>
+<span class="fc" id="L219">        return (Math.max(a, b) + .05) / (Math.min(a, b) + .05);</span>
+    }
+
+    private static double luminance(String hex) {
+<span class="fc" id="L223">        Color color = Color.decode(hex);</span>
+<span class="fc" id="L224">        return .2126 * linear(color.getRed()) + .7152 * linear(color.getGreen()) + .0722 * linear(color.getBlue());</span>
+    }
+
+    private static double linear(int value) {
+<span class="fc" id="L228">        double channel = value / 255.0;</span>
+<span class="fc bfc" id="L229" title="All 2 branches covered.">        return channel &lt;= .04045 ? channel / 12.92 : Math.pow((channel + .055) / 1.055, 2.4);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

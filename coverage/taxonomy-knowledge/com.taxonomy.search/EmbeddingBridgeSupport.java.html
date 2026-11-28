@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>EmbeddingBridgeSupport.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-knowledge</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.search</a> &gt; <span class="el_source">EmbeddingBridgeSupport.java</span></div><h1>EmbeddingBridgeSupport.java</h1><pre class="source lang-java linenums">package com.taxonomy.search;
+
+import com.taxonomy.search.config.SpringContextHolder;
+import com.taxonomy.catalog.service.LocalEmbeddingService;
+import com.taxonomy.catalog.service.AppInitializationStateService;
+import com.taxonomy.catalog.model.TaxonomyNode;
+import com.taxonomy.catalog.model.TaxonomyRelation;
+import org.hibernate.search.engine.backend.document.DocumentElement;
+import org.hibernate.search.engine.backend.document.IndexFieldReference;
+import org.hibernate.search.engine.backend.types.VectorSimilarity;
+import org.hibernate.search.mapper.pojo.bridge.binding.TypeBindingContext;
+
+import java.util.function.Function;
+import java.util.Map;
+
+/**
+ * Shared utilities for embedding binders ({@link NodeEmbeddingBinder} and
+ * {@link RelationEmbeddingBinder}).
+ *
+ * &lt;p&gt;Eliminates duplication of the common embedding-field creation and the
+ * graceful-degradation write pattern that both binders share.
+ */
+public final class EmbeddingBridgeSupport {
+
+    /** The vector dimension used by the ONNX embedding model (both supported profiles). */
+    static final int VECTOR_DIMENSION = 384;
+
+<span class="fc" id="L28">    record PreparedEmbedding(String contentKey, float[] vector, String modelKey) { }</span>
+
+<span class="fc" id="L30">    private static final ThreadLocal&lt;Map&lt;String, PreparedEmbedding&gt;&gt; prepared = new ThreadLocal&lt;&gt;();</span>
+
+    private EmbeddingBridgeSupport() { /* utility class */ }
+
+    /**
+     * Creates the {@code &quot;embedding&quot;} float-vector index field on the given binding context.
+     *
+     * @param context the Hibernate Search type-binding context
+     * @return reference to the created embedding field
+     */
+    public static IndexFieldReference&lt;float[]&gt; createEmbeddingField(TypeBindingContext context) {
+<span class="fc" id="L41">        return context.indexSchemaElement()</span>
+<span class="fc" id="L42">                .field(&quot;embedding&quot;,</span>
+<span class="fc" id="L43">                        f -&gt; f.asFloatVector().dimension(VECTOR_DIMENSION)</span>
+<span class="fc" id="L44">                                .vectorSimilarity(VectorSimilarity.COSINE))</span>
+<span class="fc" id="L45">                .toReference();</span>
+    }
+
+    /** Keyword identifying the exact model bytes and inference contract of this vector. */
+    public static IndexFieldReference&lt;String&gt; createEmbeddingModelField(TypeBindingContext context) {
+<span class="fc" id="L50">        return context.indexSchemaElement().field(&quot;embeddingModel&quot;, f -&gt; f.asString()).toReference();</span>
+    }
+
+    /**
+     * Writes an embedding vector to the Lucene document only when semantic embeddings were
+     * explicitly enabled and the local service is available. Otherwise the document is indexed
+     * without a vector and no model initialisation or runtime download is attempted.
+     *
+     * @param target         the Lucene document being written
+     * @param embeddingField reference to the {@code &quot;embedding&quot;} index field
+     * @param entity         the JPA entity being indexed
+     * @param textBuilder    function that converts the entity to the enriched text used for
+     *                       vector computation
+     * @param &lt;T&gt;            entity type
+     */
+    public static &lt;T&gt; void writeEmbedding(DocumentElement target,
+                                           IndexFieldReference&lt;float[]&gt; embeddingField,
+                                           IndexFieldReference&lt;String&gt; modelField,
+                                           T entity,
+                                           Function&lt;T, String&gt; textBuilder) {
+        PreparedEmbedding value;
+<span class="fc" id="L71">        Map&lt;String, PreparedEmbedding&gt; refresh = prepared.get();</span>
+<span class="fc bfc" id="L72" title="All 2 branches covered.">        if (refresh != null) {</span>
+<span class="fc" id="L73">            value = refresh.get(contentKey(entity));</span>
+<span class="pc bpc" id="L74" title="1 of 2 branches missed.">            if (value == null) throw new IllegalStateException(&quot;Embedding refresh source changed before indexing&quot;);</span>
+        } else {
+<span class="fc" id="L76">            value = compute(entity, textBuilder, null);</span>
+        }
+<span class="fc bfc" id="L78" title="All 2 branches covered.">        if (value.vector() != null) {</span>
+            try {
+<span class="fc" id="L80">                target.addValue(embeddingField, value.vector());</span>
+<span class="fc" id="L81">                target.addValue(modelField, value.modelKey());</span>
+<span class="fc" id="L82">            } catch (Exception | LinkageError failure) {</span>
+<span class="fc" id="L83">                recordFailure(entity, failure);</span>
+<span class="fc" id="L84">            }</span>
+        }
+<span class="fc" id="L86">    }</span>
+
+    /** Inference runs before acquiring any database write locks. */
+    static PreparedEmbedding prepare(Object entity) {
+<span class="fc bfc" id="L90" title="All 2 branches covered.">        if (entity instanceof TaxonomyNode node) {</span>
+<span class="fc" id="L91">            return compute(node, NodeEmbeddingBinder.Bridge::buildEnrichedText, CatalogueIndexFingerprint.node(node));</span>
+        }
+<span class="pc bpc" id="L93" title="1 of 2 branches missed.">        if (entity instanceof TaxonomyRelation relation) {</span>
+<span class="fc" id="L94">            return compute(relation, RelationEmbeddingBinder.Bridge::buildEnrichedText,</span>
+<span class="fc" id="L95">                    CatalogueIndexFingerprint.relation(relation));</span>
+        }
+<span class="nc" id="L97">        throw new IllegalArgumentException(&quot;Unsupported catalogue index entity&quot;);</span>
+    }
+
+    static String contentKey(Object entity) {
+<span class="fc bfc" id="L101" title="All 2 branches covered.">        if (entity instanceof TaxonomyNode node) return CatalogueIndexFingerprint.node(node);</span>
+<span class="pc bpc" id="L102" title="1 of 2 branches missed.">        if (entity instanceof TaxonomyRelation relation) return CatalogueIndexFingerprint.relation(relation);</span>
+<span class="nc" id="L103">        throw new IllegalArgumentException(&quot;Unsupported catalogue index entity&quot;);</span>
+    }
+
+    /** Scope must end before this worker can index an unrelated ORM transaction. */
+    static void withPrepared(Map&lt;String, PreparedEmbedding&gt; values, Runnable indexing) {
+<span class="fc" id="L108">        Map&lt;String, PreparedEmbedding&gt; previous = prepared.get();</span>
+<span class="fc" id="L109">        prepared.set(values);</span>
+        try {
+<span class="fc" id="L111">            indexing.run();</span>
+        } finally {
+<span class="pc bpc" id="L113" title="1 of 2 branches missed.">            if (previous == null) prepared.remove();</span>
+<span class="nc" id="L114">            else prepared.set(previous);</span>
+        }
+<span class="fc" id="L116">    }</span>
+
+    private static &lt;T&gt; PreparedEmbedding compute(T entity, Function&lt;T, String&gt; textBuilder, String key) {
+        try {
+<span class="fc" id="L120">            var startup = SpringContextHolder.getBean(AppInitializationStateService.class);</span>
+<span class="fc bfc" id="L121" title="All 4 branches covered.">            if (startup != null &amp;&amp; !startup.isReady()) return new PreparedEmbedding(key, null, null);</span>
+<span class="fc" id="L122">            LocalEmbeddingService svc = SpringContextHolder.getBean(LocalEmbeddingService.class);</span>
+<span class="pc bpc" id="L123" title="1 of 6 branches missed.">            if (svc == null || !svc.isEnabled() || !svc.isAvailable()) return new PreparedEmbedding(key, null, null);</span>
+<span class="fc" id="L124">            String text = textBuilder.apply(entity);</span>
+<span class="fc" id="L125">            float[] vector = svc.embedDocument(text);</span>
+<span class="fc" id="L126">            String identity = svc.embeddingIndexKey();</span>
+<span class="fc" id="L127">            return new PreparedEmbedding(key, vector, identity);</span>
+<span class="fc" id="L128">        } catch (Exception | LinkageError failure) {</span>
+<span class="fc" id="L129">            recordFailure(entity, failure);</span>
+<span class="fc" id="L130">            return new PreparedEmbedding(key, null, null);</span>
+        }
+    }
+
+    private static void recordFailure(Object entity, Throwable failure) {
+<span class="fc bfc" id="L135" title="All 2 branches covered.">        if (failure instanceof InterruptedException) Thread.currentThread().interrupt();</span>
+        // Keep full-text indexing usable, but invalidate semantic readiness.
+<span class="fc" id="L137">        var health = SpringContextHolder.getBean(EmbeddingIndexHealth.class);</span>
+<span class="fc bfc" id="L138" title="All 2 branches covered.">        if (health != null) health.recordFailure(entity);</span>
+<span class="fc" id="L139">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

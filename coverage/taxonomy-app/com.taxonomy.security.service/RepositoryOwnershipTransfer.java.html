@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RepositoryOwnershipTransfer.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.security.service</a> &gt; <span class="el_source">RepositoryOwnershipTransfer.java</span></div><h1>RepositoryOwnershipTransfer.java</h1><pre class="source lang-java linenums">package com.taxonomy.security.service;
+
+import com.taxonomy.backup.PrincipalId;
+import com.taxonomy.security.model.AppPrincipal;
+import com.taxonomy.workspace.repository.SystemRepositoryRepository;
+import com.taxonomy.workspace.service.RepositoryMembershipService;
+import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.http.HttpStatus;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.core.Authentication;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
+import tools.jackson.databind.json.JsonMapper;
+
+import java.time.Instant;
+import java.util.UUID;
+
+/** A personal catalogue handoff and its stable-identity audit share the membership transaction. */
+@Service
+public class RepositoryOwnershipTransfer {
+<span class="fc" id="L22">    private static final JsonMapper JSON = JsonMapper.builder().build();</span>
+    private final PrincipalIdentityService identities;
+    private final SystemRepositoryRepository repositories;
+    private final RepositoryMembershipService memberships;
+    private final JdbcTemplate jdbc;
+
+    public RepositoryOwnershipTransfer(PrincipalIdentityService identities, SystemRepositoryRepository repositories,
+<span class="fc" id="L29">                                       RepositoryMembershipService memberships, JdbcTemplate jdbc) {</span>
+<span class="fc" id="L30">        this.identities = identities;</span>
+<span class="fc" id="L31">        this.repositories = repositories;</span>
+<span class="fc" id="L32">        this.memberships = memberships;</span>
+<span class="fc" id="L33">        this.jdbc = jdbc;</span>
+<span class="fc" id="L34">    }</span>
+
+<span class="fc" id="L36">    public record Receipt(UUID auditId, UUID previousOwner, UUID newOwner, long version) { }</span>
+<span class="fc" id="L37">    private record Decision(String repositoryId, long previousVersion, long newVersion, String rationale, String outcome) { }</span>
+
+    @Transactional
+    public Receipt transfer(Authentication authentication, String repositoryId, PrincipalId target,
+                            long expectedVersion, String rationale) {
+<span class="pc bpc" id="L42" title="3 of 8 branches missed.">        if (target == null || expectedVersion &lt; 0 || rationale == null || rationale.isBlank()</span>
+<span class="pc bpc" id="L43" title="2 of 4 branches missed.">                || rationale.length() &gt; 256 || rationale.codePoints().anyMatch(Character::isISOControl)) {</span>
+<span class="fc" id="L44">            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, &quot;A target principal, catalogue revision and bounded rationale are required&quot;);</span>
+        }
+<span class="fc" id="L46">        var actor = identities.requireCurrent(authentication);</span>
+<span class="fc" id="L47">        var repository = repositories.findByRepositoryId(repositoryId)</span>
+<span class="pc" id="L48">                .orElseThrow(() -&gt; new ResponseStatusException(HttpStatus.NOT_FOUND));</span>
+<span class="fc" id="L49">        String scope = authentication.getName();</span>
+<span class="fc bfc" id="L50" title="All 2 branches covered.">        if (!memberships.ownsPersonalCatalogue(repository, scope, actor.value())) {</span>
+<span class="fc bfc" id="L51" title="All 2 branches covered.">            if (!memberships.canRead(repository, scope)) throw new ResponseStatusException(HttpStatus.NOT_FOUND);</span>
+<span class="fc" id="L52">            throw new ResponseStatusException(HttpStatus.FORBIDDEN, &quot;Only the current personal catalogue owner can transfer ownership&quot;);</span>
+        }
+<span class="fc bfc" id="L54" title="All 2 branches covered.">        if (repository.getVersion() != expectedVersion) throw stale();</span>
+<span class="pc" id="L55">        var previous = identities.find(actor).orElseThrow(() -&gt; new ResponseStatusException(HttpStatus.FORBIDDEN));</span>
+<span class="pc bpc" id="L56" title="1 of 2 branches missed.">        if (!scope.equals(previous.scopeKey())) throw new ResponseStatusException(HttpStatus.FORBIDDEN);</span>
+<span class="fc bfc" id="L57" title="All 2 branches covered.">        if (actor.equals(target)) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, &quot;Select a different owner&quot;);</span>
+<span class="fc" id="L58">        AppPrincipal successor = identities.find(target).filter(identities::hasCurrentLoginForScope)</span>
+<span class="fc" id="L59">                .orElseThrow(() -&gt; new ResponseStatusException(HttpStatus.BAD_REQUEST, &quot;The target requires an active identity&quot;));</span>
+        // Hold the authoritative identity rows until the ownership and audit transaction commits. An
+        // unlink or account disable either precedes this decision or waits until the handoff is durable.
+<span class="fc bfc" id="L62" title="All 2 branches covered.">        for (String principal : java.util.stream.Stream.of(actor.value().toString(), target.value().toString()).sorted().toList()) {</span>
+<span class="fc" id="L63">            jdbc.update(&quot;update app_principal set enabled=enabled where principal_id=?&quot;, principal);</span>
+<span class="fc" id="L64">            jdbc.update(&quot;update principal_binding set enabled=enabled where principal_id=?&quot;, principal);</span>
+<span class="fc" id="L65">            jdbc.update(&quot;update app_user set enabled=enabled where principal_id=?&quot;, principal);</span>
+<span class="fc" id="L66">        }</span>
+<span class="fc" id="L67">        identities.requireCurrent(authentication);</span>
+<span class="pc bpc" id="L68" title="1 of 2 branches missed.">        if (!identities.hasCurrentLoginForScope(successor)) throw new ResponseStatusException(HttpStatus.CONFLICT, &quot;The target is no longer active&quot;);</span>
+        try {
+<span class="fc" id="L70">            memberships.transferPersonalOwnership(repository, expectedVersion, scope, successor.scopeKey(), actor.value(), target.value());</span>
+<span class="fc" id="L71">            repositories.saveAndFlush(repository);</span>
+            // Revalidate the exact initiating login and the successor after waiting for the catalogue fence.
+<span class="pc bpc" id="L73" title="2 of 4 branches missed.">            if (!actor.equals(identities.requireCurrent(authentication)) || !identities.hasCurrentLoginForScope(successor)) {</span>
+<span class="nc" id="L74">                throw new ResponseStatusException(HttpStatus.CONFLICT, &quot;A principal is no longer active&quot;);</span>
+            }
+<span class="fc" id="L76">        } catch (OptimisticLockingFailureException conflict) {</span>
+<span class="fc" id="L77">            throw stale();</span>
+<span class="fc" id="L78">        }</span>
+<span class="fc" id="L79">        var audit = UUID.randomUUID();</span>
+<span class="fc" id="L80">        var detail = new Decision(repositoryId, expectedVersion, repository.getVersion(), rationale.strip(), &quot;TRANSFERRED&quot;);</span>
+<span class="fc" id="L81">        jdbc.update(&quot;&quot;&quot;</span>
+                insert into principal_access_audit(audit_id,actor_principal,target_principal,decision_kind,detail,occurred_at)
+                values (?, ?, ?, 'TRANSFER_REPOSITORY_OWNER', ?, ?)
+<span class="fc" id="L84">                &quot;&quot;&quot;, audit.toString(), actor.value().toString(), target.value().toString(),</span>
+<span class="fc" id="L85">                JSON.writeValueAsString(detail), Instant.now().toEpochMilli());</span>
+<span class="fc" id="L86">        return new Receipt(audit, actor.value(), target.value(), repository.getVersion());</span>
+    }
+
+    private static ResponseStatusException stale() {
+<span class="fc" id="L90">        return new ResponseStatusException(HttpStatus.CONFLICT, &quot;The repository catalogue version changed&quot;);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

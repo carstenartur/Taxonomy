@@ -1,0 +1,186 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PartialArchitectureProjection.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.usecase</a> &gt; <span class="el_source">PartialArchitectureProjection.java</span></div><h1>PartialArchitectureProjection.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.usecase;
+
+import com.taxonomy.dto.*;
+import java.util.*;
+import java.util.function.Function;
+
+/**
+ * Bounded, local-only projection of accepted assessments from the result's own catalogue snapshot.
+ * Complements an evidence view; never infers edges, consults live catalogue data or calls a provider.
+ */
+public final class PartialArchitectureProjection {
+    private static final int MAX_SNAPSHOT_NODES = 100_000;
+    private static final int MAX_PATH_DEPTH = 256;
+    private PartialArchitectureProjection() { }
+
+    public static RequirementArchitectureView complete(AnalysisResult result, RequirementArchitectureView view, int maxNodes) {
+<span class="fc" id="L17">        return complete(result, view, maxNodes, null);</span>
+    }
+
+    /** Supply retained navigation-only identities before the evidence projection selects its nodes. */
+    public static RequirementArchitectureView completeEvidence(AnalysisResult result,
+            Function&lt;Set&lt;String&gt;, RequirementArchitectureView&gt; evidenceProjection, int maxNodes) {
+<span class="fc" id="L23">        return complete(result, null, maxNodes, Objects.requireNonNull(evidenceProjection));</span>
+    }
+
+    private static RequirementArchitectureView complete(AnalysisResult result, RequirementArchitectureView view, int maxNodes,
+                                                        Function&lt;Set&lt;String&gt;, RequirementArchitectureView&gt; evidenceProjection) {
+<span class="fc" id="L28">        Objects.requireNonNull(result);</span>
+<span class="fc" id="L29">        var index = new LinkedHashMap&lt;String, TaxonomyNodeDto&gt;();</span>
+<span class="fc" id="L30">        var ambiguous = new HashSet&lt;String&gt;();</span>
+<span class="fc" id="L31">        var visited = Collections.newSetFromMap(new IdentityHashMap&lt;TaxonomyNodeDto, Boolean&gt;());</span>
+<span class="fc" id="L32">        var pending = new ArrayDeque&lt;TaxonomyNodeDto&gt;();</span>
+<span class="fc" id="L33">        boolean truncated = false;</span>
+<span class="fc bfc" id="L34" title="All 4 branches covered.">        if (result.getTree() != null) for (var root : result.getTree()) {</span>
+<span class="pc bpc" id="L35" title="1 of 2 branches missed.">            if (pending.size() &gt;= MAX_SNAPSHOT_NODES) { truncated = true; break; }</span>
+<span class="pc bpc" id="L36" title="1 of 2 branches missed.">            if (root != null) pending.addLast(root);</span>
+<span class="fc" id="L37">        }</span>
+<span class="fc" id="L38">        int inspected = 0;</span>
+<span class="pc bpc" id="L39" title="1 of 4 branches missed.">        while (!pending.isEmpty() &amp;&amp; inspected++ &lt; MAX_SNAPSHOT_NODES) {</span>
+<span class="fc" id="L40">            var node = pending.removeFirst();</span>
+<span class="pc bpc" id="L41" title="1 of 2 branches missed.">            if (!visited.add(node)) continue;</span>
+<span class="fc" id="L42">            String code = node.getCode();</span>
+<span class="pc bpc" id="L43" title="2 of 6 branches missed.">            if (code != null &amp;&amp; !code.isBlank() &amp;&amp; index.putIfAbsent(code, node) != null) ambiguous.add(code);</span>
+<span class="pc bpc" id="L44" title="1 of 4 branches missed.">            if (node.getChildren() != null) for (var child : node.getChildren()) {</span>
+<span class="pc bpc" id="L45" title="1 of 2 branches missed.">                if (pending.size() &gt;= MAX_SNAPSHOT_NODES) { truncated = true; break; }</span>
+<span class="pc bpc" id="L46" title="1 of 2 branches missed.">                if (child != null) pending.addLast(child);</span>
+<span class="fc" id="L47">            }</span>
+<span class="fc" id="L48">        }</span>
+<span class="fc" id="L49">        ambiguous.forEach(index::remove);</span>
+<span class="fc" id="L50">        var navigationContext = new HashSet&lt;String&gt;();</span>
+<span class="fc" id="L51">        index.values().stream().filter(node -&gt; node.architectureNavigationOnly(index.get(node.getParentCode())))</span>
+<span class="fc" id="L52">                .forEach(node -&gt; navigationContext.add(node.getCode()));</span>
+<span class="fc bfc" id="L53" title="All 2 branches covered.">        if (evidenceProjection != null) {</span>
+<span class="fc" id="L54">            view = evidenceProjection.apply(navigationContext);</span>
+        }
+<span class="fc bfc" id="L56" title="All 2 branches covered.">        if (view == null) view = new RequirementArchitectureView();</span>
+<span class="pc bpc" id="L57" title="1 of 2 branches missed.">        var notes = new LinkedHashSet&lt;&gt;(view.getNotes() == null ? List.&lt;String&gt;of() : view.getNotes());</span>
+<span class="pc bpc" id="L58" title="2 of 6 branches missed.">        if (truncated || !pending.isEmpty() || !ambiguous.isEmpty()) notes.add(&quot;CATALOGUE_PROJECTION_LIMIT: only unambiguous retained catalogue nodes are shown.&quot;);</span>
+
+<span class="pc bpc" id="L60" title="1 of 2 branches missed.">        var relationships = new ArrayList&lt;&gt;(view.getIncludedRelationships() == null</span>
+<span class="pc" id="L61">                ? List.&lt;RequirementRelationshipView&gt;of() : view.getIncludedRelationships());</span>
+<span class="fc" id="L62">        int before = relationships.size();</span>
+<span class="fc" id="L63">        var discardedEndpoints = new HashSet&lt;String&gt;();</span>
+<span class="fc" id="L64">        relationships.removeIf(relation -&gt; {</span>
+<span class="fc bfc" id="L65" title="All 2 branches covered.">            if (relation.getOrigin() != RelationOrigin.LLM_SUPPORTED</span>
+<span class="pc bpc" id="L66" title="1 of 4 branches missed.">                    || !navigationContext.contains(relation.getSourceCode()) &amp;&amp; !navigationContext.contains(relation.getTargetCode())) return false;</span>
+<span class="fc" id="L67">            discardedEndpoints.add(relation.getSourceCode());</span>
+<span class="fc" id="L68">            discardedEndpoints.add(relation.getTargetCode());</span>
+<span class="fc" id="L69">            return true;</span>
+        });
+<span class="fc bfc" id="L71" title="All 2 branches covered.">        if (relationships.size() &lt; before) notes.add(&quot;GENERIC_RELATION_CONTEXT: &quot; + (before - relationships.size())</span>
+                + &quot; automatic relationships used a taxonomy container. See retained analysis evidence for context.&quot;);
+<span class="fc" id="L73">        var retainedEndpoints = new HashSet&lt;String&gt;();</span>
+<span class="fc" id="L74">        relationships.forEach(relation -&gt; {</span>
+<span class="fc" id="L75">            retainedEndpoints.add(relation.getSourceCode());</span>
+<span class="fc" id="L76">            retainedEndpoints.add(relation.getTargetCode());</span>
+<span class="fc" id="L77">        });</span>
+<span class="pc bpc" id="L78" title="1 of 2 branches missed.">        var elements = new ArrayList&lt;&gt;(view.getIncludedElements() == null ? List.&lt;RequirementElementView&gt;of() : view.getIncludedElements());</span>
+<span class="fc bfc" id="L79" title="All 2 branches covered.">        elements.removeIf(element -&gt; !retainedEndpoints.contains(element.getNodeCode())</span>
+<span class="fc bfc" id="L80" title="All 2 branches covered.">                &amp;&amp; (navigationContext.contains(element.getNodeCode())</span>
+<span class="pc bpc" id="L81" title="3 of 4 branches missed.">                || discardedEndpoints.contains(element.getNodeCode()) &amp;&amp; element.getOrigin() == NodeOrigin.RELATION_EVIDENCE));</span>
+<span class="fc bfc" id="L82" title="All 4 branches covered.">        for (var element : elements) if (navigationContext.contains(element.getNodeCode())) {</span>
+<span class="fc" id="L83">            element.setAnchor(false);</span>
+<span class="fc" id="L84">            element.setSelectedForImpact(false);</span>
+        }
+<span class="fc" id="L86">        var included = new HashSet&lt;String&gt;();</span>
+<span class="fc" id="L87">        elements.forEach(element -&gt; included.add(element.getNodeCode()));</span>
+        // Typed score interpretation belongs to AnalysisResult, not to rendering.
+<span class="fc" id="L89">        var scores = result.getScores();</span>
+<span class="fc" id="L90">        var details = result.getScoreDetails();</span>
+<span class="fc" id="L91">        var ranked = scores.entrySet().stream()</span>
+<span class="pc bpc" id="L92" title="2 of 6 branches missed.">                .filter(entry -&gt; entry.getValue() != null &amp;&amp; entry.getValue() &gt; 0 &amp;&amp; entry.getValue() &lt;= 100)</span>
+<span class="pc bpc" id="L93" title="1 of 2 branches missed.">                .filter(entry -&gt; details.get(entry.getKey()) != null</span>
+<span class="pc bpc" id="L94" title="1 of 2 branches missed.">                        &amp;&amp; details.get(entry.getKey()).effectiveRelevance() == entry.getValue())</span>
+<span class="fc bfc" id="L95" title="All 4 branches covered.">                .filter(entry -&gt; index.containsKey(entry.getKey()) &amp;&amp; !navigationContext.contains(entry.getKey()))</span>
+<span class="fc" id="L96">                .sorted(Map.Entry.&lt;String, Double&gt;comparingByValue(Comparator.reverseOrder()).thenComparing(Map.Entry.comparingByKey()))</span>
+<span class="fc" id="L97">                .toList();</span>
+<span class="pc bpc" id="L98" title="1 of 2 branches missed.">        int limit = maxNodes &gt; 0 ? maxNodes : MAX_SNAPSHOT_NODES;</span>
+<span class="fc" id="L99">        int added = 0;</span>
+<span class="fc bfc" id="L100" title="All 2 branches covered.">        for (var entry : ranked) {</span>
+<span class="fc bfc" id="L101" title="All 2 branches covered.">            if (included.contains(entry.getKey())) continue;</span>
+<span class="fc bfc" id="L102" title="All 2 branches covered.">            if (elements.size() &gt;= limit) { notes.add(&quot;NODE_LIMIT: complete assessments remain in the analysis result.&quot;); break; }</span>
+<span class="fc" id="L103">            var node = index.get(entry.getKey());</span>
+<span class="fc" id="L104">            var detail = details.get(node.getCode());</span>
+<span class="fc" id="L105">            var element = new RequirementElementView();</span>
+<span class="fc" id="L106">            element.setNodeCode(node.getCode());</span>
+<span class="pc bpc" id="L107" title="1 of 4 branches missed.">            element.setTitle(node.getNameEn() == null || node.getNameEn().isBlank() ? node.getCode() : node.getNameEn());</span>
+<span class="fc" id="L108">            element.setTaxonomySheet(node.getTaxonomyRoot()); element.setScoreDetail(detail);</span>
+<span class="fc" id="L109">            element.setDirectLlmScore(detail.rawScore());</span>
+<span class="fc" id="L110">            element.setRelevance(detail.effectiveRelevance() / 100.0);</span>
+<span class="fc" id="L111">            element.setOrigin(NodeOrigin.DIRECT_SCORED); element.setAnchor(true);</span>
+<span class="fc" id="L112">            element.setPresenceReason(&quot;Directly assessed relevance; this alone does not establish a relationship or required implementation.&quot;);</span>
+<span class="fc" id="L113">            element.setIncludedBecause(element.getPresenceReason());</span>
+<span class="fc" id="L114">            element.setSelectedForImpact(true);</span>
+<span class="fc" id="L115">            elements.add(element); included.add(node.getCode()); added++;</span>
+<span class="fc" id="L116">        }</span>
+<span class="pc bpc" id="L117" title="2 of 4 branches missed.">        var uuids = truncated || !pending.isEmpty() ? Map.&lt;String, String&gt;of()</span>
+<span class="fc" id="L118">                : CatalogueSourceUuids.fromTree(result.getTree());</span>
+        // Containment is the retained hierarchy, not a generated architectural relationship.
+<span class="fc bfc" id="L120" title="All 2 branches covered.">        for (var element : elements) {</span>
+<span class="fc" id="L121">            var node = index.get(element.getNodeCode());</span>
+<span class="fc bfc" id="L122" title="All 4 branches covered.">            if (node != null &amp;&amp; Objects.equals(node.getTaxonomyRoot(), element.getTaxonomySheet())) {</span>
+<span class="fc" id="L123">                element.retainCatalogueTitles(node.getNameEn(), node.getNameDe());</span>
+<span class="fc" id="L124">                String recorded = uuids.get(node.getCode());</span>
+<span class="fc" id="L125">                String supplied = element.getCatalogueUuid();</span>
+<span class="pc bpc" id="L126" title="1 of 4 branches missed.">                element.setCatalogueUuid(supplied == null || supplied.equals(recorded) ? recorded : null);</span>
+            }
+<span class="fc bfc" id="L128" title="All 2 branches covered.">            boolean parentRemoved = navigationContext.contains(element.getParentNodeCode())</span>
+<span class="pc bpc" id="L129" title="1 of 2 branches missed.">                    &amp;&amp; !included.contains(element.getParentNodeCode());</span>
+<span class="fc bfc" id="L130" title="All 6 branches covered.">            if (node == null || element.getHierarchyPath() != null &amp;&amp; !parentRemoved) continue;</span>
+<span class="fc" id="L131">            var path = new LinkedList&lt;String&gt;(); var seen = new HashSet&lt;String&gt;();</span>
+<span class="fc" id="L132">            String parent = null;</span>
+<span class="pc bpc" id="L133" title="2 of 6 branches missed.">            while (node != null &amp;&amp; path.size() &lt; MAX_PATH_DEPTH &amp;&amp; seen.add(node.getCode())) {</span>
+<span class="fc" id="L134">                path.addFirst(node.getCode());</span>
+<span class="fc" id="L135">                var ancestor = index.get(node.getParentCode());</span>
+<span class="pc bpc" id="L136" title="1 of 4 branches missed.">                if (ancestor == null || !Objects.equals(ancestor.getTaxonomyRoot(), node.getTaxonomyRoot())) break;</span>
+<span class="fc bfc" id="L137" title="All 2 branches covered.">                if (path.size() &gt;= MAX_PATH_DEPTH) {</span>
+                    // The unvisited ancestry may close a cycle beyond this bounded scan.
+                    // Retain the assessed element, but never certify incomplete containment.
+<span class="fc" id="L140">                    parent = null;</span>
+<span class="fc" id="L141">                    notes.add(&quot;HIERARCHY_PROJECTION_LIMIT: ancestry could not be fully checked; affected nodes are shown without containment.&quot;);</span>
+<span class="fc" id="L142">                    break;</span>
+                }
+<span class="pc bpc" id="L144" title="1 of 6 branches missed.">                if (parent == null &amp;&amp; included.contains(ancestor.getCode()) &amp;&amp; !seen.contains(ancestor.getCode())) parent = ancestor.getCode();</span>
+<span class="fc" id="L145">                node = ancestor;</span>
+<span class="fc" id="L146">            }</span>
+<span class="fc" id="L147">            element.setHierarchyPath(String.join(&quot; &gt; &quot;, path)); element.setTaxonomyDepth(Math.max(0, path.size() - 1));</span>
+            // A cyclic path is not valid containment, even if its nodes are independently assessed.
+<span class="pc bpc" id="L149" title="1 of 6 branches missed.">            if (node != null &amp;&amp; index.get(node.getParentCode()) != null &amp;&amp; seen.contains(node.getParentCode())) parent = null;</span>
+<span class="fc" id="L150">            element.setParentNodeCode(parent);</span>
+<span class="fc" id="L151">        }</span>
+<span class="fc bfc" id="L152" title="All 2 branches covered.">        if (added &gt; 0) notes.add(&quot;DIRECT_ASSESSMENT_ONLY: additional nodes retain their assessed relevance; no relationship is inferred from a missing answer.&quot;);</span>
+<span class="fc bfc" id="L153" title="All 2 branches covered.">        if (elements.isEmpty()) notes.add(&quot;NO_ASSESSED_ARCHITECTURE: no usable assessed catalogue elements are available yet.&quot;);</span>
+<span class="fc" id="L154">        else notes.removeIf(note -&gt; note.startsWith(&quot;NO_ASSESSED_ARCHITECTURE:&quot;));</span>
+<span class="fc" id="L155">        var elementsByCode = new HashMap&lt;String, RequirementElementView&gt;();</span>
+<span class="fc" id="L156">        elements.forEach(element -&gt; elementsByCode.putIfAbsent(element.getNodeCode(), element));</span>
+<span class="fc" id="L157">        var anchors = new LinkedHashMap&lt;String, RequirementAnchor&gt;();</span>
+<span class="pc bpc" id="L158" title="1 of 4 branches missed.">        if (view.getAnchors() != null) for (var anchor : view.getAnchors()) {</span>
+<span class="pc bpc" id="L159" title="3 of 6 branches missed.">            if (anchor == null || anchor.getNodeCode() == null || anchors.containsKey(anchor.getNodeCode())) continue;</span>
+<span class="fc" id="L160">            var element = elementsByCode.get(anchor.getNodeCode());</span>
+<span class="fc" id="L161">            var node = index.get(anchor.getNodeCode());</span>
+<span class="pc bpc" id="L162" title="2 of 8 branches missed.">            if (element != null &amp;&amp; element.isAnchor() &amp;&amp; node != null &amp;&amp; !navigationContext.contains(node.getCode())) {</span>
+<span class="fc" id="L163">                anchors.put(anchor.getNodeCode(), anchor);</span>
+            }
+<span class="fc" id="L165">        }</span>
+<span class="fc bfc" id="L166" title="All 2 branches covered.">        for (var element : elements) {</span>
+<span class="fc bfc" id="L167" title="All 4 branches covered.">            if (element.getOrigin() != NodeOrigin.DIRECT_SCORED || !element.isAnchor()) continue;</span>
+<span class="fc" id="L168">            var detail = element.getScoreDetail();</span>
+<span class="fc bfc" id="L169" title="All 4 branches covered.">            if (detail == null || anchors.containsKey(element.getNodeCode())) continue;</span>
+<span class="fc" id="L170">            String kind = detail.kind().name().toLowerCase(Locale.ROOT).replace('_', ' ');</span>
+<span class="fc" id="L171">            anchors.put(element.getNodeCode(), new RequirementAnchor(element.getNodeCode(),</span>
+<span class="fc" id="L172">                    detail.effectiveRelevance(), &quot;Direct &quot; + kind + &quot; assessment; raw score &quot;</span>
+<span class="fc" id="L173">                    + AnalysisPercentages.display(detail.rawScore()) + &quot;, effective relevance &quot;</span>
+<span class="fc" id="L174">                    + AnalysisPercentages.display(detail.effectiveRelevance()) + &quot;.&quot;));</span>
+<span class="fc" id="L175">        }</span>
+<span class="fc" id="L176">        view.setIncludedElements(elements); view.setTotalElements(elements.size());</span>
+<span class="fc" id="L177">        view.setIncludedRelationships(relationships); view.setTotalRelationships(relationships.size());</span>
+<span class="fc" id="L178">        view.setAnchors(new ArrayList&lt;&gt;(anchors.values()));</span>
+<span class="fc" id="L179">        view.setTotalAnchors(view.getAnchors().size());</span>
+<span class="fc" id="L180">        view.setNotes(new ArrayList&lt;&gt;(notes)); view.setRelationSearchReport(result.getRelationSearchReport());</span>
+<span class="fc" id="L181">        view.setAnalysisCoverage(result.getAnalysisCoverage()); view.setAnalysisStatus(result.getStatus());</span>
+<span class="fc" id="L182">        return view;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

@@ -1,0 +1,225 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>StreamRequirementAnalysisUseCase.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.usecase</a> &gt; <span class="el_source">StreamRequirementAnalysisUseCase.java</span></div><h1>StreamRequirementAnalysisUseCase.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.usecase;
+
+import com.taxonomy.catalog.snapshot.CatalogueSnapshotService;
+import com.taxonomy.relations.service.AdmittedRelationRules;
+import com.taxonomy.extension.api.llm.ProviderId;
+
+import com.taxonomy.analysis.service.AiPromptBudgetPolicy;
+import com.taxonomy.analysis.service.AnalysisEventCallback;
+import com.taxonomy.analysis.service.LlmProvider;
+import com.taxonomy.analysis.service.LlmService;
+import com.taxonomy.dto.LlmCallDetail;
+import com.taxonomy.dto.RequirementNodeAssessment;
+import com.taxonomy.dto.ProductCoverageGap;
+import com.taxonomy.dto.TaxonomyDiscrepancy;
+import org.springframework.context.i18n.LocaleContextHolder;
+import org.springframework.stereotype.Service;
+
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+
+@Service
+public class StreamRequirementAnalysisUseCase {
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.taxonomy.analysis.cluster.ClusterAnalysisExecution clusterExecution;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private CatalogueSnapshotService catalogueSnapshots;
+    private final LlmService llmService;
+    private final AiPromptBudgetPolicy promptBudgetPolicy;
+
+    public StreamRequirementAnalysisUseCase(
+            LlmService llmService,
+<span class="fc" id="L35">            AiPromptBudgetPolicy promptBudgetPolicy) {</span>
+<span class="fc" id="L36">        this.llmService = llmService;</span>
+<span class="fc" id="L37">        this.promptBudgetPolicy = promptBudgetPolicy;</span>
+<span class="fc" id="L38">    }</span>
+
+    public void stream(StreamRequirementAnalysisCommand command, AnalysisStreamEventHandler handler) {
+<span class="pc bpc" id="L41" title="1 of 2 branches missed.">        if (clusterExecution != null) {</span>
+<span class="nc" id="L42">            throw new IllegalStateException(&quot;Cluster streaming requires an exact workspace operation context&quot;);</span>
+        }
+<span class="fc" id="L44">        long startedNanos = System.nanoTime();</span>
+<span class="fc" id="L45">        var previousLocale = LocaleContextHolder.getLocaleContext();</span>
+<span class="fc bfc" id="L46" title="All 2 branches covered.">        var reasonLength = command.analysisReasonLength() != null ? command.analysisReasonLength()</span>
+<span class="fc" id="L47">                : llmService.resolveAnalysisReasonLength(null);</span>
+<span class="fc" id="L48">        var language = com.taxonomy.analysis.service.AnalysisLanguageContext.resolve(command.analysisLanguage(), command.requestLocale());</span>
+<span class="fc" id="L49">        try (var profile = AdmittedRelationRules.open(command.modelBinding());</span>
+<span class="fc" id="L50">             var reasonScope = com.taxonomy.analysis.service.AnalysisReasonContext.open(reasonLength);</span>
+<span class="fc" id="L51">             var languageScope = com.taxonomy.analysis.service.AnalysisLanguageContext.open(language);</span>
+<span class="fc bfc" id="L52" title="All 2 branches covered.">             var mockScope = &quot;MOCK&quot;.equalsIgnoreCase(command.provider())</span>
+<span class="fc" id="L53">                ? llmService.withProviderBinding(&quot;MOCK&quot;, null) : null) {</span>
+<span class="fc" id="L54">            applyRequestLocale(command.requestLocale());</span>
+<span class="fc" id="L55">            llmService.requireProviderAdmissible(command.provider(), false);</span>
+<span class="fc" id="L56">            applyProviderOverride(command.provider());</span>
+<span class="fc" id="L57">            promptBudgetPolicy.requireWithinBudget(</span>
+<span class="fc" id="L58">                    command.businessText(), command.provider());</span>
+<span class="fc" id="L59">            AnalysisEventCallback callback = new AnalysisEventCallback() {</span>
+                @Override
+                public void onPhase(String message, int progressPercent) {
+<span class="fc" id="L62">                    handler.handle(new AnalysisStreamEvent.Phase(message, progressPercent));</span>
+<span class="fc" id="L63">                }</span>
+
+                @Override
+                public void onScores(Map&lt;String, Double&gt; newScores, Map&lt;String, String&gt; reasons,
+                                     String description, LlmCallDetail detail) {
+<span class="fc" id="L68">                    handler.handle(new AnalysisStreamEvent.Scores(newScores, reasons, description, detail));</span>
+<span class="fc" id="L69">                }</span>
+
+                @Override
+                public void onExpanding(String parentCode, List&lt;String&gt; childCodes) {
+<span class="fc" id="L73">                    handler.handle(new AnalysisStreamEvent.Expanding(parentCode, childCodes));</span>
+<span class="fc" id="L74">                }</span>
+
+                @Override
+                public void onComplete(String status, Map&lt;String, Double&gt; allScores,
+                                       List&lt;String&gt; warnings,
+                                       List&lt;TaxonomyDiscrepancy&gt; discrepancies,
+                                       List&lt;ProductCoverageGap&gt; productCoverageGaps) {
+<span class="fc" id="L81">                    onComplete(status, allScores, Map.of(), warnings, discrepancies, productCoverageGaps, null);</span>
+<span class="fc" id="L82">                }</span>
+
+                @Override
+                public void onComplete(String status, Map&lt;String, Double&gt; allScores,
+                                       List&lt;String&gt; warnings,
+                                       List&lt;TaxonomyDiscrepancy&gt; discrepancies,
+                                       List&lt;ProductCoverageGap&gt; productCoverageGaps,
+                                       com.taxonomy.dto.AnalysisCoverage coverage) {
+<span class="nc" id="L90">                    onComplete(status, allScores, Map.of(), warnings, discrepancies, productCoverageGaps, coverage);</span>
+<span class="nc" id="L91">                }</span>
+
+                @Override
+                public void onComplete(String status, Map&lt;String, Double&gt; allScores, Map&lt;String, String&gt; allReasons,
+                                       List&lt;String&gt; warnings, List&lt;TaxonomyDiscrepancy&gt; discrepancies,
+                                       List&lt;ProductCoverageGap&gt; productCoverageGaps,
+                                       com.taxonomy.dto.AnalysisCoverage coverage) {
+<span class="fc" id="L98">                    onComplete(status, allScores, allReasons, warnings, discrepancies, productCoverageGaps, coverage, Map.of());</span>
+<span class="fc" id="L99">                }</span>
+
+                @Override
+                public void onComplete(String status, Map&lt;String, Double&gt; allScores, Map&lt;String, String&gt; allReasons,
+                                       List&lt;String&gt; warnings, List&lt;TaxonomyDiscrepancy&gt; discrepancies,
+                                       List&lt;ProductCoverageGap&gt; productCoverageGaps,
+                                       com.taxonomy.dto.AnalysisCoverage coverage,
+                                       Map&lt;String, List&lt;RequirementNodeAssessment&gt;&gt; nodeAssessments) {
+<span class="fc" id="L107">                    handler.handle(new AnalysisStreamEvent.Complete(</span>
+                            status, allScores, warnings, discrepancies, productCoverageGaps, allReasons,
+<span class="fc" id="L109">                            elapsedMillis(startedNanos), coverage, nodeAssessments));</span>
+<span class="fc" id="L110">                }</span>
+
+                @Override
+                public void onError(String status, String errorMessage,
+                                    Map&lt;String, Double&gt; partialScores,
+                                    List&lt;String&gt; warnings,
+                                    List&lt;TaxonomyDiscrepancy&gt; discrepancies,
+                                    List&lt;ProductCoverageGap&gt; productCoverageGaps) {
+<span class="fc" id="L118">                    handler.handle(new AnalysisStreamEvent.Error(</span>
+                            status, errorMessage, partialScores, warnings, discrepancies,
+<span class="fc" id="L120">                            productCoverageGaps, Map.of(), elapsedMillis(startedNanos)));</span>
+<span class="fc" id="L121">                }</span>
+                @Override
+                public void onError(String status, String errorMessage,
+                                    Map&lt;String, Double&gt; partialScores, Map&lt;String, String&gt; partialReasons,
+                                    List&lt;String&gt; warnings, List&lt;TaxonomyDiscrepancy&gt; discrepancies,
+                                    List&lt;ProductCoverageGap&gt; productCoverageGaps) {
+<span class="nc" id="L127">                    onError(status, errorMessage, partialScores, partialReasons, warnings, discrepancies, productCoverageGaps, null);</span>
+<span class="nc" id="L128">                }</span>
+
+                @Override
+                public void onError(String status, String errorMessage,
+                                    Map&lt;String, Double&gt; partialScores, Map&lt;String, String&gt; partialReasons,
+                                    List&lt;String&gt; warnings, List&lt;TaxonomyDiscrepancy&gt; discrepancies,
+                                    List&lt;ProductCoverageGap&gt; productCoverageGaps,
+                                    com.taxonomy.dto.AnalysisCoverage coverage) {
+<span class="nc" id="L136">                    onError(status, errorMessage, partialScores, partialReasons,</span>
+<span class="nc" id="L137">                            warnings, discrepancies, productCoverageGaps, coverage, Map.of());</span>
+<span class="nc" id="L138">                }</span>
+
+                @Override
+                public void onError(String status, String errorMessage,
+                                    Map&lt;String, Double&gt; partialScores, Map&lt;String, String&gt; partialReasons,
+                                    List&lt;String&gt; warnings, List&lt;TaxonomyDiscrepancy&gt; discrepancies,
+                                    List&lt;ProductCoverageGap&gt; productCoverageGaps,
+                                    com.taxonomy.dto.AnalysisCoverage coverage,
+                                    Map&lt;String, List&lt;RequirementNodeAssessment&gt;&gt; nodeAssessments) {
+<span class="fc" id="L147">                    handler.handle(new AnalysisStreamEvent.Error(</span>
+                            status, errorMessage, partialScores, warnings, discrepancies,
+<span class="fc" id="L149">                            productCoverageGaps, partialReasons, elapsedMillis(startedNanos), coverage, nodeAssessments));</span>
+<span class="fc" id="L150">                }</span>
+            };
+<span class="fc" id="L152">            try (var catalogue = AdmittedCatalogue.openForScoring(catalogueSnapshots, command.modelBinding(),</span>
+<span class="fc" id="L153">                    command.workspace(), llmService)) {</span>
+<span class="fc bfc" id="L154" title="All 2 branches covered.">                if (command.analysisScope().legacyFull()) llmService.analyzeStreaming(command.businessText(), callback);</span>
+<span class="fc" id="L155">                else llmService.analyzeStreaming(command.businessText(), command.analysisScope(), callback);</span>
+            }
+        } finally {
+            try {
+<span class="fc" id="L159">                llmService.clearRequestProvider();</span>
+            } finally {
+<span class="fc" id="L161">                LocaleContextHolder.setLocaleContext(previousLocale);</span>
+            }
+        }
+<span class="fc" id="L164">    }</span>
+
+    /** Observes the durable operation; a detached handler never cancels that operation. */
+    public void stream(StreamRequirementAnalysisCommand command,
+                       com.taxonomy.analysis.dag.AnalysisOperationContext context,
+                       AnalyzeRequirementCommand analyzeCommand, com.taxonomy.dto.ViewContext view,
+                       AnalysisStreamEventHandler handler) {
+<span class="pc bpc" id="L171" title="1 of 2 branches missed.">        if (clusterExecution == null) throw new IllegalStateException(&quot;Cluster execution is not configured&quot;);</span>
+<span class="pc bpc" id="L172" title="1 of 2 branches missed.">        if (!command.businessText().equals(analyzeCommand.businessText())</span>
+<span class="pc bpc" id="L173" title="1 of 2 branches missed.">                || !java.util.Objects.equals(command.provider(), analyzeCommand.provider())</span>
+<span class="pc bpc" id="L174" title="1 of 2 branches missed.">                || !command.analysisScope().equals(analyzeCommand.analysisScope())</span>
+<span class="pc bpc" id="L175" title="1 of 2 branches missed.">                || !java.util.Objects.equals(command.modelBinding(), analyzeCommand.modelBinding())</span>
+<span class="pc bpc" id="L176" title="3 of 4 branches missed.">                || command.analysisReasonLength() != null &amp;&amp; analyzeCommand.analysisReasonLength() != null</span>
+<span class="pc bnc" id="L177" title="All 2 branches missed.">                    &amp;&amp; command.analysisReasonLength() != analyzeCommand.analysisReasonLength()</span>
+<span class="pc bpc" id="L178" title="3 of 4 branches missed.">                || command.analysisLanguage() != null &amp;&amp; (analyzeCommand.analysisLanguage() != null</span>
+<span class="nc bnc" id="L179" title="All 4 branches missed.">                    || analyzeCommand.continuationBinding() != null || analyzeCommand.provenance() != null)</span>
+<span class="nc bnc" id="L180" title="All 2 branches missed.">                    &amp;&amp; command.analysisLanguage() != analyzeCommand.analysisLanguage()) {</span>
+<span class="nc" id="L181">            throw new IllegalArgumentException(&quot;Streaming request does not match durable analysis input&quot;);</span>
+        }
+<span class="pc bpc" id="L183" title="1 of 2 branches missed.">        var reasonLength = analyzeCommand.analysisReasonLength() != null ? analyzeCommand.analysisReasonLength()</span>
+<span class="nc bnc" id="L184" title="All 2 branches missed.">                : command.analysisReasonLength() != null ? command.analysisReasonLength()</span>
+<span class="pc" id="L185">                : com.taxonomy.analysis.service.AnalysisReasonContext.effective(llmService.resolveAnalysisReasonLength(null));</span>
+<span class="pc bpc" id="L186" title="1 of 2 branches missed.">        var language = analyzeCommand.analysisLanguage() != null ? analyzeCommand.analysisLanguage()</span>
+<span class="nc bnc" id="L187" title="All 4 branches missed.">                : analyzeCommand.continuationBinding() != null || analyzeCommand.provenance() != null ? null</span>
+<span class="pc" id="L188">                : com.taxonomy.analysis.service.AnalysisLanguageContext.resolve(command.analysisLanguage(), command.requestLocale());</span>
+<span class="fc" id="L189">        var admitted = analyzeCommand.withAnalysisReasonLength(reasonLength).withAnalysisLanguage(language);</span>
+<span class="fc" id="L190">        var previousLocale = LocaleContextHolder.getLocaleContext();</span>
+        try {
+<span class="fc" id="L192">            applyRequestLocale(command.requestLocale());</span>
+<span class="fc" id="L193">            promptBudgetPolicy.requireWithinBudget(command.businessText(), command.provider());</span>
+<span class="fc" id="L194">            clusterExecution.execute(context, admitted, view,</span>
+<span class="fc" id="L195">                    snapshot -&gt; handler.handle(new AnalysisStreamEvent.DurableSnapshot(snapshot)));</span>
+        } finally {
+<span class="fc" id="L197">            LocaleContextHolder.setLocaleContext(previousLocale);</span>
+        }
+<span class="fc" id="L199">    }</span>
+
+    private static long elapsedMillis(long startedNanos) {
+<span class="fc" id="L202">        return Math.max(0L, (System.nanoTime() - startedNanos) / 1_000_000L);</span>
+    }
+
+    private void applyRequestLocale(Locale requestLocale) {
+<span class="fc bfc" id="L206" title="All 2 branches covered.">        if (requestLocale != null) {</span>
+<span class="fc" id="L207">            LocaleContextHolder.setLocale(requestLocale);</span>
+        } else {
+<span class="fc" id="L209">            LocaleContextHolder.resetLocaleContext();</span>
+        }
+<span class="fc" id="L211">    }</span>
+
+    private void applyProviderOverride(String provider) {
+<span class="pc bpc" id="L214" title="1 of 4 branches missed.">        if (provider == null || provider.isBlank()</span>
+<span class="fc bfc" id="L215" title="All 2 branches covered.">                || &quot;MOCK&quot;.equalsIgnoreCase(provider)) {</span>
+<span class="fc" id="L216">            return;</span>
+        }
+        try {
+<span class="fc" id="L219">            llmService.setRequestProviderId(new ProviderId(provider));</span>
+<span class="fc" id="L220">        } catch (IllegalArgumentException e) {</span>
+<span class="fc" id="L221">            throw new UnknownAnalysisProviderException(provider);</span>
+<span class="fc" id="L222">        }</span>
+<span class="fc" id="L223">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

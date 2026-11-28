@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AdmbwRequirementProfile.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-dsl</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dsl.admbw</a> &gt; <span class="el_source">AdmbwRequirementProfile.java</span></div><h1>AdmbwRequirementProfile.java</h1><pre class="source lang-java linenums">package com.taxonomy.dsl.admbw;
+
+import com.taxonomy.dsl.command.ArchitectureSemanticPatch;
+import com.taxonomy.dsl.planning.PlanningProfile;
+import com.taxonomy.dsl.requirements.RequirementRealization;
+import com.taxonomy.sparx.mapping.AdmbwRequirementField;
+
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+/** Records a reviewed R7 assignment on the exact requirement revision. */
+<span class="fc" id="L16">public final class AdmbwRequirementProfile implements PlanningProfile {</span>
+    public static final String ID = &quot;admbw-r7&quot;;
+    public static final String VERSION = &quot;1&quot;;
+    static final String KIND = &quot;requirementType&quot;;
+    static final String DERIVED_FROM = &quot;derivedFrom&quot;;
+    static final String REALIZER = &quot;realizer&quot;;
+    static final String SUBJECT = &quot;constraintSubject&quot;;
+    static final String BOUND_VERSION = &quot;boundVersion&quot;;
+    static final String BOUND_HASH = &quot;boundHash&quot;;
+    static final String IMPORTED = &quot;imported&quot;;
+<span class="fc" id="L26">    private static final List&lt;String&gt; KINDS = List.of(&quot;FunctionalRequirement&quot;, &quot;NonfunctionalRequirement&quot;);</span>
+<span class="fc" id="L27">    private static final Set&lt;String&gt; FIELDS = Set.of(KIND, DERIVED_FROM, SUBJECT, REALIZER, BOUND_VERSION, BOUND_HASH, IMPORTED);</span>
+
+    @Override
+    public Descriptor descriptor() {
+<span class="fc" id="L31">        var fields = new ArrayList&lt;&gt;(List.of(new Field(KIND, true, KINDS),</span>
+<span class="fc" id="L32">                new Field(DERIVED_FROM, true, List.of()), new Field(SUBJECT, true, List.of()),</span>
+<span class="fc" id="L33">                new Field(REALIZER, false, List.of())));</span>
+<span class="fc bfc" id="L34" title="All 2 branches covered.">        for (var field : AdmbwRequirementField.values()) fields.add(new Field(field.planningKey(), false, List.of()));</span>
+<span class="fc" id="L35">        return new Descriptor(ID, VERSION, fields);</span>
+    }
+
+    @Override
+    public void validate(Map&lt;String, String&gt; values) {
+<span class="fc" id="L40">        var remaining = new HashSet&lt;&gt;(values.keySet());</span>
+<span class="fc bfc" id="L41" title="All 2 branches covered.">        for (var field : AdmbwRequirementField.values()) {</span>
+<span class="pc bpc" id="L42" title="1 of 4 branches missed.">            if (remaining.remove(field.planningKey()) &amp;&amp; values.get(field.planningKey()).isBlank())</span>
+<span class="nc" id="L43">                throw new IllegalArgumentException(&quot;An R7 assessment must have a value or be left unset&quot;);</span>
+        }
+<span class="pc bpc" id="L45" title="2 of 4 branches missed.">        if (!FIELDS.containsAll(remaining) || !KINDS.contains(values.getOrDefault(KIND, &quot;&quot;))</span>
+<span class="pc bpc" id="L46" title="2 of 4 branches missed.">                || !elementId(values.get(DERIVED_FROM)) || !elementId(values.get(SUBJECT))</span>
+<span class="pc bpc" id="L47" title="1 of 4 branches missed.">                || values.containsKey(REALIZER) &amp;&amp; !elementId(values.get(REALIZER))</span>
+<span class="pc bpc" id="L48" title="1 of 4 branches missed.">                || values.containsKey(IMPORTED) &amp;&amp; !&quot;true&quot;.equals(values.get(IMPORTED))) {</span>
+<span class="nc" id="L49">            throw new IllegalArgumentException(&quot;R7 needs a requirement type, one source element and its catalogue subject, with at most one realizer&quot;);</span>
+        }
+<span class="pc bpc" id="L51" title="1 of 4 branches missed.">        if (values.containsKey(BOUND_VERSION) || values.containsKey(BOUND_HASH)) {</span>
+<span class="pc bpc" id="L52" title="1 of 2 branches missed.">            if (AdmbwFffmlvProfile.version(values.get(BOUND_VERSION)) == null</span>
+<span class="pc bpc" id="L53" title="1 of 2 branches missed.">                    || !values.getOrDefault(BOUND_HASH, &quot;&quot;).matches(&quot;[0-9a-f]{64}&quot;)) {</span>
+<span class="nc" id="L54">                throw new IllegalArgumentException(&quot;Invalid R7 requirement revision&quot;);</span>
+            }
+        }
+<span class="fc" id="L57">    }</span>
+
+    @Override
+    public Stored store(String dsl, String requirement, String entry, Map&lt;String, String&gt; values) {
+<span class="fc" id="L61">        validate(values);</span>
+<span class="fc" id="L62">        var block = ArchitectureSemanticPatch.index(dsl).get(&quot;requirement:&quot; + requirement);</span>
+<span class="pc bpc" id="L63" title="1 of 2 branches missed.">        if (block == null) throw new IllegalArgumentException(&quot;Unknown canonical requirement&quot;);</span>
+<span class="fc" id="L64">        String version = block.property(&quot;x-version&quot;);</span>
+<span class="fc" id="L65">        String hash = block.property(&quot;x-content-hash&quot;);</span>
+<span class="fc" id="L66">        String text = block.property(&quot;text&quot;);</span>
+<span class="pc bpc" id="L67" title="3 of 6 branches missed.">        if (AdmbwFffmlvProfile.version(version) == null || text == null || text.isBlank()</span>
+<span class="pc bpc" id="L68" title="1 of 2 branches missed.">                || !RequirementRealization.textHash(text).equals(hash)) {</span>
+<span class="nc" id="L69">            throw new IllegalArgumentException(&quot;R7 needs a versioned requirement with its exact text hash&quot;);</span>
+        }
+<span class="fc bfc" id="L71" title="All 2 branches covered.">        if (values.containsKey(BOUND_VERSION)</span>
+<span class="pc bpc" id="L72" title="2 of 4 branches missed.">                &amp;&amp; (!version.equals(values.get(BOUND_VERSION)) || !hash.equals(values.get(BOUND_HASH)))) {</span>
+<span class="nc" id="L73">            throw new IllegalArgumentException(&quot;The R7 assignment belongs to another requirement revision&quot;);</span>
+        }
+<span class="fc" id="L75">        Map&lt;String, String&gt; stored = new LinkedHashMap&lt;&gt;(values);</span>
+<span class="fc" id="L76">        stored.remove(IMPORTED);</span>
+<span class="fc" id="L77">        stored.put(BOUND_VERSION, version);</span>
+<span class="fc" id="L78">        stored.put(BOUND_HASH, hash);</span>
+<span class="fc" id="L79">        return new Stored(dsl, stored);</span>
+    }
+
+    @Override
+    public Stored storeImported(String dsl, String requirement, String entry, Map&lt;String, String&gt; values) {
+<span class="fc" id="L84">        validate(values);</span>
+<span class="fc" id="L85">        Map&lt;String, String&gt; stored = new LinkedHashMap&lt;&gt;(values);</span>
+<span class="fc" id="L86">        stored.put(IMPORTED, &quot;true&quot;);</span>
+<span class="fc" id="L87">        return new Stored(dsl, stored);</span>
+    }
+
+    private static boolean elementId(String value) {
+<span class="pc bpc" id="L91" title="2 of 4 branches missed.">        return value != null &amp;&amp; value.matches(&quot;[A-Za-z0-9][A-Za-z0-9_.-]{0,127}&quot;);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>
