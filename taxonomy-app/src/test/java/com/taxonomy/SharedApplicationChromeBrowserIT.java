@@ -247,6 +247,19 @@ class SharedApplicationChromeBrowserIT {
         assertThat(page.driver().switchTo().activeElement()).isEqualTo(summary);
     }
 
+    @Test void readOnlyImportKeepsSignOutAvailable() {
+        page.clearRoutes();
+        page.clearRequests();
+        viewport(1440, 1000);
+        page.route("GET", "/taxonomy/api/projects/42", request -> json(200, Map.of("id", 42, "projectKey", "QA", "title", "Import")));
+        page.route("GET", "/taxonomy/api/projects/42/requirements", request -> json(200, List.of()));
+        page.route("GET", "/taxonomy/api/account/me", request -> json(200, Map.of("architectureMutationAllowed", false)));
+        page.openAt("portfolio-import", "/taxonomy", "/taxonomy/projects/42/import", "en", "",
+                Map.of("applicationAccount", Map.of("displayName", "Reader", "singleSignOn", false)));
+        wait.until(driver -> !driver.findElement(By.cssSelector("#uploadForm button[type=submit]")).isEnabled());
+        assertThat(page.driver().findElement(By.cssSelector("#applicationLogoutForm button")).isEnabled()).isTrue();
+    }
+
     private static void open(View view, String locale, int width, List<String> features) {
         open(view, locale, width, features, false);
     }
