@@ -66,14 +66,27 @@ public class ArchitectureRepositoryProvisioningService {
     /** Stable-slug lifecycle creation and recovery share the catalog's durable claim. */
     public SystemRepositoryService.CreationClaim createOrResumePrivateRepository(
             String displayName, String slug, String description, String ownerId) {
-        var claim = systemRepositoryService.claimPrivateCreation(displayName, slug, description, ownerId);
+        return createOrResumePrivateRepository(displayName, slug, description, ownerId, null);
+    }
+
+    public List<ProjectCatalogueSeed.Choice> projectDataProviders() { return projectSeed.choices(); }
+
+    public SystemRepositoryService.CreationClaim createOrResumePrivateRepository(
+            String displayName, String slug, String description, String ownerId, String provider) {
+        String prepared = null;
+        if (provider != null && systemRepositoryService.byCreationSlug(slug, displayName).isEmpty()) {
+            ProjectCatalogueSeed.requireProvider(provider);
+            prepared = projectSeed.newProject("default", provider);
+        }
+        var claim = provider == null ? systemRepositoryService.claimPrivateCreation(displayName, slug, description, ownerId)
+                : systemRepositoryService.claimPrivateCreation(displayName, slug, description, ownerId, provider);
         SystemRepository metadata = claim.repository();
         if (metadata.getLifecycleState() == RepositoryLifecycleState.ACTIVE) return claim;
         String repositoryId = metadata.getRepositoryId();
         try {
             membershipService.assignOwner(repositoryId, ownerId);
             DslGitRepository git = repositoryFactory.createCentralRepository(repositoryId, metadata.getStorageRepositoryName());
-            initializeOrVerifyCreation(git, metadata, ownerId);
+            initializeOrVerifyCreation(git, metadata, ownerId, prepared);
             return new SystemRepositoryService.CreationClaim(systemRepositoryService.markProvisioningReady(repositoryId), claim.created());
         } catch (IOException | RuntimeException failure) {
             // A failed catalogue completion can follow a successful Git write. Retain that exact
@@ -85,7 +98,7 @@ public class ArchitectureRepositoryProvisioningService {
         }
     }
 
-    private void initializeOrVerifyCreation(DslGitRepository git, SystemRepository metadata, String owner) throws IOException {
+    private void initializeOrVerifyCreation(DslGitRepository git, SystemRepository metadata, String owner, String prepared) throws IOException {
         String branch = metadata.getDefaultBranch();
         var repository = git.getGitRepository();
         synchronized (repository) {
@@ -93,16 +106,20 @@ public class ArchitectureRepositoryProvisioningService {
             String head = git.getHeadCommit(branch);
             if (head == null) {
                 if (!refs.isEmpty()) throw retainedSourceConflict();
-                git.commitDslIfHeadMatches(branch, null, projectSeed.newProject("default"), owner, INITIAL_MESSAGE);
+                String provider = metadata.getProjectDataProvider();
+                String source = prepared;
+                if (source == null) source = provider == null ? projectSeed.newProject("default") : projectSeed.newProject("default", provider);
+                git.commitDslIfHeadMatches(branch, null, source, owner, initialMessage(provider, source));
                 return;
             }
             if (refs.size() != 1 || !refs.getFirst().getName().equals(Constants.R_HEADS + branch)) throw retainedSourceConflict();
             String retained = git.getDslAtCommit(head);
-            if (!MINIMAL_DSL.equals(retained) && !com.taxonomy.dsl.model.ProjectCatalogue.isInitial(retained, "default"))
+            if (metadata.getProjectDataProvider() == null && !MINIMAL_DSL.equals(retained)
+                    && !com.taxonomy.dsl.model.ProjectCatalogue.isInitial(retained, "default"))
                 throw retainedSourceConflict();
             try (var walk = new RevWalk(repository); var tree = new TreeWalk(repository)) {
                 var initial = walk.parseCommit(ObjectId.fromString(head));
-                if (initial.getParentCount() != 0 || !INITIAL_MESSAGE.equals(initial.getFullMessage())
+                if (initial.getParentCount() != 0 || !initialMessage(metadata.getProjectDataProvider(), retained).equals(initial.getFullMessage())
                         || !owner.equals(initial.getAuthorIdent().getName())
                         || !owner.equals(initial.getCommitterIdent().getName())) throw retainedSourceConflict();
                 tree.addTree(initial.getTree());
@@ -111,6 +128,11 @@ public class ArchitectureRepositoryProvisioningService {
             }
             git.verifyExpectedHead(branch, head);
         }
+    }
+
+    private static String initialMessage(String provider, String source) {
+        return provider == null ? INITIAL_MESSAGE : INITIAL_MESSAGE + "\n\nProject data: " + provider
+                + "\nSource SHA-256: " + com.taxonomy.identity.StableIdentityHash.sha256(source);
     }
 
     private static ResponseStatusException retainedSourceConflict() {

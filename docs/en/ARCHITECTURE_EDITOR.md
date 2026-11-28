@@ -35,6 +35,8 @@ If the workspace revision changes after preview, choose **Refresh, compare and p
 
 Search in the **Architecture tree** opens the path to a matching element. Under **Organization directory**, create a department or team and optionally choose its parent unit. The directory belongs to the selected architecture version. Collaborators on the same working copy share its entries.
 
+**New architecture** lets you choose an installed project dataset with its catalogue revision and organization directory. In an existing writable workspace, **Import project dataset** previews how many organizational units it adds or recognizes by source ID. Existing assignments survive. Accepting additions creates a checkpoint that includes other pending workspace edits.
+
 Select a branch in the tree, choose its **Responsible unit for this branch**, preview the change and accept it. Descendants inherit the closest assignment. A nested branch may have its own assignment. **Inherit from parent** removes that override. The form identifies the element where the effective assignment originated. Existing free-text entries remain visible and can be replaced with directory units.
 
 Enable **Show responsibilities** to add a color stripe to each assigned element in the architecture and decision trees. The unit name appears where an assignment starts or changes. The report export dialog has the same option. Saved analyses show responsibilities from the model used for that analysis. Older results without a recorded model binding have no responsibility markings.

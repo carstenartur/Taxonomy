@@ -4,6 +4,7 @@
     function publishContext(value) { window.TaxonomyAppChrome?.updateContext(value, 'working'); }
     var api = window.TaxonomyArchitectureLifecycleApi;
     var root, summary, status, rows, historyList, historySearch, disclosure, currentButton, reconcileButton;
+    var datasetButton, installedDatasets = [];
     var listeners = new Set();
     var pendingRequirements = new Map();
     var requirementPublications = new WeakMap();
@@ -69,6 +70,7 @@
         if (rows) rows.replaceChildren();
         if (summary) summary.textContent = t('lifecycle.title');
         if (reconcileButton) reconcileButton.hidden = true;
+        if (datasetButton) datasetButton.disabled = true;
         publishContext({architecture:{modelStand:null}, editable:false, publicationState:null, realizationStatus:null});
     }
     function beginSelection(context, selection) {
@@ -286,6 +288,7 @@
         summary.textContent = t('lifecycle.summary', visible.length);
         status.textContent = t('lifecycle.state.' + (value.projectionState || value.publicationState || 'READY'));
         currentButton.hidden = !historicalSelection() && !['VERSION_CHANGED','RECONCILIATION_REQUIRED','CHECKPOINT_PENDING'].includes(value.projectionState);
+        datasetButton.disabled = historicalSelection() || !value.mayEdit;
         reconcileButton.hidden = historicalSelection() || !['VERSION_CHANGED','RECONCILIATION_REQUIRED'].includes(value.projectionState);
         rows.replaceChildren();
         visible.forEach(function (requirement) {
@@ -577,11 +580,58 @@
             throw error;
         }
     }
+    function openProjectDataImport() {
+        var captured = captureStand();
+        if (!matchesStand(captured, true)) return;
+        var shell = dialogShell('lifecycleProjectDataDialog', t('lifecycle.dataset.import'));
+        var provider = field(shell.form, 'lifecycleImportDataset', t('lifecycle.architecture.dataset'), 'select');
+        installedDatasets.forEach(function (choice) { option(provider, choice.id, choice.name + ' (' + choice.id + ')'); });
+        var reason = field(shell.form, 'lifecycleImportDatasetReason', t('lifecycle.reason'));
+        reason.required = true; reason.maxLength = 1000;
+        shell.form.append(node('p', t('lifecycle.dataset.checkpoint')));
+        var preview = button(t('lifecycle.preview'), review); preview.id = 'lifecycleProjectDataPreview';
+        var accept = button(t('lifecycle.accept'), apply); accept.id = 'lifecycleProjectDataAccept'; accept.hidden = true;
+        shell.form.append(preview, accept);
+        var fence = intentFence(captured, shell, preview, accept, true);
+        var prepared, busy = false;
+        function reset() { prepared = null; accept.hidden = true; shell.message.textContent = ''; }
+        shell.form.addEventListener('input', reset); shell.form.addEventListener('change', reset);
+        async function review() {
+            if (busy || !fence.ensure() || !shell.form.reportValidity()) return;
+            var request = {context:clone(captured.context), metadata:metadata(reason.value), provider:provider.value};
+            busy = true; preview.disabled = true; provider.disabled = true; reason.disabled = true;
+            try {
+                var result = await api.previewProjectData(request);
+                if (!fence.ensure()) return;
+                prepared = Object.assign(request, {datasetHash:result.datasetHash});
+                shell.message.textContent = t('lifecycle.dataset.review', result.added, result.existing);
+                accept.hidden = result.added === 0; accept.disabled = false;
+            } catch (error) { reset(); shell.message.textContent = errorText(error); }
+            finally { busy = false; preview.disabled = !fence.valid(); provider.disabled = false; reason.disabled = false; }
+        }
+        async function apply() {
+            if (busy || !prepared || !fence.ensure()) return;
+            busy = true; preview.disabled = true; accept.disabled = true; provider.disabled = true; reason.disabled = true;
+            try {
+                var result = await api.importProjectData(prepared);
+                fence.afterSuccess(result, false);
+            } catch (error) {
+                if ([400,403,404,409,412,422].includes(error.status)) {
+                    reset(); fence.rejected(); provider.disabled = false; reason.disabled = false; preview.disabled = !fence.valid();
+                } else fence.uncertain();
+                shell.message.textContent = errorText(error);
+            } finally { busy = false; accept.disabled = !prepared || !fence.valid(); }
+        }
+        shell.dialog.showModal(); provider.focus();
+    }
     function openNewArchitecture() {
         var shell = dialogShell('lifecycleArchitectureDialog', t('lifecycle.newArchitecture'));
         var name = field(shell.form, 'lifecycleArchitectureName', t('lifecycle.architecture.name')); name.required = true; name.maxLength = 200;
         var description = field(shell.form, 'lifecycleArchitectureDescription', t('lifecycle.architecture.description'), 'textarea');
         description.maxLength = 1000;
+        var datasets = node('div'); datasets.hidden = true; shell.form.append(datasets);
+        var provider = field(datasets, 'lifecycleArchitectureDataset', t('lifecycle.architecture.dataset'), 'select');
+        option(provider, '', t('lifecycle.architecture.defaultDataset'));
         var create = button(t('lifecycle.architecture.create'), submit); create.id = 'lifecycleArchitectureCreate'; shell.form.append(create);
         var request = null, architecture = null, workspace = null, attempted = false, workspaceAttempted = false, busy = false;
         var openingGeneration = state.generation;
@@ -625,6 +675,13 @@
         function recover(item) {
             if (busy || (request && request.slug !== item.slug)) return;
             request = {displayName:item.displayName,slug:item.slug,description:item.description};
+            if (item.projectDataProvider) {
+                request.projectDataProvider = item.projectDataProvider;
+                if (!Array.from(provider.options).some(function (entry) { return entry.value === item.projectDataProvider; }))
+                    option(provider, item.projectDataProvider, item.projectDataProvider);
+                datasets.hidden = false;
+            }
+            provider.value = item.projectDataProvider || '';
             name.value = item.displayName; description.value = item.description || '';
             architecture = item; attempted = true;
             submit();
@@ -632,8 +689,11 @@
         async function submit() {
             if (busy || !shell.form.reportValidity()) return;
             busy = true; updateControls();
-            if (!request) request = {displayName:name.value.trim(),description:description.value,slug:'architecture-' + crypto.randomUUID()};
-            name.disabled = true; description.disabled = true;
+            if (!request) {
+                request = {displayName:name.value.trim(),description:description.value,slug:'architecture-' + crypto.randomUUID()};
+                if (provider.value) request.projectDataProvider = provider.value;
+            }
+            name.disabled = true; description.disabled = true; provider.disabled = true;
             try {
                 if (attempted && (!architecture || lifecycle(architecture) !== 'ACTIVE')) {
                     shell.message.textContent = t('lifecycle.architecture.recover');
@@ -677,6 +737,11 @@
             finally { busy = false; updateControls(); }
         }
         shell.dialog.showModal(); name.focus(); loadIncomplete();
+        if (api.projectDataProviders) api.projectDataProviders().then(function (choices) {
+            if (!shell.dialog.open || request) return;
+            choices.forEach(function (choice) { option(provider, choice.id, choice.name + ' (' + choice.id + ')'); });
+            datasets.hidden = choices.length === 0;
+        }).catch(function (error) { if (shell.dialog.open && !request) shell.message.textContent = errorText(error); });
     }
     function initialize() {
         root = document.getElementById('architectureLifecycle'); if (!root) return;
@@ -688,7 +753,12 @@
         var refreshButton = button(t('lifecycle.refresh'), function () { refresh(); }); refreshButton.dataset.lifecycleRefresh = ''; refreshButton.dataset.lifecycleAction = 'refresh';
         var newArchitecture = button(t('lifecycle.newArchitecture'), openNewArchitecture); newArchitecture.dataset.lifecycleNewArchitecture = ''; newArchitecture.dataset.lifecycleAction = 'new-architecture';
         reconcileButton = button(t('lifecycle.reconcile'), openReconciliation); reconcileButton.dataset.lifecycleReconcile = ''; reconcileButton.dataset.lifecycleAction = 'reconcile'; reconcileButton.hidden = true;
-        commands.append(refreshButton,newArchitecture,reconcileButton);
+        datasetButton = button(t('lifecycle.dataset.import'), openProjectDataImport); datasetButton.id = 'lifecycleProjectDataButton';
+        datasetButton.hidden = true; datasetButton.disabled = true;
+        commands.append(refreshButton,newArchitecture,datasetButton,reconcileButton);
+        if (api.projectDataProviders) api.projectDataProviders().then(function (choices) {
+            installedDatasets = choices; datasetButton.hidden = !choices.length;
+        }).catch(function () { datasetButton.hidden = true; });
         var table = node('table'); var head = node('thead'); var header = node('tr');
         ['requirement','selectedVersion','reviewedVersion','realization','actions'].forEach(function (key) { var cell = node('th',t('lifecycle.' + key)); cell.scope = 'col'; header.append(cell); });
         head.append(header); rows = node('tbody'); table.append(head,rows);

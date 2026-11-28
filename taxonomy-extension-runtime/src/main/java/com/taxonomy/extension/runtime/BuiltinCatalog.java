@@ -38,7 +38,7 @@ public final class BuiltinCatalog {
         List<PluginCatalog.Contribution> contributions = new ArrayList<>();
         groups.forEach((module, values) -> {
             String version = values.getFirst().getClass().getPackage().getImplementationVersion();
-            if (version == null) version = PluginDescriptor.HOST_API_VERSION;
+            if (version == null) version = PluginDescriptor.hostApiVersion();
             var identity = new PluginIdentity("taxonomy.builtin." + module, version, fingerprint(sources.get(module)));
             contributions.add(new PluginCatalog.Contribution(new PluginDescriptor(identity,
                     ">=1.0.0 & <2.0.0", List.of(), Set.of(), PluginMode.STARTUP), values));

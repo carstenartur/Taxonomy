@@ -38,7 +38,8 @@ The explicit extension points share a small internal SPI in
   `displayName()`, `description()`, and `kind()`
 - `ExtensionKind` classifies extensions as `EXPORT_FORMAT`,
   `REPORT_RENDERER`, `IMPORT_PROFILE`, `LLM_PROVIDER`, or
-  `ARCHITECTURE_PIPELINE_STEP`
+  `ARCHITECTURE_PIPELINE_STEP`, `INVENTORY_SOURCE`, `INTEGRATION_CONNECTOR` or
+  `PROJECT_DATA_PROVIDER`
 - `ExtensionDescriptor` is the framework-free metadata view safe for REST/UI
 
 `taxonomy-app/src/main/java/com/taxonomy/shared/extension/runtime/ExtensionRegistry`
@@ -577,3 +578,51 @@ enter the existing host budget/retry/cancellation/usage policy. Credentials stay
 in host configuration and are never part of catalog metadata. Runtime activation,
 drain and operations are specified separately; metadata discovery alone is not
 proof of those lifecycle guarantees.
+
+## Project catalogue and organization providers
+
+Host API 1.6 adds the startup-only `ProjectDataProvider` interface. A trusted
+plugin returns its provider from `TaxonomyPlugin.extensions()` and declares a
+host range such as `>=1.6.0 & <2.0.0`. Its provider ID follows the same
+lowercase identifier rules as a plugin ID. The operator installs the plugin
+through the existing startup plugin directory.
+
+```java
+public final class CityDirectory implements ProjectDataProvider {
+    public String id() { return "city-directory"; }
+    public String displayName() { return "City departments"; }
+    public Dataset dataset() {
+        return new Dataset("city-directory-2026-11", null, List.of(
+                new Unit("municipality/1", "City", null),
+                new Unit("department/10", "Archives", "municipality/1"),
+                new Unit("department/20", "Archives", "municipality/1")));
+    }
+}
+```
+
+`Dataset.catalogueRevision` is a retained catalogue generation UUID in this
+installation. A null value selects the current catalogue for a new project.
+Installing a new workbook still goes through catalogue ingestion. The provider
+supplies the source revision, native organization IDs and native parent IDs.
+Names may repeat. Missing parents, duplicate native IDs and cycles reject the
+dataset before the new project claim is reserved.
+
+**New architecture** offers installed datasets. The project retains its
+selected provider, catalogue pin and copied organization directory in its initial
+source. The same slug and form data recover the same project. Forks inherit the
+committed source. An existing writable workspace can use **Import project
+dataset** to preview added and recognized units. Accepting checkpoints the
+workspace, including other current edits. Already recognized units keep their
+local titles, parents and responsibility assignments. A dataset cannot change an
+existing project's catalogue pin through this action. If all units are already
+present, the UI displays the counts without proposing a checkpoint.
+
+The provider selector has the form `plugin-id/provider-id`. Import keeps the
+opaque original unit ID in `x-source-id`, including punctuation and case.
+Parent and responsibility references use stable local IDs scoped by that
+selector. Each imported unit records the source revision and plugin artifact
+hash. Fresh HTTP imports preview then post to
+`/api/architecture/editor/project-data/preview` and `/import` on the same base,
+with the selected editor context, ordinary command metadata, provider selector,
+and workspace revision in `If-Match`. The import supplies the returned
+`datasetHash`; a changed dataset requires a fresh preview.

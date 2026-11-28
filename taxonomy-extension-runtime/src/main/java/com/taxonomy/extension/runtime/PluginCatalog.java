@@ -153,7 +153,7 @@ public final class PluginCatalog implements ExtensionCatalog {
             PluginDescriptor plugin = generation.descriptor;
             // Parsing the artifact version is required even when nobody currently requires it.
             versions.compareVersions(plugin.identity().version(), plugin.identity().version());
-            if (!versions.checkVersionConstraint(PluginDescriptor.HOST_API_VERSION, plugin.hostApiRange()))
+            if (!versions.checkVersionConstraint(PluginDescriptor.hostApiVersion(), plugin.hostApiRange()))
                 throw new IllegalArgumentException("Host API range is incompatible: " + plugin.identity().id());
             for (PluginRequirement requirement : plugin.requires()) {
                 Generation dependency = candidate.get(requirement.id());
@@ -211,6 +211,11 @@ public final class PluginCatalog implements ExtensionCatalog {
                 && (importer.descriptor().profileId() == null || importer.descriptor().profileId().isBlank()))
             throw new IllegalStateException("Import profile extension must declare a non-blank profile ID");
         ExtensionKind kind = extension.kind();
+        if (kind == ExtensionKind.PROJECT_DATA_PROVIDER || extension instanceof com.taxonomy.extension.api.project.ProjectDataProvider) {
+            if (kind != ExtensionKind.PROJECT_DATA_PROVIDER || !(extension instanceof com.taxonomy.extension.api.project.ProjectDataProvider))
+                throw new IllegalArgumentException("Project data contributions must implement ProjectDataProvider");
+            PluginIdentity.requireId(extension.id());
+        }
         if (kind == null) throw new IllegalStateException("Extension kind must not be null");
         if (extension.id() == null || extension.id().isBlank())
             throw new IllegalStateException("Extension must declare a non-blank ID");

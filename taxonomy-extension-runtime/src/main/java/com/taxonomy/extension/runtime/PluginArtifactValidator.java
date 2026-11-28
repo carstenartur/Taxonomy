@@ -24,7 +24,7 @@ public final class PluginArtifactValidator {
             PluginMode mode = PluginMode.valueOf(required(attributes, "Taxonomy-Plugin-Mode"));
             var versions = new DefaultVersionManager();
             versions.compareVersions(version, version);
-            if (!versions.checkVersionConstraint(PluginDescriptor.HOST_API_VERSION, range))
+            if (!versions.checkVersionConstraint(PluginDescriptor.hostApiVersion(), range))
                 throw new IllegalArgumentException("Host API range is incompatible: " + id);
             if (attributes.getValue("Plugin-Class") != null || attributes.getValue("Class-Path") != null)
                 throw new IllegalArgumentException("Plugin-Class and manifest Class-Path are not supported");
@@ -34,7 +34,7 @@ public final class PluginArtifactValidator {
                 if (separator < 1 || separator == dependency.length() - 1)
                     throw new IllegalArgumentException("Plugin dependencies require id@version-range");
                 String dependencyRange = dependency.substring(separator + 1).trim();
-                versions.checkVersionConstraint(PluginDescriptor.HOST_API_VERSION, dependencyRange);
+                versions.checkVersionConstraint(PluginDescriptor.hostApiVersion(), dependencyRange);
                 dependencies.add(new PluginRequirement(dependency.substring(0, separator).trim(), dependencyRange));
             }
             if (jar.getJarEntry(SERVICE) == null)

@@ -57,6 +57,12 @@ public class SystemRepository {
     @Column(name = "lifecycle_state")
     private RepositoryLifecycleState lifecycleState = RepositoryLifecycleState.ACTIVE;
 
+    @Column(name = "project_data_provider", length = 257)
+    private String projectDataProvider;
+
+    public String getProjectDataProvider() { return projectDataProvider; }
+    public void setProjectDataProvider(String provider) { this.projectDataProvider = provider; }
+
     @Column(name = "provisioning_error", length = 2000)
     private String provisioningError;
 

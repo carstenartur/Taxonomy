@@ -8,14 +8,17 @@ import java.util.function.BiConsumer;
 import java.util.regex.Pattern;
 
 /** A named organizational unit in one versioned architecture directory. */
-public record ArchitectureOrganization(String id, String title, String parentId) {
+public record ArchitectureOrganization(String id, String title, String parentId, Map<String, String> extensions) {
     public static final String RESPONSIBLE_ID = "x-responsible-organization-id";
     public static final String CAPTURED_UNIT = "x-captured-responsibility-unit";
     public static final String CAPTURED_NAME = "x-captured-responsibility-name";
     public static final String CAPTURED_SOURCE = "x-captured-responsibility-source";
     private static final Pattern IDENTIFIER = Pattern.compile("[A-Za-z0-9][A-Za-z0-9_.-]{0,127}");
 
+    public ArchitectureOrganization(String id, String title, String parentId) { this(id, title, parentId, Map.of()); }
+
     public ArchitectureOrganization {
+        extensions = extensions == null ? Map.of() : Map.copyOf(extensions);
         if ("".equals(parentId)) parentId = null;
     }
 

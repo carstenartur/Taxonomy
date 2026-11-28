@@ -32,7 +32,7 @@ public final class Pf4jPluginRuntime implements AutoCloseable {
                 Files.setPosixFilePermissions(this.cache, PosixFilePermissions.fromString("rwx------"));
         } catch (IOException failure) { throw new IllegalArgumentException("Cannot prepare local plugin directories", failure); }
         manager = new LocalPluginManager(this.cache, validator);
-        manager.setSystemVersion(com.taxonomy.extension.api.plugin.PluginDescriptor.HOST_API_VERSION);
+        manager.setSystemVersion(com.taxonomy.extension.api.plugin.PluginDescriptor.hostApiVersion());
     }
 
     public synchronized PluginIdentity install(Path artifact) {

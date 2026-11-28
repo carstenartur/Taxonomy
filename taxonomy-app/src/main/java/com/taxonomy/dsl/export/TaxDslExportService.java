@@ -46,6 +46,20 @@ public class TaxDslExportService implements com.taxonomy.workspace.service.Proje
         this.relationRepository = relationRepository;
     }
 
+    private ProjectDataSeed projectData;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void useProjectData(ProjectDataSeed projectData) { this.projectData = projectData; }
+
+    @Override public List<Choice> choices() { return projectData.choices(); }
+
+    @Override @Transactional
+    public String newProject(String namespace, String provider) {
+        if (provider == null) return newProject(namespace);
+        var current = catalogueSources.lockForCapture();
+        return projectData.initial(namespace, provider, UUID.fromString(current.id()), definitions::forRevision);
+    }
+
     /** A new project begins with a pinned source and zero adopted architecture objects. */
     @Transactional
     public String newProject(String namespace) {

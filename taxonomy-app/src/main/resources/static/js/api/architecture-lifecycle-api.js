@@ -36,6 +36,9 @@ window.TaxonomyArchitectureLifecycleApi = (function () {
     }
     return {
         architectures:function () { return read(base + '/architectures', {}); },
+        projectDataProviders:function () { return read(base + '/architectures/data-providers', {}); },
+        previewProjectData:function (request) { return write('/api/architecture/editor/project-data/preview', request, true); },
+        importProjectData:function (request) { return write('/api/architecture/editor/project-data/import', request, true, null, true); },
         createArchitecture:function (request) { return write(base + '/architectures', request, false); },
         workspaces:function (repositoryId) { return read(base + '/architectures/' + encodeURIComponent(repositoryId) + '/workspaces', {}); },
         createWorkspace:function (context, displayName) { return write('/api/architecture/editor/workspaces', {
