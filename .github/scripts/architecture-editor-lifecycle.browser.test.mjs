@@ -1021,7 +1021,11 @@ for (const scenario of ['lost response', 'late component receipt', 'history supe
         await page.locator('#prepUseSelection').click();
         assert.equal(await page.locator('#prepStatus').innerText(),'editor.prep.selectionTooLong');
         assert.equal(await page.locator('#prepQuote').inputValue(),'');
-        await page.locator('#prepQuote').fill(await page.locator('#prepSource').inputValue());
+        // Populate the oversized multiline paste as a single edit before checking native form validation.
+        await page.locator('#prepQuote').evaluate((field, text) => {
+            field.value = text;
+            field.dispatchEvent(new InputEvent('input', {bubbles:true,inputType:'insertFromPaste',data:text}));
+        }, await page.locator('#prepSource').inputValue());
         await page.locator('#prepPreview').click();
         assert.equal(await page.locator('#prepQuote').evaluate(field => field.validationMessage),'editor.prep.selectionTooLong');
         assert.equal(calls.length,0);
