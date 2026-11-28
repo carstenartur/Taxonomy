@@ -1101,7 +1101,11 @@
                 handler:function () { if (input() === requirement && currentNodeEvidence() === evidence) return startAnalysis(manual, true); }}]);
             return;
         }
-        if (plan.kind === 'INVALID') { window.TaxonomyBrowse?.showStatus('warning', plan.message); return; }
+        if (plan.kind === 'INVALID') {
+            window.TaxonomyBrowse?.showStatus('warning', plan.message);
+            if (input()) window.TaxonomyAnalysisScope?.revealInvalidSelection?.();
+            return;
+        }
         var ready = window.TaxonomyAnalysisSession?.state?.();
         if (!ready?.ready || !ready.workspaceId) {
             window.TaxonomyBrowse?.showStatus('warning', text('Analyse ist noch nicht bereit.', 'Analysis is not ready.')); return;

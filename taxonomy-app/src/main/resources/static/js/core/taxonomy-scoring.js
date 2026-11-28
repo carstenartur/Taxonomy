@@ -663,6 +663,7 @@
                 : window.TaxonomyAnalysisScope?.read();
         } catch (invalidScope) {
             B().showStatus('warning', invalidScope.message);
+            window.TaxonomyAnalysisScope?.revealInvalidSelection?.();
             return;
         }
 
@@ -1017,7 +1018,11 @@
 
         var requestedScope;
         try { requestedScope = window.TaxonomyAnalysisScope?.read(); }
-        catch (invalidScope) { B().showStatus('warning', invalidScope.message); return; }
+        catch (invalidScope) {
+            B().showStatus('warning', invalidScope.message);
+            window.TaxonomyAnalysisScope?.revealInvalidSelection?.();
+            return;
+        }
 
         setAnalyzing(true);
         B().resetDiagramContext?.();

@@ -111,7 +111,8 @@ function fixture(page, fetcher, {lifecycle = false} = {}) {
             return selector.split(',').flatMap(value => {
                 value = value.trim();
                 if (value === 'button[type="submit"]') return submitButtons;
-                return /^#[\w-]+$/.test(value) && nodes.has(value.slice(1)) ? [nodes.get(value.slice(1))] : [];
+                const match = this.querySelector(value);
+                return match ? [match] : [];
             });
         },
         createElement: element, createTextNode: text => ({textContent: String(text)})

@@ -33,7 +33,7 @@
             caption.textContent = root.code + ' – ' + ((german ? root.nameDe || root.nameEn : root.nameEn || root.nameDe) || root.name || root.code);
             label.append(input, caption); container.append(label);
         });
-        syncMode(); renderEvidence();
+        syncMode(); renderSelection(); renderEvidence();
     }
     function captureSelection() {
         var choices = inputs();
@@ -42,14 +42,42 @@
             .map(function (input) { return input.dataset.taxonomyRoot; }).sort();
         selection = choices.length && chosen.length === choices.length ? null : chosen;
     }
+    function missingRoots() {
+        if (selection === null) return [];
+        var available = inputs().map(function (input) { return input.dataset.taxonomyRoot; });
+        return available.length ? selection.filter(function (code) { return !available.includes(code); }) : [];
+    }
+    function problem(missing = missingRoots()) {
+        if (selection !== null && !selection.length) return t('analysis.scope.select.one');
+        return missing.length ? t('analysis.scope.unavailable') + ' ' + missing.join(', ') : '';
+    }
+    function renderSelection() {
+        var summary = document.getElementById('analysisScopeSummary');
+        if (!summary) return;
+        var warning = problem();
+        var rootsLabel = warning ? t('analysis.scope.check') : selection === null ? t('analysis.scope.all')
+            : selection.length <= 3 ? selection.join(', ') : TaxonomyI18n.t('analysis.scope.selected.count', selection.length);
+        summary.textContent = rootsLabel + ' · ' + t(mode === 'TAXONOMIES_ONLY' ? 'analysis.scope.nodes.only' : 'analysis.scope.full');
+        var feedback = document.getElementById('analysisScopeProblem');
+        feedback.textContent = warning;
+        feedback.hidden = !warning;
+        document.getElementById('analysisScopeRootsGroup').setAttribute('aria-invalid', String(Boolean(warning)));
+    }
+    function revealInvalidSelection() {
+        var controls = document.getElementById('analysisScopeControls');
+        if (!controls || !problem()) return;
+        renderSelection();
+        controls.open = true;
+        (inputs()[0] || document.getElementById('analysisSelectAll'))?.focus();
+    }
     function read() {
         syncMode();
         if (!document.getElementById('analysisTaxonomyRoots')) return {taxonomyRoots: [], mode: mode};
-        var available = inputs().map(function (input) { return input.dataset.taxonomyRoot; });
-        var missing = available.length ? (selection || []).filter(function (code) { return !available.includes(code); }) : [];
-        if (missing.length) throw new Error(t('analysis.scope.unavailable') + ' ' + missing.join(', '));
-        captureSelection();
-        if (selection !== null && !selection.length) throw new Error(t('analysis.scope.select.one'));
+        // Preserve restored codes that the current catalogue cannot represent until the user edits the scope.
+        var missing = missingRoots();
+        if (!missing.length) captureSelection();
+        var warning = problem(missing);
+        if (warning) throw new Error(warning);
         return {taxonomyRoots: selection === null ? [] : selection.slice(), mode: mode};
     }
     function options() {
@@ -106,6 +134,7 @@
     document.addEventListener('change', function (event) {
         if (event.target?.dataset?.taxonomyRoot) captureSelection();
         if (event.target?.id === 'analysisMode') syncMode();
+        if (event.target?.dataset?.taxonomyRoot || event.target?.id === 'analysisMode') renderSelection();
         selectionChanged();
     });
     document.addEventListener('click', function (event) {
@@ -122,5 +151,5 @@
     document.getElementById('businessText')?.addEventListener('input', renderStartHint);
     window.TaxonomyAnalysisScope = {read: read, render: render, options: options,
         restoreOptions: restoreOptions, acceptResult: acceptResult, restrictsGlobalAnalysis: restrictsGlobalAnalysis,
-        roots: roots, renderStartHint: renderStartHint};
+        roots: roots, renderStartHint: renderStartHint, revealInvalidSelection: revealInvalidSelection};
 }());

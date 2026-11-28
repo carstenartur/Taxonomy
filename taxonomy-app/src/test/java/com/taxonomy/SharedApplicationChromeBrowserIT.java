@@ -203,6 +203,50 @@ class SharedApplicationChromeBrowserIT {
         assertThat(page.driver().findElement(By.id("applicationArchitectureLink")).isDisplayed()).isTrue();
     }
 
+    @ParameterizedTest @ValueSource(ints = {1440, 390})
+    void keyboardUsersCanLeaveCommandMenusAndUseTheAccountActions(int width) {
+        page.clearRoutes();
+        page.clearRequests();
+        viewport(width, 1000);
+        page.route("GET", "/taxonomy/api/projects", request -> json(200, List.of()));
+        page.route("GET", "/taxonomy/api/capabilities", request -> json(200, Map.of("features", List.of("portfolio", "architecture"))));
+        page.openAt("projects", "/taxonomy", "/taxonomy/projects", "de", "",
+                Map.of("applicationAccount", Map.of("displayName", "Testkonto", "singleSignOn", false)));
+        wait.until(driver -> Boolean.TRUE.equals(page.driver().executeScript("return !!window.TaxonomyAppChrome && TaxonomyI18n.isLoaded();")));
+
+        var file = page.driver().findElement(By.id("applicationFile"));
+        var fileSummary = file.findElement(By.tagName("summary"));
+        var launcher = page.driver().findElement(By.cssSelector("#applicationNavigationMenu > summary"));
+        if (launcher.isDisplayed()) launcher.sendKeys(Keys.ENTER);
+        fileSummary.sendKeys(Keys.END);
+        assertThat(file.getDomProperty("open")).isEqualTo("true");
+        assertThat(file.findElements(By.cssSelector(".application-menu-content a[href], .application-menu-content button:enabled")))
+                .contains(page.driver().switchTo().activeElement());
+        new Actions(page.driver()).sendKeys(Keys.TAB).perform();
+        assertThat(page.driver().switchTo().activeElement()).isEqualTo(page.driver().findElement(By.cssSelector("#applicationEdit > summary")));
+        assertThat(file.getDomProperty("open")).isEqualTo("false");
+
+        fileSummary.sendKeys(Keys.HOME);
+        new Actions(page.driver()).keyDown(Keys.SHIFT).sendKeys(Keys.TAB).keyUp(Keys.SHIFT).perform();
+        assertThat(page.driver().switchTo().activeElement()).isEqualTo(fileSummary);
+        assertThat(file.getDomProperty("open")).isEqualTo("true");
+        new Actions(page.driver()).keyDown(Keys.SHIFT).sendKeys(Keys.TAB).keyUp(Keys.SHIFT).perform();
+        assertThat(file.getDomProperty("open")).isEqualTo("false");
+        assertThat(page.driver().switchTo().activeElement()).isEqualTo(launcher.isDisplayed() ? launcher
+                : page.driver().findElement(By.cssSelector(".taxonomy-app-brand")));
+
+        var account = page.driver().findElement(By.id("applicationAccount"));
+        var summary = account.findElement(By.tagName("summary"));
+        var logout = account.findElement(By.cssSelector("button[type=submit]"));
+        assertThat(logout.isEnabled()).as("Portfolio loading must leave sign-out available").isTrue();
+        summary.sendKeys(Keys.ARROW_DOWN);
+        assertThat(account.getDomProperty("open")).isEqualTo("true");
+        assertThat(page.driver().switchTo().activeElement()).isEqualTo(logout);
+        new Actions(page.driver()).sendKeys(Keys.ESCAPE).perform();
+        assertThat(account.getDomProperty("open")).isEqualTo("false");
+        assertThat(page.driver().switchTo().activeElement()).isEqualTo(summary);
+    }
+
     private static void open(View view, String locale, int width, List<String> features) {
         open(view, locale, width, features, false);
     }
