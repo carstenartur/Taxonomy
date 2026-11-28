@@ -1,6 +1,7 @@
 package com.taxonomy.mail;
 
 import com.taxonomy.shared.config.I18nConfig;
+import org.jsoup.Jsoup;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
@@ -14,6 +15,8 @@ import org.thymeleaf.spring6.SpringTemplateEngine;
 import org.thymeleaf.templateresolver.ClassLoaderTemplateResolver;
 import org.thymeleaf.web.servlet.JakartaServletWebApplication;
 
+import java.time.Instant;
+import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 
@@ -37,8 +40,13 @@ class MailAnalysisStatusControllerTest {
 
     @Test
     void rendersAnUncachedJobStatusAndReturnsOnlyOperationalData() throws Exception {
-        when(queue.status(TOKEN)).thenReturn(Optional.of(new MailAnalysisQueue.Status(
-                MailAnalysisQueue.State.QUEUED, 2, 4, 16, 1, 2, false)));
+        var summary = new MailAnalysisQueue.Status(MailAnalysisQueue.State.QUEUED, 2, 4, 16, 1, 2, false);
+        var now = Instant.parse("2026-11-28T10:00:00Z");
+        var job = new MailAnalysisQueue.JobView("TX-7", true, MailAnalysisQueue.State.QUEUED,
+                2, now, null, null, 120L);
+        when(queue.status(TOKEN)).thenReturn(Optional.of(summary));
+        when(queue.snapshot(TOKEN)).thenReturn(Optional.of(new MailAnalysisQueue.Snapshot(summary,
+                now, true, 1, MailAnalysisQueue.WorkerState.RUNNING, 5, 60L, job, List.of(job))));
 
         mvc.perform(get(PATH + TOKEN))
                 .andExpect(status().isOk()).andExpect(view().name("mail-analysis-status"))
@@ -49,6 +57,10 @@ class MailAnalysisStatusControllerTest {
                 .andExpect(jsonPath("$.state").value("QUEUED")).andExpect(jsonPath("$.position").value(2))
                 .andExpect(jsonPath("$.capacity").value(16)).andExpect(jsonPath("$.runningJobs").value(1))
                 .andExpect(jsonPath("$.deliveringJobs").value(2)).andExpect(jsonPath("$.queuedJobs").value(4)).andExpect(jsonPath("$.finished").value(false))
+                .andExpect(jsonPath("$.workerState").value("RUNNING"))
+                .andExpect(jsonPath("$.job.displayId").value("TX-7")).andExpect(jsonPath("$.jobs[0].own").value(true))
+                .andExpect(jsonPath("$.job.estimatedWaitSeconds").value(120))
+                .andExpect(jsonPath("$.job.token").doesNotHaveJsonPath())
                 .andExpect(jsonPath("$.subject").doesNotHaveJsonPath()).andExpect(jsonPath("$.sender").doesNotHaveJsonPath());
     }
 
@@ -73,9 +85,32 @@ class MailAnalysisStatusControllerTest {
         String view = new MailAnalysisStatusController(queue).page(TOKEN, model, response);
         String html = engine.process(view, new WebContext(web, Locale.GERMAN, model.asMap()));
         assertThat(html).contains("Teilergebnis zugestellt", "Belegte Warteplätze", "Ergebnisse im Versand",
-                "data-url=\"/taxonomy" + PATH + TOKEN + "/status\"", "src=\"/taxonomy/js/mail-analysis-status.js\"")
+                "data-url=\"/taxonomy" + PATH + TOKEN + "/status\"", "src=\"/taxonomy/js/mail-analysis-status.js\"",
+                "data-readiness-url=\"/taxonomy/actuator/health/readiness\"",
+                "data-liveness-url=\"/taxonomy/actuator/health/liveness\"",
+                "href=\"/taxonomy/css/mail-analysis-status.css\"")
                 .contains("data-authenticated-surfaces=\"false\"", "src=\"/taxonomy/js/api/taxonomy-api-client.js\"")
                 .doesNotContain("??mail.analysis.");
+        var document = Jsoup.parse(html);
+        assertThat(document.select("[data-server-fallback]:not([hidden])").text()).contains("Teilergebnis zugestellt");
+        assertThat(document.select("[data-enhanced-dashboard][hidden] #jobs")).hasSize(1);
+        assertThat(document.select("link[href]").eachAttr("href")).allMatch(url -> url.startsWith("/taxonomy/"));
+        assertThat(document.select("[src]").eachAttr("src")).allMatch(url -> url.startsWith("/taxonomy/"));
+        assertThat(document.select("html").attr("lang")).isEqualTo("de");
+        assertThat(engine.process(view, new WebContext(web, Locale.ENGLISH, model.asMap())))
+                .contains("Partial results delivered", "Queue places in use", "Results awaiting delivery");
+    }
+
+    @Test
+    void expiredAndMalformedReceiptPagesGiveTheSameUncachedExplanation() throws Exception {
+        for (var token : new String[]{TOKEN, "bad-token"}) {
+            mvc.perform(get(PATH + token))
+                    .andExpect(status().isNotFound()).andExpect(view().name("mail-analysis-link-unavailable"))
+                    .andExpect(model().attributeDoesNotExist("status", "jobToken"))
+                    .andExpect(header().string("Cache-Control", "no-store"))
+                    .andExpect(header().string("Referrer-Policy", "no-referrer"))
+                    .andExpect(header().string("X-Robots-Tag", "noindex, nofollow"));
+        }
     }
 
     @Test

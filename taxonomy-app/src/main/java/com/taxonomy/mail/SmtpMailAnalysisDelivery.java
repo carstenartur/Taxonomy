@@ -20,13 +20,13 @@ final class SmtpMailAnalysisDelivery implements MailAnalysisDelivery {
     private static final String UTF_8 = StandardCharsets.UTF_8.name();
 
     private final MailTransportProperties.Smtp connection;
-    private final String statusBase;
+    private final MailTransportProperties properties;
     private final String from;
     private final Session session;
 
     SmtpMailAnalysisDelivery(MailTransportProperties properties) {
         connection = properties.smtp();
-        statusBase = properties.publicBaseUrl().toASCIIString().replaceAll("/+$", "") + "/mail-analysis/jobs/";
+        this.properties = properties;
         from = MailRequestParser.canonicalAddress(connection.from());
         Properties protocol = connectionProperties("smtp");
         protocol.setProperty("mail.smtp.auth", "true");
@@ -54,7 +54,7 @@ final class SmtpMailAnalysisDelivery implements MailAnalysisDelivery {
                 ? "Der Auftrag wird bearbeitet oder ist bereits abgeschlossen."
                 : "Position in der Warteschlange bei Eingang: " + queuePosition + ".";
         send(recipient, "Taxonomy · Auftrag eingegangen", subject,
-                position + "\n\nLive-Status Ihres Auftrags:\n" + statusBase + jobToken, List.of());
+                position + "\n\nLive-Status Ihres Auftrags:\n" + properties.statusLink(jobToken), List.of());
     }
 
     void sendRejection(String recipient, String subject, String message) {

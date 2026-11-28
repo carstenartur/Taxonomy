@@ -1,47 +1,101 @@
 <!doctype html>
-<html lang="en" th:lang="${#locale.language}" xmlns:th="http://www.thymeleaf.org">
+<html lang="de" th:lang="${#locale.language}" xmlns:th="http://www.thymeleaf.org"
+      th:attr="data-url=@{/mail-analysis/jobs/{token}/status(token=${jobToken})},
+               data-readiness-url=@{/actuator/health/readiness},data-liveness-url=@{/actuator/health/liveness}">
 <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="referrer" content="no-referrer">
-    <title th:text="#{mail.analysis.title}">Email analysis status</title>
-    <link rel="stylesheet" th:href="@{/webjars/bootstrap/5.3.8/dist/css/bootstrap.min.css}">
-    <script defer data-authenticated-surfaces="false" th:src="@{/js/api/taxonomy-api-client.js}"></script>
-    <script defer th:src="@{/js/mail-analysis-status.js}"></script>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <meta name="color-scheme" content="light">
+  <title th:text="#{mail.analysis.title}">Verarbeitungsmonitor · Taxonomy</title>
+  <link rel="stylesheet" th:href="@{/css/mail-analysis-status.css}">
+  <script defer data-authenticated-surfaces="false" th:src="@{/js/api/taxonomy-api-client.js}"></script>
+  <script defer th:src="@{/js/mail-analysis-status.js}"></script>
 </head>
-<body class="bg-body-tertiary">
-<main class="container py-4">
-    <section id="mailAnalysisStatus" class="card card-body mx-auto" style="max-width:36rem"
-             th:attr="data-url=@{/mail-analysis/jobs/{token}/status(token=${jobToken})}">
-        <h1 class="h3" th:text="#{mail.analysis.title}">Email analysis status</h1>
-        <dl aria-live="polite" class="mt-3 mb-1">
+<body>
+    <main class="receipt-fallback" data-server-fallback>
+        <p class="receipt-brand">Taxonomy</p>
+        <h1 th:text="#{mail.analysis.title}">Email analysis status</h1>
+        <dl>
             <dt th:text="#{mail.analysis.state}">Status</dt>
-            <dd data-job-state th:text="#{${'mail.analysis.state.' + status.state}}">Queued</dd>
+            <dd th:text="#{${'mail.analysis.state.' + status.state}}">Waiting</dd>
             <dt th:text="#{mail.analysis.position}">Position in the queue</dt>
-            <dd data-job-position th:text="${status.position != null ? status.position : '—'}">1</dd>
+            <dd th:text="${status.position != null ? status.position : '—'}">1</dd>
         </dl>
-        <h2 class="h5 mt-4" th:text="#{mail.analysis.queue}">Email job queue</h2>
-        <dl aria-live="polite" class="mb-1">
+        <h2 th:text="#{mail.analysis.queue}">Email job queue</h2>
+        <dl>
             <dt th:text="#{mail.analysis.waiting}">Queue places in use</dt>
-            <dd><span data-job-queued th:text="${status.queuedJobs}">1</span> / <span data-job-capacity th:text="${status.capacity}">16</span></dd>
+            <dd><span th:text="${status.queuedJobs}">0</span> / <span th:text="${status.capacity}">16</span></dd>
             <dt th:text="#{mail.analysis.running}">Jobs being analysed</dt>
-            <dd data-job-running th:text="${status.runningJobs}">0</dd>
+            <dd th:text="${status.runningJobs}">0</dd>
             <dt th:text="#{mail.analysis.delivering}">Results awaiting delivery</dt>
-            <dd data-job-delivering th:text="${status.deliveringJobs}">0</dd>
+            <dd th:text="${status.deliveringJobs}">0</dd>
         </dl>
-        <p data-job-error class="text-body-secondary mb-0" role="status" hidden
-           th:text="#{mail.analysis.refreshError}">The status is temporarily unavailable.</p>
-        <p data-job-expired class="text-body-secondary mb-0" role="status" hidden
-           th:text="#{mail.analysis.expired}">This status link has expired.</p>
-        <template data-state-labels>
-            <span data-state="QUEUED" th:text="#{mail.analysis.state.QUEUED}">Waiting</span>
-            <span data-state="RUNNING" th:text="#{mail.analysis.state.RUNNING}">Analysing and preparing results</span>
-            <span data-state="DELIVERING" th:text="#{mail.analysis.state.DELIVERING}">Sending the result by email</span>
-            <span data-state="COMPLETED" th:text="#{mail.analysis.state.COMPLETED}">Completed</span>
-            <span data-state="PARTIAL" th:text="#{mail.analysis.state.PARTIAL}">Partial results delivered</span>
-            <span data-state="FAILED" th:text="#{mail.analysis.state.FAILED}">Failed</span>
-        </template>
-    </section>
+    </main>
+    <div data-enhanced-dashboard hidden>
+<a class="skip" href="#main" data-en="Skip to content">Zum Inhalt</a>
+<header class="topbar"><div class="shell top-inner">
+  <a class="brand" href="#overview" aria-label="Taxonomy"><span class="brand-mark" aria-hidden="true"><i data-icon="brand"></i></span>Taxonomy</a>
+  <span class="brand-sep"></span><span class="portal" data-en="Status portal">Statusportal</span>
+  <nav class="primary-nav" aria-label="Navigation">
+    <a href="#overview" class="selected" data-en="Overview">Übersicht</a>
+    <a href="#queue" data-en="Queue">Warteschlange</a>
+    <a href="#server" data-en="Server status">Serverstatus</a>
+  </nav>
+  <button class="view-mode" id="mode-control" type="button" hidden><span class="mode-dot"></span><span id="mode-label"></span><i data-icon="chevron-down"></i></button>
+</div></header>
+<main class="shell" id="main">
+<section id="overview" aria-labelledby="page-title">
+  <div class="page-head"><div>
+    <h1 id="page-title" data-en="Processing monitor">Verarbeitungsmonitor</h1>
+    <p class="page-intro" data-en="Your email job and the current system load at a glance.">Ihr E-Mail-Auftrag und die aktuelle Systemauslastung im Überblick.</p>
+  </div><div class="refresh-tools"><span id="freshness"></span><button class="button refresh" id="refresh" type="button"><i data-icon="refresh"></i><span data-en="Refresh">Aktualisieren</span></button></div></div>
+  <p class="notice" role="status" id="notice" hidden></p>
+  <article class="hero" aria-labelledby="job-heading">
+    <img class="signal" th:src="@{/images/mail-queue-signal.svg}" alt="">
+    <div class="hero-content">
+      <div class="hero-label"><i data-icon="mail"></i><span data-en="Your job">Ihr Auftrag</span></div>
+      <div class="hero-heading"><h2 id="job-heading" data-en="Loading job">Auftrag wird geladen</h2><span id="own-state"></span></div>
+      <dl class="hero-metrics">
+        <div><dt><i data-icon="layers"></i><span data-en="Queue position">Queue-Position</span></dt><dd id="own-position">—</dd></div>
+        <div><dt><i data-icon="clock"></i><span data-en="Estimated wait">Geschätzte Wartezeit</span></dt><dd id="own-eta">—</dd></div>
+        <div><dt><i data-icon="inbox"></i><span data-en="Received">Eingegangen</span></dt><dd id="own-received">—</dd></div>
+      </dl>
+    </div>
+  </article>
+</section>
+<div class="content-grid">
+  <section class="panel queue" id="queue" aria-labelledby="queue-title">
+    <div class="panel-heading"><span class="heading-icon"><i data-icon="layers"></i></span><h2 id="queue-title" data-en="Processing queue">Verarbeitungsqueue</h2><span class="count-bubble" id="queue-total">—</span></div>
+    <div class="filters" role="group" aria-label="Queue-Filter">
+      <button type="button" data-filter="all" aria-pressed="true"><span data-en="All jobs">Alle Aufträge</span></button>
+      <button type="button" data-filter="RUNNING" aria-pressed="false"><span data-en="Processing">In Bearbeitung</span></button>
+      <button type="button" data-filter="QUEUED" aria-pressed="false"><span data-en="Waiting">Wartend</span></button>
+    </div>
+    <div class="table-wrap"><table><thead><tr>
+      <th scope="col" data-en="Job">Auftrag</th><th scope="col">Status</th><th class="time-col" scope="col" data-en="Received">Eingang</th><th class="eta-col" scope="col" data-en="Wait time">Wartezeit</th><th scope="col"><span class="sr" data-en="Details">Details</span></th>
+    </tr></thead><tbody id="jobs"></tbody></table><div id="queue-empty" class="empty" hidden></div></div>
+    <div class="table-footer"><span id="row-count"></span><button type="button" class="text-btn" id="own-details"><i data-icon="file"></i><span data-en="My job details">Meine Auftragsdetails</span></button></div>
+  </section>
+  <aside id="server" class="panel server" aria-labelledby="server-title">
+    <div class="panel-heading"><span class="heading-icon"><i data-icon="server"></i></span><h2 id="server-title" data-en="Server status">Serverstatus</h2></div>
+    <div class="server-content"><div class="health-box" id="health-box"><span class="health-symbol"><i data-icon="pulse"></i></span><div><strong id="health-title">—</strong><span id="health-caption"></span></div></div>
+      <dl class="server-rows">
+        <div><dt><i data-icon="database"></i>Taxonomy-Backend</dt><dd id="api-state">—</dd></div>
+        <div><dt><i data-icon="cpu"></i>Queue-Worker</dt><dd id="worker-state">—</dd></div>
+        <div><dt><i data-icon="timer"></i><span data-en="Typical runtime">Typische Laufzeit</span></dt><dd id="duration">—</dd></div>
+      </dl>
+      <div class="capacity"><div class="capacity-head"><span data-en="Queue utilisation">Queue-Auslastung</span><strong id="capacity-pct">—</strong></div>
+        <div class="capacity-bars" id="capacity-bars" aria-hidden="true"></div><p id="capacity-caption"></p>
+      </div>
+    </div>
+    <div class="auto-row"><i data-icon="radio"></i><span data-en="Auto-refresh">Auto-Update</span><button id="auto" class="toggle" type="button" role="switch" aria-label="Auto-Update" aria-checked="true"><span></span></button></div>
+  </aside>
+</div>
+<footer class="page-foot"><span><i data-icon="brand"></i> Taxonomy <span class="foot-dot">/</span> <span data-en="Status portal">Statusportal</span></span><span><i data-icon="lock"></i><span data-en="Private job tracking">Private Auftragsverfolgung</span></span></footer>
 </main>
-</body>
-</html>
+<dialog id="detail-dialog"><div class="dialog-head"><span class="heading-icon"><i data-icon="file"></i></span><strong data-en="Job details">Auftragsdetails</strong><button type="button" data-close class="icon-btn" aria-label="Schließen"><i data-icon="x"></i></button></div><div class="dialog-body" id="detail-body"></div></dialog>
+<dialog id="connect-dialog"><div class="dialog-head"><span class="heading-icon"><i data-icon="link"></i></span><strong data-en="Status link">Statuslink</strong><button type="button" data-close class="icon-btn" aria-label="Schließen"><i data-icon="x"></i></button></div>
+<div class="dialog-body"><h2 data-en="Open your job">Ihren Auftrag öffnen</h2><p data-en="Paste the personal status link from your Taxonomy receipt to open your live queue.">Fügen Sie den persönlichen Statuslink aus Ihrer Taxonomy-Bestätigung ein, um Ihre Live-Queue zu öffnen.</p><form id="connect-form"><label for="receipt" data-en="Status link from your email">Statuslink aus Ihrer E-Mail</label><input type="url" id="receipt" required autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="https://…"><p id="link-error" class="form-error" role="status" hidden></p><button class="primary-btn" type="submit" data-en="Open job">Auftrag öffnen</button></form></div></dialog>
+    </div>
+</body></html>

@@ -2,10 +2,12 @@ package com.taxonomy.mail;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.awaitility.Awaitility.await;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -27,6 +29,11 @@ import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -55,6 +62,239 @@ class MailAnalysisQueueTest {
     @BeforeEach
     void classifyRequests() {
         when(processor.classify(anyString(), anyString())).thenReturn(COMMAND);
+    }
+
+    @Test
+    void receiptViewShowsAnonymousQueueAndUsesMeasuredDurationsAcrossRestarts() throws Exception {
+        var now = new AtomicReference<>(NOW);
+        var clock = mock(Clock.class);
+        when(clock.instant()).thenAnswer(invocation -> now.get());
+        var mapper = JsonMapper.builder().build();
+        var started = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        var count = new AtomicInteger();
+        when(processor.process(anyString(), eq(COMMAND), anyString(), any())).thenAnswer(invocation -> {
+            int number = count.incrementAndGet();
+            now.updateAndGet(time -> time.plusSeconds(20L * number));
+            return new MailAnalysisQueue.Outcome("Fertig", List.of(), true);
+        });
+
+        var history = new MailAnalysisQueue(directory, 4, RETENTION, mapper, processor, delivery, clock);
+        try {
+            for (int i = 0; i < 3; i++) {
+                String sample = history.submit(new IncomingMail("sample-" + i, FIRST.sender(),
+                        FIRST.subject(), FIRST.requirementText())).jobToken();
+                history.confirmReceipt(sample);
+                if (i < 2) assertThat(history.snapshot(sample).orElseThrow().typicalDurationSeconds()).isNull();
+                history.processNext();
+                var finished = history.snapshot(sample).orElseThrow().job();
+                assertThat(finished.state()).isEqualTo(MailAnalysisQueue.State.COMPLETED);
+                assertThat(finished.settings().exports()).containsExactly(MailAnalysisCommand.Format.PDF);
+            }
+        } finally {
+            history.destroy();
+        }
+        var queue = new MailAnalysisQueue(directory, 4, RETENTION, mapper, processor, delivery, clock);
+        try {
+            var confidential = new MailAnalysisCommand(MailAnalysisCommand.Mode.DECISION_TREE,
+                    List.of("private-taxonomy"), List.of(MailAnalysisCommand.Format.DOCX));
+            when(processor.classify(FIRST.subject(), FIRST.requirementText())).thenReturn(confidential);
+            when(processor.process(anyString(), eq(confidential), anyString(), any())).thenAnswer(invocation -> {
+                started.countDown();
+                release.await(10, TimeUnit.SECONDS);
+                return new MailAnalysisQueue.Outcome("Fertig", List.of(), true);
+            });
+            String running = queue.submit(FIRST).jobToken();
+            String firstWaiting = queue.submit(SECOND).jobToken();
+            String own = queue.submit(new IncomingMail("private-id", "person@example.test",
+                    "private subject", "private requirement")).jobToken();
+            for (String token : List.of(running, firstWaiting, own)) queue.confirmReceipt(token);
+            var pending = queue.snapshot(own).orElseThrow().job();
+            assertThat(pending.estimatedWaitSeconds()).isNull();
+            assertThat(pending.settings()).isNull();
+            queue.onApplicationEvent(null);
+            assertThat(started.await(10, TimeUnit.SECONDS)).isTrue();
+            now.updateAndGet(time -> time.plusSeconds(5));
+            var view = queue.snapshot(own).orElseThrow();
+
+            assertThat(view.summary().position()).isEqualTo(2);
+            assertThat(view.workerOnline()).isTrue();
+            assertThat(view.workerCount()).isEqualTo(1);
+            assertThat(view.estimateSamples()).isEqualTo(3);
+            assertThat(view.typicalDurationSeconds()).isEqualTo(40L);
+            assertThat(view.job()).isEqualTo(view.jobs().get(2));
+            assertThat(view.jobs()).extracting(MailAnalysisQueue.JobView::own)
+                    .containsExactly(false, false, true);
+            assertThat(view.jobs()).extracting(MailAnalysisQueue.JobView::displayId).doesNotHaveDuplicates();
+            assertThat(view.jobs().getFirst().settings()).isEqualTo(new MailAnalysisQueue.SettingsView(
+                    confidential.mode(), List.of(), 1, confidential.exports()));
+            assertThat(queue.snapshot(running).orElseThrow().job().settings().taxonomyCodes())
+                    .containsExactly("private-taxonomy");
+            assertThat(view.jobs().getFirst().startedAt()).isNotNull();
+            assertThat(view.jobs().get(1).estimatedWaitSeconds()).isEqualTo(35L);
+            assertThat(view.job().estimatedWaitSeconds()).isEqualTo(75L);
+            assertThat(mapper.writeValueAsString(view)).doesNotContain(running, firstWaiting, own,
+                    "private", FIRST.sender(), SECOND.sender(), FIRST.subject(), SECOND.requirementText());
+            now.updateAndGet(time -> time.plusSeconds(60));
+            assertThat(queue.snapshot(own).orElseThrow().job().estimatedWaitSeconds()).isNull();
+        } finally {
+            release.countDown();
+            queue.destroy();
+        }
+    }
+
+    @Test
+    void preparesConfirmedWaitingSettingsDuringAnalysisAndReusesThemAfterRestart() throws Exception {
+        var custom = new MailAnalysisCommand(MailAnalysisCommand.Mode.DECISION_TREE,
+                List.of("confidential-root"), List.of(MailAnalysisCommand.Format.DOCX));
+        when(processor.classify(SECOND.subject(), SECOND.requirementText())).thenReturn(custom);
+        var started = new CountDownLatch(1);
+        var pauseFirst = new CountDownLatch(1);
+        var result = new MailAnalysisQueue.Outcome("Fertig", List.of(), true);
+        when(processor.process(anyString(), eq(COMMAND), eq(FIRST.requirementText()), any()))
+                .thenAnswer(invocation -> {
+                    started.countDown();
+                    pauseFirst.await(15, TimeUnit.SECONDS);
+                    throw new MailAnalysisProcessor.SourceUnavailable();
+                }).thenReturn(result);
+        when(processor.process(anyString(), eq(custom), eq(SECOND.requirementText()), any())).thenReturn(result);
+        var unconfirmed = new IncomingMail("third", FIRST.sender(), "Unconfirmed", "Third requirement");
+        var rejected = new IncomingMail("fourth", FIRST.sender(), "Rejected", "Fourth requirement");
+        String waiting;
+        var before = queue(2, NOW);
+        try {
+            String first = before.submit(FIRST).jobToken();
+            before.confirmReceipt(first);
+            before.onApplicationEvent(null);
+            assertThat(started.await(10, TimeUnit.SECONDS)).isTrue();
+            before.submit(unconfirmed);
+            waiting = before.submit(SECOND).jobToken();
+            before.confirmReceipt(waiting);
+            var declined = before.submit(rejected);
+            assertThat(declined.accepted()).isFalse();
+            before.confirmReceipt(declined.jobToken());
+
+            await().atMost(Duration.ofSeconds(10)).until(() -> before.snapshot(waiting).orElseThrow().job().settings() != null);
+            var own = before.snapshot(waiting).orElseThrow();
+            assertThat(own.workerState()).isEqualTo(MailAnalysisQueue.WorkerState.RUNNING);
+            assertThat(own.job().state()).isEqualTo(MailAnalysisQueue.State.QUEUED);
+            assertThat(own.job().startedAt()).isNull();
+            assertThat(own.job().settings()).isEqualTo(new MailAnalysisQueue.SettingsView(
+                    custom.mode(), custom.taxonomyCodes(), 1, custom.exports()));
+            var observer = before.snapshot(first).orElseThrow();
+            var foreign = observer.jobs().stream().filter(job -> job.displayId().equals(own.job().displayId()))
+                    .findFirst().orElseThrow();
+            assertThat(foreign.settings()).isEqualTo(new MailAnalysisQueue.SettingsView(
+                    custom.mode(), List.of(), 1, custom.exports()));
+            verify(processor, never()).process(anyString(), eq(custom), eq(SECOND.requirementText()), any());
+            pauseFirst.countDown();
+            await().atMost(Duration.ofSeconds(10)).until(() ->
+                    before.snapshot(first).orElseThrow().workerState() == MailAnalysisQueue.WorkerState.WAITING_FOR_SOURCE);
+        } finally {
+            pauseFirst.countDown();
+            before.destroy();
+        }
+        var after = queue(2, NOW.plusSeconds(6));
+        try {
+            assertThat(after.snapshot(waiting).orElseThrow().job().settings().taxonomyCodes()).containsExactly("confidential-root");
+            after.processNext();
+            after.processNext();
+            assertThat(after.status(waiting).orElseThrow().state()).isEqualTo(MailAnalysisQueue.State.COMPLETED);
+            verify(processor).classify(SECOND.subject(), SECOND.requirementText());
+            verify(processor).process(anyString(), eq(custom), eq(SECOND.requirementText()), any());
+            verify(processor, never()).classify(unconfirmed.subject(), unconfirmed.requirementText());
+            verify(processor, never()).classify(rejected.subject(), rejected.requirementText());
+        } finally {
+            after.destroy();
+        }
+    }
+
+    @Test
+    void reattemptsAnUnavailableWaitingClassificationAtExecutionWithoutParallelCalls() throws Exception {
+        var firstProcessing = new CountDownLatch(1);
+        var finishFirst = new CountDownLatch(1);
+        var preparingSecond = new CountDownLatch(1);
+        var finishPreparing = new CountDownLatch(1);
+        var result = new MailAnalysisQueue.Outcome("Fertig", List.of(), true);
+        when(processor.process(anyString(), eq(COMMAND), eq(FIRST.requirementText()), any())).thenAnswer(invocation -> {
+            firstProcessing.countDown();
+            finishFirst.await(15, TimeUnit.SECONDS);
+            return result;
+        });
+        when(processor.classify(SECOND.subject(), SECOND.requirementText())).thenAnswer(invocation -> {
+            preparingSecond.countDown();
+            finishPreparing.await(15, TimeUnit.SECONDS);
+            throw new MailAnalysisProcessor.SourceUnavailable();
+        }).thenReturn(COMMAND);
+        when(processor.process(anyString(), eq(COMMAND), eq(SECOND.requirementText()), any())).thenReturn(result);
+        var queue = queue(2, NOW);
+        try {
+            String first = queue.submit(FIRST).jobToken();
+            queue.confirmReceipt(first);
+            queue.onApplicationEvent(null);
+            assertThat(firstProcessing.await(10, TimeUnit.SECONDS)).isTrue();
+            String second = queue.submit(SECOND).jobToken();
+            queue.confirmReceipt(second);
+            assertThat(preparingSecond.await(10, TimeUnit.SECONDS)).isTrue();
+            finishFirst.countDown();
+            await().atMost(Duration.ofSeconds(10)).until(() -> queue.status(first).orElseThrow().finished());
+            // At least one full worker polling interval elapses while the classifier owns this job.
+            await().during(Duration.ofMillis(1250)).atMost(Duration.ofSeconds(5)).untilAsserted(() -> {
+                verify(processor, times(1)).classify(SECOND.subject(), SECOND.requirementText());
+                verify(processor, never()).process(anyString(), eq(COMMAND), eq(SECOND.requirementText()), any());
+            });
+            finishPreparing.countDown();
+            await().atMost(Duration.ofSeconds(10)).until(() ->
+                    queue.status(second).orElseThrow().state() == MailAnalysisQueue.State.COMPLETED);
+            verify(processor, times(2)).classify(SECOND.subject(), SECOND.requirementText());
+            verify(processor).process(anyString(), eq(COMMAND), eq(SECOND.requirementText()), any());
+        } finally {
+            finishFirst.countDown();
+            finishPreparing.countDown();
+            queue.destroy();
+        }
+    }
+
+    @Test
+    void reportsSourceRecoveryAndDistinguishesActiveDeliveryFromDeliveryBackoff() {
+        var ready = new AtomicBoolean(false);
+        when(processor.sourceReady()).thenAnswer(invocation -> ready.get());
+        var finishAnalysis = new CountDownLatch(1);
+        var finishDelivery = new CountDownLatch(1);
+        when(processor.process(anyString(), eq(COMMAND), anyString(), any())).thenAnswer(invocation -> {
+            finishAnalysis.await(10, TimeUnit.SECONDS);
+            return new MailAnalysisQueue.Outcome("Fertig", List.of(), true);
+        });
+        doAnswer(invocation -> {
+            finishDelivery.await(10, TimeUnit.SECONDS);
+            throw new IllegalStateException("temporary SMTP failure");
+        }).when(delivery).sendResult(anyString(), anyString(), anyString(), anyList());
+
+        var queue = new MailAnalysisQueue(directory, 2, RETENTION, JsonMapper.builder().build(), processor, delivery);
+        String token = queue.submit(FIRST).jobToken();
+        Supplier<MailAnalysisQueue.WorkerState> current = () -> queue.snapshot(token).orElseThrow().workerState();
+        try {
+            assertThat(current.get()).isEqualTo(MailAnalysisQueue.WorkerState.STOPPED);
+            queue.onApplicationEvent(null);
+            assertThat(current.get()).isEqualTo(MailAnalysisQueue.WorkerState.IDLE);
+            queue.confirmReceipt(token);
+            await().atMost(Duration.ofSeconds(10)).until(current::get,
+                    state -> state == MailAnalysisQueue.WorkerState.WAITING_FOR_SOURCE);
+            ready.set(true);
+            await().atMost(Duration.ofSeconds(10)).until(current::get,
+                    state -> state == MailAnalysisQueue.WorkerState.RUNNING);
+            finishAnalysis.countDown();
+            await().atMost(Duration.ofSeconds(10)).until(current::get,
+                    state -> state == MailAnalysisQueue.WorkerState.DELIVERING);
+            finishDelivery.countDown();
+            await().atMost(Duration.ofSeconds(10)).until(current::get,
+                    state -> state == MailAnalysisQueue.WorkerState.RETRYING);
+        } finally {
+            finishAnalysis.countDown();
+            finishDelivery.countDown();
+            queue.destroy();
+        }
+        assertThat(current.get()).isEqualTo(MailAnalysisQueue.WorkerState.STOPPED);
     }
 
     @Test

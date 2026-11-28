@@ -23,7 +23,7 @@ import java.util.regex.Pattern;
 @ConditionalOnFeature({"analysis", "architecture", "reporting"})
 class MailAnalysisStatusController {
 
-    private static final Pattern TOKEN = Pattern.compile("[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}");
+    static final Pattern TOKEN = Pattern.compile("[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}");
     private final MailAnalysisQueue queue;
 
     MailAnalysisStatusController(MailAnalysisQueue queue) {
@@ -32,24 +32,35 @@ class MailAnalysisStatusController {
 
     @GetMapping("/{token}")
     String page(@PathVariable String token, Model model, HttpServletResponse response) {
-        model.addAttribute("status", lookup(token, response));
-        model.addAttribute("jobToken", token);
-        return "mail-analysis-status";
+        privateStatusHeaders(response);
+        if (TOKEN.matcher(token).matches()) {
+            var status = queue.status(token);
+            if (status.isPresent()) {
+                model.addAttribute("status", status.get());
+                model.addAttribute("jobToken", token);
+                return "mail-analysis-status";
+            }
+        }
+        response.setStatus(HttpStatus.NOT_FOUND.value());
+        return "mail-analysis-link-unavailable";
     }
 
     @GetMapping("/{token}/status")
     @ResponseBody
     @Operation(summary = "Read the status of an email analysis job",
-            description = "Returns the job state and completion flag, its queue position when queued, the queue capacity and queued, running and delivering job counts for the bearer token in the receipt link. The token grants read-only access; mail and result contents are not returned. Responses are not cached. Invalid, unknown, expired or rejected job tokens return HTTP 404. Available when mail analysis is enabled.")
-    MailAnalysisQueue.Status status(@PathVariable String token, HttpServletResponse response) {
-        return lookup(token, response);
+            description = "Returns the receipt job, current queue counts and anonymous active jobs with classified analysis settings. "
+                    + "The estimated wait uses recent measured analysis times and is null when unavailable. "
+                    + "No-store responses include no mail contents, addresses, attachments or bearer tokens. "
+                    + "Invalid, unknown, expired or rejected tokens return HTTP 404. Available when mail analysis is enabled.")
+    MailAnalysisQueue.Snapshot status(@PathVariable String token, HttpServletResponse response) {
+        privateStatusHeaders(response);
+        if (!TOKEN.matcher(token).matches()) throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+        return queue.snapshot(token).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
     }
 
-    private MailAnalysisQueue.Status lookup(String token, HttpServletResponse response) {
+    private static void privateStatusHeaders(HttpServletResponse response) {
         response.setHeader(HttpHeaders.CACHE_CONTROL, "no-store");
         response.setHeader("Referrer-Policy", "no-referrer");
         response.setHeader("X-Robots-Tag", "noindex, nofollow");
-        if (!TOKEN.matcher(token).matches()) throw new ResponseStatusException(HttpStatus.NOT_FOUND);
-        return queue.status(token).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
     }
 }

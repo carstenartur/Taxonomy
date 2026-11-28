@@ -12,20 +12,25 @@ import java.nio.file.StandardOpenOption;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.NavigableSet;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.TreeSet;
 import java.util.UUID;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
 
+import com.fasterxml.jackson.annotation.JsonUnwrapped;
 import com.taxonomy.identity.StableIdentityHash;
 import com.taxonomy.shared.features.ConditionalOnFeature;
 import org.slf4j.Logger;
@@ -55,6 +60,10 @@ public final class MailAnalysisQueue implements ApplicationListener<ApplicationR
 
     public enum State { QUEUED, RUNNING, DELIVERING, COMPLETED, PARTIAL, FAILED, REJECTED }
 
+    public enum WorkerState { STOPPED, IDLE, RUNNING, WAITING_FOR_SOURCE, RETRYING, DELIVERING }
+
+    private static final int MAX_DURATION_SAMPLES = 32;
+    private static final int MIN_DURATION_SAMPLES = 3;
     private static final String CAPACITY_REJECTION = "Die Warteschlange ist voll. Bitte senden Sie den Auftrag später erneut.";
 
     public record Submission(String jobToken, Integer position, boolean accepted, boolean duplicate,
@@ -63,6 +72,18 @@ public final class MailAnalysisQueue implements ApplicationListener<ApplicationR
     /** The bearer link deliberately has no request, address, or attachment data. */
     public record Status(State state, Integer position, int queuedJobs, int capacity,
                          int runningJobs, int deliveringJobs, boolean finished) {}
+
+    public record SettingsView(MailAnalysisCommand.Mode mode, List<String> taxonomyCodes, int taxonomyCount,
+                               List<MailAnalysisCommand.Format> exports) {}
+
+    /** A display identifier refers to a queue row. Only the receipt token authorizes access. */
+    public record JobView(String displayId, boolean own, State state, Integer position,
+                          Instant submittedAt, Instant startedAt, SettingsView settings,
+                          Long estimatedWaitSeconds) {}
+
+    public record Snapshot(@JsonUnwrapped Status summary, Instant observedAt, boolean workerOnline,
+                           int workerCount, WorkerState workerState, int estimateSamples, Long typicalDurationSeconds,
+                           JobView job, List<JobView> jobs) {}
 
     record Outcome(String summary, List<MailAnalysisAttachment> attachments, boolean successful, boolean partial) {
         Outcome(String summary, List<MailAnalysisAttachment> attachments, boolean successful) {
@@ -79,11 +100,18 @@ public final class MailAnalysisQueue implements ApplicationListener<ApplicationR
         }
     }
 
+    private record Prepared(String token, MailAnalysisCommand command) {}
+
     private record Execution(String id, MailAnalysisCommand command) {}
 
     private record Job(String token, String identity, long sequence, IncomingMail mail, State state,
                        boolean receiptConfirmed, Instant submittedAt, Instant updatedAt, Instant retryAfter,
-                       Instant deliveryStartedAt, Integer admissionPosition, Execution execution) {
+                       Instant deliveryStartedAt, Integer admissionPosition, Execution execution,
+                       Instant startedAt, MailAnalysisCommand classifiedSettings) {
+        MailAnalysisCommand settings() {
+            return execution != null && execution.command() != null ? execution.command() : classifiedSettings;
+        }
+
         boolean terminal() {
             return state == State.COMPLETED || state == State.PARTIAL || state == State.FAILED || state == State.REJECTED;
         }
@@ -101,13 +129,15 @@ public final class MailAnalysisQueue implements ApplicationListener<ApplicationR
             };
             Instant firstDelivery = next == State.DELIVERING && deliveryStartedAt == null ? updated : deliveryStartedAt;
             Execution retainedExecution = next == State.QUEUED || next == State.RUNNING ? execution : null;
+            Instant start = next == State.RUNNING && state == State.QUEUED ? updated : startedAt;
             return new Job(token, identity, sequence, retained, next, confirmed,
-                    submittedAt, updated, retry, firstDelivery, admissionPosition, retainedExecution);
+                    submittedAt, updated, retry, firstDelivery, admissionPosition, retainedExecution,
+                    start, retainedExecution == null ? settings() : null);
         }
 
         Job withExecution(Execution value) {
             return new Job(token, identity, sequence, mail, state, receiptConfirmed, submittedAt, updatedAt,
-                    retryAfter, deliveryStartedAt, admissionPosition, value);
+                    retryAfter, deliveryStartedAt, admissionPosition, value, startedAt, classifiedSettings);
         }
     }
 
@@ -127,18 +157,28 @@ public final class MailAnalysisQueue implements ApplicationListener<ApplicationR
     private final NavigableSet<Job> running = new TreeSet<>(FIFO);
     private final NavigableSet<Job> deliveries = new TreeSet<>(DELIVERY_ORDER);
     private final NavigableSet<Job> expiring = new TreeSet<>(Comparator.comparing(Job::retentionStart).thenComparing(FIFO));
+    private final NavigableSet<Job> measured = new TreeSet<>(Comparator.comparing(Job::deliveryStartedAt).thenComparing(FIFO));
     private final Map<State, NavigableSet<Job>> active = Map.of(
             State.QUEUED, queued, State.RUNNING, running, State.DELIVERING, deliveries);
     private FileChannel lockChannel;
     private FileLock directoryLock;
     private ScheduledExecutorService executor;
+    private ScheduledFuture<?> workerTask;
     private long lastSequence;
-    private boolean warned;
+    private volatile boolean warned;
+    private volatile boolean sending;
     private boolean lastClaimWasDeliveryRetry;
     // One worker owns the running job and retains at most one computed result during a storage outage.
     private MailAnalysisCommand unpersistedCommand;
     private Outcome unspooledOutcome;
-    private Instant runningRetryAt;
+    private volatile Instant runningRetryAt;
+    private volatile boolean waitingForSource;
+    // One preparation lane shares the classifier with execution. A successful inference survives
+    // transient spool writes in memory until the command or the RUNNING transition is durable.
+    private String preparingToken;
+    private Prepared prepared;
+    private Instant preparationRetryAt;
+    private final Set<String> failedPreparations = new HashSet<>();
 
     @Autowired
     public MailAnalysisQueue(
@@ -184,7 +224,7 @@ public final class MailAnalysisQueue implements ApplicationListener<ApplicationR
         // Record each decision before SMTP. A retry of the same IMAP UID must never change the answer.
         Job job = new Job(UUID.randomUUID().toString(), identity, ++lastSequence, accepted ? mail : null,
                 accepted ? State.QUEUED : State.REJECTED, false, admitted, admitted, null, null,
-                accepted ? waiting + 1 : null, accepted ? newExecution() : null);
+                accepted ? waiting + 1 : null, accepted ? newExecution() : null, null, null);
         store(job);
         return submission(job, false);
     }
@@ -217,6 +257,70 @@ public final class MailAnalysisQueue implements ApplicationListener<ApplicationR
                 running.size(), deliveries.size(), job.terminal()));
     }
 
+    /**
+     * One lock covers all rows and counters, so a running job cannot also appear in the waiting list.
+     * Public rows contain only classified options and operational data.
+     */
+    public synchronized Optional<Snapshot> snapshot(String jobToken) {
+        var summary = status(jobToken);
+        if (summary.isEmpty()) return Optional.empty();
+        Instant now = clock.instant();
+        Job own = jobs.get(jobToken);
+        long[] durations = measured.descendingSet().stream()
+                .filter(job -> !removable(job, now))
+                .limit(MAX_DURATION_SAMPLES)
+                .mapToLong(job -> Math.max(1L, Duration.between(job.startedAt(), job.deliveryStartedAt()).toSeconds()))
+                .sorted().toArray();
+        Long typical = null;
+        if (durations.length >= MIN_DURATION_SAMPLES) {
+            long lower = durations[(durations.length - 1) / 2];
+            typical = lower + (durations[durations.length / 2] - lower) / 2;
+        }
+        WorkerState worker = workerState(now);
+        Long wait = worker == WorkerState.IDLE || worker == WorkerState.RUNNING ? initialWaitSeconds(typical, now) : null;
+        var entries = new ArrayList<JobView>(queued.size() + running.size() + deliveries.size());
+        for (Job job : running) entries.add(view(job, own, null, null));
+        int position = 0;
+        for (Job job : queued) {
+            entries.add(view(job, own, ++position, job.receiptConfirmed() ? wait : null));
+            if (job.receiptConfirmed() && wait != null) wait += typical;
+        }
+        for (Job job : deliveries) entries.add(view(job, own, null, null));
+        JobView ownView = entries.stream().filter(JobView::own).findFirst()
+                .orElseGet(() -> view(own, own, null, null));
+        return Optional.of(new Snapshot(summary.get(), now, worker != WorkerState.STOPPED, 1, worker, durations.length,
+                typical, ownView, List.copyOf(entries)));
+    }
+
+    private WorkerState workerState(Instant now) {
+        if (workerTask == null || workerTask.isDone() || executor.isShutdown()) return WorkerState.STOPPED;
+        if (sending) return WorkerState.DELIVERING;
+        if (waitingForSource && (!queued.isEmpty() || !running.isEmpty())) return WorkerState.WAITING_FOR_SOURCE;
+        if (warned || runningRetryAt != null && runningRetryAt.isAfter(now)) return WorkerState.RETRYING;
+        if (!running.isEmpty()) return WorkerState.RUNNING;
+        if (!deliveries.isEmpty()) return dueDelivery(now) == null ? WorkerState.RETRYING : WorkerState.DELIVERING;
+        return preparingToken == null ? WorkerState.IDLE : WorkerState.RUNNING;
+    }
+
+    private Long initialWaitSeconds(Long typical, Instant now) {
+        if (typical == null || waitingForSource || runningRetryAt != null || !deliveries.isEmpty()) return null;
+        if (running.isEmpty()) return preparingToken == null ? 0L : null;
+        Instant start = running.first().startedAt();
+        if (start == null) return null;
+        long elapsed = Math.max(0L, Duration.between(start, now).toSeconds());
+        // An overrun has no defensible remaining-time estimate.
+        return elapsed < typical ? typical - elapsed : null;
+    }
+
+    private static JobView view(Job job, Job own, Integer position, Long wait) {
+        boolean owner = job.token().equals(own.token());
+        var options = job.settings();
+        var settings = options == null ? null : new SettingsView(options.mode(),
+                owner ? options.taxonomyCodes() : List.of(), options.taxonomyCodes().size(), options.exports());
+        return new JobView("TX-" + job.sequence(), owner, job.state(), position, job.submittedAt(),
+                job.startedAt(), settings, wait);
+    }
+
     private int position(Job job) {
         return 1 + queued.headSet(job).size();
     }
@@ -224,13 +328,71 @@ public final class MailAnalysisQueue implements ApplicationListener<ApplicationR
     @Override
     public synchronized void onApplicationEvent(ApplicationReadyEvent event) {
         if (executor != null) return;
-        executor = Executors.newSingleThreadScheduledExecutor(Thread.ofPlatform().daemon().name("mail-analysis").factory());
-        executor.scheduleWithFixedDelay(this::tick, 0, 1, TimeUnit.SECONDS);
+        executor = Executors.newScheduledThreadPool(2, Thread.ofPlatform().daemon().name("mail-analysis-", 1).factory());
+        workerTask = executor.scheduleWithFixedDelay(this::tick, 0, 1, TimeUnit.SECONDS);
+        executor.scheduleWithFixedDelay(this::prepareWaiting, 1, 1, TimeUnit.SECONDS);
     }
 
     @Override
     public int getOrder() {
         return Ordered.LOWEST_PRECEDENCE;
+    }
+
+    /** Classify one confirmed waiting job while execution or result delivery is occupied. */
+    private void prepareWaiting() {
+        Job candidate;
+        synchronized (this) {
+            if (prepared != null) {
+                if (!clock.instant().isBefore(preparationRetryAt)) persistPrepared();
+                return;
+            }
+            if (waitingForSource || running.isEmpty() && deliveries.isEmpty()) return;
+            candidate = queued.stream().filter(job -> job.receiptConfirmed() && job.settings() == null
+                    && !failedPreparations.contains(job.token())).findFirst().orElse(null);
+            if (candidate == null) return;
+            preparingToken = candidate.token();
+        }
+        try {
+            if (!sourceReady.getAsBoolean() || Thread.currentThread().isInterrupted()) return;
+            var command = processor.classify(candidate.mail().subject(), candidate.mail().requirementText());
+            synchronized (this) {
+                prepared = new Prepared(candidate.token(), command);
+                persistPrepared();
+            }
+        } catch (RuntimeException unavailable) {
+            // The ordinary worker must still decide the outcome (including transient provider failures).
+            synchronized (this) {
+                failedPreparations.add(candidate.token());
+            }
+        } finally {
+            synchronized (this) {
+                preparingToken = null;
+            }
+        }
+    }
+
+    /** Called with the queue lock held. Keep the validated command if the spool is temporarily unavailable. */
+    private void persistPrepared() {
+        Job current = jobs.get(prepared.token());
+        if (current != null && current.state() == State.QUEUED && current.settings() == null) {
+            try {
+                store(applyPrepared(current));
+            } catch (RuntimeException unavailable) {
+                if (preparationRetryAt == null) {
+                    log.warn("Email job settings could not be persisted; the classified command will be retried ({})",
+                            unavailable.getClass().getSimpleName());
+                }
+                preparationRetryAt = clock.instant().plus(STORAGE_RETRY);
+                return;
+            }
+        }
+        prepared = null;
+        preparationRetryAt = null;
+    }
+
+    private Job applyPrepared(Job job) {
+        Execution execution = job.execution() == null ? newExecution() : job.execution();
+        return job.withExecution(new Execution(execution.id(), prepared.command()));
     }
 
     private void tick() {
@@ -257,6 +419,7 @@ public final class MailAnalysisQueue implements ApplicationListener<ApplicationR
         }
 
         Outcome outcome;
+        sending = true;
         try {
             outcome = computed != null ? computed : read(outgoing, Outcome.class);
             if (outcome.successful()) {
@@ -269,6 +432,8 @@ public final class MailAnalysisQueue implements ApplicationListener<ApplicationR
             update(job.update(State.DELIVERING, true, now, now.plus(DELIVERY_RETRY)));
             log.warn("Email job delivery will be retried ({})", unavailable.getClass().getSimpleName());
             return;
+        } finally {
+            sending = false;
         }
         update(job.update(outcome.deliveredState(), true, clock.instant(), null));
         delete(outgoing);
@@ -281,11 +446,16 @@ public final class MailAnalysisQueue implements ApplicationListener<ApplicationR
                 if (unspooledOutcome == null) unspooledOutcome = analyze(job);
                 write(outgoing, unspooledOutcome);
             }
-            Job staged = job.update(State.DELIVERING, true, clock.instant(), null);
-            update(staged);
-            runningRetryAt = null;
-            return staged;
+            synchronized (this) {
+                // Classification persisted its command after this worker originally claimed the job.
+                Job staged = jobs.get(job.token()).update(State.DELIVERING, true, clock.instant(), null);
+                store(staged);
+                waitingForSource = false;
+                runningRetryAt = null;
+                return staged;
+            }
         } catch (MailAnalysisProcessor.SourceUnavailable unavailable) {
+            waitingForSource = true;
             runningRetryAt = clock.instant().plus(SOURCE_RETRY);
         } catch (RuntimeException unavailable) {
             if (Thread.currentThread().isInterrupted()) throw unavailable;
@@ -333,12 +503,30 @@ public final class MailAnalysisQueue implements ApplicationListener<ApplicationR
         Job candidate = nextCandidate();
         if (candidate == null) return null;
         // Probe catalogue/Git readiness outside the queue lock so mailbox intake and status can continue.
-        if (needsSource(candidate) && !sourceReady.getAsBoolean()) return claimDueDelivery();
+        if (needsSource(candidate)) {
+            waitingForSource = !sourceReady.getAsBoolean();
+            if (waitingForSource) return claimDueDelivery();
+        } else if (candidate.state() == State.RUNNING) {
+            // The persisted command retries the source inside the processor itself.
+            waitingForSource = false;
+        }
         if (candidate.state() != State.QUEUED) return candidate;
-        Job started = candidate.update(State.RUNNING, true, clock.instant(), null);
-        update(started);
-        lastClaimWasDeliveryRetry = false;
-        return started;
+        synchronized (this) {
+            if (candidate.token().equals(preparingToken)) return null;
+            // A completed preparation may have changed this row while the source probe ran.
+            Job latest = jobs.get(candidate.token());
+            if (latest == null || latest.state() != State.QUEUED) return null;
+            boolean pending = prepared != null && prepared.token().equals(latest.token());
+            Job claimed = pending ? applyPrepared(latest) : latest;
+            Job started = claimed.update(State.RUNNING, true, clock.instant(), null);
+            store(started);
+            if (pending) {
+                prepared = null;
+                preparationRetryAt = null;
+            }
+            lastClaimWasDeliveryRetry = false;
+            return started;
+        }
     }
 
     private boolean needsSource(Job job) {
@@ -466,13 +654,22 @@ public final class MailAnalysisQueue implements ApplicationListener<ApplicationR
 
         var stateJobs = active.get(job.state());
         if (stateJobs != null) stateJobs.add(job);
+        if (job.state() != State.QUEUED) failedPreparations.remove(job.token());
         if (job.retentionStart() != null) expiring.add(job);
+        if (hasMeasuredDuration(job)) measured.add(job);
     }
 
     private void removeFromSchedule(Job job) {
         var stateJobs = active.get(job.state());
         if (stateJobs != null) stateJobs.remove(job);
         if (job.retentionStart() != null) expiring.remove(job);
+        if (hasMeasuredDuration(job)) measured.remove(job);
+    }
+
+    private static boolean hasMeasuredDuration(Job job) {
+        return (job.state() == State.COMPLETED || job.state() == State.PARTIAL)
+                && job.startedAt() != null && job.deliveryStartedAt() != null
+                && !job.deliveryStartedAt().isBefore(job.startedAt());
     }
 
     private void pruneExpired() {

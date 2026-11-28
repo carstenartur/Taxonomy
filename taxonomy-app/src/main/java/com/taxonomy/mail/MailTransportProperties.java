@@ -1,6 +1,8 @@
 package com.taxonomy.mail;
 
 import java.net.URI;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
 
@@ -10,6 +12,7 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
 @ConfigurationProperties("taxonomy.mail")
 record MailTransportProperties(
         URI publicBaseUrl,
+        URI statusPortalUrl,
         List<String> allowedSenders,
         @DefaultValue("10485760") int maxMessageBytes,
         @DefaultValue("8") int maxAttachments,
@@ -25,6 +28,15 @@ record MailTransportProperties(
                         && List.of("localhost", "127.0.0.1", "[::1]").contains(publicBaseUrl.getHost()))) {
             throw new IllegalArgumentException("Taxonomy mail requires a public application base URL using HTTPS");
         }
+        // Spring converts an empty property placeholder to the empty URI.
+        if (statusPortalUrl != null && statusPortalUrl.toString().isEmpty()) statusPortalUrl = null;
+        if (statusPortalUrl != null && (!"https".equalsIgnoreCase(statusPortalUrl.getScheme())
+                || statusPortalUrl.getHost() == null || statusPortalUrl.getUserInfo() != null
+                || statusPortalUrl.getQuery() != null || statusPortalUrl.getFragment() != null
+                || statusPortalUrl.getPort() > 65535 || statusPortalUrl.getPort() == 0
+                || !"https".equalsIgnoreCase(publicBaseUrl.getScheme()))) {
+            throw new IllegalArgumentException("The external mail status portal and backend require HTTPS URLs");
+        }
         allowedSenders = allowedSenders == null ? List.of() : List.copyOf(allowedSenders);
         if (allowedSenders.isEmpty()) {
             throw new IllegalArgumentException("Taxonomy mail requires an explicit sender allowlist");
@@ -34,6 +46,12 @@ record MailTransportProperties(
                 || maxRequirementCharacters < 100 || maxRequirementCharacters > 100_000) {
             throw new IllegalArgumentException("Taxonomy mail input limits are outside the supported range");
         }
+    }
+
+    String statusLink(String jobToken) {
+        String page = publicBaseUrl.toASCIIString().replaceAll("/+$", "") + "/mail-analysis/jobs/" + jobToken;
+        if (statusPortalUrl == null) return page;
+        return statusPortalUrl.toASCIIString() + "#status=" + URLEncoder.encode(page + "/status", StandardCharsets.UTF_8);
     }
 
     record Imap(String host, @DefaultValue("993") int port, String username, String password,
