@@ -1429,13 +1429,15 @@ class ScreenshotGeneratorIT {
         Assertions.assertEquals("working", driver.findElement(By.id("architectureSource")).getAttribute("value"));
     }
 
-    private void assertSavedGraphEvidence() {
+    private void assertSavedGraphEvidence(String origin) {
         WebElement evidence = driver.findElement(By.cssSelector("#graphResultsContent .graph-evidence"));
         Assertions.assertTrue(evidence.isDisplayed());
         Assertions.assertTrue(evidence.getText().contains(graphFixtureCommitId));
         Assertions.assertTrue(evidence.getText().contains("screenshot-graph"));
-        Assertions.assertTrue(driver.findElement(By.id("graphResultsContent")).getText().contains("CR-1047"),
-                "The graph must render the saved accepted relation, not an empty global fallback");
+        var diagram = driver.findElement(By.id("graphViewGraph"));
+        Assertions.assertTrue(diagram.findElements(By.cssSelector("svg line title")).stream()
+                        .anyMatch(title -> ("CR-1047 → " + origin + " (SUPPORTS)").equals(title.getDomProperty("textContent"))),
+                "The diagram must draw the saved direct relation to the selected node");
     }
 
     @Test
@@ -1453,7 +1455,7 @@ class ScreenshotGeneratorIT {
             js("arguments[0].click();", upstreamBtn);
 
             waitForResult("graphResultsContent", "#graphViewTable", 30);
-            assertSavedGraphEvidence();
+            assertSavedGraphEvidence("BP-1327");
             saveElementScreenshot(driver.findElement(By.id("graphExplorerPanel")), "21-graph-explorer-upstream.png");
         } finally {
             resetPageState();
@@ -1476,7 +1478,7 @@ class ScreenshotGeneratorIT {
             js("arguments[0].click();", failureBtn);
 
             waitForResult("graphResultsContent", "#graphViewTable", 30);
-            assertSavedGraphEvidence();
+            assertSavedGraphEvidence("BP-1327");
             saveElementScreenshot(driver.findElement(By.id("graphExplorerPanel")), "22-graph-explorer-failure.png");
         } finally {
             resetPageState();
@@ -2163,7 +2165,7 @@ class ScreenshotGeneratorIT {
             waitForResult("graphResultsContent", "#graphViewTable", 30);
             Assertions.assertEquals("BP-1000", driver.findElement(By.id("graphNodeInput")).getAttribute("value"));
             wait(5).until(d -> d.findElement(By.id("graphNodeInput")).equals(d.switchTo().activeElement()));
-            assertSavedGraphEvidence();
+            assertSavedGraphEvidence("BP-1000");
             saveScreenshot("graph-entry-current-de.png");
         } finally {
             resetPageState();

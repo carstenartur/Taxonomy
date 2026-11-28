@@ -461,7 +461,8 @@
 
     function applyCapabilities() {
         if (state.account && state.account.architectureMutationAllowed) return;
-        document.querySelectorAll('button[type="submit"], #confirmImport, #extractAi, #addManualCandidate').forEach(button => { button.disabled = true; button.title = l('permission'); });
+        document.getElementById('importMain').querySelectorAll('button[type="submit"], #confirmImport, #extractAi, #addManualCandidate')
+            .forEach(button => { button.disabled = true; button.title = l('permission'); });
     }
     function countDecisions() { return state.candidates.reduce((counts, candidate) => { counts[candidate.decision] = (counts[candidate.decision] || 0) + 1; return counts; }, { NEW: 0, VERSION: 0, MERGE: 0, DISCARD: 0 }); }
     function summaryMetric(label, value) { return `<div><div class="card h-100"><div class="card-body"><div class="h3">${value}</div><div class="small text-body-secondary">${escapeHtml(label)}</div></div></div></div>`; }

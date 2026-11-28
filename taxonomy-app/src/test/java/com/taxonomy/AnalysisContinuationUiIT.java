@@ -2,6 +2,7 @@ package com.taxonomy;
 
 import com.sun.net.httpserver.*;
 import com.taxonomy.testsupport.BrowserSession;
+import org.jsoup.Jsoup;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -90,6 +91,57 @@ class AnalysisContinuationUiIT {
         assertThat(relationWrites).hasSize(2);
     }
 
+    @ParameterizedTest
+    @CsvSource({"de,analyzeBtn", "en,copilotBtn"})
+    void invalidScopeCanBeCorrectedWithoutLosingTheRequirement(String language, String actionId) {
+        openRelationsFixture("?scope=true&lang=" + language);
+        var details = browser.findElement(By.id("analysisScopeControls"));
+        var summary = browser.findElement(By.id("analysisScopeSummary"));
+        var error = browser.findElement(By.id("analysisScopeProblem"));
+        var group = browser.findElement(By.id("analysisScopeRootsGroup"));
+        var input = browser.findElement(By.id("businessText"));
+        String original = input.getDomProperty("value");
+        boolean german = language.equals("de");
+
+        browser.executeScript("TaxonomyAnalysisScope.restoreOptions({taxonomySelection:[],analysisMode:'TAXONOMIES_ONLY'})");
+        assertThat(details.getDomProperty("open")).isEqualTo("false");
+        assertThat(summary.getText()).contains(german ? "Auswahl prüfen" : "Review selection",
+                german ? "Nur Knotenbewertung" : "Node assessment only");
+        browser.findElement(By.id(actionId)).click();
+        assertThat(details.getDomProperty("open")).isEqualTo("true");
+        assertThat(error.getText()).contains(german ? "mindestens eine" : "at least one");
+        assertThat(browser.switchTo().activeElement().getDomAttribute("id")).isEqualTo("analysisRoot-CP");
+
+        browser.switchTo().activeElement().click();
+        assertThat(summary.getText()).contains("CP").doesNotContain("UA");
+        assertThat(error.isDisplayed()).isFalse();
+        assertThat(group.getDomAttribute("aria-invalid")).isEqualTo("false");
+        browser.executeScript("TaxonomyAnalysisScope.restoreOptions({taxonomySelection:['OLD'],analysisMode:'FULL'})");
+        assertThat(error.getText()).contains("OLD");
+        browser.findElement(By.id("analysisSelectAll")).click();
+        assertThat(summary.getText()).contains(german ? "Alle Teiltaxonomien" : "All taxonomies",
+                german ? "Relationssuche" : "relation search");
+        assertThat(error.isDisplayed()).isFalse();
+        assertThat(input.getDomProperty("value")).isEqualTo(original);
+        assertThat(browser.executeScript("return TaxonomyAnalysisScope.read().taxonomyRoots.length")).isEqualTo(0L);
+    }
+
+    private static String scopeFeedbackFixture(String template, String language) {
+        var scope = Jsoup.parse(template).expectFirst("#analysisScopeControls");
+        var bundle = java.util.ResourceBundle.getBundle("i18n.messages", java.util.Locale.forLanguageTag(language));
+        var translations = new java.util.HashMap<String, String>();
+        bundle.keySet().stream().filter(key -> key.startsWith("analysis.scope."))
+                .forEach(key -> translations.put(key, bundle.getString(key)));
+        return scope.outerHtml() + """
+                <script>
+                const translations = %s;
+                TaxonomyI18n.t = (key, count) => (translations[key] || key).replace('{0}', count);
+                TaxonomyState.taxonomyData.push({code:'UA', nameEn:'User applications', nameDe:'Nutzeranwendungen'});
+                document.getElementById('copilotBtn').addEventListener('click', () => TaxonomyAnalysisRecovery.startCopilot());
+                </script><script src="/js/core/taxonomy-analysis-scope.js"></script>
+                """.formatted(mapper.writeValueAsString(translations));
+    }
+
     @Test void legacyNodeOnlyEvidenceExplainsWhyRelationsCannotBeAdded() {
         assertLegacyNodeOnlyEvidence("?lang=en");
     }
@@ -132,6 +184,8 @@ class AnalysisContinuationUiIT {
         if (path.equals("/relations-fixture")) {
             String language = exchange.getRequestURI().getQuery().endsWith("en") ? "en" : "de";
             String template = new ClassPathResource("templates/index.html").getContentAsString(StandardCharsets.UTF_8);
+            String scopeControls = exchange.getRequestURI().getQuery().contains("scope=true")
+                    ? scopeFeedbackFixture(template, language) : "";
             var control = java.util.regex.Pattern.compile("<div id=\"analysisRelationsExtension\"[\\s\\S]*?</div>").matcher(template);
             if (!control.find()) throw new java.io.IOException("Product relations extension control is missing");
             // Deliver the real module after document load to exercise component readiness.
@@ -157,9 +211,9 @@ class AnalysisContinuationUiIT {
                 window.fixtureFollowups=0;window.TaxonomyAnalysis={runCopilotFlow:async()=>{window.fixtureFollowups++;},renderPartialCopilot:()=>{}};
                 </script><script src="/js/api/taxonomy-api-client.js"></script><script src="/js/api/analysis-api.js"></script>
                 <script src="/js/api/analysis-session-api.js"></script><script src="/scoring.js"></script>
-                <script src="/viewport.js"></script><script src="/recovery.js"></script>%s
+                <script src="/viewport.js"></script><script src="/recovery.js"></script>%s%s
                 </body></html>
-                """.formatted(language, control.group(), language, language, extensionScript)); return;
+                """.formatted(language, control.group(), language, language, extensionScript, scopeControls)); return;
         }
         if (path.equals("/fixture")) {
             String language = exchange.getRequestURI().getQuery().endsWith("en") ? "en" : "de";

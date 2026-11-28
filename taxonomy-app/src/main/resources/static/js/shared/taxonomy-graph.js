@@ -283,12 +283,14 @@
         var width = container.clientWidth || 500;
         var height = Math.min(GRAPH_MAX_HEIGHT, Math.max(GRAPH_MIN_HEIGHT, nodes.length * GRAPH_HEIGHT_PER_NODE));
 
-        // Deduplicate nodes
-        var nodeMap = {};
+        // Neighbour and impact lists deliberately exclude the query origin from their counts.
+        // Keep it as an endpoint in the diagram so the first traversed edges remain visible.
+        var nodeMap = new Map();
         nodes.forEach(function (n) {
-            if (!nodeMap[n.nodeCode]) nodeMap[n.nodeCode] = n;
+            if (!nodeMap.has(n.nodeCode)) nodeMap.set(n.nodeCode, n);
         });
-        var nodeList = Object.values(nodeMap);
+        if (originCode && !nodeMap.has(originCode)) nodeMap.set(originCode, {nodeCode: originCode});
+        var nodeList = Array.from(nodeMap.values());
 
         // Build D3-compatible data
         var d3Nodes = nodeList.map(function (n) {
@@ -345,6 +347,9 @@
             .attr('stroke-opacity', 0.6)
             .attr('stroke-width', 1.5)
             .attr('marker-end', 'url(#arrowhead)');
+        link.append('title').text(function (edge) {
+            return edge.source.id + ' → ' + edge.target.id + ' (' + edge.type + ')';
+        });
 
         // Link labels
         var linkLabel = svg.append('g')
@@ -394,6 +399,7 @@
         // Tooltip on hover
         node.append('title')
             .text(function (d) {
+                if (d.isOrigin) return t('graph.result.node', d.id);
                 return d.id + ' — ' + d.title + '\nSheet: ' + d.sheet +
                     '\nRelevance: ' + (d.relevance * 100).toFixed(0) + '%' +
                     '\nHop: ' + d.hop;
@@ -446,22 +452,21 @@
         var content = document.getElementById('graphResultsContent');
         if (!content) return;
 
-        var toggleHtml = '<div class="graph-view-toggle">' +
-            '<button class="btn btn-sm btn-primary graph-toggle-btn" data-mode="graph">🔗 Graph</button>' +
-            '<button class="btn btn-sm btn-outline-secondary graph-toggle-btn" data-mode="table">📊 Table</button>' +
-            '</div>';
+        var hasNodes = nodes && nodes.length > 0;
+        var canDraw = hasNodes && typeof d3 !== 'undefined';
+        var toggleHtml = canDraw ? '<div class="graph-view-toggle">' +
+            '<button type="button" aria-pressed="true" aria-controls="graphViewGraph" class="btn btn-sm btn-primary graph-toggle-btn" data-mode="graph">🔗 ' +
+            escapeHtml(t('graph.view.diagram')) + '</button>' +
+            '<button type="button" aria-pressed="false" aria-controls="graphViewTable" class="btn btn-sm btn-outline-secondary graph-toggle-btn" data-mode="table">📊 ' +
+            escapeHtml(t('graph.view.table')) + '</button></div>' : '';
 
-        var emptyHtml = !nodes || nodes.length === 0
-            ? '<div class="alert alert-info py-1 px-2 small" role="status">'
-                + escapeHtml(t('graph.empty')) + '</div>' : '';
+        var emptyHtml = !hasNodes ? '<div class="alert alert-info py-1 px-2 small" role="status">' +
+            escapeHtml(t('graph.empty')) + '</div>' : '';
         content.innerHTML = renderEvidence(evidence) + emptyHtml + toggleHtml +
-            '<div id="graphViewGraph"></div>' +
-            '<div id="graphViewTable" style="display:none;">' + tableHtml + '</div>';
+            (canDraw ? '<div id="graphViewGraph"></div>' : '') +
+            '<div id="graphViewTable"' + (canDraw ? ' style="display:none;"' : '') + '>' + tableHtml + '</div>';
 
-        var graphContainer = document.getElementById('graphViewGraph');
-        if (graphContainer && nodes && nodes.length > 0) {
-            renderForceGraph(graphContainer, nodes, edges, originCode);
-        }
+        if (canDraw) renderForceGraph(document.getElementById('graphViewGraph'), nodes, edges, originCode);
 
         // Toggle buttons
         content.querySelectorAll('.graph-toggle-btn').forEach(function (btn) {
@@ -472,6 +477,7 @@
                 if (graphDiv) graphDiv.style.display = mode === 'graph' ? '' : 'none';
                 if (tableDiv) tableDiv.style.display = mode === 'table' ? '' : 'none';
                 content.querySelectorAll('.graph-toggle-btn').forEach(function (b) {
+                    b.setAttribute('aria-pressed', String(b.dataset.mode === mode));
                     b.classList.toggle('btn-primary', b.dataset.mode === mode);
                     b.classList.toggle('btn-outline-secondary', b.dataset.mode !== mode);
                 });

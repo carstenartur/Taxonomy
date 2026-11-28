@@ -257,25 +257,27 @@
         if (!navigation) return;
         var account = node('applicationAccount');
         function menus() { return Array.from(node('applicationMenuGroups').querySelectorAll(':scope > details.application-menu')); }
+        function openMenus() {
+            return document.querySelectorAll('#applicationMenuGroups > details.application-menu[open], #applicationAccount[open]');
+        }
         function items(menu) {
             return Array.from(menu.querySelectorAll('.application-menu-content a[href], .application-menu-content button:not(:disabled), .application-menu-content select'))
                 .filter(function (item) { return !item.hidden && item.getClientRects().length && item.getAttribute('aria-disabled') !== 'true'; });
         }
         function close(menu, restore) {
+            var returnToSummary = restore && menu.contains(document.activeElement);
             menu.open = false;
-            if (restore && menu.contains(document.activeElement)) menu.querySelector('summary').focus();
+            if (returnToSummary) menu.querySelector('summary').focus();
         }
-        if (account) {
-            document.addEventListener('focusin', function (event) {
-                if (account.open && !account.contains(event.target)) close(account, false);
+        document.addEventListener('focusin', function (event) {
+            openMenus().forEach(function (menu) {
+                if (!menu.contains(event.target)) close(menu, false);
             });
-        }
+        });
         document.addEventListener('click', function (event) {
             var action = event.target.closest?.('a[href], button:not(:disabled)');
-            var openableMenus = menus();
-            if (account) openableMenus.push(account);
-            openableMenus.forEach(function (menu) {
-                if (menu.open && (!menu.contains(event.target) || (action && menu.contains(action)))) close(menu, true);
+            openMenus().forEach(function (menu) {
+                if (!menu.contains(event.target) || (action && menu.contains(action))) close(menu, true);
             });
         });
         document.addEventListener('keydown', function (event) {
@@ -283,11 +285,10 @@
             var menu = event.target.closest?.('#applicationMenuGroups > details.application-menu, #applicationAccount');
             if (!menu) return;
             if (event.key === 'Escape' && menu.open) { event.preventDefault(); close(menu, true); return; }
-            if (menu === account) return;
             if (event.target.matches('input, textarea, select')) return;
-            var group = menus(), summary = menu.querySelector('summary');
-            if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+            if (menu !== account && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
                 event.preventDefault();
+                var group = menus();
                 var wasOpen = menu.open, next = group[(group.indexOf(menu) + (event.key === 'ArrowRight' ? 1 : group.length - 1)) % group.length];
                 close(menu, false); next.querySelector('summary').focus(); next.open = wasOpen;
             } else if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {

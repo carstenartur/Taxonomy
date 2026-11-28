@@ -1633,6 +1633,18 @@ test('graph entry exposes invalid input and backend failures instead of an empty
     assert.notEqual(f.document.getElementById('graphResultsArea').style.display, 'none');
 });
 
+test('graph results show their table directly when the diagram renderer is unavailable', async () => {
+    const f = graphEntryFixture();
+    f.window.TaxonomyGraph.openGraphExplorer('BP-1040');
+    await tick();
+    f.requests[0].resolve({originNodeCode: 'BP-1040', direction: 'UPSTREAM', maxHops: 2,
+        totalNeighbors: 1, totalRelationships: 1, neighbors: [{nodeCode: 'CP.1', relevance: 1, hopDistance: 1}],
+        traversedRelationships: [{sourceCode: 'CP.1', targetCode: 'BP-1040', relationType: 'SUPPORTS'}], evidence: graphEvidence});
+    await tick();
+    assert.match(f.graph.innerHTML, /<div id="graphViewTable">.*CP\.1/s);
+    assert.doesNotMatch(f.graph.innerHTML, /graph-toggle-btn|graphViewGraph|graph\.empty/);
+});
+
 test('graph entry keeps a later empty result visible when an older query finishes', async () => {
     const f = graphEntryFixture();
     f.window.TaxonomyGraph.openGraphExplorer('CP.1'); await tick();

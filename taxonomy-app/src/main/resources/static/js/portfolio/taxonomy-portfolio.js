@@ -477,7 +477,9 @@
         const busy = state.busyCount > 0;
         const disabled = busy || !sourceInitialized;
         document.getElementById('portfolioBusy').classList.toggle('d-none', !busy);
-        document.querySelectorAll('button[type="submit"], #proposeSolutionsBtn, #detectConflictsBtn, .product-candidate-review, .save-solution-action')
+        document.querySelectorAll('#portfolioMain button[type="submit"], #projectForm button[type="submit"], '
+                + '#requirementForm button[type="submit"], #solutionForm button[type="submit"], #productForm button[type="submit"], '
+                + '#proposeSolutionsBtn, #detectConflictsBtn, .product-candidate-review, .save-solution-action')
             .forEach(function (button) {
                 const missingProducts = button.closest('.add-product-candidate') && !state.products.length;
                 button.disabled = disabled || button.getAttribute?.('aria-disabled') === 'true' || Boolean(missingProducts);
