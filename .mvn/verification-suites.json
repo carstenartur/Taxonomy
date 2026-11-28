@@ -386,6 +386,7 @@
           "com.taxonomy.composition.architecture.ArchitectureLifecycleCreationRecoveryTest",
           "com.taxonomy.composition.architecture.ArchitectureLifecyclePublicationProofTest",
           "com.taxonomy.composition.architecture.GitNativeSyncPortfolioAtomicityTest",
+          "com.taxonomy.composition.architecture.ProjectDataImportTest",
           "com.taxonomy.composition.architecture.RepositoryAuthorizationFreshnessTest",
           "com.taxonomy.composition.architecture.RequirementLifecycleIntegrationTest",
           "com.taxonomy.composition.demo.ProductDemoAuthorityRegressionTest",
