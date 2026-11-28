@@ -194,8 +194,8 @@ and durable mapping/checkpoint reload. Complete CI validation remains a release 
 
 The explicit `taxonomy-archi-5.10-return-v1` profile supports a **content-preserving
 return** of a Taxonomy workbench export through Archi 5.10. It does not support
-semantic editing in Archi. The strict `taxonomy-archimate-3.1-v2` reader and
-ordinary XML interpretation remain unchanged. Both HTTP import actions require
+semantic editing in Archi. The strict reader accepts original Taxonomy v2 and v3 exports under their respective
+workbench mapping profiles. Both HTTP import actions require
 an editable working copy; central read contexts allow preview only.
 
 In **Architecture → Export → Review an Archi 5.10 return**, choose both the

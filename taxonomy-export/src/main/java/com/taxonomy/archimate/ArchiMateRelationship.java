@@ -3,7 +3,7 @@ package com.taxonomy.archimate;
 import java.util.Map;
 
 /**
- * Represents an ArchiMate relationship between two elements.
+ * Native relationship projection with endpoints in canonical Taxonomy order.
  * {@code accessType} is non-null only for Access relationships ("Read" or "Write").
  */
 public record ArchiMateRelationship(

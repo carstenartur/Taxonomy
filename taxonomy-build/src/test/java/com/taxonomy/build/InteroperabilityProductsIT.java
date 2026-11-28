@@ -13,7 +13,7 @@ import static org.junit.jupiter.api.Assertions.*;
 @EnabledIfSystemProperty(named="taxonomy.interoperability.skip",matches="false")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class InteroperabilityProductsIT {
-    private static final Set<String> REQUIRED = Set.of("StrictDoc/reqif-1.2/1", "Archi/archimate-3.1/1", "Archi/taxonomy-archimate-3.1-v2");
+    private static final Set<String> REQUIRED = Set.of("StrictDoc/reqif-1.2/1", "Archi/archimate-3.1/1", "Archi/taxonomy-archimate-3.1-v3");
     private Map<String,JsonNode> outcomes;
     private Throwable failure;
     private JsonNode report;

@@ -23,7 +23,8 @@ public class ModelToAstMapper {
             List<PropertyAst> props = new ArrayList<>();
             addProperty(props, "title", organization.title());
             addProperty(props, "parentId", organization.parentId());
-            blocks.add(new BlockAst("organization", List.of(organization.id()), props, List.of(), Map.of(), null));
+            addExtensions(props, organization.extensions());
+            blocks.add(new BlockAst("organization", List.of(organization.id()), props, List.of(), organization.extensions(), null));
         }
         for (CatalogueResponsibility assignment : model.getCatalogueResponsibilities()) {
             List<PropertyAst> props = new ArrayList<>();

@@ -66,9 +66,16 @@ public final class RestoreArchiveRecords {
 
     public static <T extends Record> void read(VerifiedBackup archive, BackupComponentId owner, String path,
             String kind, Class<T> type, int maximumRows, BackupCheckpoint checkpoint, Visitor<T> visitor) throws IOException {
+        read(archive, owner, path, kind, type, maximumRows, checkpoint, visitor, new String[0]);
+    }
+
+    /** Only the owner can name a nullable field added after the original record contract. */
+    static <T extends Record> void read(VerifiedBackup archive, BackupComponentId owner, String path,
+            String kind, Class<T> type, int maximumRows, BackupCheckpoint checkpoint, Visitor<T> visitor,
+            String... addedNullableFields) throws IOException {
         requireOwner(archive, owner, path);
         try (var input = archive.openEntry(path, checkpoint)) {
-            read(input, kind, archive.manifest().request().profile(), type, maximumRows, checkpoint, visitor);
+            read(input, kind, archive.manifest().request().profile(), type, maximumRows, checkpoint, visitor, addedNullableFields);
         }
     }
 
@@ -110,8 +117,20 @@ public final class RestoreArchiveRecords {
     /** Package boundary used by tests; production access always requires VerifiedBackup and declared owner. */
     static <T extends Record> void read(InputStream input, String kind, BackupProfile profile, Class<T> type,
             int maximumRows, BackupCheckpoint checkpoint, Visitor<T> visitor) throws IOException {
+        read(input, kind, profile, type, maximumRows, checkpoint, visitor, new String[0]);
+    }
+
+    static <T extends Record> void read(InputStream input, String kind, BackupProfile profile, Class<T> type,
+            int maximumRows, BackupCheckpoint checkpoint, Visitor<T> visitor, String... addedNullableFields) throws IOException {
         if (type == null || !type.isRecord()) throw new IllegalArgumentException("Invalid typed restore reader");
-        readRows(input, kind, profile, bytes -> JSON.readValue(bytes, type), maximumRows, checkpoint, visitor);
+        readRows(input, kind, profile, bytes -> {
+            if (addedNullableFields.length == 0) return JSON.readValue(bytes, type);
+            if (!(JSON.readTree(bytes) instanceof com.fasterxml.jackson.databind.node.ObjectNode row)) throw invalid();
+            for (String field : addedNullableFields) {
+                if (!row.has(field)) row.putNull(field);
+            }
+            return JSON.treeToValue(row, type);
+        }, maximumRows, checkpoint, visitor);
     }
     @FunctionalInterface private interface Decoder<T extends Record> { T decode(byte[] bytes) throws IOException; }
     private static <T extends Record> void readRows(InputStream input, String kind, BackupProfile profile, Decoder<T> decoder,

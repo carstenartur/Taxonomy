@@ -116,7 +116,52 @@ class ArchiMateRoundtripTest {
         var imported = reader.read(exporter.export(model));
         assertEquals(graph, reader.toDiagram(imported));
         assertEquals(elements.size() + relations.size(), imported.losses().size());
-        assertTrue(imported.losses().stream().allMatch(loss -> loss.kind().equals("MAPPED")));
+        for (var relationship : imported.relationships()) {
+            String expectedKind = "Association".equals(relationship.archiMateType()) && !"RELATED_TO".equals(relationship.name())
+                    ? "APPROXIMATED" : "MAPPED";
+            assertTrue(imported.losses().stream().anyMatch(loss -> "relationship".equals(loss.scope())
+                    && loss.id().equals(relationship.id()) && expectedKind.equals(loss.kind())));
+        }
+    }
+
+    @Test
+    void servingUsesProviderToConsumerInXmlAndReversesTheExistingRoute() {
+        var graph = new DiagramModel("Use a service", List.of(
+                new DiagramNode("actor", "Consumer", "Business Processes", 1, true, 1),
+                new DiagramNode("between", "Another service", "Core Services", 0, false, 2),
+                new DiagramNode("provider", "Provider", "Core Services", 1, false, 3)),
+                List.of(new DiagramEdge("usage", "actor", "provider", "USES", 1)), null);
+        var model = converter.convert(graph);
+        byte[] xml = exporter.export(model);
+        var root = ArchiMateSchema.parse(xml);
+        var relation = (org.w3c.dom.Element) root.getElementsByTagNameNS(ArchiMateSchema.NAMESPACE, "relationship").item(0);
+        assertEquals("Serving", ArchiMateExchangeReader.type(relation));
+        assertEquals(ArchiMateIds.id("element", "provider"), relation.getAttribute("source"));
+        assertEquals(ArchiMateIds.id("element", "actor"), relation.getAttribute("target"));
+        var nativeConnection = (org.w3c.dom.Element) root.getElementsByTagNameNS(ArchiMateSchema.NAMESPACE, "connection").item(0);
+        assertEquals(ArchiMateIds.id("node", "layered", "provider"), nativeConnection.getAttribute("source"));
+        var nativePoints = ArchiMateExchangeReader.children(nativeConnection, "bendpoint").stream().map(point ->
+                new ArchiMateViewConnection.Bendpoint(Integer.parseInt(point.getAttribute("x")), Integer.parseInt(point.getAttribute("y")))).toList();
+        var canonicalRoute = model.view().connections().getFirst().bendpoints();
+        assertFalse(canonicalRoute.isEmpty());
+        assertEquals(canonicalRoute.reversed(), nativePoints);
+        assertEquals(model, reader.read(xml));
+        assertEquals(graph, reader.toDiagram(reader.read(xml)));
+    }
+
+    @Test
+    void unsupportedServingIsADirectedReportedApproximation() {
+        var model = converter.convert(representative());
+        var usage = model.relationships().getFirst();
+        assertEquals("Association", usage.archiMateType());
+        assertTrue(model.losses().stream().anyMatch(loss -> loss.id().equals(usage.id())
+                && loss.kind().equals("APPROXIMATED") && loss.rationale().contains("TechnologyService to Capability")));
+        byte[] xml = exporter.export(model);
+        var root = ArchiMateSchema.parse(xml);
+        var relation = (org.w3c.dom.Element) root.getElementsByTagNameNS(ArchiMateSchema.NAMESPACE, "relationship").item(0);
+        assertEquals("true", relation.getAttribute("isDirected"));
+        relation.removeAttribute("isDirected");
+        assertThrows(IllegalArgumentException.class, () -> reader.read(root));
     }
 
     @Test

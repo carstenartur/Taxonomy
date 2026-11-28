@@ -39,8 +39,9 @@ public final class ArchiMateExchangeCodec {
         if (!NS.equals(doc.getDocumentElement().getNamespaceURI()) || !"model".equals(doc.getDocumentElement().getLocalName()))
             throw invalid("WRONG_FORMAT", "Expected an ArchiMate Model Exchange document");
         validate(doc, PROFILE); checkReferences(doc);
-        Map<String, String> propertyNames = new LinkedHashMap<>();
-        for (Element definition : all(doc, NS, "propertyDefinition")) propertyNames.put(required(definition, "identifier"), text(definition, "name"));
+        Map<String, String> propertyNames = propertyNames(doc.getDocumentElement());
+        String workbenchProfile = propertyValue(doc.getDocumentElement(), propertyNames, "taxonomy.mappingProfile");
+        validateWorkbenchConnections(doc, workbenchProfile);
         List<Artifact> artifacts = new ArrayList<>(); List<MappingLoss> losses = new ArrayList<>();
         for (Element element : children(child(doc.getDocumentElement(), "elements"))) {
             String id = required(element, "identifier"), type = type(element);
@@ -55,8 +56,9 @@ public final class ArchiMateExchangeCodec {
         for (Element element : children(child(doc.getDocumentElement(), "relationships"))) {
             String id = required(element, "identifier"), type = type(element);
             Map<String, String> properties = properties(element); Map<String, String> extensions = extensions(element, propertyNames);
+            String workbenchType = propertyValue(element, propertyNames, "taxonomy.type");
             String mapped = canonicalType(properties, propertyNames, "Taxonomy.RelationType",
-                    canonicalType(properties, propertyNames, "taxonomy.type", RELATION_TYPES.get(type)));
+                    workbenchType == null ? RELATION_TYPES.get(type) : workbenchType);
             // Older analysis exports carry the proposal in review metadata; an explicit current status takes precedence.
             if (!extensions.containsKey("taxonomy:status")
                     && "PROPOSED".equals(canonicalType(properties, propertyNames, "taxonomy.reviewStatus", null)))
@@ -66,7 +68,10 @@ public final class ArchiMateExchangeCodec {
                     "The source relationship has no declared canonical mapping; no Association fallback is applied"));
             else extensions.put("canonicalType", mapped);
             for (String attribute : List.of("accessType", "isDirected", "influenceStrength")) if (element.hasAttribute(attribute)) extensions.put(attribute, element.getAttribute(attribute));
-            relations.add(new Relation(id, type, required(element, "source"), required(element, "target"), properties, extensions));
+            boolean reverse = reversedEndpoints(workbenchProfile, workbenchType, mapped, type);
+            String source = required(element, "source");
+            String target = required(element, "target");
+            relations.add(new Relation(id, type, reverse ? target : source, reverse ? source : target, properties, extensions));
         }
         List<Placement> placements = new ArrayList<>();
         for (Element view : children(child(child(doc.getDocumentElement(), "views"), "diagrams"))) {
@@ -127,7 +132,19 @@ public final class ArchiMateExchangeCodec {
         }
         for (Artifact artifact : source.artifacts()) if (artifact.kind() == ArtifactKind.ELEMENT)
             taxonomyProperties(root, find(elements, artifact.id()), artifact.extensions(), "ElementType");
-        for (Relation relation : source.relations()) taxonomyProperties(root, find(relations, relation.id()), relation.extensions(), "RelationType");
+        Map<String, String> propertyNames = propertyNames(root);
+        String workbenchProfile = propertyValue(root, propertyNames, "taxonomy.mappingProfile");
+        for (Relation relation : source.relations()) {
+            Element node = find(relations, relation.id());
+            taxonomyProperties(root, node, relation.extensions(), "RelationType");
+            String workbenchType = propertyValue(node, propertyNames, "taxonomy.type");
+            String canonicalType = relation.extensions().getOrDefault("taxonomy:RelationType",
+                    relation.extensions().getOrDefault("canonicalType", workbenchType));
+            if (reversedEndpoints(workbenchProfile, workbenchType, canonicalType, relation.type())) {
+                node.setAttribute("source", relation.target());
+                node.setAttribute("target", relation.source());
+            }
+        }
         children(root).stream().filter(n -> n.getLocalName().equals("organizations")).toList().forEach(root::removeChild);
         List<Placement> folders = source.placements().stream().filter(p -> p.containerId().equals("organizations")).toList();
         for (String group : folders.stream().map(p -> p.attributes().getOrDefault("organizationGroup", "0")).distinct().sorted(Comparator.comparingInt(Integer::parseInt)).toList())
@@ -151,7 +168,9 @@ public final class ArchiMateExchangeCodec {
         }
         if (children(elements).isEmpty()) root.removeChild(elements);
         if (children(relations).isEmpty()) root.removeChild(relations);
-        validate(doc, PROFILE); checkReferences(doc); return ExchangeXml.write(doc);
+        validate(doc, PROFILE); checkReferences(doc);
+        validateWorkbenchConnections(doc, workbenchProfile);
+        return ExchangeXml.write(doc);
     }
 
     private static Element find(Element group, String id) { return children(group).stream().filter(e -> id.equals(e.getAttribute("identifier"))).findFirst().orElseThrow(); }
@@ -261,6 +280,56 @@ public final class ArchiMateExchangeCodec {
             }
         }); return extensions;
     }
+    private static void validateWorkbenchConnections(Document document, String profile) {
+        if (!ArchiMateEndpointOrder.PROFILE_V3.equals(profile)) return;
+        Map<String, Element> relationships = new LinkedHashMap<>();
+        for (Element relation : children(child(document.getDocumentElement(), "relationships"))) {
+            relationships.put(required(relation, "identifier"), relation);
+        }
+        for (Element view : all(document, NS, "view")) {
+            Map<String, String> occurrences = new LinkedHashMap<>();
+            for (Element node : children(view)) {
+                if ("node".equals(node.getLocalName())) occurrences.put(required(node, "identifier"), node.getAttribute("elementRef"));
+            }
+            for (Element node : children(view)) {
+                if (!"connection".equals(node.getLocalName())) continue;
+                Element relation = relationships.get(node.getAttribute("relationshipRef"));
+                if (relation == null || !relation.getAttribute("source").equals(occurrences.get(node.getAttribute("source")))
+                        || !relation.getAttribute("target").equals(occurrences.get(node.getAttribute("target")))) {
+                    throw invalid("VIEW_ENDPOINT_CONFLICT", "Workbench view endpoints differ from the native relationship");
+                }
+            }
+        }
+    }
+
+    private static Map<String, String> propertyNames(Element root) {
+        Map<String, String> names = new LinkedHashMap<>();
+        for (Element definition : children(child(root, "propertyDefinitions"))) {
+            names.put(required(definition, "identifier"), text(definition, "name"));
+        }
+        return names;
+    }
+
+    private static String propertyValue(Element element, Map<String, String> names, String name) {
+        for (Element property : children(child(element, "properties"))) {
+            if (name.equals(names.get(property.getAttribute("propertyDefinitionRef")))) {
+                return text(property, "value");
+            }
+        }
+        return null;
+    }
+
+    // Only the workbench's declared native projection can invert a relationship.
+    // The generic codec keeps source XML and diagram evidence in native order.
+    private static boolean reversedEndpoints(String profile, String workbenchType, String canonicalType, String nativeType) {
+        if (workbenchType == null) return false;
+        boolean reversed = ArchiMateEndpointOrder.reversed(profile, workbenchType, nativeType);
+        if (reversed != ArchiMateEndpointOrder.reversed(profile, canonicalType, nativeType)) {
+            throw invalid("RELATION_DIRECTION_CONFLICT", "Conflicting Taxonomy relationship properties imply different endpoints");
+        }
+        return reversed;
+    }
+
     private static String canonicalType(Map<String, String> properties, Map<String, String> names, String label, String fallback) {
         for (var entry : names.entrySet()) if (entry.getValue().equals(label) && properties.containsKey(entry.getKey()))
             return text(parse(properties.get(entry.getKey()).getBytes(StandardCharsets.UTF_8)).getDocumentElement(), "value");

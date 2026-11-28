@@ -1021,7 +1021,11 @@ for (const scenario of ['lost response', 'late component receipt', 'history supe
         await page.locator('#prepUseSelection').click();
         assert.equal(await page.locator('#prepStatus').innerText(),'editor.prep.selectionTooLong');
         assert.equal(await page.locator('#prepQuote').inputValue(),'');
-        await page.locator('#prepQuote').fill(await page.locator('#prepSource').inputValue());
+        // Populate the oversized multiline paste as a single edit before checking native form validation.
+        await page.locator('#prepQuote').evaluate((field, text) => {
+            field.value = text;
+            field.dispatchEvent(new InputEvent('input', {bubbles:true,inputType:'insertFromPaste',data:text}));
+        }, await page.locator('#prepSource').inputValue());
         await page.locator('#prepPreview').click();
         assert.equal(await page.locator('#prepQuote').evaluate(field => field.validationMessage),'editor.prep.selectionTooLong');
         assert.equal(calls.length,0);
@@ -1132,4 +1136,225 @@ for (const scenario of ['lost response', 'late component receipt', 'history supe
         assert.equal((await download).suggestedFilename(),'TRAIN-admbw.qea');
         assert.equal(downloads.length,1);
     } finally {await page.close();}
+});
+
+// Installed dataset choices, version pins and command receipts cross the real lifecycle API boundary.
+async function datasetFixture({providers = [{id:'demo/civil',name:'Civil processes'}], added = 2, architectures = []} = {}) {
+    const page = await browser.newPage();
+    const writes = [], errors = [];
+    const context = {repositoryId:'civil',workspaceScopeKey:'copy',branch:'draft',commit:'a'.repeat(40),revision:7,actor:'owner',writeMode:'PRIVATE_WORKSPACE'};
+    const hash = 'f'.repeat(64);
+    let revision = 7, holdImport, releaseImport;
+    page.on('pageerror', error => errors.push(error.message));
+    await page.route('https://dataset.test/**', async route => {
+        const request = route.request(), url = new URL(request.url());
+        if (request.resourceType() === 'document') return route.fulfill({contentType:'text/html',body:'<section id="architectureLifecycle"></section>'});
+        const json = value => route.fulfill({json:value});
+        if (url.pathname.endsWith('/data-providers')) return json(providers);
+        if (url.pathname === '/api/architecture/lifecycle') {
+            const historical = url.searchParams.has('commit');
+            return json({context:{...context,revision},source:historical?'GIT_CHECKPOINT':'WORKSPACE_REVISION',
+                projectionState:historical?'HISTORICAL':'READY',mayEdit:!historical,projects:[],requirements:[],dependencies:[]});
+        }
+        if (request.method() === 'GET' && url.pathname.endsWith('/architectures')) return json(architectures);
+        if (request.method() === 'POST') {
+            const body = request.postDataJSON();
+            writes.push({path:url.pathname,query:url.searchParams,body,headers:request.headers()});
+            if (url.pathname.endsWith('/preview')) return json({context:{...context,revision},datasetHash:hash,added,existing:1});
+            if (url.pathname.endsWith('/import')) {
+                if (holdImport) await holdImport;
+                return json({context:{...context,revision:++revision},state:'CHECKPOINTED'});
+            }
+            if (url.pathname.endsWith('/architectures')) return json({repositoryId:'created',lifecycleState:'PROVISIONING'});
+        }
+        return json([]);
+    });
+    await page.goto('https://dataset.test/?repositoryId=civil&workspaceId=copy&branch=draft');
+    await page.evaluate(context => {
+        let scope = context;
+        window.TaxonomyI18n = {ready:()=>Promise.resolve(),t:(key,...args)=>[key,...args].join(' '),resolveUrl:path=>path,getLocale:()=> 'de'};
+        window.TaxonomyAppChrome = {getContext:()=>({}),updateContext(){},refreshNavigation(){}};
+        window.TaxonomyArchitectureWorkflow = {getScope:()=>scope,setScope:value=>{scope=value;}};
+    }, context);
+    await installBrowserApiFixture(page,resources);
+    await page.addScriptTag({path:path.join(resources,'static/js/api/architecture-lifecycle-api.js')});
+    await page.addScriptTag({path:path.join(resources,'static/js/shared/architecture-lifecycle.js')});
+    await page.evaluate(()=>TaxonomyArchitectureLifecycle.ready());
+    await page.locator('#architectureLifecycle summary').click();
+    return {page, writes, hash, context, hold(){holdImport=new Promise(resolve=>{releaseImport=resolve;});},
+        release(){releaseImport?.();}, setRevision(value){revision=value;}, close:async()=>{releaseImport?.();await page.close();assert.deepEqual(errors,[]);}};
+}
+
+for (const installed of [true, false]) test(`new architecture keeps the selected dataset explicit with installed providers=${installed}`, async () => {
+    const f = await datasetFixture(installed ? {} : {providers:[]});
+    const {page} = f;
+    try {
+        if (installed) await page.locator('#lifecycleProjectDataButton').waitFor({state:'visible'});
+        else assert.ok(await page.locator('#lifecycleProjectDataButton').isHidden());
+        await page.locator('[data-lifecycle-new-architecture]').click();
+        await page.locator('#lifecycleArchitectureName').fill('Civil project');
+        const selector = page.locator('#lifecycleArchitectureDataset');
+        if (installed) {
+            await selector.waitFor({state:'visible'});
+            assert.equal(await selector.inputValue(), '');
+            await selector.selectOption('demo/civil');
+        } else assert.ok(await selector.isHidden());
+        const sent = page.waitForResponse(r=>new URL(r.url()).pathname.endsWith('/architectures') && r.request().method()==='POST');
+        await page.locator('#lifecycleArchitectureCreate').evaluate(button=>{button.click();button.click();});
+        await sent;
+        const [write] = f.writes;
+        assert.equal(f.writes.length,1);
+        assert.equal(write.body.displayName,'Civil project');
+        assert.equal(write.body.projectDataProvider,installed ? 'demo/civil' : undefined);
+    } finally {await f.close();}
+});
+
+test('dataset reimport binds the reviewed hash and exact revision to a single confirmed write', async () => {
+    const f = await datasetFixture();
+    const {page} = f;
+    try {
+        await page.locator('#lifecycleProjectDataButton').click();
+        const reason = page.locator('#lifecycleImportDatasetReason'), preview = page.locator('#lifecycleProjectDataPreview');
+        const apply = page.locator('#lifecycleProjectDataAccept');
+        assert.ok(await apply.isHidden());
+        await preview.click();
+        assert.equal(f.writes.length,0,'The required rationale is empty');
+        await reason.fill('Review the archived catalogue');
+        await preview.click(); await apply.waitFor({state:'visible'});
+        await reason.fill('Review the current source');
+        assert.ok(await apply.isHidden(),'Edited input needs its own preview');
+        await preview.click(); await apply.waitFor({state:'visible'});
+        const confirmed = page.waitForRequest(r=>new URL(r.url()).pathname.endsWith('/project-data/import'));
+        f.hold(); await apply.evaluate(button=>{button.click();button.click();}); await confirmed;
+        assert.ok(await apply.isDisabled());
+        f.release(); await page.locator('#lifecycleProjectDataDialog').waitFor({state:'detached'});
+        const [first, reviewed, accepted] = f.writes;
+        assert.deepEqual(f.writes.map(w=>w.path.split('/').pop()),['preview','preview','import']);
+        assert.equal(first.body.provider,'demo/civil');
+        assert.notEqual(first.body.metadata.commandId,reviewed.body.metadata.commandId);
+        assert.deepEqual(accepted.body,{...reviewed.body,datasetHash:f.hash});
+        assert.equal(accepted.body.metadata.rationale,'Review the current source');
+        assert.equal(accepted.headers['if-match'],'"workspace-revision-7"');
+        assert.equal(accepted.query.get('repositoryId'),'civil');
+        assert.equal(accepted.query.get('workspaceId'),'copy');
+        assert.equal(accepted.query.get('branch'),'draft');
+    } finally {await f.close();}
+});
+
+test('dataset review cannot reapply an unchanged import or write to a replaced model stand', async () => {
+    for (const added of [0, 1]) {
+        const f = await datasetFixture({added});
+        const {page} = f;
+        try {
+            await page.locator('#lifecycleProjectDataButton').click();
+            await page.locator('#lifecycleImportDatasetReason').fill('Check exact stand');
+            const preview = page.locator('#lifecycleProjectDataPreview'), apply = page.locator('#lifecycleProjectDataAccept');
+            await preview.click(); await page.getByText(`lifecycle.dataset.review ${added} 1`,{exact:true}).waitFor();
+            if (added===0) assert.ok(await apply.isHidden());
+            else {
+                assert.ok(await apply.isVisible());
+                f.setRevision(8);
+                await page.evaluate(ctx=>TaxonomyArchitectureLifecycle.refresh(ctx,null),f.context);
+                assert.ok(await apply.isHidden()); assert.ok(await preview.isDisabled());
+                await page.locator('#lifecycleProjectDataDialog [data-lifecycle-close]').click();
+                await page.evaluate(ctx=>TaxonomyArchitectureLifecycle.refresh(ctx,ctx.commit),f.context);
+                assert.ok(await page.locator('#lifecycleProjectDataButton').isDisabled());
+            }
+            assert.equal(f.writes.length,1);
+        } finally {await f.close();}
+    }
+});
+
+// Recovery must show the dataset retained on the failed project, even after the available choice changes.
+test('dataset recovery displays the actual original provider when it is no longer installed', async () => {
+    const saved = {repositoryId:'failed', displayName:'Recovered project', slug:'recover-civil', description:'Saved source',
+        owned:true, lifecycleState:'FAILED', projectDataProvider:'former/original'};
+    const f = await datasetFixture({architectures:[saved]});
+    const {page} = f;
+    try {
+        await page.locator('[data-lifecycle-new-architecture]').click();
+        const selector = page.locator('#lifecycleArchitectureDataset');
+        await selector.selectOption('demo/civil');
+        const submitted = page.waitForResponse(r=>new URL(r.url()).pathname.endsWith('/architectures') && r.request().method()==='POST');
+        await page.locator('[data-lifecycle-recover-architecture="failed"]').click(); await submitted;
+        assert.equal(f.writes[0].body.projectDataProvider,saved.projectDataProvider);
+        assert.equal(await selector.inputValue(),saved.projectDataProvider);
+        assert.ok(await selector.isVisible()); assert.ok(await selector.isDisabled());
+    } finally {await f.close();}
+});
+
+test('same-named projects recover their own personal copy after either creation response is lost', async () => {
+    const title = 'Bürgeranträge', projects = [], copies = [], attempts = [];
+    for (const project of ['one','two']) {
+        const f = await datasetFixture();
+        const {page} = f;
+        try {
+            await page.route(url => url.pathname.endsWith('/architectures') || url.pathname.endsWith('/workspaces'), async route => {
+                const request = route.request(), path = new URL(request.url()).pathname;
+                if (path.endsWith('/architectures')) {
+                    if (request.method() === 'GET') return route.fulfill({json:projects});
+                    const body = request.postDataJSON();
+                    const created = {...body, repositoryId:project, defaultBranch:'draft', owned:true, lifecycleState:'ACTIVE'};
+                    projects.push(created);
+                    return route.fulfill({status:201,json:created});
+                }
+                if (request.method() === 'GET') {
+                    assert.equal(path,'/api/architecture/lifecycle/architectures/' + project + '/workspaces');
+                    const otherBranch = {sourceRepositoryId:project,sourceBranch:'another',currentBranch:'draft',displayName:title,workspaceId:'wrong'};
+                    return route.fulfill({json:[otherBranch,...copies.filter(copy => copy.sourceRepositoryId === project)]});
+                }
+                assert.equal(path,'/api/architecture/editor/workspaces');
+                const body = request.postDataJSON();
+                attempts.push([body.repositoryId,body.displayName]);
+                if (copies.some(copy => copy.displayName === body.displayName))
+                    return route.fulfill({status:409,json:{code:'WORKSPACE_NAME_CONFLICT',detail:'Name already in use.'}});
+                copies.push({sourceRepositoryId:body.repositoryId,sourceBranch:body.branch,currentBranch:'draft',displayName:body.displayName,
+                    workspaceId:'copy-' + body.repositoryId,provisioningStatus:'READY'});
+                return route.fulfill({status:503,json:{detail:'Workspace response lost.'}});
+            });
+            await page.locator('[data-lifecycle-new-architecture]').click();
+            await page.locator('#lifecycleArchitectureName').fill(title);
+            const create = page.locator('#lifecycleArchitectureCreate');
+            await create.click();
+            await page.getByText('Workspace response lost.',{exact:true}).waitFor();
+            await create.click();
+            await page.waitForURL(url => url.pathname === '/architecture/editor');
+            const opened = new URL(page.url()).searchParams;
+            assert.equal(opened.get('repositoryId'),project);
+            assert.equal(opened.get('workspaceId'),'copy-' + project);
+            assert.equal(opened.get('branch'),'draft');
+        } finally {await f.close();}
+    }
+    assert.deepEqual(attempts,[['one',title],['two',title],['two',title + ' (two)']]);
+    assert.deepEqual(projects.map(item => item.displayName),[title,title]);
+    assert.equal(new Set(projects.map(item => item.slug)).size,2);
+    assert.equal(copies.length,2);
+});
+
+test('working-copy fallback requires the specific name conflict and fits the API limit for a recovered title', async () => {
+    const title = 'B'.repeat(215) + '🚀' + 'Z'.repeat(38);
+    const id = '9f479645-04da-46bf-a581-94bfa3ecb7aa';
+    const saved = {repositoryId:id,displayName:title,slug:'recovered',description:'',owned:true,lifecycleState:'FAILED',defaultBranch:'draft'};
+    const f = await datasetFixture({architectures:[saved]});
+    const {page} = f, attempts = [];
+    try {
+        await page.route(url => url.pathname.endsWith('/architectures') || url.pathname.endsWith('/workspaces'), async route => {
+            const request = route.request(), path = new URL(request.url()).pathname;
+            if (path.endsWith('/architectures'))
+                return route.fulfill({json:request.method() === 'GET' ? [saved] : {...saved,lifecycleState:'ACTIVE'}});
+            if (request.method() === 'GET') return route.fulfill({json:[]});
+            attempts.push(request.postDataJSON().displayName);
+            if (attempts.length === 1) return route.fulfill({status:409,json:{code:'SOURCE_CHANGED',detail:'Source changed.'}});
+            if (attempts.length === 2) return route.fulfill({status:409,json:{code:'WORKSPACE_NAME_CONFLICT'}});
+            return route.fulfill({status:201,json:{workspaceId:'bounded-copy',currentBranch:'draft'}});
+        });
+        await page.locator('[data-lifecycle-new-architecture]').click();
+        await page.locator('[data-lifecycle-recover-architecture]').click();
+        await page.getByText('Source changed.',{exact:true}).waitFor();
+        assert.deepEqual(attempts,[title]);
+        await page.locator('#lifecycleArchitectureCreate').click();
+        await page.waitForURL(url => url.pathname === '/architecture/editor' && url.searchParams.get('workspaceId') === 'bounded-copy');
+        assert.deepEqual(attempts,[title,title,'B'.repeat(215) + ' (' + id + ')']);
+        assert.ok(attempts.at(-1).length <= 255);
+    } finally {await f.close();}
 });

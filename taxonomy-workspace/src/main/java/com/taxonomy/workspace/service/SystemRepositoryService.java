@@ -193,16 +193,27 @@ public class SystemRepositoryService implements RepositoryMutationFence {
     /** Commit the claim before any logical Git operation; a failed retry keeps its original identity. */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public CreationClaim claimPrivateCreation(String displayName, String requestedSlug, String description, String username) {
+        return claimPrivateCreation(displayName, requestedSlug, description, username, null);
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public CreationClaim claimPrivateCreation(String displayName, String requestedSlug, String description, String username,
+                                              String projectDataProvider) {
+        if (projectDataProvider != null) ProjectCatalogueSeed.requireProvider(projectDataProvider);
         String name = requireText(displayName, "displayName");
         String slug = normalizeSlug(requestedSlug);
         String owner = requireText(username, "ownerId");
         if (name.length() > 255 || slug.length() > 100 || description != null && description.length() > 1000)
             throw new IllegalArgumentException("Creation fields exceed their storage limits");
         SystemRepository retained = repository.findBySlugForUpdate(slug).orElse(null);
-        if (retained == null) return new CreationClaim(createCentralRepository(
-                name, slug, description, RepositoryVisibility.PRIVATE, owner, "draft"), true);
+        if (retained == null) {
+            var created = createCentralRepository(name, slug, description, RepositoryVisibility.PRIVATE, owner, "draft");
+            created.setProjectDataProvider(projectDataProvider);
+            return new CreationClaim(created, true);
+        }
         if (!isPrivateCreation(retained, owner) || !name.equals(retained.getDisplayName())
-                || !Objects.equals(description, retained.getDescription())) throw creationConflict();
+                || !Objects.equals(description, retained.getDescription())
+                || !Objects.equals(projectDataProvider, retained.getProjectDataProvider())) throw creationConflict();
         if (retained.getLifecycleState() == RepositoryLifecycleState.ACTIVE) return new CreationClaim(retained, false);
         if (retained.getLifecycleState() == RepositoryLifecycleState.PROVISIONING)
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Architecture creation is still in progress; reload its status before retrying");

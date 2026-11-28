@@ -18,9 +18,9 @@ class DriverOutcomeChecksTest {
       {"status":"passed","results":[
         {"product":"StrictDoc","profile":"reqif-1.2/1","result":"passed"},
         {"product":"Archi","profile":"archimate-3.1/1","result":"passed"},
-        {"product":"Archi","profile":"taxonomy-archimate-3.1-v2","result":"passed"}]}
+        {"product":"Archi","profile":"taxonomy-archimate-3.1-v3","result":"passed"}]}
       """);
-  assertEquals(Set.of("StrictDoc/reqif-1.2/1","Archi/archimate-3.1/1","Archi/taxonomy-archimate-3.1-v2"),
+  assertEquals(Set.of("StrictDoc/reqif-1.2/1","Archi/archimate-3.1/1","Archi/taxonomy-archimate-3.1-v3"),
       InteroperabilityProductsIT.validateOutcomes(report).keySet());
  }
  @Test void acceptsEveryScenarioExactlyOnce() throws Exception {

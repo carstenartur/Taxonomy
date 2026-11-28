@@ -46,6 +46,38 @@ class TaxonomySchemaPostgresMigrationIT {
             .withPassword("taxonomy");
 
     @Test
+    void projectDataProviderUpgradePreservesRepositoriesAndRetainsNewSelection() throws Exception {
+        var source = isolatedDataSource("project_data_provider_upgrade");
+        migrateJgit(source);
+        installApplicationAtVersion(source, "66");
+        assertThat(columnExists(source, "system_repository", "project_data_provider")).isFalse();
+        execute(source, """
+                insert into system_repository(repository_id, display_name, topology_mode, default_branch, primary_repo, created_at)
+                values ('existing', 'Municipal registry', 'INTERNAL_SHARED', 'main', false, current_timestamp)
+                """);
+        var jdbc = new org.springframework.jdbc.core.JdbcTemplate(source);
+        var original = jdbc.queryForMap("select * from system_repository where repository_id='existing'");
+
+        var configuration = Flyway.configure().dataSource(source).load().getConfiguration();
+        TaxonomySchemaMigrationConfig.migrateApplicationSchema(configuration);
+        assertThat(jdbc.queryForMap("select * from system_repository where repository_id='existing'"))
+                .containsAllEntriesOf(original).containsEntry("project_data_provider", null);
+        execute(source, """
+                insert into system_repository(repository_id, topology_mode, default_branch, primary_repo, created_at, project_data_provider)
+                values ('regional-service', 'INTERNAL_SHARED', 'draft', false, current_timestamp, 'authority/directory')
+                """);
+        var migratedVersions = successfulVersions(source);
+        assertThat(migratedVersions).containsOnlyOnce("67");
+
+        TaxonomySchemaMigrationConfig.migrateApplicationSchema(configuration);
+        assertThat(successfulVersions(source)).isEqualTo(migratedVersions);
+        assertThat(singleString(source, "select project_data_provider from system_repository where repository_id='regional-service'"))
+                .isEqualTo("authority/directory");
+        assertThat(jdbc.queryForMap("select * from system_repository where repository_id='existing'"))
+                .containsAllEntriesOf(original).containsEntry("project_data_provider", null);
+    }
+
+    @Test
     void personalWorkspaceOwnerMigrationPreservesLegacyRowsAfterPortableStartup() throws Exception {
         var source = isolatedDataSource("personal_workspace_owner");
         migrateJgit(source);
@@ -56,7 +88,7 @@ class TaxonomySchemaPostgresMigrationIT {
                 """);
         new com.taxonomy.shared.config.SchemaContractMigration(source).migrate();
         TaxonomySchemaMigrationConfig.migrateApplicationSchema(Flyway.configure().dataSource(source).load().getConfiguration());
-        assertThat(successfulVersions(source)).endsWith("62.4", "62.5", "63", "64", "65", "66");
+        assertThat(successfulVersions(source)).endsWith("62.4", "62.5", "63", "64", "65", "66", "67");
         assertThat(singleLong(source, "select count(*) from user_workspace where username='same-name' and owner_principal_id is null")).isEqualTo(1);
     }
 
@@ -67,7 +99,7 @@ class TaxonomySchemaPostgresMigrationIT {
         installApplicationAtVersion(source, "63");
         WorkspaceFetchDatabaseContractTest.verifyLegacyCentralReceiptUpgrade(source, () ->
                 TaxonomySchemaMigrationConfig.migrateApplicationSchema(Flyway.configure().dataSource(source).load().getConfiguration()));
-        assertThat(successfulVersions(source)).endsWith("63", "64", "65", "66");
+        assertThat(successfulVersions(source)).endsWith("63", "64", "65", "66", "67");
     }
 
     @Test
@@ -237,7 +269,7 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(successfulVersions(dataSource))
                 .containsExactly(
                         "0", "1", "2", "3", "4", "5",
-                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "46", "47", "48", "49", "50", "51", "52", "53", "54", "55", "57", "62", "62.1", "62.2", "62.3", "62.4", "62.5", "63", "64", "65", "66");
+                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "46", "47", "48", "49", "50", "51", "52", "53", "54", "55", "57", "62", "62.1", "62.2", "62.3", "62.4", "62.5", "63", "64", "65", "66", "67");
     }
 
     @Test
@@ -348,7 +380,7 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(successfulVersions(dataSource))
                 .containsExactly(
                         "1", "2", "3", "4", "5",
-                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "46", "47", "48", "49", "50", "51", "52", "53", "54", "55", "57", "62", "62.1", "62.2", "62.3", "62.4", "62.5", "63", "64", "65", "66");
+                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "46", "47", "48", "49", "50", "51", "52", "53", "54", "55", "57", "62", "62.1", "62.2", "62.3", "62.4", "62.5", "63", "64", "65", "66", "67");
         assertIntegrationSchema(dataSource);
         assertInventorySchema(dataSource);
         assertReformulationSchema(dataSource);

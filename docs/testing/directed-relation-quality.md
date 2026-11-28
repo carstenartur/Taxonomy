@@ -1,5 +1,7 @@
 # Directed-relation quality: bounded first delivery for #927
 
+The [Altscherbitz three-stage study](altscherbitz-directed-architecture.md) applies the directed metric to source-based procurement requirements, with independently assessed responses and a bounded catalogue.
+
 The [independent architecture-quality corpus](architecture-quality-corpus.md)
 extends these same evaluators with explicit alternatives, incomplete and
 contradictory input, updates to existing identities and no-addition cases. Its

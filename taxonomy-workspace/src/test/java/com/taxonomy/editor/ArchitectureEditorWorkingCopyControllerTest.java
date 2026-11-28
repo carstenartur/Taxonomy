@@ -85,6 +85,17 @@ class ArchitectureEditorWorkingCopyControllerTest {
         verifyNoInteractions(workspaces);
     }
 
+    @Test void reportsTheTypedNameCollisionForTheNewArchitectureDialog() throws Exception {
+        when(resolver.resolveCurrentRepositoryContext()).thenReturn(central);
+        when(repositories.getRepository("repo-a")).thenReturn(repository);
+        when(membership.canContribute(repository, "alice")).thenReturn(true);
+        when(workspaces.createWorkingCopy("alice", "repo-a", "reviewed/draft", "My architecture", ""))
+                .thenThrow(new RepositoryWorkspaceService.WorkspaceNameConflict());
+        standaloneSetup(controller).build().perform(post("/api/architecture/editor/workspaces")
+                .contentType(MediaType.APPLICATION_JSON).content(body("repo-a", "reviewed/draft")))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("WORKSPACE_NAME_CONFLICT"));
+    }
+
     private byte[] body(String repository, String branch) throws Exception {
         return new ObjectMapper().writeValueAsBytes(Map.of(
                 "repositoryId", repository, "branch", branch, "displayName", "My architecture"));

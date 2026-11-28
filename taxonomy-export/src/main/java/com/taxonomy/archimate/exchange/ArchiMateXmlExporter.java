@@ -32,6 +32,9 @@ public class ArchiMateXmlExporter {
 
     private void write(XMLStreamWriter xml, ArchiMateModel model) throws XMLStreamException {
         Map<String, ArchiMateProperty> modelProperties = modelProperties(model);
+        var profile = model.properties().get("taxonomy.mappingProfile");
+        String version = profile == null ? null : profile.value();
+        Set<String> reversed = new HashSet<>();
         Map<String, String> definitions = new TreeMap<>();
         collectDefinitions(definitions, modelProperties);
         for (ArchiMateElement element : model.elements()) collectDefinitions(definitions, identity(element.id(), element.properties()));
@@ -66,8 +69,14 @@ public class ArchiMateXmlExporter {
                 xml.writeStartElement("relationship");
                 attr(xml, "identifier", ArchiMateIds.id("relationship", relation.id()));
                 type(xml, relation.archiMateType());
-                attr(xml, "source", ArchiMateIds.id("element", relation.sourceId()));
-                attr(xml, "target", ArchiMateIds.id("element", relation.targetId()));
+                boolean invert = ArchiMateExchangeProfile.reversedEndpoints(version, relation);
+                if (invert) reversed.add(relation.id());
+                attr(xml, "source", ArchiMateIds.id("element", invert ? relation.targetId() : relation.sourceId()));
+                attr(xml, "target", ArchiMateIds.id("element", invert ? relation.sourceId() : relation.targetId()));
+                var originalType = relation.properties().get("taxonomy.type");
+                if (originalType != null && ArchiMateExchangeProfile.directedAssociation(version, originalType.value(), relation.archiMateType())) {
+                    attr(xml, "isDirected", "true");
+                }
                 if ("Access".equals(relation.archiMateType())) {
                     // Make the XSD default explicit. Archi otherwise imports an omitted
                     // qualifier as Write, which gives unqualified REQUIRES a new meaning.
@@ -108,7 +117,7 @@ public class ArchiMateXmlExporter {
         if (!model.views().isEmpty()) {
             xml.writeStartElement("views");
             xml.writeStartElement("diagrams");
-            for (ArchiMateView view : model.views()) writeView(xml, view);
+            for (ArchiMateView view : model.views()) writeView(xml, view, reversed);
             xml.writeEndElement();
             xml.writeEndElement();
         }
@@ -116,7 +125,7 @@ public class ArchiMateXmlExporter {
         xml.writeEndDocument();
     }
 
-    private void writeView(XMLStreamWriter xml, ArchiMateView view) throws XMLStreamException {
+    private void writeView(XMLStreamWriter xml, ArchiMateView view, Set<String> reversed) throws XMLStreamException {
         // The XSD declares diagrams/view directly as Diagram; xsi:type is not required here.
         xml.writeStartElement("view");
         attr(xml, "identifier", ArchiMateIds.id("view", view.id()));
@@ -138,7 +147,8 @@ public class ArchiMateXmlExporter {
             xml.writeEndElement();
             xml.writeEndElement();
         }
-        for (ArchiMateViewConnection connection : view.connections()) {
+        for (ArchiMateViewConnection canonical : view.connections()) {
+            var connection = reversed.contains(canonical.relationshipId()) ? canonical.reversed() : canonical;
             boolean routed = !connection.bendpoints().isEmpty();
             if (routed) xml.writeStartElement("connection");
             else xml.writeEmptyElement("connection");

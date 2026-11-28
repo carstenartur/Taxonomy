@@ -25,6 +25,31 @@ class WorkspaceRestoreReferencesTest {
         assertThat(json.treeToValue(value, WorkspaceRecord.class).collaborative()).isFalse();
     }
 
+    @Test void archivedRepositoriesWithoutAProviderRetainTheirOriginalJsonShape() throws Exception {
+        var json = com.taxonomy.exchange.backup.PortableRows.json();
+        var row = rows().repositories().getFirst();
+        var legacy = (com.fasterxml.jackson.databind.node.ObjectNode) json.valueToTree(row);
+        assertThat(legacy.has("projectDataProvider")).isFalse();
+        List<RepositoryRecord> restored = new ArrayList<>();
+        readRepository(legacy, restored::add);
+        assertThat(restored).singleElement().extracting(RepositoryRecord::projectDataProvider).isNull();
+        legacy.put("projectDataProvider", "invalid provider");
+        assertThatThrownBy(() -> readRepository(legacy, restored::add)).isInstanceOf(IOException.class);
+        legacy.remove("projectDataProvider");
+        legacy.remove("ownerScope");
+        assertThatThrownBy(() -> readRepository(legacy, restored::add)).isInstanceOf(IOException.class);
+    }
+
+    private static void readRepository(com.fasterxml.jackson.databind.JsonNode row,
+            RestoreArchiveRecords.Visitor<RepositoryRecord> visitor) throws IOException {
+        var header = new com.taxonomy.exchange.backup.PortableRows.Header(1, "repositories", BackupProfile.REPOSITORY_HISTORY);
+        String document = com.taxonomy.exchange.backup.PortableRows.json().writeValueAsString(header) + "\n" + row + "\n";
+        try (var input = new java.io.ByteArrayInputStream(document.getBytes(java.nio.charset.StandardCharsets.UTF_8))) {
+            RestoreArchiveRecords.read(input, "repositories", BackupProfile.REPOSITORY_HISTORY, RepositoryRecord.class,
+                    1, () -> {}, visitor, "projectDataProvider");
+        }
+    }
+
     @Test void allFourteenTypedFieldsRequireExactSourceRecordValueAndAllowedRepository()throws Exception {
         var rows=rows();var references=references();var resolved=WorkspaceRestoreReferences.resolve(rows,references,working(),Set.of(central,workspace),allocations(),proof(),()->{});
         assertThat(resolved).hasSize(14);assertThat(resolved.values()).containsOnly(COMMIT);

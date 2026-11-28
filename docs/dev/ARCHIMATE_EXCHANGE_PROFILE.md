@@ -3,7 +3,7 @@
 Taxonomy exports the selected persisted architecture graph through **ArchiMate
 Exchange 3.1**, using the unchanged namespace
 `http://www.opengroup.org/xsd/archimate/3.0/`. The executable profile is
-[`taxonomy-archimate-3.1-v2`](../../taxonomy-export/src/main/resources/archimate/profile-v2.tsv).
+[`taxonomy-archimate-3.1-v3`](../../taxonomy-export/src/main/resources/archimate/profile-v3.tsv).
 This is an experimental model projection. It is not standards-certified, a
 lossless replacement for canonical persistence, or a certified handoff to a named
 architecture product. [Issue #967](https://github.com/carstenartur/Taxonomy/issues/967)
@@ -18,8 +18,8 @@ mapping profile before enabling **Download ArchiMate + manifest**. The download 
 GET /api/projects/{projectId}/architecture-workbench/{snapshotId}.archimate.zip
 ```
 
-The package contains `model.archimate.xml`, `mapping-profile.tsv`, and
-`manifest.json`. The existing `.archimate.xml` route remains available; its XML
+The package contains `model.archimate.xml`, `mapping-profile.tsv`, `manifest.json`,
+`ORIGIN.md` and `LICENSE-EPL-2.0.txt`. The existing `.archimate.xml` route remains available; its XML
 also embeds the original identities, provenance and complete mapping/loss report
 as standard ArchiMate properties. All authorization and exact-snapshot checks
 run before serialization. No LLM, current catalogue lookup, or selection-policy
@@ -49,19 +49,33 @@ current preference values for missing historical data.
 
 ## Mapping and properties
 
-The TSV is UTF-8, has a header row, and contains one row per supported source type:
-`scope`, `sourceType`, `targetType`, `accessType`, `properties`, `kind`, `rationale`,
-`profileVersion`. The `properties` column contains semicolon-separated property keys. It covers the complete `RelationType` enum plus the explicitly
-supported diagram aliases. Unknown semantic element or relationship types fail
-export; this profile enables no fallback to BusinessObject or Association.
+The UTF-8 TSV contains the supported Taxonomy element and relationship mappings and
+the allowed native relationship types for each ordered pair of supported native
+concepts. The `allowedRelationships` column is populated on `endpoints` rows.
+The rules are derived from Archi’s ArchiMate 3.2 relationship matrix. The file
+still uses the ArchiMate 3.1 XML schema for interchange. Matrix provenance and
+the license for the endpoint rules are included with the resource.
+[Endpoint rule sources](../../taxonomy-export/src/main/resources/archimate/ORIGIN.md)
 
-All native type projections are marked `MAPPED`. They retain the exact original
-type in `taxonomy.type`. Several Taxonomy categories share the same ArchiMate type;
-that target type alone cannot reconstruct the Taxonomy meaning. Relationships
-retain the Taxonomy endpoint order. This profile does not claim that every broad
-projection is an equivalent ArchiMate metamodel relationship. `PRODUCES` writes the
-`Write` qualifier; `CONSUMES` writes `Read`; unqualified Access uses the XSD default
-`Access`. The clean reader accounts for that default.
+Taxonomy retains the original relationship type in `taxonomy.type`. When a
+native mapping is allowed, the report records `MAPPED`. `USES` and `DEPENDS_ON`
+project to provider-to-consumer Serving, and `PART_OF` to whole-to-part
+Composition. These three projections reverse the native edge and every
+corresponding view connection, including its bendpoints. The reader restores
+the original Taxonomy order. `PRODUCES` writes Access with qualifier Write and
+`CONSUMES` writes Read if their endpoints admit Access.
+
+When the primary mapping is unavailable for a particular pair, Taxonomy checks
+whether the native endpoints allow an Association. It then emits a directed
+Association in Taxonomy order and records `APPROXIMATED` with the omitted native
+meaning and the affected endpoint types in the XML and ZIP manifest. For
+example, Capability using TechnologyService takes this path. BusinessProcess
+using TechnologyService can use Serving in the reverse direction. Unknown
+source types or pairs without a declared projection fail export.
+
+The reader continues to accept `taxonomy-archimate-3.1-v2` with its original
+type mapping and ordering. Existing v2 files and installed-product evidence
+keep their historical meaning.
 
 | Scope | Standard exchange representation |
 | --- | --- |
@@ -154,6 +168,24 @@ or persist imported review decisions/views.** Those omissions are returned in th
 machine-readable import loss report. The clean exchange reader preserves these
 values in its typed model. Treat the catalogue relation endpoint as an explicit
 projection, not as the persistence inverse of an architecture snapshot.
+
+## Independent relationship and diagram checks
+
+The reference export can be checked with the EAM-Toolfamilie Python checker
+(`eam-ai archimate-check --in model.archimate.xml --strict`). On the captured
+v2 fixture it reports a Serving violation for Capability to TechnologyService.
+On the v3 projection of the same three elements and two relations it reports
+zero findings. It reports zero views for both XML files, although the XML
+contains two; use the Taxonomy reader and diagram assertions to verify view
+membership, occurrence endpoints, bends and layout.
+
+The Java entry point `com.taxonomy.export.ArchiMateInteropFixtureTest <file.xml>
+--all-pairs` on the Maven test classpath also emits the full cross-product for
+external checking. The dated v3 endpoint rules cover ten native concepts and
+fifteen relationship kinds: the independent EAM 3.2 checker accepted all 1,500
+projected edges, including 932 explicit approximations. This synthetic case
+exercises every pair and does not estimate a project’s approximation frequency.
+[Checker revision](https://github.com/Mitchel85/EAM-Toolfamilie/blob/783c4c01753a2d168256bdb245cba58a76d8e275/packages/core/archimate_check.py)
 
 ## Consumer evidence and remaining acceptance
 

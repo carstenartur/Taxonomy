@@ -98,7 +98,7 @@ class ArchitectureSnapshotExportServiceTest {
                 .isEqualTo("architecture-snapshot-1-abcdef123456.vsdx");
         assertThat(archiMateArtifact.exporterProfile())
                 .isEqualTo(
-                        "taxonomy-archimate-3.1-v2");
+                        "taxonomy-archimate-3.1-v3");
         assertThat(visioArtifact.exporterProfile())
                 .isEqualTo("visio-2012-opc-supported-subset-v3");
 

@@ -47,6 +47,10 @@ public class RepositoryWorkspaceService {
         this.memberships = memberships;
     }
 
+    public static final class WorkspaceNameConflict extends IllegalStateException {
+        public WorkspaceNameConflict() { super("This working-copy name is already in use"); }
+    }
+
     /**
      * Create and provision a personal working copy from the requested repository and branch.
      *
@@ -144,6 +148,12 @@ public class RepositoryWorkspaceService {
                 workspace.setProvisioningStatus(WorkspaceProvisioningStatus.FAILED);
                 workspace.setProvisioningError(WorkspaceProvisioningStatus.FAILURE_MESSAGE);
                 workspaceRepository.save(workspace);
+            }
+            if (reservationAttempted && !workspaceStorageAttempted
+                    && exception instanceof org.springframework.dao.DataIntegrityViolationException
+                    && workspaceRepository.findByUsernameAndDisplayName(user, name)
+                            .filter(existing -> !existing.getWorkspaceId().equals(workspace.getWorkspaceId())).isPresent()) {
+                throw new WorkspaceNameConflict();
             }
             if (exception instanceof org.springframework.web.server.ResponseStatusException conflict) throw conflict;
             if (exception instanceof AccessDeniedException denied) {

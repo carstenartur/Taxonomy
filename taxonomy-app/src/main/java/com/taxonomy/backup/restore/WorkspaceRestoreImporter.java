@@ -76,7 +76,7 @@ public final class WorkspaceRestoreImporter {
             Map<PrincipalId,RestorePrincipalAllocation> principals,GitRestoreImporter.Result git,BackupCheckpoint checkpoint)throws IOException {
         if(!archive.manifest().request().profile().includesHistory()||archive.manifest().components().stream().noneMatch(c->c.id().equals(OWNER)&&c.version()==1&&c.completeness()==BackupCompleteness.COMPLETE))throw invalid();
         var model=new Model(generation.generationId());
-        var repositories=read(archive,"repositories",RepositoryRecord.class,model,r->new SourceRecordId("workspace.repository",r.repositoryId()),checkpoint);
+        var repositories=read(archive,"repositories",RepositoryRecord.class,model,r->new SourceRecordId("workspace.repository",r.repositoryId()),checkpoint,"projectDataProvider");
         var workspaces=read(archive,"workspaces",WorkspaceRecord.class,model,r->new SourceRecordId("workspace.workspace",r.workspaceId()),checkpoint);
         var memberships=read(archive,"memberships",MembershipRecord.class,model,MembershipRecord::sourceId,checkpoint);
         var refPolicies = RestoreArchiveRecords.declares(archive, OWNER, "data/workspace/ref-policies.ndjson")
@@ -146,12 +146,18 @@ public final class WorkspaceRestoreImporter {
             if(target==null||privateScopes.contains(scope)){model.classify("repositories",row.repositoryId(),"PRIVATE_QUARANTINE");continue;}
             activeRepositories.add(row.repositoryId());var id=new SourceRecordId("workspace.repository",row.repositoryId());
             String upstream=null;if(row.upstreamRepositoryId()!=null){var allocation=generation.allocations().get(new BackupRepositoryKey(row.upstreamRepositoryId(),null));if(allocation==null)throw invalid();upstream=allocation.targetKey().repositoryId();}
-            model.target("repositories",row.repositoryId(),"system_repository","repository_id",target.targetKey().repositoryId(),columns(
+            var repositoryColumns = columns(
                     "id",model.numeric(id),"repository_id",target.targetKey().repositoryId(),"storage_repository_name",target.physicalStorageName(),"slug","restored-"+StableIdentityHash.sha256(target.targetKey().repositoryId()).substring(0,24),
                     "display_name",row.displayName(),"description",row.description(),"visibility","PRIVATE","lifecycle_state","ACTIVE","owner_type","USER","owner_id",scope,
                     "topology_mode","INTERNAL_SHARED","default_branch",row.defaultBranch(),"external_url",null,"external_auth_token",null,"upstream_repository_id",upstream,"upstream_branch",row.upstreamBranch(),
                     "fork_point_commit",commit(commits,id,Field.REPOSITORY_FORK_POINT,row.forkPointCommit()),"last_fetch_at",timestamp(row.lastFetchAt()),"last_push_at",timestamp(row.lastPushAt()),
-                    "last_fetch_commit",commit(commits,id,Field.REPOSITORY_LAST_FETCH,row.lastFetchCommit()),"primary_repo",false,"created_by",row.createdBy(),"created_at",timestamp(row.createdAt()),"updated_at",timestamp(row.updatedAt()),"version",0L,"provisioning_error",null));
+                    "last_fetch_commit",commit(commits,id,Field.REPOSITORY_LAST_FETCH,row.lastFetchCommit()),"primary_repo",false,"created_by",row.createdBy(),"created_at",timestamp(row.createdAt()),"updated_at",timestamp(row.updatedAt()),"version",0L,"provisioning_error",null);
+            // An absent selection keeps the original v1 evidence and restore-plan digest.
+            if (row.projectDataProvider() != null) {
+                repositoryColumns = new LinkedHashMap<>(repositoryColumns);
+                repositoryColumns.put("project_data_provider", row.projectDataProvider());
+            }
+            model.target("repositories",row.repositoryId(),"system_repository","repository_id",target.targetKey().repositoryId(),repositoryColumns);
         }
         for(var row:workspaces) {
             checkpoint.check();if(workspaceById.putIfAbsent(row.workspaceId(),row)!=null)throw invalid();required(row.ownerScope(),255);branch(row.currentBranch());branch(row.baseBranch());branch(row.sourceBranch());branch(row.syncTargetBranch());instant(row.createdAt());
@@ -623,8 +629,8 @@ public final class WorkspaceRestoreImporter {
         Result result(){return new Result(editorScopes,targets.size(),evidence.size());}
     }
     @FunctionalInterface private interface SourceId<T>{SourceRecordId id(T row)throws IOException;}
-    private static <T extends Record>List<T> read(VerifiedBackup archive,String kind,Class<T> type,Model model,SourceId<T> key,BackupCheckpoint checkpoint)throws IOException {
-        var result=new ArrayList<T>();RestoreArchiveRecords.read(archive,OWNER,"data/workspace/"+kind+".ndjson",kind,type,MAX_ROWS,checkpoint,row->{var id=key.id(row);if(id==null)throw invalid();model.evidence(kind,id.value(),row);result.add(row);});return List.copyOf(result);
+    private static <T extends Record>List<T> read(VerifiedBackup archive,String kind,Class<T> type,Model model,SourceId<T> key,BackupCheckpoint checkpoint,String... addedNullableFields)throws IOException {
+        var result=new ArrayList<T>();RestoreArchiveRecords.read(archive,OWNER,"data/workspace/"+kind+".ndjson",kind,type,MAX_ROWS,checkpoint,row->{var id=key.id(row);if(id==null)throw invalid();model.evidence(kind,id.value(),row);result.add(row);},addedNullableFields);return List.copyOf(result);
     }
     private static String scope(RestoreIdentityImporter.Result identities,String source)throws IOException {String target=identities.sourceScopes().get(source);if(target==null)throw new IOException("Workspace owner identity mapping is incomplete");return target;}
     private static String commit(Map<WorkspaceRestoreReferences.Slot,String> commits,SourceRecordId id,Field field,String source)throws IOException {if(source==null||source.isBlank())return null;String target=commits.get(new WorkspaceRestoreReferences.Slot(id,field));if(target==null)throw invalid();return target;}

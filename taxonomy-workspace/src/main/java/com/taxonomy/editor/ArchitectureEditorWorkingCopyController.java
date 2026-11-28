@@ -59,6 +59,13 @@ public class ArchitectureEditorWorkingCopyController {
                 workspace.getProvisioningStatus()));
     }
 
+    @org.springframework.web.bind.annotation.ExceptionHandler(RepositoryWorkspaceService.WorkspaceNameConflict.class)
+    public ResponseEntity<org.springframework.http.ProblemDetail> nameConflict(RepositoryWorkspaceService.WorkspaceNameConflict failure) {
+        var problem = org.springframework.http.ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, failure.getMessage());
+        problem.setProperty("code", "WORKSPACE_NAME_CONFLICT");
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(problem);
+    }
+
     public record CreateRequest(String repositoryId, String branch, String displayName) {}
     public record WorkingCopy(String workspaceId, String sourceRepositoryId, String sourceBranch,
                               String currentBranch, WorkspaceProvisioningStatus provisioningStatus) {}

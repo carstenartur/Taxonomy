@@ -135,13 +135,16 @@ public final class WorkspaceBackupContributor implements BackupDataContributor {
     @Override public void write(SnapshotContext snapshot, ComponentSink sink) throws IOException {
         var scope = new BackupRowScope(snapshot); var profile = snapshot.authorization().request().profile();
         var repositories = scope.repositoryIds("repository_id");
-        write(sink, "repositories", profile, query(scope, false, "select repository_id,slug,display_name,description,visibility,lifecycle_state,owner_type,owner_id,topology_mode,default_branch,upstream_repository_id,upstream_branch,fork_point_commit,last_fetch_at,last_push_at,last_fetch_commit,primary_repo,created_by,created_at,updated_at from system_repository", repositories, "repository_id"),
+        boolean beforeProjectData = !scope.selectedVersion() && StagedWorkspaceSchema.missingColumnBefore(
+                database, "system_repository", "project_data_provider", "37");
+        String providerColumn = beforeProjectData ? "cast(null as varchar(257)) as project_data_provider" : "project_data_provider";
+        write(sink, "repositories", profile, query(scope, false, "select repository_id,slug,display_name,description,visibility,lifecycle_state,owner_type,owner_id,topology_mode,default_branch,upstream_repository_id,upstream_branch,fork_point_commit,last_fetch_at,last_push_at,last_fetch_commit,primary_repo,created_by,created_at,updated_at," + providerColumn + " from system_repository", repositories, "repository_id"),
                 scoped(scope,"repository_id",null,r -> new RepositoryRecord(text(r,"repository_id"),text(r,"slug"),text(r,"display_name"),text(r,"description"),
                         enumeration(r,"visibility",RepositoryVisibility.class),enumeration(r,"lifecycle_state",RepositoryLifecycleState.class),
                         enumeration(r,"owner_type",RepositoryOwnerType.class),text(r,"owner_id"),enumeration(r,"topology_mode",RepositoryTopologyMode.class),
                         text(r,"default_branch"),text(r,"upstream_repository_id"),text(r,"upstream_branch"),text(r,"fork_point_commit"),
                         instant(r,"last_fetch_at"),instant(r,"last_push_at"),text(r,"last_fetch_commit"),r.getBoolean("primary_repo"),
-                        text(r,"created_by"),instant(r,"created_at"),instant(r,"updated_at"))));
+                        text(r,"created_by"),instant(r,"created_at"),instant(r,"updated_at"),text(r,"project_data_provider"))));
         var workspaces = scope.repositories("source_repository_id", "workspace_id");
         boolean legacyOwner = !scope.selectedVersion() && StagedWorkspaceSchema.missingColumnBefore(
                 database, "user_workspace", "owner_principal_id", "32.5");
@@ -529,7 +532,24 @@ public final class WorkspaceBackupContributor implements BackupDataContributor {
     private static <E extends Enum<E>> E enumeration(ResultSet row,String column,Class<E> type) throws SQLException,IOException {
         String value=text(row,column); return value==null?null:Enum.valueOf(type,value);
     }
-    public record RepositoryRecord(String repositoryId,String slug,String displayName,String description,RepositoryVisibility visibility,RepositoryLifecycleState lifecycleState,RepositoryOwnerType ownerType,String ownerScope,RepositoryTopologyMode topologyMode,String defaultBranch,String upstreamRepositoryId,String upstreamBranch,String forkPointCommit,String lastFetchAt,String lastPushAt,String lastFetchCommit,boolean primaryRepository,String createdBy,String createdAt,String updatedAt) { }
+    public record RepositoryRecord(String repositoryId,String slug,String displayName,String description,RepositoryVisibility visibility,RepositoryLifecycleState lifecycleState,RepositoryOwnerType ownerType,String ownerScope,RepositoryTopologyMode topologyMode,String defaultBranch,String upstreamRepositoryId,String upstreamBranch,String forkPointCommit,String lastFetchAt,String lastPushAt,String lastFetchCommit,boolean primaryRepository,String createdBy,String createdAt,String updatedAt,
+            @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+            String projectDataProvider) {
+        public RepositoryRecord(String repositoryId,String slug,String displayName,String description,RepositoryVisibility visibility,
+                RepositoryLifecycleState lifecycleState,RepositoryOwnerType ownerType,String ownerScope,
+                RepositoryTopologyMode topologyMode,String defaultBranch,String upstreamRepositoryId,String upstreamBranch,
+                String forkPointCommit,String lastFetchAt,String lastPushAt,String lastFetchCommit,boolean primaryRepository,
+                String createdBy,String createdAt,String updatedAt) {
+            this(repositoryId,slug,displayName,description,visibility,lifecycleState,ownerType,ownerScope,topologyMode,
+                    defaultBranch,upstreamRepositoryId,upstreamBranch,forkPointCommit,lastFetchAt,lastPushAt,lastFetchCommit,
+                    primaryRepository,createdBy,createdAt,updatedAt,null);
+        }
+
+        public RepositoryRecord {
+            if (projectDataProvider != null)
+                com.taxonomy.workspace.service.ProjectCatalogueSeed.requireProvider(projectDataProvider);
+        }
+    }
     public record WorkspaceRecord(String workspaceId,String ownerScope,String displayName,String currentBranch,String baseBranch,boolean shared,String createdAt,String lastAccessedAt,WorkspaceProvisioningStatus provisioningStatus,RepositoryTopologyMode topologyMode,String repositoryId,String sourceBranch,WorkspaceRelationshipType relationshipType,String baseCommit,String currentCommit,String lastFetchedCommit,String lastIntegratedCommit,String syncTargetBranch,String provisionedAt,String description,boolean archived,boolean defaultWorkspace,boolean collaborative,String ownerPrincipalId) {
         public WorkspaceRecord(String workspaceId,String ownerScope,String displayName,String currentBranch,String baseBranch,boolean shared,String createdAt,String lastAccessedAt,WorkspaceProvisioningStatus provisioningStatus,RepositoryTopologyMode topologyMode,String repositoryId,String sourceBranch,WorkspaceRelationshipType relationshipType,String baseCommit,String currentCommit,String lastFetchedCommit,String lastIntegratedCommit,String syncTargetBranch,String provisionedAt,String description,boolean archived,boolean defaultWorkspace) {
             this(workspaceId,ownerScope,displayName,currentBranch,baseBranch,shared,createdAt,lastAccessedAt,provisioningStatus,topologyMode,repositoryId,sourceBranch,relationshipType,baseCommit,currentCommit,lastFetchedCommit,lastIntegratedCommit,syncTargetBranch,provisionedAt,description,archived,defaultWorkspace,false,null);

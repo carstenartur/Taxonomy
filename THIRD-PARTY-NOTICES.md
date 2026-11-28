@@ -41,7 +41,7 @@ to the Maven SBOM.
 | ISC License | D3.js | Permissive; preserve copyright, permission and disclaimer text |
 | BSD 2-Clause / BSD 3-Clause | HSQLDB, PostgreSQL JDBC, XStream, Flexmark-java | Permissive; preserve copyright, conditions and disclaimers |
 | Eclipse Distribution License 1.0 | JGit | BSD-style terms; preserve the required license material |
-| Eclipse Public License 2.0 | JUnit and JaCoCo | Build/test tooling; not part of the application runtime report |
+| Eclipse Public License 2.0 | JUnit, JaCoCo and the Archi relationship matrix | The export module and ArchiMate exchange bundle include the derived endpoint rules, their source notice and license |
 | Oracle Free Use Terms and Conditions (FUTC) | Oracle JDBC Driver (`ojdbc11`) | Runtime driver distributed under FUTC; preserve Oracle terms and notices |
 
 Do not infer licence compliance from this summary alone. The generated report is

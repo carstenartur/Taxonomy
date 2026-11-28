@@ -20,15 +20,17 @@ public class ArchitectureLifecycleCreationController {
             RepositoryMembershipService membership,WorkspaceResolver resolver,UserWorkspaceRepository workspaces) {
         this.repositories=repositories;this.provisioner=provisioner;this.membership=membership;this.resolver=resolver;this.workspaces=workspaces;
     }
-    public record Create(String displayName,String slug,String description) {
+    public record Create(String displayName,String slug,String description,String projectDataProvider) {
+        public Create(String displayName,String slug,String description) { this(displayName,slug,description,null); }
         public Create {
+            if (projectDataProvider != null) ProjectCatalogueSeed.requireProvider(projectDataProvider);
             if(displayName==null || displayName.isBlank() || displayName.length()>255 || slug==null || !slug.matches("[a-z0-9][a-z0-9-]{0,99}"))
                 throw new IllegalArgumentException("A bounded name and stable lower-case slug are required");
             if(description!=null && description.length()>1000) throw new IllegalArgumentException("Description must not exceed 1000 characters");
         }
     }
     public record Architecture(String repositoryId,String displayName,String slug,String defaultBranch,boolean owned,
-                               String description,RepositoryLifecycleState lifecycleState) {}
+                               String description,RepositoryLifecycleState lifecycleState,String projectDataProvider) {}
     public record WorkingCopy(String workspaceId,String sourceRepositoryId,String sourceBranch,String currentBranch,
                               String displayName,WorkspaceProvisioningStatus provisioningStatus) {}
     @GetMapping
@@ -41,11 +43,17 @@ public class ArchitectureLifecycleCreationController {
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(readable.stream()
                 .sorted(Comparator.comparing(SystemRepository::getDisplayName,String.CASE_INSENSITIVE_ORDER)).map(repo->view(repo,user)).toList());
     }
+    @GetMapping("/data-providers")
+    @Operation(summary="List installed project initialization datasets")
+    public List<ProjectCatalogueSeed.Choice> providers() { return provisioner.projectDataProviders(); }
+
     @PostMapping
     @Operation(summary="Create an independent private architecture",description="Uses the existing logical JGit provisioning service. Keep the slug stable across a transport retry and recover the already-created owned architecture before making a working copy.")
     public ResponseEntity<Architecture> create(@RequestBody Create request) {
         String user=resolver.resolveCurrentUsername();
-        var result=provisioner.createOrResumePrivateRepository(request.displayName(),request.slug(),request.description(),user);
+        var result=request.projectDataProvider()==null
+                ? provisioner.createOrResumePrivateRepository(request.displayName(),request.slug(),request.description(),user)
+                : provisioner.createOrResumePrivateRepository(request.displayName(),request.slug(),request.description(),user,request.projectDataProvider());
         return ResponseEntity.status(result.created()?HttpStatus.CREATED:HttpStatus.OK).cacheControl(CacheControl.noStore())
                 .body(view(result.repository(),user));
     }
@@ -60,5 +68,5 @@ public class ArchitectureLifecycleCreationController {
                 .map(w->new WorkingCopy(w.getWorkspaceId(),w.getSourceRepositoryId(),w.getSourceBranch(),w.getCurrentBranch(),w.getDisplayName(),w.getProvisioningStatus())).toList());
     }
     private static Architecture view(SystemRepository repo,String user){return new Architecture(repo.getRepositoryId(),repo.getDisplayName(),repo.getSlug(),repo.getDefaultBranch(),
-            repo.getOwnerType()==RepositoryOwnerType.USER && user.equals(repo.getOwnerId()),repo.getDescription(),repo.getLifecycleState());}
+            repo.getOwnerType()==RepositoryOwnerType.USER && user.equals(repo.getOwnerId()),repo.getDescription(),repo.getLifecycleState(),repo.getProjectDataProvider());}
 }
