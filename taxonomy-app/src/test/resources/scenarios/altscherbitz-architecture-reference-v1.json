@@ -1,0 +1,31 @@
+{
+  "referenceId": "altscherbitz-directed-architecture-v1",
+  "requirementsReference": "altscherbitz-backup-2026-v1",
+  "source": "Public notice 230039, sections 2.1 and 5.1. Catalogue mappings and directed edges are independent authored expectations, not the authority's architecture.",
+  "cases": {
+    "product": {
+      "sourceObligations": ["existing-backup-environment", "product-delivery"],
+      "requiredAlternatives": [],
+      "allowed": [],
+      "basis": "Licensing and delivery alone do not identify the operating process supported by the storage service."
+    },
+    "storage-service": {
+      "sourceObligations": ["second-site-and-replication", "integration-and-media-break"],
+      "requiredAlternatives": [],
+      "allowed": [],
+      "basis": "The storage service is evidenced. Site replication and tape retention do not identify a specific recovery application or establish a specific operating process."
+    },
+    "operations-process": {
+      "sourceObligations": ["second-site-and-replication", "operations-and-agreed-optimization"],
+      "requiredAlternatives": [
+        {"source":"CR-1091","type":"SUPPORTS","target":"BP-1503"},
+        {"source":"CR-1091","type":"SUPPORTS","target":"BP-2009"}
+      ],
+      "allowed": [],
+      "basis": "The retained backups support the backup-job or service-operation process. Either specific process mapping can express this dependency. Optimization remains conditional on need and agreement."
+    }
+  },
+  "scopedPairs": [["CR-1091","BP-1503"],["CR-1091","BP-2009"],["UA-1193","CR-1091"],["UA-1347","CR-1091"]],
+  "openQuestions": ["Which role requests a restoration?", "Which role authorizes a restoration?"],
+  "unsupported": "A dedicated recovery application, a maritime application and the restoration requester/approver are unspecified at all three stages. Required application-to-storage relationships for the two listed applications, or role assignments to the two listed processes, cannot be asserted from the stated evidence. Other endpoint pairs require separate review."
+}

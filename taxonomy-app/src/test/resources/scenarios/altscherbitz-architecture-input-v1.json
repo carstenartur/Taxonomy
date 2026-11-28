@@ -1,0 +1,57 @@
+{
+  "catalogueSha256": "000b695bcd09a2ec7aff889cf62b2f83929861a3f147eaa3c2b60e2bf77b7f9d",
+  "archive": "Taxonomy_QA_Altscherbitz_2026-11-27.zip",
+  "archiveSha256": "be9a1dcf5db76125302d976a84b447647ed0501307619bae906a7c3cdf37d956",
+  "roots": [
+    "BP",
+    "BR",
+    "CR",
+    "UA"
+  ],
+  "candidates": [
+    "BP-1503",
+    "BP-2009",
+    "BR-1220",
+    "CR-1091",
+    "UA-1193",
+    "UA-1347"
+  ],
+  "historicalReports": {
+    "product": {
+      "entry": "01-berichte/1-product-decision-report.json",
+      "entrySha256": "9f99dab1714d159ea4855c9b961a76d2fe5c251f4b7a6097524df427083674cb",
+      "snapshotId": "fc0d1670-31c6-4eba-acee-e0ab2a9f14f1",
+      "requirementSha256": "9100e84e74baf4d4e267397ab676e10a746059ab6cdf6619d6a9aec0e86654c0",
+      "snapshotFingerprint": "e589e015bfdb563dfc556862de8bf1e114b657f0a1f02f13f135bd504492f93c",
+      "originalScope": "TAXONOMIES_ONLY",
+      "historicalEffectiveScores": {
+        "CR-1091": 90.0
+      }
+    },
+    "storage-service": {
+      "entry": "01-berichte/2-storage-service-decision-report.json",
+      "entrySha256": "f69239548cb0862ecbd1180982922ee6dc98fda7bc176704d9ee9e1cd00a7d80",
+      "snapshotId": "20c9645c-c2bf-45ad-a5d8-56b849821eb8",
+      "requirementSha256": "c82ba47c8b7b373ac7c0371b6056fe303fbc4bb6088f691f4c6236df9da582e3",
+      "snapshotFingerprint": "e0fae5e05ed5148c12aa62017b9b909841e781d40885042bf1e34b210902d215",
+      "originalScope": "TAXONOMIES_ONLY",
+      "historicalEffectiveScores": {
+        "BP-2009": 3.0,
+        "CR-1091": 72.0
+      }
+    },
+    "operations-process": {
+      "entry": "01-berichte/3-operations-process-decision-report.json",
+      "entrySha256": "b5d3f4271351f5e6b48ef8e47970a08ecc8f9fed33037a7f50e18e4dafe9dd09",
+      "snapshotId": "a82d7ea8-0800-44bc-b735-baae6b6405bf",
+      "requirementSha256": "b4abb2e2bb47ff9f6bd89b2080c8fca121581510bd8f89cbdc64af28ebb321cf",
+      "snapshotFingerprint": "a5b61324003025741fae50c862cd7cc292b992d7ebfe4cb8ba9372e608213978",
+      "originalScope": "TAXONOMIES_ONLY",
+      "historicalEffectiveScores": {
+        "BP-2009": 16.0,
+        "CR-1091": 55.0,
+        "UA-1193": 13.0
+      }
+    }
+  }
+}
