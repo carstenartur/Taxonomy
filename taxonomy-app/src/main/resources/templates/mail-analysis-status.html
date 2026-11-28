@@ -8,12 +8,13 @@
   <meta name="referrer" content="no-referrer">
   <meta name="color-scheme" content="light">
   <title th:text="#{mail.analysis.title}">Verarbeitungsmonitor · Taxonomy</title>
-  <link rel="stylesheet" th:href="@{/css/mail-analysis-status.css}">
-  <script defer data-authenticated-surfaces="false" th:src="@{/js/api/taxonomy-api-client.js}"></script>
-  <script defer th:src="@{/js/mail-analysis-status.js}"></script>
+  <link rel="stylesheet" href="./css/mail-analysis-status.css" th:href="@{/css/mail-analysis-status.css}">
+  <script defer data-authenticated-surfaces="false" src="./js/api/taxonomy-api-client.js" th:src="@{/js/api/taxonomy-api-client.js}"></script>
+  <script defer src="./js/mail-analysis-status.js" th:src="@{/js/mail-analysis-status.js}"></script>
 </head>
 <body>
-    <main class="receipt-fallback" data-server-fallback>
+    <noscript th:remove="all"><p>Für die eigenständige Portalansicht ist JavaScript erforderlich.</p></noscript>
+    <main class="receipt-fallback" data-server-fallback hidden th:hidden="${false}">
         <p class="receipt-brand">Taxonomy</p>
         <h1 th:text="#{mail.analysis.title}">Email analysis status</h1>
         <dl>
@@ -52,7 +53,7 @@
   </div><div class="refresh-tools"><span id="freshness"></span><button class="button refresh" id="refresh" type="button"><i data-icon="refresh"></i><span data-en="Refresh">Aktualisieren</span></button></div></div>
   <p class="notice" role="status" id="notice" hidden></p>
   <article class="hero" aria-labelledby="job-heading">
-    <img class="signal" th:src="@{/images/mail-queue-signal.svg}" alt="">
+    <img class="signal" src="./images/mail-queue-signal.svg" th:src="@{/images/mail-queue-signal.svg}" alt="">
     <div class="hero-content">
       <div class="hero-label"><i data-icon="mail"></i><span data-en="Your job">Ihr Auftrag</span></div>
       <div class="hero-heading"><h2 id="job-heading" data-en="Loading job">Auftrag wird geladen</h2><span id="own-state"></span></div>

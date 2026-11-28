@@ -36,6 +36,14 @@ Die Bestätigung verlinkt standardmäßig die Statusseite unter `taxonomy.mail.p
 
 Neue Bestätigungen hängen die persönliche JSON-Statusadresse als URL-kodiertes Fragment `#status=…` an die Portaladresse an. Das Fragment bleibt beim Aufruf des Portals im Browser. Das Portal liest es und ruft den Status direkt bei Taxonomy ohne Anmeldecookies ab. Nur der konfigurierte Portalursprung erhält Lesezugriff über CORS auf den tokengebundenen Statusendpunkt. Frühere Links bleiben bis zu ihrem Ablauf gültig.
 
+Die eigenständige Website wird aus derselben HTML-Vorlage und denselben CSS-, JavaScript- und Bilddateien wie die integrierte Statusseite erzeugt. Der Export benötigt weder eine laufende Instanz noch ein Postfach. Führen Sie im Checkout mit Java 25 aus:
+
+```bash
+./mvnw -N antrun:run@export-mail-status-portal
+```
+
+Das Verzeichnis `target/mail-status-portal/` enthält die veröffentlichungsfertigen statischen Dateien. Veröffentlichen Sie bei einem Update das neu erzeugte Verzeichnis vollständig. Änderungen an der Oberfläche gehören in `taxonomy-app/src/main/resources/`. Ein direkter Aufruf ohne Statuslink öffnet die gekennzeichnete Beispielansicht.
+
 ## Einrichtung
 
 Die Analyse-, Architektur- und Berichtsfunktionen sowie ein KI-Anbieter für strukturierte Textantworten müssen aktiviert sein. Richten Sie ein eigenes Postfach ein, dessen Mailserver die angegebene Absenderidentität prüft. Taxonomy nimmt Aufträge nur von den ausdrücklich zugelassenen Adressen entgegen. Verwenden Sie die TLS-Ports Ihres Mailservers.

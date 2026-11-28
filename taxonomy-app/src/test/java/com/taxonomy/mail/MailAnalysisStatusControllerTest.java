@@ -15,6 +15,8 @@ import org.thymeleaf.spring6.SpringTemplateEngine;
 import org.thymeleaf.templateresolver.ClassLoaderTemplateResolver;
 import org.thymeleaf.web.servlet.JakartaServletWebApplication;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
@@ -99,6 +101,23 @@ class MailAnalysisStatusControllerTest {
         assertThat(document.select("html").attr("lang")).isEqualTo("de");
         assertThat(engine.process(view, new WebContext(web, Locale.ENGLISH, model.asMap())))
                 .contains("Partial results delivered", "Queue places in use", "Results awaiting delivery");
+    }
+
+    @Test
+    void sameTemplateOpensAsAStandalonePortalWithoutAReceiptOrAuthenticatedAssets() throws IOException {
+        try (var input = getClass().getResourceAsStream("/templates/mail-analysis-status.html")) {
+            assertThat(input).isNotNull();
+            var html = Jsoup.parse(new String(input.readAllBytes(), StandardCharsets.UTF_8));
+            assertThat(html.select("html[data-url], html[data-readiness-url], html[data-liveness-url]")).isEmpty();
+            assertThat(html.select("[data-server-fallback][hidden]")).hasSize(1);
+            assertThat(html.select("script[data-authenticated-surfaces=false]").attr("src"))
+                    .isEqualTo("./js/api/taxonomy-api-client.js");
+            for (var element : html.select("script[src], link[rel=stylesheet], img[src]")) {
+                String relative = element.attr(element.hasAttr("src") ? "src" : "href");
+                assertThat(relative).startsWith("./");
+                assertThat(getClass().getResource("/static/" + relative.substring(2))).as(relative).isNotNull();
+            }
+        }
     }
 
     @Test
