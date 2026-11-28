@@ -2,7 +2,7 @@ package com.taxonomy.composition.architecture;
 
 import com.taxonomy.dsl.command.ArchitectureCommand.SetCatalogueResponsibility;
 import com.taxonomy.dsl.command.ArchitectureCommand.UpsertOrganization;
-import com.taxonomy.dsl.export.ProjectDataSeed;
+import com.taxonomy.extension.api.plugin.PluginIdentity;
 import com.taxonomy.dsl.export.ProjectDataSeedTest;
 import com.taxonomy.dsl.mapper.AstToModelMapper;
 import com.taxonomy.dsl.parser.TaxDslParser;
@@ -10,49 +10,64 @@ import com.taxonomy.editor.ArchitectureCommandPort.*;
 import com.taxonomy.extension.api.project.ProjectDataProvider.Unit;
 import com.taxonomy.extension.runtime.PluginCatalog;
 import com.taxonomy.workspace.service.*;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.security.test.context.support.WithMockUser;
+import com.taxonomy.security.service.DatabaseUserDetailsService;
+import com.taxonomy.security.service.UserManagementService;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.*;
-import static org.mockito.Mockito.*;
 
 @SpringBootTest
-@WithMockUser(username = "alice", roles = {"USER", "ARCHITECT", "ADMIN"})
 @Tag("ci-app-shard-spring-context-a")
 class ProjectDataImportTest extends LifecycleTestSupport {
-    @Autowired com.taxonomy.dsl.export.TaxDslExportService ordinarySeed;
+    @Autowired ArchitectureRepositoryProvisioningService provisioner;
+    @Autowired ProjectDataImportController api;
+    @Autowired PluginCatalog plugins;
+    @Autowired UserManagementService accounts;
+    @Autowired DatabaseUserDetailsService users;
+    private String username;
+    private PluginIdentity installed;
+
+    @AfterEach void uninstallFixture() {
+        if (installed != null) { plugins.beginDraining(installed); plugins.remove(installed); }
+    }
     @Autowired RepositoryWorkspaceService workingCopies;
 
     @Test void repeatImportsRetainNativeIdsAndLocalResponsibilitiesAcrossIndependentProjects() throws Exception {
-        var plugins = new PluginCatalog();
+        username = "dataset-owner-" + UUID.randomUUID();
+        accounts.createUser(Map.of("username", username, "roles", List.of("USER", "ARCHITECT", "ADMIN")),
+                UUID.randomUUID().toString(), "test");
+        var actor = users.loadUserByUsername(username);
+        SecurityContextHolder.getContext().setAuthentication(
+                UsernamePasswordAuthenticationToken.authenticated(actor, null, actor.getAuthorities()));
         String provider = "authority/directory";
         var nativeUnits = List.of(new Unit("{100}", "Service", null), new Unit("{200}", "Service", "{100}"));
         ProjectDataSeedTest.register(plugins, "authority", ProjectDataSeedTest.directory("directory", null, nativeUnits));
-        var datasets = new ProjectDataSeed(plugins);
-        var provisioner = new ArchitectureRepositoryProvisioningService(repositories, membership, git, new ProjectCatalogueSeed() {
-            public String newProject(String namespace) { return ordinarySeed.newProject(namespace); }
-            public String newProject(String namespace, String selected) {
-                var generation = new TaxDslParser().parse(newProject(namespace)).getMeta().catalogueRevision();
-                return datasets.initial(namespace, selected, UUID.fromString(generation), ignored -> fail("Unexpected catalogue"));
-            }
-        });
+        installed = new PluginIdentity("authority", "1.0.0", "a".repeat(64));
         String slug = "provider-" + UUID.randomUUID();
-        assertThatThrownBy(() -> provisioner.createOrResumePrivateRepository("Same project", slug, null, "alice", "unknown/missing"))
+        assertThatThrownBy(() -> provisioner.createOrResumePrivateRepository("Same project", slug, null, username, "unknown/missing"))
                 .isInstanceOf(IllegalArgumentException.class);
         assertThat(repositories.byCreationSlug(slug, "Same project")).isEmpty();
-        var first = provisioner.createOrResumePrivateRepository("Same project", slug, null, "alice", provider).repository();
-        assertThat(provisioner.createOrResumePrivateRepository("Same project", slug, null, "alice", provider).created()).isFalse();
-        assertThatThrownBy(() -> provisioner.createOrResumePrivateRepository("Same project", slug, null, "alice", "other/directory"))
+        var first = provisioner.createOrResumePrivateRepository("Same project", slug, null, username, provider).repository();
+        assertThat(provisioner.createOrResumePrivateRepository("Same project", slug, null, username, provider).created()).isFalse();
+        assertThatThrownBy(() -> provisioner.createOrResumePrivateRepository("Same project", slug, null, username, "other/directory"))
                 .isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
-        var second = provisioner.createOrResumePrivateRepository("Same project", "provider-" + UUID.randomUUID(), null, "alice").repository();
+        var second = provisioner.createOrResumePrivateRepository("Same project", "provider-" + UUID.randomUUID(), null, username).repository();
         var a = context(first.getRepositoryId());
+        assertThatThrownBy(() -> workingCopies.createWorkingCopy(username, second.getRepositoryId(), "draft",
+                "Workspace for " + first.getRepositoryId(), null)).isInstanceOf(RepositoryWorkspaceService.WorkspaceNameConflict.class);
         var b = context(second.getRepositoryId());
         String initial = editor.read(a, null).dsl();
         var original = new AstToModelMapper().map(new TaxDslParser().parse(initial)).getOrganizations();
@@ -67,15 +82,11 @@ class ProjectDataImportTest extends LifecycleTestSupport {
         editor.checkpoint(a, new CreateCheckpointCommand(assigned.context(), metadata("Keep local responsibilities")));
         String before = editor.read(a, null).dsl();
 
-        var contexts = mock(LifecycleHttpContext.class);
-        var api = new ProjectDataImportController(contexts, lifecycle, editor, datasets, transactions);
-        when(contexts.resolveForRead()).thenReturn(a);
         var prior = editor.read(a, null).context();
         var repeated = importDataset(api, a, provider, 0, 2);
         assertThat(repeated.context()).isEqualTo(prior);
         assertThat(editor.read(a, repeated.context().commit()).dsl()).isEqualTo(before);
         assertThat(editor.read(b, null).dsl()).doesNotContain(ownerId);
-        when(contexts.resolveForRead()).thenReturn(b);
         var imported = importDataset(api, b, provider, 2, 0);
         var projectB = new AstToModelMapper().map(new TaxDslParser().parse(editor.read(b, imported.context().commit()).dsl()));
         assertThat(projectB.getOrganizations()).containsExactlyInAnyOrderElementsOf(original);
@@ -86,8 +97,8 @@ class ProjectDataImportTest extends LifecycleTestSupport {
     }
 
     private RepositoryContext context(String repositoryId) {
-        var copy = workingCopies.createWorkingCopy("alice", repositoryId, "draft", "Independent workspace", null);
-        return RepositoryContext.workspace(repositoryId, copy.getWorkspaceId(), copy.getCurrentBranch(), "alice");
+        var copy = workingCopies.createWorkingCopy(username, repositoryId, "draft", "Workspace for " + repositoryId, null);
+        return RepositoryContext.workspace(repositoryId, copy.getWorkspaceId(), copy.getCurrentBranch(), username);
     }
 
     private ArchitectureLifecycleService.Publication importDataset(ProjectDataImportController api, RepositoryContext target,
@@ -95,11 +106,24 @@ class ProjectDataImportTest extends LifecycleTestSupport {
         var head = editor.read(target, null).context();
         var intent = metadata("Import the source directory");
         String etag = "\"workspace-revision-" + head.revision() + "\"";
-        var preview = api.preview(new ProjectDataImportController.Request(head, intent, provider, null), etag).getBody();
-        assertThat(preview.added()).isEqualTo(added);
-        assertThat(preview.existing()).isEqualTo(existing);
-        var result = api.apply(new ProjectDataImportController.Request(head, intent, provider, preview.datasetHash()), etag).getBody();
-        assertThat(result.state()).isEqualTo(added == 0 ? "UNCHANGED" : "CHECKPOINTED");
-        return result;
+        var previous = RequestContextHolder.getRequestAttributes();
+        try {
+            bindRequest(target, "preview");
+            var preview = api.preview(new ProjectDataImportController.Request(head, intent, provider, null), etag).getBody();
+            assertThat(preview.added()).isEqualTo(added);
+            assertThat(preview.existing()).isEqualTo(existing);
+            bindRequest(target, "import");
+            var result = api.apply(new ProjectDataImportController.Request(head, intent, provider, preview.datasetHash()), etag).getBody();
+            assertThat(result.state()).isEqualTo(added == 0 ? "UNCHANGED" : "CHECKPOINTED");
+            return result;
+        } finally {
+            RequestContextHolder.setRequestAttributes(previous);
+        }
+    }
+
+    private static void bindRequest(RepositoryContext workspace, String operation) {
+        var request = new MockHttpServletRequest("POST", "/api/architecture/editor/project-data/" + operation);
+        request.addHeader(WorkspaceContextResolver.WORKSPACE_HEADER, workspace.workspaceId());
+        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
     }
 }
